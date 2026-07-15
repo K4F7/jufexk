@@ -5,6 +5,8 @@ dist/
 worker-configuration.d.ts
 *.zip
 .venv/
+__pycache__/
+*.pyc
 scripts/legacy_ocr/output/
 scripts/legacy_ocr/input/
 scripts/legacy_ocr/reference.json
