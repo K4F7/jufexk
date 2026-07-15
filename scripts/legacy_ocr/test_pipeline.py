@@ -1,6 +1,6 @@
 import unittest
 
-from pipeline import Candidate, PreviewRow, Token, cluster_rows, mark_duplicates, normalize, similarity, unique_match
+from pipeline import Candidate, PreviewRow, Token, cluster_rows, infer_comment_start, mark_duplicates, normalize, similarity, unique_match
 
 
 def token(text: str, x: float, y: float, confidence: float = .99) -> Token:
@@ -30,6 +30,10 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(rows[0].duplicate_group)
         self.assertEqual(rows[0].duplicate_group, rows[1].duplicate_group)
         self.assertTrue(all(row.needs_review for row in rows))
+
+    def test_missing_comment_headers_are_recovered_from_number(self):
+        header = ["课程", "老师", "", "", "学生评价3", "学生评价4"]
+        self.assertEqual(infer_comment_start(header, 4), 2)
 
 
 if __name__ == "__main__":
