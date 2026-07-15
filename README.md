@@ -67,3 +67,35 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 5. 删除初始迁移产生的两门示例课程和示例教师后再开放投稿。
 
 不同学校不得共用 D1、管理员口令或 Turnstile Secret。
+
+## 腾讯表格历史评价 OCR（试验）
+
+历史文字评价使用独立的 `legacy_reviews` 模型，不写入要求 `overall` 的学生投稿表，也不伪造评分。迁移 `0006_legacy_reviews.sql` 目前只随代码交付；在样本预览经人工确认前，不要应用到远端 D1。
+
+本机建议使用 Python 3.12。Windows 原生环境先以 RapidOCR CPU 验证行列恢复；RTX 50 系只有在 `onnxruntime.get_available_providers()` 明确包含 `CUDAExecutionProvider` 后才增加 `--cuda`。如需稳定使用 PaddleOCR GPU，优先在 WSL2/Linux 容器中运行。
+
+```powershell
+uv venv --python 3.12 .venv
+uv pip install --python .venv scripts/legacy_ocr/requirements.txt
+./scripts/legacy_ocr/export_reference.ps1
+# 截图命名示例：主要课程_001.png、主要课程_002.png
+.venv/Scripts/python scripts/legacy_ocr/pipeline.py `
+  --input scripts/legacy_ocr/input `
+  --reference scripts/legacy_ocr/reference.json `
+  --out scripts/legacy_ocr/output `
+  --max-rows 30
+```
+
+输入截图必须是腾讯表格 PNG 原图，并尽量保留表头。程序只读取截图和课程、教师、任课关系、开课班快照；不会连接或写入 D1。输出包括：
+
+- `legacy_reviews_preview.csv`：完整预览和人工确认原因；
+- `unmatched_courses.csv`、`unmatched_teachers.csv`：只报告，不自动创建；
+- `ambiguous_matches.csv`：保留候选 ID、名称与分数；
+- `duplicates.csv`：只标记疑似重复，不删除；
+- `ocr_report.json`：模型、置信度、工作表统计、处理时间和错误。
+
+只有课程与教师均唯一匹配、OCR 平均置信度达标、教师已有该课程任课关系，且不存在继承/截断/重复/开课班歧义时，`needs_review` 才可能为 `false`。人工确认时只修改预览副本；批准文件另存为 `legacy_reviews_approved.csv`，后续再由带事务、批次记录和批次回滚的专用导入器写入，默认仍为 `pending`。
+
+### 投稿问卷交互方向
+
+公开投稿将借鉴单题或分段分页、进度条、条件显示以及移动端固定“上一页/下一页”的形式，但不复制参考问卷文案和品牌。建议顺序为：评价对象（课程—开课班—教师）→总体与分类维度→课堂及考核→补充意见→匿名投稿确认。学生身份认证仍暂缓。
