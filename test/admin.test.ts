@@ -2,6 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 const origin = "https://example.com";
+let loginSequence = 10;
 
 async function login() {
   const response = await SELF.fetch(`${origin}/api/admin/login`, {
@@ -9,7 +10,7 @@ async function login() {
     headers: {
       "Content-Type": "application/json",
       Origin: origin,
-      "CF-Connecting-IP": "198.51.100.10",
+      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
     },
     body: JSON.stringify({ password: "test-password" }),
   });
@@ -230,6 +231,84 @@ describe("admin sessions and catalog", () => {
       }),
     });
     expect(missing.status).toBe(404);
+  });
+
+  it("imports approved legacy text without a fabricated score and rolls back by batch", async () => {
+    const auth = await login();
+    const approved = {
+      course_id: 1,
+      teacher_id: 1,
+      offering_id: "",
+      category: "major",
+      comment: "历史文字评价",
+      term: "",
+      source_type: "legacy_ocr",
+      source_label: "腾讯表格历史资料",
+      source_file: "主要课程_001.png",
+      sheet_name: "主要课程",
+      source_row: "T1R2C4",
+      raw_ocr_text: "原始 OCR 历史文字评价",
+      ocr_confidence: 0.98,
+      ocr_tokens_json: "[]",
+      inherited_from: "",
+      ocr_course_name: "程序设计基础",
+      ocr_teacher_name: "林老师",
+      duplicate_group: "",
+    };
+    const preview = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ rows: [approved] }),
+    });
+    expect(await preview.json()).toMatchObject({ ok: true, total: 1, errors: [] });
+    const imported = await SELF.fetch(`${origin}/api/admin/legacy-imports`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ rows: [approved], manifest: { approvedBy: "test" }, idempotencyKey: "a".repeat(64) }),
+    });
+    expect(imported.status).toBe(200);
+    const result = await imported.json<{ batchId: string; reviewStatus: string; batchStatus: string }>();
+    expect(result.reviewStatus).toBe("pending");
+    expect(result.batchStatus).toBe("imported");
+    const saved = await env.DB.prepare(
+      "SELECT comment,status,source_type FROM legacy_reviews WHERE import_batch_id=?",
+    ).bind(result.batchId).first();
+    expect(saved).toEqual({ comment: "历史文字评价", status: "pending", source_type: "legacy_ocr" });
+    const rollback = await SELF.fetch(`${origin}/api/admin/legacy-imports/${result.batchId}/rollback`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: "{}",
+    });
+    expect(rollback.status).toBe(200);
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM legacy_reviews WHERE import_batch_id=?").bind(result.batchId).first()).toEqual({ n: 0 });
+    expect(await env.DB.prepare("SELECT status FROM legacy_import_batches WHERE id=?").bind(result.batchId).first()).toEqual({ status: "rolled_back" });
+    const secondRollback = await SELF.fetch(`${origin}/api/admin/legacy-imports/${result.batchId}/rollback`, {
+      method: "POST", headers: adminHeaders(auth), body: "{}",
+    });
+    expect(secondRollback.status).toBe(409);
+  });
+
+  it("rejects legacy rows with fabricated overall or an unrelated teacher", async () => {
+    const auth = await login();
+    const row = {
+      course_id: 2, teacher_id: 1, category: "pe", comment: "文字",
+      source_type: "legacy_ocr", source_label: "腾讯表格历史资料",
+      source_file: "体育课_001.png", source_row: "2", raw_ocr_text: "文字",
+      ocr_confidence: 0.99, ocr_tokens_json: "[]",
+    };
+    const response = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ rows: [{ ...row, overall: 5 }] }),
+    });
+    const body = await response.json<{ ok: boolean; errors: Array<{ field: string }> }>();
+    expect(body.ok).toBe(false);
+    expect(body.errors.map((error) => error.field)).toContain("overall");
+    const unrelated = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
+      method: "POST", headers: adminHeaders(auth), body: JSON.stringify({ rows: [row] }),
+    });
+    const unrelatedBody = await unrelated.json<{ errors: Array<{ field: string; message: string }> }>();
+    expect(unrelatedBody.errors).toContainEqual(expect.objectContaining({ field: "teacher_id", message: "教师不在课程已有任课关系中" }));
   });
 });
 

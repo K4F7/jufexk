@@ -39,6 +39,8 @@
 - 课程/教师快照当前只有 2 门课程、1 位教师，因此不得把未匹配视为 OCR 失败，也不得自动创建对象；
 - 无明确学期或开课班，不填写 `term` 和 `matched_offering_id`；
 - 不生成或推算 `overall`。
+- 后续恢复策略成功时，较早策略的失败只写入 `warnings`；只有整张图没有产生可信结构行时才进入 `errors`，原始 token 始终保留。
+- 已生成 274 个教师原文聚合候选（90 个仅通过姓名形态初筛）和 17 个课程候选（11 个通过形态初筛）；这些数字不是匹配或批准结果。
 
 ## 文件
 
@@ -50,6 +52,8 @@
 - `ambiguous_matches.csv`；
 - `duplicates.csv`；
 - `raw_ocr_tokens.jsonl`；
-- `ocr_report.json`。
+- `ocr_report.json`；
+- `teacher_candidates_review.csv`、`course_candidates_review.csv`；
+- `legacy_reviews_review_queue.csv`（1150 行，决策栏初始均为空）。
 
-该目录被 Git 忽略，避免未确认的历史评价进入公开仓库。下一步需要补齐课程、教师和任课关系快照，再重新运行匹配；人工确认前不得生成 `legacy_reviews_approved.csv`。
+该目录被 Git 忽略，避免未确认的历史评价进入公开仓库。主要课程、英语和体育的部分续页仍只有原始 OCR token；抽查证明简单坐标模板会产生列错位，因此保守地没有把这些文本包装成结构化评价。下一步需要补齐课程、教师和任课关系快照，再重新运行匹配；人工确认前不得生成 `legacy_reviews_approved.csv`。

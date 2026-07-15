@@ -202,14 +202,17 @@ def coordinate_fallback_rows(tokens: list[Token], source: Path, sheet: str, refe
     if not config: return [], ["无坐标恢复schema"]
     ys, width = horizontal_boundaries(source)
     if len(ys) < 3: return [], ["坐标恢复未检测到足够横线"]
-    scale = width / config["width"]
+    # Some Tencent screenshots are right-side crops at the original pixel scale,
+    # not resized pages. Scaling their x coordinates would shift every column.
+    scale = 1.0 if config.get("cropped") else width / config["width"]
     course_range = tuple(value * scale for value in config["course"])
     teacher_range = tuple(value * scale for value in config["teacher"])
     comment_edges = [min(width, value * scale) for value in config["comments"]]
     comment_edges = sorted(set(round(value) for value in comment_edges if value <= width))
     if not comment_edges or comment_edges[-1] < width: comment_edges.append(width)
     current_course = context.get("course", ""); current_teacher = context.get("teacher", "")
-    started_with_context = bool(current_course or current_teacher); output: list[PreviewRow] = []
+    started_with_context = bool(current_course or current_teacher) and context.get("source_file") != source.name
+    output: list[PreviewRow] = []
     for row_index, (top, bottom) in enumerate(zip(ys, ys[1:]), start=1):
         row_tokens = [token for token in tokens if top < token.cy < bottom]
         if not row_tokens: continue
@@ -236,9 +239,10 @@ def coordinate_fallback_rows(tokens: list[Token], source: Path, sheet: str, refe
             preview.needs_review = True; preview.review_reason = ";".join(filter(None, [preview.review_reason, "coordinate_fallback"]))
             if teacher_band_ambiguous:
                 preview.ocr_teacher_name = ""; preview.matched_teacher_id = ""; preview.matched_teacher_name = ""; preview.teacher_match_score = ""; preview.review_reason += ";multiple_teacher_rows_in_band"
-            if started_with_context and row_index == 1: preview.review_reason += ";cross_screenshot_inheritance"
+            if started_with_context and inherited: preview.review_reason += ";cross_screenshot_inheritance"
             if right >= width and width < config["width"] * .8: preview.review_reason += ";screenshot_horizontally_truncated"
             output.append(preview)
+    context["source_file"] = source.name
     return (output, []) if output else ([], ["坐标恢复未生成评价"])
 
 
@@ -470,13 +474,16 @@ def load_reference(path: Path) -> dict[str, list[dict[str, Any]]]:
     return data
 
 
-def load_ocr_cache(path: Path | None) -> dict[str, list[Token]]:
+def load_ocr_cache(path: Path | None) -> dict[str, tuple[list[Token], str]]:
     if path is None: return {}
-    cache: dict[str, list[Token]] = {}
+    cache: dict[str, tuple[list[Token], str]] = {}
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
             page = json.loads(line)
-            cache[page["source_file"]] = [Token(**token) for token in page.get("tokens", [])]
+            cache[page["source_file"]] = (
+                [Token(**token) for token in page.get("tokens", [])],
+                str(page.get("ocr_model") or "RapidOCR 3.9.1 (cached tokens)"),
+            )
     return cache
 
 
@@ -587,27 +594,32 @@ def run(args: argparse.Namespace) -> int:
         sheet = image.stem.rsplit("_", 1)[0]
         try:
             if image.name in cached_tokens:
-                tokens, model = cached_tokens[image.name], "cached RapidOCR tokens"
+                tokens, model = cached_tokens[image.name]
             else:
                 tokens, model = run_ocr(image, args.cuda)
             box_count += len(tokens); confidences.extend(token.confidence for token in tokens)
-            raw_pages.append({"source_file": image.name, "sheet_name": sheet, "tokens": [asdict(token) for token in tokens]})
+            raw_pages.append({"source_file": image.name, "sheet_name": sheet, "ocr_model": model, "tokens": [asdict(token) for token in tokens]})
             rows, row_errors, discovered_schema = img2table_preview_rows(tokens, image, sheet, reference, schemas.get(sheet), contexts[sheet], args.cuda)
+            attempt_errors = [f"img2table: {message}" for message in row_errors]
             if discovered_schema: schemas[sheet] = discovered_schema
             if not rows:
                 coordinate_rows, coordinate_errors = coordinate_fallback_rows(tokens, image, sheet, reference, contexts[sheet])
                 rows = coordinate_rows
-                row_errors.extend(coordinate_errors)
+                attempt_errors.extend(f"coordinate: {message}" for message in coordinate_errors)
             if not rows:
                 grid_rows, grid_errors = grid_preview_rows(tokens, image, sheet, reference)
                 rows = grid_rows
-                row_errors.extend(grid_errors)
+                attempt_errors.extend(f"grid: {message}" for message in grid_errors)
             if not rows:
                 fallback_rows, fallback_errors = match_rows(tokens, image, sheet, reference)
                 rows = fallback_rows
-                row_errors.extend(fallback_errors)
+                attempt_errors.extend(f"header: {message}" for message in fallback_errors)
             previews.extend(rows)
-            errors.extend({"source_file": image.name, "message": message} for message in row_errors)
+            diagnostics = [{"source_file": image.name, "message": message} for message in attempt_errors]
+            if rows:
+                warnings.extend(diagnostics)
+            else:
+                errors.extend(diagnostics)
         except Exception as exc:
             errors.append({"source_file": image.name, "message": str(exc)})
     detected_review_count = len(previews)

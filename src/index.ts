@@ -1033,6 +1033,163 @@ app.post("/api/admin/import", async (c) => {
   return c.json({ ok: true, count: rows.length });
 });
 
+type LegacyApprovedRow = {
+  course_id: number;
+  teacher_id: number;
+  offering_id: number | null;
+  category: "major" | "pe" | "general";
+  comment: string;
+  term: string;
+  source_file: string;
+  sheet_name: string;
+  source_row: string;
+  raw_ocr_text: string;
+  ocr_confidence: number;
+  ocr_tokens_json: string;
+  inherited_from: string;
+  ocr_course_name: string;
+  ocr_teacher_name: string;
+  duplicate_group: string | null;
+};
+
+async function validateLegacyApproved(
+  db: D1Database,
+  input: Record<string, unknown>[],
+) {
+  const errors: Array<{ row: number; field: string; message: string }> = [];
+  const rows: LegacyApprovedRow[] = [];
+  const add = (row: number, field: string, message: string) =>
+    errors.push({ row, field, message });
+  input.forEach((raw, offset) => {
+    const rowNumber = offset + 2;
+    const courseId = integer(raw.course_id),
+      teacherId = integer(raw.teacher_id),
+      offeringId = raw.offering_id === "" || raw.offering_id == null
+        ? null
+        : integer(raw.offering_id),
+      category = clean(raw.category, 20),
+      comment = clean(raw.comment, 5000),
+      sourceFile = clean(raw.source_file, 240),
+      sourceRow = clean(raw.source_row, 80),
+      rawText = clean(raw.raw_ocr_text, 10000),
+      confidence = Number(raw.ocr_confidence);
+    if (typeof raw.comment !== "string" || raw.comment.length > 5000) add(rowNumber, "comment", "文字评价超过 5000 字限制");
+    if (typeof raw.raw_ocr_text !== "string" || raw.raw_ocr_text.length > 10000) add(rowNumber, "raw_ocr_text", "原始 OCR 文本超过 10000 字限制");
+    if (typeof raw.ocr_tokens_json !== "string" || raw.ocr_tokens_json.length > 100000) add(rowNumber, "ocr_tokens_json", "OCR token JSON 超过 100000 字限制");
+    if (!courseId || courseId < 1) add(rowNumber, "course_id", "必须填写现有课程 ID");
+    if (!teacherId || teacherId < 1) add(rowNumber, "teacher_id", "必须填写现有教师 ID");
+    if (raw.offering_id !== "" && raw.offering_id != null && (!offeringId || offeringId < 1))
+      add(rowNumber, "offering_id", "开课班 ID 无效");
+    if (!(["major", "pe", "general"] as string[]).includes(category))
+      add(rowNumber, "category", "类别必须为 major、pe 或 general");
+    if (!comment) add(rowNumber, "comment", "文字评价不能为空");
+    if (!sourceFile) add(rowNumber, "source_file", "来源截图不能为空");
+    if (!sourceRow) add(rowNumber, "source_row", "来源行不能为空");
+    if (!rawText) add(rowNumber, "raw_ocr_text", "必须保留原始 OCR 文本");
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)
+      add(rowNumber, "ocr_confidence", "OCR 置信度必须在 0 到 1 之间");
+    if (raw.source_type !== "legacy_ocr") add(rowNumber, "source_type", "来源类型必须为 legacy_ocr");
+    if (raw.source_label !== "腾讯表格历史资料") add(rowNumber, "source_label", "来源标签不正确");
+    if (Object.hasOwn(raw, "overall") && raw.overall !== "" && raw.overall != null)
+      add(rowNumber, "overall", "历史文字评价禁止填写或推算 overall");
+    try {
+      const parsed = JSON.parse(clean(raw.ocr_tokens_json, 100000) || "[]");
+      if (!Array.isArray(parsed)) throw new Error("not array");
+    } catch {
+      add(rowNumber, "ocr_tokens_json", "OCR token 必须是 JSON 数组");
+    }
+    rows.push({
+      course_id: courseId || 0,
+      teacher_id: teacherId || 0,
+      offering_id: offeringId,
+      category: category as LegacyApprovedRow["category"],
+      comment,
+      term: clean(raw.term, 80),
+      source_file: sourceFile,
+      sheet_name: clean(raw.sheet_name, 80),
+      source_row: sourceRow,
+      raw_ocr_text: rawText,
+      ocr_confidence: confidence,
+      ocr_tokens_json: clean(raw.ocr_tokens_json, 100000) || "[]",
+      inherited_from: clean(raw.inherited_from, 240),
+      ocr_course_name: clean(raw.ocr_course_name, 240),
+      ocr_teacher_name: clean(raw.ocr_teacher_name, 240),
+      duplicate_group: clean(raw.duplicate_group, 80) || null,
+    });
+  });
+  if (errors.length) return { rows, errors };
+  const courseIds = [...new Set(rows.map((row) => row.course_id))],
+    teacherIds = [...new Set(rows.map((row) => row.teacher_id))],
+    pairKeys = [...new Set(rows.map((row) => `${row.course_id}:${row.teacher_id}`))],
+    offeringIds = [...new Set(rows.flatMap((row) => row.offering_id ? [row.offering_id] : []))];
+  const courses = await db.prepare("SELECT id,category FROM courses WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))").bind(JSON.stringify(courseIds)).all<{ id: number; category: string }>();
+  const teachers = await db.prepare("SELECT id FROM teachers WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))").bind(JSON.stringify(teacherIds)).all<{ id: number }>();
+  const pairs = await db.prepare("SELECT course_id||':'||teacher_id key FROM course_teachers WHERE course_id||':'||teacher_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(pairKeys)).all<{ key: string }>();
+  const offeringKeys = offeringIds.length
+    ? await db.prepare("SELECT o.id||':'||o.course_id||':'||ot.teacher_id key FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id WHERE o.id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))").bind(JSON.stringify(offeringIds)).all<{ key: string }>()
+    : { results: [] as Array<{ key: string }> };
+  const knownCourses = new Map(courses.results.map((row) => [row.id, row.category])),
+    knownTeachers = new Set(teachers.results.map((row) => row.id)),
+    knownPairs = new Set(pairs.results.map((row) => row.key)),
+    knownOfferings = new Set(offeringKeys.results.map((row) => row.key));
+  rows.forEach((row, offset) => {
+    const rowNumber = offset + 2;
+    if (!knownCourses.has(row.course_id)) add(rowNumber, "course_id", "课程不存在");
+    else if (knownCourses.get(row.course_id) !== row.category) add(rowNumber, "category", "类别与现有课程不一致");
+    if (!knownTeachers.has(row.teacher_id)) add(rowNumber, "teacher_id", "教师不存在");
+    if (!knownPairs.has(`${row.course_id}:${row.teacher_id}`)) add(rowNumber, "teacher_id", "教师不在课程已有任课关系中");
+    if (row.offering_id && !knownOfferings.has(`${row.offering_id}:${row.course_id}:${row.teacher_id}`))
+      add(rowNumber, "offering_id", "开课班与课程、教师不一致");
+    if (row.offering_id && !row.term) add(rowNumber, "term", "指定开课班时必须填写明确学期");
+  });
+  return { rows, errors };
+}
+
+app.post("/api/admin/legacy-imports/preview", async (c) => {
+  if (Number(c.req.header("Content-Length") || 0) > 2_000_000) return fail(c, "批准数据过大", 413);
+  const body = await c.req.json<{ rows?: Record<string, unknown>[] }>();
+  const input = Array.isArray(body.rows) ? body.rows : [];
+  if (!input.length || input.length > 40) return fail(c, "每批必须包含 1–40 条记录");
+  const validation = await validateLegacyApproved(c.env.DB, input);
+  return c.json({ ok: validation.errors.length === 0, total: input.length, errors: validation.errors });
+});
+
+app.post("/api/admin/legacy-imports", async (c) => {
+  if (Number(c.req.header("Content-Length") || 0) > 2_000_000) return fail(c, "批准数据过大", 413);
+  const body = await c.req.json<{ rows?: Record<string, unknown>[]; manifest?: Record<string, unknown>; idempotencyKey?: string }>();
+  const input = Array.isArray(body.rows) ? body.rows : [];
+  if (!input.length || input.length > 40) return fail(c, "每批必须包含 1–40 条记录");
+  const idempotencyKey = clean(body.idempotencyKey, 64);
+  if (!/^[a-f0-9]{32,64}$/.test(idempotencyKey)) return fail(c, "缺少有效的幂等键");
+  const validation = await validateLegacyApproved(c.env.DB, input);
+  if (validation.errors.length) return c.json({ error: "批准数据校验失败", errors: validation.errors }, 422);
+  const batchId = `legacy_${idempotencyKey}`;
+  if (await c.env.DB.prepare("SELECT 1 FROM legacy_import_batches WHERE id=?").bind(batchId).first())
+    return fail(c, "该批准批次已经导入", 409);
+  const statements = [
+    c.env.DB.prepare("INSERT INTO legacy_import_batches(id,source_type,source_label,manifest_json,status,row_count,imported_at) VALUES(?,'legacy_ocr','腾讯表格历史资料',?,'imported',?,CURRENT_TIMESTAMP)").bind(batchId, JSON.stringify(body.manifest || {}), validation.rows.length),
+    ...validation.rows.map((row) => c.env.DB.prepare(
+      `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,ocr_tokens_json,inherited_from,ocr_course_name,course_id,ocr_teacher_name,teacher_id,offering_id,category,comment,term,source_type,source_label,status,duplicate_group)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'legacy_ocr','腾讯表格历史资料','pending',?)`,
+    ).bind(batchId, row.source_file, row.sheet_name, row.source_row, row.raw_ocr_text, row.ocr_confidence, row.ocr_tokens_json, row.inherited_from, row.ocr_course_name, row.course_id, row.ocr_teacher_name, row.teacher_id, row.offering_id, row.category, row.comment, row.term, row.duplicate_group)),
+  ];
+  await c.env.DB.batch(statements);
+  return c.json({ ok: true, batchId, count: validation.rows.length, batchStatus: "imported", reviewStatus: "pending" });
+});
+
+app.post("/api/admin/legacy-imports/:id/rollback", async (c) => {
+  const batchId = clean(c.req.param("id"), 80);
+  const batch = await c.env.DB.prepare("SELECT status FROM legacy_import_batches WHERE id=?").bind(batchId).first<{ status: string }>();
+  if (!batch) return fail(c, "导入批次不存在", 404);
+  if (batch.status !== "imported") return fail(c, "只有 imported 批次可以回滚", 409);
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE legacy_import_batches SET status='rolled_back',rolled_back_at=CURRENT_TIMESTAMP WHERE id=? AND status='imported'").bind(batchId),
+    c.env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=? AND EXISTS(SELECT 1 FROM legacy_import_batches WHERE id=? AND status='rolled_back')").bind(batchId, batchId),
+  ]);
+  if (!(results[0].meta.changes || 0)) return fail(c, "该批次已经回滚或状态已变化", 409);
+  return c.json({ ok: true, batchId, status: "rolled_back" });
+});
+
 app.onError((e, c) => {
   if (e instanceof SyntaxError) return fail(c, "请求 JSON 格式错误", 400);
   console.error(
