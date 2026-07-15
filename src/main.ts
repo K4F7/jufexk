@@ -139,7 +139,7 @@ async function teacherDetail(id: number) {
   const d = await api(`/api/teachers/${id}`),
     t = d.teacher;
   $("#teacher-profile").innerHTML =
-    `<div class="detail-hero"><h1>${esc(t.name)}</h1><p>${esc(t.title)} · ${esc(t.department)}</p><p>${esc(t.bio)}</p></div><div class="grid">${d.courses.map((c: any) => `<article class="card" data-course="${c.id}"><div></div><div><h3>${esc(c.name)}</h3><p>${esc(c.code)}</p></div><div class="metrics"><b>${c.rating ? esc(c.rating) + "/5" : "暂无评分"}</b></div></article>`).join("")}</div>`;
+    `<div class="detail-hero"><h1>${esc(t.name)}</h1><p>${esc(t.title)} · ${esc(t.department)}</p><p>${esc(t.bio)}</p></div><div class="grid">${d.courses.map((c: any) => `<article class="card" data-course="${c.id}"><div></div><div><h3>${esc(c.name)}</h3><p>${esc(c.code)}</p></div><div class="metrics"><b>${c.rating ? esc(c.rating) + "/5" : "暂无评分"}</b></div></article>`).join("")}</div>${legacyReviewSection(d.legacyReviews, true)}`;
   document
     .querySelectorAll<HTMLElement>("[data-course]")
     .forEach((x) => (x.onclick = () => detail(Number(x.dataset.course))));
@@ -165,11 +165,15 @@ const reviewMetrics = (r: any) =>
       metric("课堂质量", r.teaching) +
       metric("清晰度", r.clarity && r.clarity + "/5") +
       metric("知识收获", r.knowledge && r.knowledge + "/5");
+const legacyReviewSection = (rows: any[] = [], showCourse = false) =>
+  rows.length
+    ? `<section class="legacy-section"><h2>历史文字资料</h2><p class="lede">由腾讯表格历史资料迁移，经管理员审核后展示；不包含推算评分，也不计入课程或教师评分。</p><div class="reviews">${rows.map((r) => `<article class="review legacy-review"><div class="legacy-mark">历史</div><div><b>${esc(showCourse ? r.course_name : r.teacher_name || "教师资料")} ${r.term ? `· ${esc(r.term)}` : ""}</b><p>${esc(r.comment)}</p><small>${esc(r.source_label)}</small></div></article>`).join("")}</div></section>`
+    : "";
 async function detail(id: number) {
   const d = await api(`/api/courses/${id}`),
     c = d.course;
   $("#course-detail").innerHTML =
-    `<div class="detail-hero"><span class="pill ${esc(c.category)}">${esc(labels[c.category])}</span><h1>${esc(c.name)}</h1><p>${esc(c.code)} · ${esc(c.department)} · ${c.teachers.map((t: Teacher) => `<button class="link" data-teacher="${t.id}">${esc(t.name)}</button>`).join(" ")}</p></div><h2>学生怎么说</h2><div class="reviews">${d.reviews.map((r: any) => `<article class="review"><div class="score">${esc(r.overall)}<small>/5</small></div><div><b>${esc(r.teacher_name || "未指定教师")} · ${esc(r.term)}</b><p>${esc(r.comment || r.teaching)}</p><dl>${reviewMetrics(r)}</dl></div></article>`).join("") || '<div class="empty">暂无评价</div>'}</div>`;
+    `<div class="detail-hero"><span class="pill ${esc(c.category)}">${esc(labels[c.category])}</span><h1>${esc(c.name)}</h1><p>${esc(c.code)} · ${esc(c.department)} · ${c.teachers.map((t: Teacher) => `<button class="link" data-teacher="${t.id}">${esc(t.name)}</button>`).join(" ")}</p></div><h2>学生怎么说</h2><div class="reviews">${d.reviews.map((r: any) => `<article class="review"><div class="score">${esc(r.overall)}<small>/5</small></div><div><b>${esc(r.teacher_name || "未指定教师")} · ${esc(r.term)}</b><p>${esc(r.comment || r.teaching)}</p><dl>${reviewMetrics(r)}</dl></div></article>`).join("") || '<div class="empty">暂无评价</div>'}</div>${legacyReviewSection(d.legacyReviews)}`;
   document
     .querySelectorAll<HTMLElement>("[data-teacher]")
     .forEach(
@@ -603,10 +607,10 @@ async function legacyImportsAdmin(batchPage = 1, status = "") {
     `<div class="table-scroll"><table><thead><tr><th>批次</th><th>状态</th><th>行数</th><th>审核状态</th><th>导入时间</th><th>操作</th></tr></thead><tbody>${data.items
       .map(
         (batch: any) =>
-          `<tr><td><code>${esc(batch.id)}</code></td><td>${esc(batch.status)}</td><td>${esc(batch.row_count)}</td><td>待审 ${esc(batch.pending_count)} / 通过 ${esc(batch.approved_count)} / 驳回 ${esc(batch.rejected_count)}</td><td>${esc(batch.imported_at || batch.created_at)}</td><td>${batch.status === "imported" ? `<button class="danger" data-rollback-legacy="${esc(batch.id)}">回滚</button>` : "—"}</td></tr>`,
+          `<tr><td><code>${esc(batch.id)}</code></td><td>${esc(batch.status)}</td><td>${esc(batch.row_count)}</td><td>待审 ${esc(batch.pending_count)} / 通过 ${esc(batch.approved_count)} / 驳回 ${esc(batch.rejected_count)}</td><td>${esc(batch.imported_at || batch.created_at)}</td><td><button data-review-legacy-batch="${esc(batch.id)}">审核记录</button> ${batch.status === "imported" && Number(batch.approved_count) === 0 && Number(batch.rejected_count) === 0 ? `<button class="danger" data-rollback-legacy="${esc(batch.id)}">回滚</button>` : ""}</td></tr>`,
       )
       .join("") || '<tr><td colspan="6">暂无历史导入批次</td></tr>'}</tbody></table></div>` +
-    `<div class="pager"><button id="legacy-prev" ${batchPage <= 1 ? "disabled" : ""}>上一页</button><span>${batchPage} / ${data.pages}</span><button id="legacy-next" ${batchPage >= data.pages ? "disabled" : ""}>下一页</button></div>`;
+    `<div class="pager"><button id="legacy-prev" ${batchPage <= 1 ? "disabled" : ""}>上一页</button><span>${batchPage} / ${data.pages}</span><button id="legacy-next" ${batchPage >= data.pages ? "disabled" : ""}>下一页</button></div><div id="legacy-rows"></div>`;
   let pendingPayload: any = null;
   $("#legacy-status").onchange = () =>
     legacyImportsAdmin(1, $("#legacy-status").value);
@@ -667,6 +671,73 @@ async function legacyImportsAdmin(batchPage = 1, status = "") {
           body: "{}",
         });
         await legacyImportsAdmin(batchPage, status);
+      }),
+  );
+  document
+    .querySelectorAll<HTMLElement>("[data-review-legacy-batch]")
+    .forEach(
+      (button) =>
+        (button.onclick = () =>
+          legacyReviewRows(button.dataset.reviewLegacyBatch || "")),
+    );
+}
+async function legacyReviewRows(
+  batchId: string,
+  status = "pending",
+  reviewPage = 1,
+  q = "",
+) {
+  const data = await api(
+    `/api/admin/legacy-reviews?batchId=${encodeURIComponent(batchId)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&page=${reviewPage}&pageSize=20`,
+  );
+  $("#legacy-rows").innerHTML =
+    `<hr><h3>批次记录审核</h3><div class="toolbar"><select id="legacy-review-status">${["pending", "approved", "rejected", "all"].map((value) => `<option value="${value}" ${status === value ? "selected" : ""}>${value}</option>`).join("")}</select><input id="legacy-review-q" value="${esc(q)}" placeholder="课程、教师、原文或截图"><button id="legacy-review-search">搜索</button></div>` +
+    data.items
+      .map(
+        (row: any) =>
+          `<article class="admin-row"><div><b>${esc(row.course_name)} · ${esc(row.teacher_name)}</b><span>${esc(row.source_file)} / ${esc(row.source_row)} · OCR ${esc(row.ocr_confidence)}</span></div><p>${esc(row.comment)}</p><details><summary>核对原始 OCR 和来源</summary><p><b>OCR 课程：</b>${esc(row.ocr_course_name)}；<b>OCR 教师：</b>${esc(row.ocr_teacher_name)}</p><pre>${esc(row.raw_ocr_text)}</pre><p>继承：${esc(row.inherited_from || "无")}；重复组：${esc(row.duplicate_group || "无")}</p></details><div class="actions">${row.status === "pending" ? `<button data-legacy-review="${esc(row.id)}" data-status="approved">通过</button><button class="danger" data-legacy-review="${esc(row.id)}" data-status="rejected">驳回</button>` : `<span>${esc(row.status)} · ${esc(row.moderator_note || "")}</span>`}<button data-legacy-events="${esc(row.id)}">历史</button></div></article>`,
+      )
+      .join("") || '<div class="empty">该筛选下暂无记录</div>';
+  $("#legacy-rows").insertAdjacentHTML(
+    "beforeend",
+    `<div class="pager"><button id="legacy-review-prev" ${reviewPage <= 1 ? "disabled" : ""}>上一页</button><span>${reviewPage} / ${data.pages}</span><button id="legacy-review-next" ${reviewPage >= data.pages ? "disabled" : ""}>下一页</button></div>`,
+  );
+  $("#legacy-review-status").onchange = () =>
+    legacyReviewRows(batchId, $("#legacy-review-status").value, 1, q);
+  $("#legacy-review-search").onclick = () =>
+    legacyReviewRows(batchId, status, 1, $("#legacy-review-q").value);
+  $("#legacy-review-q").onkeydown = (event: KeyboardEvent) => {
+    if (event.key === "Enter")
+      legacyReviewRows(batchId, status, 1, $("#legacy-review-q").value);
+  };
+  $("#legacy-review-prev").onclick = () =>
+    legacyReviewRows(batchId, status, reviewPage - 1, q);
+  $("#legacy-review-next").onclick = () =>
+    legacyReviewRows(batchId, status, reviewPage + 1, q);
+  document.querySelectorAll<HTMLElement>("[data-legacy-review]").forEach(
+    (button) =>
+      (button.onclick = async () => {
+        const nextStatus = button.dataset.status || "";
+        const note = nextStatus === "rejected" ? prompt("请输入驳回理由") : "";
+        if (nextStatus === "rejected" && !note) return;
+        await api(`/api/admin/legacy-reviews/${button.dataset.legacyReview}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: nextStatus, note }),
+        });
+        await legacyReviewRows(batchId, status, reviewPage, q);
+      }),
+  );
+  document.querySelectorAll<HTMLElement>("[data-legacy-events]").forEach(
+    (button) =>
+      (button.onclick = async () => {
+        const events = await api(
+          `/api/admin/legacy-reviews/${button.dataset.legacyEvents}/events`,
+        );
+        alert(
+          events.length
+            ? events.map((event: any) => `${event.created_at} ${event.action}: ${event.note || "无备注"}`).join("\n")
+            : "暂无审核历史",
+        );
       }),
   );
 }

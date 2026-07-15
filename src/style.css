@@ -425,6 +425,23 @@ textarea {
   font: 14px var(--sans);
   color: var(--muted);
 }
+.legacy-section {
+  border-top: 3px double var(--line);
+  padding-top: 42px;
+}
+.legacy-review {
+  grid-template-columns: 90px 1fr;
+}
+.legacy-mark {
+  align-self: start;
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
 dl {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

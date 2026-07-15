@@ -149,7 +149,15 @@ app.get("/api/teachers/:id", async (c) => {
       .bind(id, id)
       .all()
   ).results;
-  return c.json({ teacher, courses });
+  const legacyReviews = (
+    await c.env.DB.prepare(
+      `SELECT lr.id,lr.course_id,lr.teacher_id,lr.comment,lr.term,lr.source_label,lr.created_at,c.name course_name,c.code course_code
+       FROM legacy_reviews lr JOIN courses c ON c.id=lr.course_id
+       WHERE lr.teacher_id=? AND lr.status='approved'
+       ORDER BY lr.created_at DESC,lr.id DESC LIMIT 100`,
+    ).bind(id).all()
+  ).results;
+  return c.json({ teacher, courses, legacyReviews });
 });
 app.get("/api/courses/options", async (c) =>
   c.json(
@@ -187,7 +195,15 @@ app.get("/api/courses/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
-  return c.json({ course: { ...course, teachers }, reviews });
+  const legacyReviews = (
+    await c.env.DB.prepare(
+      `SELECT lr.id,lr.course_id,lr.teacher_id,lr.comment,lr.term,lr.source_label,lr.created_at,t.name teacher_name
+       FROM legacy_reviews lr LEFT JOIN teachers t ON t.id=lr.teacher_id
+       WHERE lr.course_id=? AND lr.status='approved'
+       ORDER BY lr.created_at DESC,lr.id DESC LIMIT 100`,
+    ).bind(id).all()
+  ).results;
+  return c.json({ course: { ...course, teachers }, reviews, legacyReviews });
 });
 
 async function verifyTurnstile(c: any, response: string, ip: string) {
@@ -549,6 +565,71 @@ app.get("/api/admin/reviews/:id/events", async (c) => {
         .all()
     ).results,
   );
+});
+app.get("/api/admin/legacy-reviews", async (c) => {
+  const { page, size } = pageArgs(c),
+    status = clean(c.req.query("status"), 20) || "pending",
+    batchId = clean(c.req.query("batchId"), 80),
+    q = `%${clean(c.req.query("q"), 100)}%`;
+  if (!["pending", "approved", "rejected", "all"].includes(status))
+    return fail(c, "无效历史审核状态");
+  const where = `(?='all' OR lr.status=?) AND (?='' OR lr.import_batch_id=?) AND
+    (lr.comment LIKE ? OR lr.raw_ocr_text LIKE ? OR lr.ocr_course_name LIKE ? OR lr.ocr_teacher_name LIKE ? OR lr.source_file LIKE ? OR lr.term LIKE ? OR c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ?)`;
+  const values = [status, status, batchId, batchId, q, q, q, q, q, q, q, q, q];
+  const total = await c.env.DB.prepare(
+    `SELECT COUNT(*) n FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id WHERE ${where}`,
+  ).bind(...values).first<{ n: number }>();
+  const { results } = await c.env.DB.prepare(
+    `SELECT lr.id,lr.import_batch_id,lr.source_file,lr.sheet_name,lr.source_row,lr.raw_ocr_text,
+      lr.ocr_confidence,lr.inherited_from,lr.ocr_course_name,lr.course_id,lr.ocr_teacher_name,
+      lr.teacher_id,lr.offering_id,lr.category,lr.comment,lr.term,lr.source_type,lr.source_label,
+      lr.status,lr.duplicate_group,lr.moderator_note,lr.created_at,lr.reviewed_at,
+      c.name course_name,c.code,t.name teacher_name
+     FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id
+     WHERE ${where} ORDER BY lr.created_at DESC,lr.id DESC LIMIT ? OFFSET ?`,
+  ).bind(...values, size, (page - 1) * size).all();
+  return c.json({ items: results, total: total?.n || 0, page, pages: Math.max(1, Math.ceil((total?.n || 0) / size)) });
+});
+app.get("/api/admin/legacy-reviews/:id", async (c) => {
+  const id = integer(c.req.param("id"));
+  const review = await c.env.DB.prepare(
+    `SELECT lr.*,c.name course_name,c.code,t.name teacher_name,o.section offering_section
+     FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id
+     LEFT JOIN offerings o ON o.id=lr.offering_id WHERE lr.id=?`,
+  ).bind(id).first();
+  if (!review) return fail(c, "历史评价不存在", 404);
+  return c.json(review);
+});
+app.patch("/api/admin/legacy-reviews/:id", async (c) => {
+  const id = integer(c.req.param("id")),
+    body = await c.req.json<Record<string, unknown>>(),
+    status = clean(body.status, 20),
+    note = clean(body.note, 500);
+  if (!["approved", "rejected"].includes(status)) return fail(c, "无效状态");
+  if (status === "rejected" && !note) return fail(c, "驳回时必须填写理由");
+  const current = await c.env.DB.prepare("SELECT status FROM legacy_reviews WHERE id=?").bind(id).first<{ status: string }>();
+  if (!current) return fail(c, "历史评价不存在", 404);
+  if (current.status !== "pending") return fail(c, "历史评价已经审核", 409);
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare(
+      "UPDATE legacy_reviews SET status=?,moderator_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
+    ).bind(status, note, id),
+    c.env.DB.prepare(
+      `INSERT OR IGNORE INTO legacy_review_moderation_events(legacy_review_id,action,note,actor_session_id)
+       SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM legacy_reviews WHERE id=? AND status=?)`,
+    ).bind(id, status, note, c.get("adminSessionId"), id, status),
+  ]);
+  if (!(results[0].meta.changes || 0)) return fail(c, "历史评价已经审核", 409);
+  return c.json({ ok: true, id, status });
+});
+app.get("/api/admin/legacy-reviews/:id/events", async (c) => {
+  const id = integer(c.req.param("id"));
+  if (!(await c.env.DB.prepare("SELECT 1 FROM legacy_reviews WHERE id=?").bind(id).first()))
+    return fail(c, "历史评价不存在", 404);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id,action,note,created_at FROM legacy_review_moderation_events WHERE legacy_review_id=? ORDER BY created_at DESC,id DESC",
+  ).bind(id).all();
+  return c.json(results);
 });
 app.get("/api/admin/offerings", async (c) =>
   c.json(
@@ -1192,10 +1273,14 @@ app.post("/api/admin/legacy-imports/:id/rollback", async (c) => {
   if (!batch) return fail(c, "导入批次不存在", 404);
   if (batch.status !== "imported") return fail(c, "只有 imported 批次可以回滚", 409);
   const results = await c.env.DB.batch([
-    c.env.DB.prepare("UPDATE legacy_import_batches SET status='rolled_back',rolled_back_at=CURRENT_TIMESTAMP WHERE id=? AND status='imported'").bind(batchId),
+    c.env.DB.prepare(
+      `UPDATE legacy_import_batches SET status='rolled_back',rolled_back_at=CURRENT_TIMESTAMP
+       WHERE id=? AND status='imported'
+       AND NOT EXISTS(SELECT 1 FROM legacy_reviews WHERE import_batch_id=? AND status<>'pending')`,
+    ).bind(batchId, batchId),
     c.env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=? AND EXISTS(SELECT 1 FROM legacy_import_batches WHERE id=? AND status='rolled_back')").bind(batchId, batchId),
   ]);
-  if (!(results[0].meta.changes || 0)) return fail(c, "该批次已经回滚或状态已变化", 409);
+  if (!(results[0].meta.changes || 0)) return fail(c, "批次包含已审核记录，或状态已经变化", 409);
   return c.json({ ok: true, batchId, status: "rolled_back" });
 });
 
