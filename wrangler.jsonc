@@ -1,1 +1,28 @@
-{"$schema":"./node_modules/wrangler/config-schema.json","name":"jufexk","main":"src/index.ts","compatibility_date":"2026-07-16","compatibility_flags":["nodejs_compat"],"assets":{"directory":"./dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},"d1_databases":[{"binding":"DB","database_name":"jufexk","database_id":"REPLACE_WITH_D1_DATABASE_ID","migrations_dir":"migrations"}],"vars":{"SITE_NAME":"JUFE 选课志","UNIVERSITY_NAME":"江西财经大学"},"observability":{"enabled":true,"head_sampling_rate":1}}
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "jufexk",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [{ "pattern": "xk.sein.moe", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jufexk",
+      "database_id": "7bd119f3-b8a2-4c9d-9e70-2809396ee26c",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    "SITE_NAME": "JUFE 选课志",
+    "UNIVERSITY_NAME": "江西财经大学",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
+  },
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+}

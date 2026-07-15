@@ -1,36 +1,67 @@
-# JUFE 选课志
+# 选课志
 
-由学生共同编辑的选课信息与课程评价站，运行于 Cloudflare Workers + Static Assets + D1。
-
-## 功能
-
-- 课程、教师搜索与分类浏览
-- 专业课：点名、平时分、捞人、课堂质量、知识收获
-- 体育课：点名、强度、考核方式、给分
-- 匿名投稿、管理员审核、课程维护
-- 金山表格导出的 UTF-8 CSV 批量导入
+基于 Hono、Cloudflare Workers、D1 和 Vite 的课程—教师评价站。评价必须绑定课程的具体任课教师，公开内容均需管理员审核。
 
 ## 本地开发
 
 ```bash
-npm install
-npm run db:local
+npm ci
+npx wrangler d1 migrations apply jufexk --local
+npm run dev
 ```
 
-在 `.dev.vars` 中设置 `ADMIN_PASSWORD=本地管理员口令`，然后运行 `npm run dev`。
+管理员本地口令放在不提交的 `.dev.vars`：`ADMIN_PASSWORD=...`。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置，因此复用到其他高校时无需修改源码。
 
-## Cloudflare 部署
+## 生产部署
+
+仓库已经包含真实 D1 `database_id` 和 `xk.sein.moe` Custom Domain 配置。首次部署或轮换口令时，在交互式终端运行：
 
 ```bash
-npx wrangler d1 create jufexk
-# 把返回的 database_id 写入 wrangler.jsonc
-npx wrangler d1 migrations apply jufexk --remote
 npx wrangler secret put ADMIN_PASSWORD
+npx wrangler d1 migrations apply jufexk --remote
 npm run deploy
 ```
 
-部署后在 Workers Custom Domains 中绑定 `xk.sein.moe`。不要把 Token、密码或 `.dev.vars` 提交到仓库。
+不要把口令、API Token 或 `.dev.vars` 提交到仓库。
 
-## CSV 格式
+## GitHub Actions
 
-列名：`code,name,category,department,credits,description`。`category` 为 `major`、`pe` 或 `general`，单次最多 500 行。
+`.github/workflows/deploy.yml` 在 `main` 推送时依次执行类型检查、测试、构建、D1 备份、迁移和 Worker 部署。备份作为仅保留 3 天的 GitHub Actions Artifact 保存，包含投稿内容和哈希信息，应限制 `production` Environment 的访问权限。仓库需配置：
+
+- `CLOUDFLARE_API_TOKEN`：具有 Workers Scripts Edit 与 D1 Edit 权限的 API Token。
+- `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID。
+
+`ADMIN_PASSWORD` 是 Worker Secret，不由 CI 写入。
+
+## Turnstile
+
+投稿端已接入标准 Turnstile widget 与服务端 Siteverify。创建 Widget（域名包含 `xk.sein.moe`、`localhost`、`127.0.0.1`）后：
+
+1. 将公开 Site Key 配置为 `TURNSTILE_SITE_KEY` 普通变量；
+2. 交互式执行 `npx wrangler secret put TURNSTILE_SECRET`；
+3. 重新部署。
+
+只要 `TURNSTILE_SECRET` 存在，服务端即强制验证；未配置时仍有蜜罐、每 IP 哈希每小时 5 次限制及 30 天重复投稿控制。
+
+## CSV 导入
+
+后台支持符合 CSV 引号规则的逗号、双引号和单元格换行，可分别导入：
+
+- 课程：`code,name,category,department,credits,description`
+- 教师：`name,department,title,bio`
+- 任课关系：`course_code,course_name,teacher_name,teacher_department`
+- 开课班：`course_code,course_name,teacher_name,teacher_department,term,section,campus,schedule,status`
+
+建议顺序为课程、教师、任课关系。学生统一身份认证需要学校提供可信的 SSO/OIDC/CAS 身份源，当前未伪造实现。
+
+## 复用到其他高校
+
+当前 `wrangler.jsonc` 指向 JUFE 的生产 Worker、D1、域名和 Turnstile Widget，不能原样用于其他学校。复用时至少需要：
+
+1. 用 `wrangler d1 create <数据库名>` 创建独立 D1，并替换 `database_name` 与 `database_id`；
+2. 修改 Worker `name`、`routes`、`SITE_NAME` 和 `UNIVERSITY_NAME`；
+3. 为新域名创建独立 Turnstile Widget，替换 Site Key，并写入对应 Secret；
+4. 应用全部迁移，再从后台导入本校课程、教师和开课班；
+5. 删除初始迁移产生的两门示例课程和示例教师后再开放投稿。
+
+不同学校不得共用 D1、管理员口令或 Turnstile Secret。
