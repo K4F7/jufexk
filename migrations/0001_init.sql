@@ -1,0 +1,10 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE teachers(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,department TEXT NOT NULL DEFAULT '',title TEXT NOT NULL DEFAULT '',bio TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(name,department));
+CREATE TABLE courses(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL DEFAULT '',name TEXT NOT NULL,category TEXT NOT NULL CHECK(category IN('major','pe','general')),department TEXT NOT NULL DEFAULT '',credits REAL,description TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(code,name));
+CREATE TABLE course_teachers(course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,teacher_id INTEGER NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,PRIMARY KEY(course_id,teacher_id));
+CREATE TABLE reviews(id INTEGER PRIMARY KEY AUTOINCREMENT,course_id INTEGER NOT NULL REFERENCES courses(id),teacher_id INTEGER REFERENCES teachers(id),category TEXT NOT NULL CHECK(category IN('major','pe','general')),attendance TEXT NOT NULL DEFAULT '',grading TEXT NOT NULL DEFAULT '',workload TEXT NOT NULL DEFAULT '',rescue TEXT NOT NULL DEFAULT '',assessment TEXT NOT NULL DEFAULT '',teaching TEXT NOT NULL DEFAULT '',clarity INTEGER CHECK(clarity BETWEEN 1 AND 5),knowledge INTEGER CHECK(knowledge BETWEEN 1 AND 5),overall INTEGER NOT NULL CHECK(overall BETWEEN 1 AND 5),comment TEXT NOT NULL DEFAULT '',term TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN('pending','approved','rejected')),moderator_note TEXT NOT NULL DEFAULT '',submitter_hash TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,reviewed_at TEXT);
+CREATE INDEX idx_reviews_status_created ON reviews(status,created_at DESC);
+CREATE INDEX idx_reviews_course_status ON reviews(course_id,status);
+INSERT INTO teachers(name,department,title,bio)VALUES('林老师','计算机学院','讲师','示例数据，可在后台修改');
+INSERT INTO courses(code,name,category,department,credits,description)VALUES('CS101','程序设计基础','major','计算机学院',3,'面向新生的程序设计入门课'),('PE012','羽毛球','pe','体育部',1,'羽毛球基础与体能训练');
+INSERT INTO course_teachers(course_id,teacher_id)VALUES(1,1);
