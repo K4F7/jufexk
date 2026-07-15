@@ -349,6 +349,19 @@ describe("review protection", () => {
 });
 
 describe("two-stage imports", () => {
+  it("imports a course-teacher relation without inventing an offering", async () => {
+    const auth = await login();
+    const course = await env.DB.prepare("INSERT INTO courses(code,name,category,department) VALUES('REL101','关系测试课','major','测试学院')").run();
+    const teacher = await env.DB.prepare("INSERT INTO teachers(name,department) VALUES('关系教师','测试学院')").run();
+    const payload = { type: "relations", rows: [{ course_code: "REL101", course_name: "关系测试课", teacher_name: "关系教师", teacher_department: "测试学院" }] };
+    const response = await SELF.fetch(`${origin}/api/admin/import`, {
+      method: "POST", headers: adminHeaders(auth), body: JSON.stringify(payload),
+    });
+    expect(response.status).toBe(200);
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM course_teachers WHERE course_id=? AND teacher_id=?").bind(course.meta.last_row_id, teacher.meta.last_row_id).first()).toEqual({ n: 1 });
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM offerings WHERE course_id=?").bind(course.meta.last_row_id).first()).toEqual({ n: 0 });
+  });
+
   it("previews row errors without writing and rejects the same invalid commit", async () => {
     const auth = await login();
     const before = await env.DB.prepare(

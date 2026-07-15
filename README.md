@@ -107,6 +107,8 @@ RTX 5060 Ti 实测环境为 PyTorch 2.11.0+cu128、ONNX Runtime GPU 1.23.2、Rap
 - `ambiguous_matches.csv`：保留候选 ID、名称与分数；
 - `duplicates.csv`：只标记疑似重复，不删除；
 - `teacher_candidates_review.csv`、`course_candidates_review.csv`：实体原文聚合清单，形态初筛不等于批准；
+- `relation_candidates_review.csv`：只依据结构化课程/教师列生成的任课关系候选，不从评价正文猜教师；
+- `teacher_catalog_review_queue.csv`、`course_catalog_review_queue.csv`、`relation_catalog_review_queue.csv`：决策栏全空的基础目录人工确认队列；
 - `ocr_report.json`：模型、置信度、工作表统计、处理时间和错误。
 
 只有课程与教师均唯一匹配、OCR 平均置信度达标、教师已有该课程任课关系，且不存在继承/截断/重复/开课班歧义时，`needs_review` 才可能为 `false`。人工确认时只修改预览副本；批准文件另存为 `legacy_reviews_approved.csv`，后续再由带事务、批次记录和批次回滚的专用导入器写入，默认仍为 `pending`。
@@ -135,6 +137,8 @@ RTX 5060 Ti 实测环境为 PyTorch 2.11.0+cu128、ONNX Runtime GPU 1.23.2、Rap
 ```
 
 审核人员逐行填写 `decision=approve|reject|skip`、现有课程/教师 ID 和 `review_note`；疑似重复但仍保留时还要填写 `duplicate_action=keep`。存在任意批准错误时不会生成批准文件。校验包括对象存在性、课程—教师关系、开课班归属、原始 OCR 证据和重复确认，输出字段不包含 `overall`。
+
+基础目录队列与评价批准队列相互独立。先人工确认教师和课程，使用后台两阶段 CSV 预览/导入；随后重新导出 D1 快照，再确认任课关系。导入 `relations` 现在只写 `course_teachers`，不会虚构空学期或“导入默认班”；开课班必须通过 `offerings` 类型单独提供明确数据。
 
 每个生成的 JSON payload 最多 40 条，并包含内容哈希幂等键，以兼容 D1 免费计划每次 Worker 调用的查询额度并避免重复提交。先提交到管理员接口 `/api/admin/legacy-imports/preview`，再提交 `/api/admin/legacy-imports`。D1 `batch()` 保证单个导入批次原子写入，记录默认 `pending`；`POST /api/admin/legacy-imports/:id/rollback` 可原子删除该批次记录并保留回滚审计状态。不要在未审核前调用导入接口。
 

@@ -965,24 +965,14 @@ app.post("/api/admin/import", async (c) => {
     );
   else if (type === "relations") {
     for (let offset = 0; offset < normalizedRows.length; offset += 25) {
-      const statements = normalizedRows
-        .slice(offset, offset + 25)
-        .flatMap((x) => {
+      const statements = normalizedRows.slice(offset, offset + 25).map((x) => {
           const courseCode = clean(x.course_code, 40),
             courseName = clean(x.course_name, 120),
             teacherName = clean(x.teacher_name, 120),
             teacherDepartment = clean(x.teacher_department, 80);
-          return [
-            c.env.DB.prepare(
-              `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) SELECT c.id,t.id FROM courses c,teachers t WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
-            ).bind(courseCode, courseName, teacherName, teacherDepartment),
-            c.env.DB.prepare(
-              `INSERT OR IGNORE INTO offerings(course_id,term,section,status) SELECT c.id,'','导入默认班','active' FROM courses c WHERE c.code=? AND c.name=? AND NOT EXISTS(SELECT 1 FROM offerings o WHERE o.course_id=c.id AND o.status='active')`,
-            ).bind(courseCode, courseName),
-            c.env.DB.prepare(
-              `INSERT OR IGNORE INTO offering_teachers(offering_id,teacher_id) SELECT (SELECT o.id FROM offerings o WHERE o.course_id=c.id AND o.status='active' ORDER BY o.id LIMIT 1),t.id FROM courses c,teachers t WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
-            ).bind(courseCode, courseName, teacherName, teacherDepartment),
-          ];
+          return c.env.DB.prepare(
+            `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) SELECT c.id,t.id FROM courses c,teachers t WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
+          ).bind(courseCode, courseName, teacherName, teacherDepartment);
         });
       await c.env.DB.batch(statements);
     }
