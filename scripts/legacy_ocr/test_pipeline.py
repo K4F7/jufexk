@@ -1,6 +1,9 @@
 import unittest
+import json
+import tempfile
+from pathlib import Path
 
-from pipeline import Candidate, PreviewRow, Token, cluster_rows, infer_comment_start, mark_duplicates, normalize, similarity, unique_match
+from pipeline import Candidate, PreviewRow, Token, cluster_rows, infer_comment_start, load_ocr_cache, mark_duplicates, normalize, similarity, unique_match
 
 
 def token(text: str, x: float, y: float, confidence: float = .99) -> Token:
@@ -34,6 +37,15 @@ class PipelineTests(unittest.TestCase):
     def test_missing_comment_headers_are_recovered_from_number(self):
         header = ["课程", "老师", "", "", "学生评价3", "学生评价4"]
         self.assertEqual(infer_comment_start(header, 4), 2)
+
+    def test_raw_ocr_cache_round_trip(self):
+        page = {"source_file": "数学课_001.png", "tokens": [{"text": "老师", "confidence": .99, "box": [[1, 2], [3, 2], [3, 4], [1, 4]]}]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "raw.jsonl"
+            path.write_text(json.dumps(page, ensure_ascii=False) + "\n", encoding="utf-8")
+            cache = load_ocr_cache(path)
+        self.assertEqual(cache["数学课_001.png"][0].text, "老师")
+        self.assertEqual(cache["数学课_001.png"][0].confidence, .99)
 
 
 if __name__ == "__main__":

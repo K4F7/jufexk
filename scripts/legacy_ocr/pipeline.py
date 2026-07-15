@@ -177,6 +177,71 @@ def detect_grid(image: Path) -> tuple[list[int], list[int]]:
     return xs, ys
 
 
+MANUAL_SCHEMAS = {
+    "数学课": {"width": 2419, "course": (0, 110), "teacher": (110, 190), "comments": [190, 922, 1074, 1314, 1581, 1764, 1969, 2419]},
+    "思政课": {"width": 2518, "course": (0, 390), "teacher": (390, 470), "comments": [470, 807, 996, 1178, 1280, 1447, 1557, 1685, 1855, 2235, 2518]},
+}
+
+
+def horizontal_boundaries(image: Path) -> tuple[list[int], int]:
+    import cv2
+    import numpy as np
+    frame = cv2.imdecode(np.fromfile(image, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    if frame is None: return [], 0
+    height, width = frame.shape
+    _, binary = cv2.threshold(frame, 245, 255, cv2.THRESH_BINARY_INV)
+    mask = cv2.morphologyEx(binary, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (max(60, width // 40), 1)))
+    ys = _line_positions(mask, 1, max(40, round(width * .2)))
+    if not ys or ys[0] > 3: ys.insert(0, 0)
+    if ys[-1] < height - 3: ys.append(height)
+    return ys, width
+
+
+def coordinate_fallback_rows(tokens: list[Token], source: Path, sheet: str, reference: dict[str, list[dict[str, Any]]], context: dict[str, str]) -> tuple[list[PreviewRow], list[str]]:
+    config = MANUAL_SCHEMAS.get(sheet)
+    if not config: return [], ["无坐标恢复schema"]
+    ys, width = horizontal_boundaries(source)
+    if len(ys) < 3: return [], ["坐标恢复未检测到足够横线"]
+    scale = width / config["width"]
+    course_range = tuple(value * scale for value in config["course"])
+    teacher_range = tuple(value * scale for value in config["teacher"])
+    comment_edges = [min(width, value * scale) for value in config["comments"]]
+    comment_edges = sorted(set(round(value) for value in comment_edges if value <= width))
+    if not comment_edges or comment_edges[-1] < width: comment_edges.append(width)
+    current_course = context.get("course", ""); current_teacher = context.get("teacher", "")
+    started_with_context = bool(current_course or current_teacher); output: list[PreviewRow] = []
+    for row_index, (top, bottom) in enumerate(zip(ys, ys[1:]), start=1):
+        row_tokens = [token for token in tokens if top < token.cy < bottom]
+        if not row_tokens: continue
+        row_text = cell_text(sorted(row_tokens, key=lambda token: (token.cy, token.cx)))
+        if "学生评价" in row_text: continue
+        course_tokens = [token for token in row_tokens if course_range[0] <= token.cx < course_range[1]]
+        teacher_tokens = [token for token in row_tokens if teacher_range[0] <= token.cx < teacher_range[1]]
+        course_text = cell_text(sorted(course_tokens, key=lambda token: (token.cy, token.cx)))
+        teacher_lines = cluster_rows(teacher_tokens)
+        teacher_band_ambiguous = len(teacher_lines) > 1 and max(statistics.mean(token.cy for token in line) for line in teacher_lines) - min(statistics.mean(token.cy for token in line) for line in teacher_lines) > 28
+        teacher_text = "" if teacher_band_ambiguous else cell_text(sorted(teacher_tokens, key=lambda token: (token.cy, token.cx)))
+        if course_text: current_course = course_text; context["course"] = current_course; context["course_row"] = str(row_index)
+        if teacher_text: current_teacher = teacher_text; context["teacher"] = current_teacher; context["teacher_row"] = str(row_index)
+        inherited = []
+        if current_course and not course_text: inherited.append("course")
+        if current_teacher and not teacher_text: inherited.append("teacher")
+        for ordinal, (left, right) in enumerate(zip(comment_edges, comment_edges[1:]), start=1):
+            comment_tokens = [token for token in row_tokens if left <= token.cx < right]
+            comment = cell_text(sorted(comment_tokens, key=lambda token: (token.cy, token.cx)))
+            if len(normalize(comment)) < 2: continue
+            confidence = statistics.mean(token.confidence for token in comment_tokens)
+            preview = PreviewRow(source.name, sheet, f"CR{row_index}C{ordinal}", row_text, ocr_course_name=current_course, ocr_teacher_name=current_teacher, comment=comment, ocr_confidence=round(confidence, 4), ocr_tokens_json=json.dumps([asdict(token) for token in comment_tokens], ensure_ascii=False), inherited_from=";".join(filter(None, [f"course:{context.get('course_row','')}" if "course" in inherited else "", f"teacher:{context.get('teacher_row','')}" if "teacher" in inherited else ""])))
+            apply_matches(preview, reference, inherited)
+            preview.needs_review = True; preview.review_reason = ";".join(filter(None, [preview.review_reason, "coordinate_fallback"]))
+            if teacher_band_ambiguous:
+                preview.ocr_teacher_name = ""; preview.matched_teacher_id = ""; preview.matched_teacher_name = ""; preview.teacher_match_score = ""; preview.review_reason += ";multiple_teacher_rows_in_band"
+            if started_with_context and row_index == 1: preview.review_reason += ";cross_screenshot_inheritance"
+            if right >= width and width < config["width"] * .8: preview.review_reason += ";screenshot_horizontally_truncated"
+            output.append(preview)
+    return (output, []) if output else ([], ["坐标恢复未生成评价"])
+
+
 def apply_matches(preview: PreviewRow, reference: dict[str, list[dict[str, Any]]], inherited: list[str]) -> None:
     preview._course_candidates = candidates(preview.ocr_course_name, reference["courses"])
     course = unique_match(preview._course_candidates, COURSE_THRESHOLD)
@@ -405,6 +470,16 @@ def load_reference(path: Path) -> dict[str, list[dict[str, Any]]]:
     return data
 
 
+def load_ocr_cache(path: Path | None) -> dict[str, list[Token]]:
+    if path is None: return {}
+    cache: dict[str, list[Token]] = {}
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            page = json.loads(line)
+            cache[page["source_file"]] = [Token(**token) for token in page.get("tokens", [])]
+    return cache
+
+
 def match_rows(tokens: list[Token], source: Path, sheet: str, reference: dict[str, list[dict[str, Any]]]) -> tuple[list[PreviewRow], list[str]]:
     grid = cluster_rows(tokens)
     errors: list[str] = []
@@ -506,16 +581,23 @@ def serialise(row: PreviewRow) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> int:
     started = time.time(); out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
-    reference = load_reference(Path(args.reference)); images = sorted(Path(args.input).glob("*.png"))
+    reference = load_reference(Path(args.reference)); images = sorted(Path(args.input).glob("*.png")); cached_tokens = load_ocr_cache(Path(args.ocr_cache) if args.ocr_cache else None)
     previews: list[PreviewRow] = []; errors: list[dict[str, str]] = []; warnings: list[dict[str, str]] = []; box_count = 0; confidences: list[float] = []; model = ""; raw_pages: list[dict[str, Any]] = []; schemas: dict[str, TableSchema] = {}; contexts: dict[str, dict[str, str]] = defaultdict(dict)
     for image in images:
         sheet = image.stem.rsplit("_", 1)[0]
         try:
-            tokens, model = run_ocr(image, args.cuda)
+            if image.name in cached_tokens:
+                tokens, model = cached_tokens[image.name], "cached RapidOCR tokens"
+            else:
+                tokens, model = run_ocr(image, args.cuda)
             box_count += len(tokens); confidences.extend(token.confidence for token in tokens)
             raw_pages.append({"source_file": image.name, "sheet_name": sheet, "tokens": [asdict(token) for token in tokens]})
             rows, row_errors, discovered_schema = img2table_preview_rows(tokens, image, sheet, reference, schemas.get(sheet), contexts[sheet], args.cuda)
             if discovered_schema: schemas[sheet] = discovered_schema
+            if not rows:
+                coordinate_rows, coordinate_errors = coordinate_fallback_rows(tokens, image, sheet, reference, contexts[sheet])
+                rows = coordinate_rows
+                row_errors.extend(coordinate_errors)
             if not rows:
                 grid_rows, grid_errors = grid_preview_rows(tokens, image, sheet, reference)
                 rows = grid_rows
@@ -560,6 +642,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--input", required=True, help="按 工作表_页码.png 命名的截图目录")
     p.add_argument("--reference", required=True, help="D1 只读快照 JSON")
     p.add_argument("--out", required=True); p.add_argument("--max-rows", type=int, default=30)
+    p.add_argument("--ocr-cache", help="已有 raw_ocr_tokens.jsonl；命中时跳过OCR推理")
     p.add_argument("--cuda", action="store_true", help="仅在 CUDAExecutionProvider 已验证后启用")
     return p
 
