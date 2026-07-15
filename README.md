@@ -26,12 +26,14 @@ npm run deploy
 
 ## GitHub Actions
 
-`.github/workflows/deploy.yml` 在 `main` 推送时依次执行类型检查、测试、构建、D1 备份、迁移和 Worker 部署。备份作为仅保留 3 天的 GitHub Actions Artifact 保存，包含投稿内容和哈希信息，应限制 `production` Environment 的访问权限。仓库需配置：
+`.github/workflows/deploy.yml` 在 `main` 推送时依次执行类型检查、测试、构建、D1 迁移和 Worker 部署。工作流绑定 `production` Environment；建议在 GitHub 中配置必需审核人。仓库需配置：
 
 - `CLOUDFLARE_API_TOKEN`：具有 Workers Scripts Edit 与 D1 Edit 权限的 API Token。
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID。
 
 `ADMIN_PASSWORD` 是 Worker Secret，不由 CI 写入。
+
+CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `wrangler d1 export`，并将备份保存到受限存储。
 
 ## Turnstile
 

@@ -2,6 +2,41 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 describe("offerings", () => {
+  it("applies every production migration on a clean database", async () => {
+    const tables = (
+      await env.DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('offerings','offering_teachers','admin_sessions','rate_limit_counters','review_dedupe')",
+      ).all<{ name: string }>()
+    ).results.map((row) => row.name);
+    expect(tables.sort()).toEqual(
+      [
+        "admin_sessions",
+        "offering_teachers",
+        "offerings",
+        "rate_limit_counters",
+        "review_dedupe",
+      ].sort(),
+    );
+    const reviewColumns = (
+      await env.DB.prepare(
+        "SELECT name FROM pragma_table_info('reviews')",
+      ).all<{
+        name: string;
+      }>()
+    ).results.map((row) => row.name);
+    expect(reviewColumns).toEqual(
+      expect.arrayContaining([
+        "offering_id",
+        "grading_score",
+        "interest",
+        "practicality",
+        "workload_score",
+        "fairness",
+        "organization",
+      ]),
+    );
+  });
+
   it("never exposes submitter or moderation metadata publicly", async () => {
     await env.DB.prepare(
       `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,term,submitter_hash,status,moderator_note,reviewed_at)
