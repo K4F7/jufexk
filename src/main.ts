@@ -45,7 +45,7 @@ $("#app").innerHTML =
 <section id="detail" class="page hidden"><button class="back" data-go="browse">← 返回</button><div id="course-detail"></div></section>
 <section id="teacher-detail" class="page hidden"><button class="back" data-go="faculty">← 返回</button><div id="teacher-profile"></div></section>
 <section id="submit" class="page hidden narrow"><h1>写评价</h1><p class="lede">评价必须绑定具体任课教师，投稿经审核后公开。</p><form id="review-form"><label>课程<select name="courseId" id="course-select" required></select></label><label>任课教师<select name="teacherId" id="teacher-select" required></select></label><div class="two"><label>学期<input name="term" required placeholder="2025 秋"></label><label>总体推荐度<select name="overall" required><option value="">请选择</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label></div><div id="dynamic-fields"></div><label>补充说明<textarea name="comment"></textarea></label><input class="trap" name="website"><div id="turnstile"></div><button class="primary">提交审核</button><p id="form-msg"></p></form></section>
-<section id="admin" class="page hidden"><h1>管理后台</h1><div id="login" class="narrow"><form id="login-form"><label>管理员口令<input type="password" name="password" required></label><button class="primary">登录</button></form></div><div id="dashboard" class="hidden"><div class="tabs"><button data-tab="reviews">评价</button><button data-tab="courses">课程</button><button data-tab="teachers">教师</button><button data-tab="import">导入</button></div><div id="admin-content"></div></div></section></main><footer id="footer"></footer>`;
+<section id="admin" class="page hidden"><h1>管理后台</h1><div id="login" class="narrow"><form id="login-form"><label>管理员口令<input type="password" name="password" required></label><button class="primary">登录</button></form></div><div id="dashboard" class="hidden"><div class="tabs"><button data-tab="reviews">评价</button><button data-tab="courses">课程</button><button data-tab="teachers">教师</button><button data-tab="import">导入</button><button data-tab="legacy">历史评价</button></div><div id="admin-content"></div></div></section></main><footer id="footer"></footer>`;
 async function api(path: string, o: RequestInit = {}) {
   const h = new Headers(o.headers);
   h.set("Content-Type", "application/json");
@@ -592,6 +592,84 @@ function importer() {
     }
   };
 }
+async function legacyImportsAdmin(batchPage = 1, status = "") {
+  const data = await api(
+    `/api/admin/legacy-imports?page=${batchPage}&pageSize=20&status=${encodeURIComponent(status)}`,
+  );
+  $("#admin-content").innerHTML =
+    `<h3>历史评价批次</h3><p>只接受由本地人工确认工具生成的 JSON。先校验，确认后才写入；历史文字评价不包含 overall。</p>` +
+    `<div class="toolbar"><select id="legacy-status"><option value="">全部批次</option>${["imported", "rolled_back", "failed"].map((value) => `<option value="${value}" ${status === value ? "selected" : ""}>${value}</option>`).join("")}</select><label class="drop">选择批准 JSON<input id="legacy-json" type="file" accept=".json,application/json"></label></div>` +
+    `<div id="legacy-preview"></div><button id="legacy-commit" class="primary hidden">确认导入为待审核</button><p id="legacy-msg"></p>` +
+    `<div class="table-scroll"><table><thead><tr><th>批次</th><th>状态</th><th>行数</th><th>审核状态</th><th>导入时间</th><th>操作</th></tr></thead><tbody>${data.items
+      .map(
+        (batch: any) =>
+          `<tr><td><code>${esc(batch.id)}</code></td><td>${esc(batch.status)}</td><td>${esc(batch.row_count)}</td><td>待审 ${esc(batch.pending_count)} / 通过 ${esc(batch.approved_count)} / 驳回 ${esc(batch.rejected_count)}</td><td>${esc(batch.imported_at || batch.created_at)}</td><td>${batch.status === "imported" ? `<button class="danger" data-rollback-legacy="${esc(batch.id)}">回滚</button>` : "—"}</td></tr>`,
+      )
+      .join("") || '<tr><td colspan="6">暂无历史导入批次</td></tr>'}</tbody></table></div>` +
+    `<div class="pager"><button id="legacy-prev" ${batchPage <= 1 ? "disabled" : ""}>上一页</button><span>${batchPage} / ${data.pages}</span><button id="legacy-next" ${batchPage >= data.pages ? "disabled" : ""}>下一页</button></div>`;
+  let pendingPayload: any = null;
+  $("#legacy-status").onchange = () =>
+    legacyImportsAdmin(1, $("#legacy-status").value);
+  $("#legacy-prev").onclick = () => legacyImportsAdmin(batchPage - 1, status);
+  $("#legacy-next").onclick = () => legacyImportsAdmin(batchPage + 1, status);
+  $("#legacy-json").onchange = async (event: Event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    if (file.size > 1_900_000) {
+      $("#legacy-msg").textContent = "文件过大，请使用审批工具生成的分片 payload";
+      return;
+    }
+    try {
+      pendingPayload = JSON.parse(await file.text());
+    } catch {
+      $("#legacy-msg").textContent = "JSON 文件格式错误";
+      return;
+    }
+    if (!pendingPayload || !Array.isArray(pendingPayload.rows)) {
+      $("#legacy-msg").textContent = "JSON 缺少 rows 数组";
+      return;
+    }
+    const preview = await api("/api/admin/legacy-imports/preview", {
+      method: "POST",
+      body: JSON.stringify({ rows: pendingPayload.rows }),
+    });
+    $("#legacy-preview").innerHTML =
+      `<p>总行数：${esc(preview.total)}；错误：${esc(preview.errors.length)}</p>` +
+      (preview.errors.length
+        ? `<div class="table-scroll"><table><thead><tr><th>行</th><th>字段</th><th>问题</th></tr></thead><tbody>${preview.errors.map((item: any) => `<tr><td>${esc(item.row)}</td><td>${esc(item.field)}</td><td>${esc(item.message)}</td></tr>`).join("")}</tbody></table></div>`
+        : "<p>服务端校验通过。请再次确认来源截图和人工审核记录后导入。</p>");
+    $("#legacy-commit").classList.toggle("hidden", !preview.ok);
+    $("#legacy-msg").textContent = preview.ok
+      ? "尚未写入数据库"
+      : "请回到人工确认队列修正错误并重新生成批准文件";
+  };
+  $("#legacy-commit").onclick = async () => {
+    if (!pendingPayload) return;
+    $("#legacy-commit").setAttribute("disabled", "disabled");
+    try {
+      const result = await api("/api/admin/legacy-imports", {
+        method: "POST",
+        body: JSON.stringify(pendingPayload),
+      });
+      await legacyImportsAdmin(1, "imported");
+      $("#legacy-msg").textContent = `已导入批次 ${result.batchId}，共 ${result.count} 条，仍需管理员审核。`;
+    } finally {
+      $("#legacy-commit").removeAttribute("disabled");
+    }
+  };
+  document.querySelectorAll<HTMLElement>("[data-rollback-legacy]").forEach(
+    (button) =>
+      (button.onclick = async () => {
+        const id = button.dataset.rollbackLegacy || "";
+        if (!confirm(`确认回滚批次 ${id}？该批次的历史评价将被删除。`)) return;
+        await api(`/api/admin/legacy-imports/${encodeURIComponent(id)}/rollback`, {
+          method: "POST",
+          body: "{}",
+        });
+        await legacyImportsAdmin(batchPage, status);
+      }),
+  );
+}
 document
   .querySelectorAll<HTMLElement>("[data-tab]")
   .forEach(
@@ -603,7 +681,9 @@ document
             ? coursesAdmin()
             : x.dataset.tab === "teachers"
               ? teachersAdmin()
-              : importer()),
+              : x.dataset.tab === "legacy"
+                ? legacyImportsAdmin()
+                : importer()),
   );
 $("#dashboard .tabs").insertAdjacentHTML(
   "beforeend",

@@ -38,3 +38,4 @@ CREATE TABLE legacy_reviews(
 CREATE INDEX idx_legacy_reviews_batch ON legacy_reviews(import_batch_id,id);
 CREATE INDEX idx_legacy_reviews_status ON legacy_reviews(status,created_at DESC);
 CREATE INDEX idx_legacy_reviews_subject ON legacy_reviews(course_id,teacher_id);
+CREATE INDEX idx_legacy_batches_status_created ON legacy_import_batches(status,created_at DESC,id);

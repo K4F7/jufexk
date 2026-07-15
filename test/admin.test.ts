@@ -274,6 +274,18 @@ describe("admin sessions and catalog", () => {
       "SELECT comment,status,source_type FROM legacy_reviews WHERE import_batch_id=?",
     ).bind(result.batchId).first();
     expect(saved).toEqual({ comment: "历史文字评价", status: "pending", source_type: "legacy_ocr" });
+    const batches = await SELF.fetch(`${origin}/api/admin/legacy-imports?status=imported`, {
+      headers: { Cookie: auth.cookie },
+    });
+    expect(batches.status).toBe(200);
+    const listed = await batches.json<{ items: Array<Record<string, unknown>> }>();
+    expect(listed.items).toContainEqual(expect.objectContaining({
+      id: result.batchId, status: "imported", row_count: 1,
+      pending_count: 1, approved_count: 0, rejected_count: 0,
+    }));
+    expect(JSON.stringify(listed)).not.toContain("manifest_json");
+    expect(JSON.stringify(listed)).not.toContain("raw_ocr_text");
+    expect((await SELF.fetch(`${origin}/api/admin/legacy-imports?status=invalid`, { headers: { Cookie: auth.cookie } })).status).toBe(400);
     const rollback = await SELF.fetch(`${origin}/api/admin/legacy-imports/${result.batchId}/rollback`, {
       method: "POST",
       headers: adminHeaders(auth),

@@ -1135,6 +1135,25 @@ async function validateLegacyApproved(
   return { rows, errors };
 }
 
+app.get("/api/admin/legacy-imports", async (c) => {
+  const { page, size } = pageArgs(c),
+    status = clean(c.req.query("status"), 20);
+  if (status && !["preview", "approved", "imported", "rolled_back", "failed"].includes(status))
+    return fail(c, "批次状态无效");
+  const total = await c.env.DB.prepare(
+    "SELECT COUNT(*) n FROM legacy_import_batches WHERE (?='' OR status=?)",
+  ).bind(status, status).first<{ n: number }>();
+  const { results } = await c.env.DB.prepare(
+    `SELECT b.id,b.source_type,b.source_label,b.status,b.row_count,b.created_at,b.imported_at,b.rolled_back_at,
+      (SELECT COUNT(*) FROM legacy_reviews r WHERE r.import_batch_id=b.id AND r.status='pending') pending_count,
+      (SELECT COUNT(*) FROM legacy_reviews r WHERE r.import_batch_id=b.id AND r.status='approved') approved_count,
+      (SELECT COUNT(*) FROM legacy_reviews r WHERE r.import_batch_id=b.id AND r.status='rejected') rejected_count
+     FROM legacy_import_batches b WHERE (?='' OR b.status=?)
+     ORDER BY b.created_at DESC,b.id DESC LIMIT ? OFFSET ?`,
+  ).bind(status, status, size, (page - 1) * size).all();
+  return c.json({ items: results, total: total?.n || 0, page, pages: Math.max(1, Math.ceil((total?.n || 0) / size)) });
+});
+
 app.post("/api/admin/legacy-imports/preview", async (c) => {
   if (Number(c.req.header("Content-Length") || 0) > 2_000_000) return fail(c, "批准数据过大", 413);
   const body = await c.req.json<{ rows?: Record<string, unknown>[] }>();
