@@ -1,0 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+img2table[rapidocr]==2.0.0
+pandas==3.0.3
+onnxruntime-gpu==1.23.2
+torch==2.11.0+cu128

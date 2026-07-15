@@ -72,7 +72,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 
 历史文字评价使用独立的 `legacy_reviews` 模型，不写入要求 `overall` 的学生投稿表，也不伪造评分。迁移 `0006_legacy_reviews.sql` 目前只随代码交付；在样本预览经人工确认前，不要应用到远端 D1。
 
-本机建议使用 Python 3.12。Windows 原生环境先以 RapidOCR CPU 验证行列恢复；RTX 50 系只有在 `onnxruntime.get_available_providers()` 明确包含 `CUDAExecutionProvider` 后才增加 `--cuda`。如需稳定使用 PaddleOCR GPU，优先在 WSL2/Linux 容器中运行。
+本机建议使用 Python 3.12。CPU 环境安装 `requirements.txt`；RTX 50 系 Windows 环境安装 `requirements-gpu.txt`，其中 PyTorch CUDA 12.8 用于向 ONNX Runtime 预加载 CUDA/cuDNN DLL。脚本在 `--cuda` 模式下会检查检测、方向分类和文字识别三个会话的首 provider，任何一个不是 `CUDAExecutionProvider` 都直接失败，禁止静默回退 CPU。
 
 ```powershell
 uv venv --python 3.12 .venv
@@ -85,6 +85,20 @@ uv pip install --python .venv scripts/legacy_ocr/requirements.txt
   --out scripts/legacy_ocr/output `
   --max-rows 30
 ```
+
+GPU 安装与运行：
+
+```powershell
+uv pip install --python .venv -r scripts/legacy_ocr/requirements-gpu.txt
+.venv/Scripts/python scripts/legacy_ocr/pipeline.py `
+  --input scripts/legacy_ocr/input `
+  --reference scripts/legacy_ocr/reference.json `
+  --out scripts/legacy_ocr/output `
+  --max-rows 30 `
+  --cuda
+```
+
+RTX 5060 Ti 实测环境为 PyTorch 2.11.0+cu128、ONNX Runtime GPU 1.23.2、RapidOCR 3.9.1。51 张截图全量预览使用约 4.6GB 显存，GPU 负责 OCR 推理，OpenCV/img2table 的网格恢复和 CSV 汇总仍主要使用 CPU，因此 CPU 占用较高属于正常现象。
 
 输入截图必须是腾讯表格 PNG 原图，并尽量保留表头。程序只读取截图和课程、教师、任课关系、开课班快照；不会连接或写入 D1。输出包括：
 

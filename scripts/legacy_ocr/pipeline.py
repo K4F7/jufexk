@@ -62,6 +62,14 @@ class Candidate:
 
 
 @dataclass
+class TableSchema:
+    column_count: int
+    comment_start: int
+    teacher_col: int
+    course_col: int
+
+
+@dataclass
 class PreviewRow:
     source_file: str
     sheet_name: str
@@ -256,29 +264,41 @@ def tokens_in_bbox(tokens: list[Token], bbox: Any) -> list[Token]:
     return [token for token in tokens if float(bbox.x1) <= token.cx <= float(bbox.x2) and float(bbox.y1) <= token.cy <= float(bbox.y2)]
 
 
-def img2table_preview_rows(tokens: list[Token], source: Path, sheet: str, reference: dict[str, list[dict[str, Any]]]) -> tuple[list[PreviewRow], list[str]]:
+def img2table_preview_rows(tokens: list[Token], source: Path, sheet: str, reference: dict[str, list[dict[str, Any]]], schema: TableSchema | None = None, context: dict[str, str] | None = None, use_cuda: bool = False) -> tuple[list[PreviewRow], list[str], TableSchema | None]:
     try:
         from img2table.document import Image
-        from img2table.ocr import RapidOCR as TableOCR
-        tables = Image(src=source).extract_tables(ocr=TableOCR(), implicit_rows=True, implicit_columns=True, borderless_tables=False, min_confidence=40)
+        from img2table.ocr._types import OCRData
+        records = [{"id": f"word_1_{index}", "parent": f"word_1_{index}", "value": token.text, "confidence": round(100 * token.confidence), "x1": round(min(point[0] for point in token.box)), "y1": round(min(point[1] for point in token.box)), "x2": round(max(point[0] for point in token.box)), "y2": round(max(point[1] for point in token.box))} for index, token in enumerate(tokens, start=1)]
+        document = Image(src=source, ocr_data=OCRData(records={0: records}))
+        tables = document.extract_tables(ocr=None, implicit_rows=True, implicit_columns=True, borderless_tables=False, min_confidence=40)
     except Exception as exc:
-        return [], [f"img2table失败: {exc}"]
+        return [], [f"img2table失败: {exc}"], schema
     if not tables:
-        return [], ["img2table未恢复出表格"]
+        return [], ["img2table未恢复出表格"], schema
+    context = context if context is not None else {}
     output: list[PreviewRow] = []
     for table_index, table in enumerate(tables, start=1):
         rows = list(table.content.values())
-        if len(rows) < 2: continue
+        if not rows: continue
         header = [normalize(str(cell.value or "")) for cell in rows[0]]
         explicit_comments = [index for index, text_value in enumerate(header) if "学生评" in text_value]
-        if not explicit_comments: continue
-        first_explicit = min(explicit_comments)
-        comment_start = infer_comment_start(header, first_explicit)
-        teacher_col = next((index for index, text_value in enumerate(header) if "老师" in text_value or "教师" in text_value or "中文名" in text_value), comment_start - 1)
-        course_col = next((index for index, text_value in enumerate(header) if text_value in {"课程", "课程名称", "课名"}), -1)
+        has_header = bool(explicit_comments)
+        if has_header:
+            first_explicit = min(explicit_comments)
+            comment_start = infer_comment_start(header, first_explicit)
+            teacher_col = next((index for index, text_value in enumerate(header) if "老师" in text_value or "教师" in text_value or "中文名" in text_value), comment_start - 1)
+            course_col = next((index for index, text_value in enumerate(header) if text_value in {"课程", "课程名称", "课名"}), -1)
+            schema = TableSchema(len(rows[0]), comment_start, teacher_col, course_col)
+        elif schema:
+            comment_start, teacher_col, course_col = schema.comment_start, schema.teacher_col, schema.course_col
+        else:
+            continue
         entity_col = teacher_col if teacher_col >= 0 else max(0, comment_start - 1)
-        current_course = ""; current_teacher = ""; course_row = ""; teacher_row = ""
-        for row_index, row in enumerate(rows[1:], start=2):
+        current_course = context.get("course", ""); current_teacher = context.get("teacher", ""); course_row = context.get("course_row", ""); teacher_row = context.get("teacher_row", "")
+        started_with_context = bool(current_course or current_teacher)
+        data_rows = rows[1:] if has_header else rows
+        first_row_number = 2 if has_header else 1
+        for row_index, row in enumerate(data_rows, start=first_row_number):
             entity = str(row[entity_col].value or "").strip() if entity_col < len(row) else ""
             explicit_course = str(row[course_col].value or "").strip() if 0 <= course_col < len(row) else ""
             if explicit_course:
@@ -298,12 +318,15 @@ def img2table_preview_rows(tokens: list[Token], source: Path, sheet: str, refere
                 confidence = statistics.mean(token.confidence for token in cell_tokens) if cell_tokens else 0
                 preview = PreviewRow(source.name, sheet, f"T{table_index}R{row_index}C{col + 1}", " | ".join(filter(None, [explicit_course, entity, value])), ocr_course_name=current_course, ocr_teacher_name=current_teacher, comment=value, ocr_confidence=round(confidence, 4), ocr_tokens_json=json.dumps([asdict(token) for token in cell_tokens], ensure_ascii=False), inherited_from=";".join(filter(None, [f"course:{course_row}" if current_course and not explicit_course else "", f"teacher:{teacher_row}" if current_teacher and not entity else ""])))
                 apply_matches(preview, reference, inherited)
+                if started_with_context and row_index == first_row_number:
+                    preview.needs_review = True; preview.review_reason = ";".join(filter(None, [preview.review_reason, "cross_screenshot_inheritance"]))
                 if not current_course:
                     preview.needs_review = True; preview.review_reason = ";".join(filter(None, [preview.review_reason, "course_context_missing_at_screenshot_start"]))
                 if not current_teacher:
                     preview.needs_review = True; preview.review_reason = ";".join(filter(None, [preview.review_reason, "teacher_unresolved_section_row"]))
                 output.append(preview)
-    return (output, []) if output else ([], ["img2table表格中未找到可拆分的学生评价"])
+        context.update({"course": current_course, "teacher": current_teacher, "course_row": course_row, "teacher_row": teacher_row})
+    return (output, [], schema) if output else ([], ["img2table表格中未找到可拆分的学生评价"], schema)
 
 
 def candidates(value: str, records: list[dict[str, Any]], *, person: bool = False, code: str = "") -> list[Candidate]:
@@ -328,19 +351,49 @@ def unique_match(items: list[Candidate], threshold: float) -> Candidate | None:
     return items[0]
 
 
-def parse_ocr_result(result: Any) -> list[Token]:
-    rows = result[0] if isinstance(result, tuple) else result
-    return [Token(str(item[1]), float(item[2]), [[float(x), float(y)] for x, y in item[0]]) for item in (rows or [])]
+def prepare_gpu() -> None:
+    import torch
+    import onnxruntime as ort
+    if not torch.cuda.is_available():
+        raise RuntimeError("PyTorch CUDA 不可用，拒绝静默回退 CPU")
+    ort.preload_dlls()
+    if "CUDAExecutionProvider" not in ort.get_available_providers():
+        raise RuntimeError("ONNX Runtime CUDAExecutionProvider 不可用")
+
+
+def verify_rapidocr_cuda(engine: Any) -> None:
+    for name in ("text_det", "text_cls", "text_rec"):
+        component = getattr(engine, name, None)
+        session_wrapper = getattr(component, "session", None)
+        session = getattr(session_wrapper, "session", None)
+        providers = session.get_providers() if session is not None else []
+        if not providers or providers[0] != "CUDAExecutionProvider":
+            raise RuntimeError(f"RapidOCR {name} 未使用 CUDA，实际 providers={providers}")
+
+
+_OCR_ENGINES: dict[bool, Any] = {}
+
+
+def get_ocr_engine(use_cuda: bool) -> Any:
+    if use_cuda not in _OCR_ENGINES:
+        from rapidocr import RapidOCR
+        if use_cuda: prepare_gpu()
+        engine = RapidOCR(params={"EngineConfig.onnxruntime.use_cuda": use_cuda, "Rec.lang_type": "ch"})
+        if use_cuda: verify_rapidocr_cuda(engine)
+        _OCR_ENGINES[use_cuda] = engine
+    return _OCR_ENGINES[use_cuda]
 
 
 def run_ocr(image: Path, use_cuda: bool) -> tuple[list[Token], str]:
     try:
-        from rapidocr_onnxruntime import RapidOCR
+        from rapidocr import RapidOCR
     except ImportError as exc:
         raise RuntimeError("RapidOCR 未安装；先按 README 创建 Python 3.12 环境") from exc
-    kwargs = {"det_use_cuda": use_cuda, "cls_use_cuda": use_cuda, "rec_use_cuda": use_cuda}
-    engine = RapidOCR(**kwargs)
-    return parse_ocr_result(engine(str(image))), f"rapidocr-onnxruntime 1.4.4 ({'CUDA' if use_cuda else 'CPU'})"
+    engine = get_ocr_engine(use_cuda)
+    result = engine(str(image))
+    boxes, texts, scores = result.boxes, result.txts, result.scores
+    tokens = [] if boxes is None or texts is None or scores is None else [Token(str(text_value), float(score), [[float(x), float(y)] for x, y in box]) for box, text_value, score in zip(boxes, texts, scores)]
+    return tokens, f"rapidocr 3.9.1 ({'CUDA' if use_cuda else 'CPU'})"
 
 
 def load_reference(path: Path) -> dict[str, list[dict[str, Any]]]:
@@ -429,8 +482,9 @@ def match_rows(tokens: list[Token], source: Path, sheet: str, reference: dict[st
 def mark_duplicates(output: list[PreviewRow]) -> None:
     groups: dict[str, list[PreviewRow]] = defaultdict(list)
     for row in output:
-        if row.matched_course_id and row.matched_teacher_id and normalize(row.comment):
-            key = f"{row.matched_course_id}|{row.matched_teacher_id}|{normalize(row.comment)}"
+        if normalize(row.comment):
+            subject = f"{row.matched_course_id}|{row.matched_teacher_id}" if row.matched_course_id and row.matched_teacher_id else f"{row.sheet_name}|{normalize(row.ocr_course_name)}|{normalize(row.ocr_teacher_name, person=True)}"
+            key = f"{subject}|{normalize(row.comment)}"
             groups[hashlib.sha256(key.encode()).hexdigest()[:12]].append(row)
     for group, rows in groups.items():
         if len(rows) > 1:
@@ -453,14 +507,15 @@ def serialise(row: PreviewRow) -> dict[str, Any]:
 def run(args: argparse.Namespace) -> int:
     started = time.time(); out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     reference = load_reference(Path(args.reference)); images = sorted(Path(args.input).glob("*.png"))
-    previews: list[PreviewRow] = []; errors: list[dict[str, str]] = []; warnings: list[dict[str, str]] = []; box_count = 0; confidences: list[float] = []; model = ""; raw_pages: list[dict[str, Any]] = []
+    previews: list[PreviewRow] = []; errors: list[dict[str, str]] = []; warnings: list[dict[str, str]] = []; box_count = 0; confidences: list[float] = []; model = ""; raw_pages: list[dict[str, Any]] = []; schemas: dict[str, TableSchema] = {}; contexts: dict[str, dict[str, str]] = defaultdict(dict)
     for image in images:
         sheet = image.stem.rsplit("_", 1)[0]
         try:
             tokens, model = run_ocr(image, args.cuda)
             box_count += len(tokens); confidences.extend(token.confidence for token in tokens)
             raw_pages.append({"source_file": image.name, "sheet_name": sheet, "tokens": [asdict(token) for token in tokens]})
-            rows, row_errors = img2table_preview_rows(tokens, image, sheet, reference)
+            rows, row_errors, discovered_schema = img2table_preview_rows(tokens, image, sheet, reference, schemas.get(sheet), contexts[sheet], args.cuda)
+            if discovered_schema: schemas[sheet] = discovered_schema
             if not rows:
                 grid_rows, grid_errors = grid_preview_rows(tokens, image, sheet, reference)
                 rows = grid_rows
