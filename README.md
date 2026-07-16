@@ -56,6 +56,38 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 
 建议顺序为课程、教师、任课关系。学生统一身份认证需要学校提供可信的 SSO/OIDC/CAS 身份源，当前未伪造实现。
 
+### 教务课程快照与 OCR 校对工作簿
+
+`scripts/legacy_ocr/build_review_workbook.py` 可合并金智教务系统保存的分页 HTML，并结合已有 OCR 输出生成：
+
+- `course_overview_review.xlsx`：课程、教师、任课关系、开课班、OCR 别名候选和历史评价人工校对页；
+- `import_samples/01_courses.csv` 至 `04_offerings.csv`：符合后台协议的 UTF-8 BOM CSV；
+- `import_samples/catalog_reference_sample.json`：仅供本地 OCR 重新匹配使用的临时 ID 快照，不可当作远端 D1 ID。
+
+分页参数可重复传入，必须按页码顺序排列，以便正确继承跨页课程行：
+
+```powershell
+uv run python scripts/legacy_ocr/build_review_workbook.py `
+  --catalog-html "<第1页目录>/saved_resource(1).html" `
+  --catalog-html "<第2页目录>/saved_resource(1).html" `
+  --catalog-html "<第3页目录>/saved_resource(1).html"
+```
+
+生成器会校验重复键、枚举、字段长度和课程/教师引用。后台仍须按 `01` 到 `04` 的顺序逐份预览并导入。OCR 课程别名和重匹配结果始终需要人工确认，不得直接作为批准数据。
+
+人工在工作簿 `OCR课程别名核对` 页的 `decision` 列选择 `approve`、`reject` 或 `skip` 并保存后，使用以下命令生成新的评价预览。每个 OCR 课程名最多只能批准一个目标；课程代码和名称必须同时存在于匹配快照中：
+
+```powershell
+uv run python scripts/legacy_ocr/apply_alias_decisions.py `
+  --workbook scripts/legacy_ocr/output/course_overview_review.xlsx `
+  --preview scripts/legacy_ocr/output/rematched/legacy_reviews_preview.csv `
+  --reference scripts/legacy_ocr/output/import_samples/catalog_reference_sample.json `
+  --out scripts/legacy_ocr/output/rematched/alias_applied_preview.csv `
+  --report scripts/legacy_ocr/output/rematched/alias_apply_report.json
+```
+
+该命令不覆盖原始 OCR 预览；应用别名后的记录仍保持 `needs_review=true`，必须继续经过 `approval.py prepare/finalize` 的逐行人工审核。
+
 ## 复用到其他高校
 
 当前 `wrangler.jsonc` 指向 JUFE 的生产 Worker、D1、域名和 Turnstile Widget，不能原样用于其他学校。复用时至少需要：

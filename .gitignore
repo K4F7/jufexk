@@ -11,3 +11,4 @@ scripts/legacy_ocr/output/
 scripts/legacy_ocr/input/
 scripts/legacy_ocr/reference.json
 copy.xlsx
+handoff/
