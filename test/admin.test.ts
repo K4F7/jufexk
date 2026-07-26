@@ -400,6 +400,7 @@ describe("review protection", () => {
   });
 
   it("fails closed when Turnstile is configured but no valid token is supplied", async () => {
+    (env as Record<string, unknown>).TURNSTILE_SITE_KEY = "test-site-key";
     const before = await env.DB.prepare(
       "SELECT COUNT(*) n FROM reviews",
     ).first<{ n: number }>();
@@ -422,6 +423,7 @@ describe("review protection", () => {
         }>()
       )?.n,
     ).toBe(before?.n);
+    (env as Record<string, unknown>).TURNSTILE_SITE_KEY = "";
   });
 });
 

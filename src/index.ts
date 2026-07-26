@@ -300,11 +300,6 @@ app.post("/api/reviews", async (c) => {
     (b.organization && !organization)
   )
     return fail(c, "评分必须在 1 到 5 之间");
-  if (
-    course.category === "general" &&
-    (!interest || !practicality || !workloadScore || !fairness || !organization)
-  )
-    return fail(c, "公共选修课的五项专项评分必须完整填写");
   if (!(await takeRateLimit(c.env.DB, `review-submit:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
   const term = clean(b.term, 30);

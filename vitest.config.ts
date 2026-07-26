@@ -12,6 +12,7 @@ export default defineConfig(async () => {
           bindings: {
             ADMIN_PASSWORD: "test-password",
             TURNSTILE_SECRET: "",
+            TURNSTILE_SITE_KEY: "",
           },
         },
       }),
