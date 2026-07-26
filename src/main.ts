@@ -93,8 +93,11 @@ async function renderTurnstile(form: TurnstileForm) {
       action: "turnstile-spin-v2",
       "refresh-expired": "auto",
       callback: () => setTurnstileReady(form, true, "人机验证已完成。"),
-      "expired-callback": () =>
-        setTurnstileReady(form, false, "验证已过期，正在自动刷新…"),
+      "expired-callback": () => {
+        setTurnstileReady(form, false, "验证已过期，正在自动刷新…");
+        const widgetId = turnstileWidgets[form];
+        if (widgetId !== undefined) turnstile.reset(widgetId);
+      },
       "error-callback": () => {
         setTurnstileReady(form, false, "人机验证失败，请检查网络后重试。");
         return true;
