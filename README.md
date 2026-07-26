@@ -5,9 +5,9 @@
 ## 本地开发
 
 ```bash
-npm ci
-npx wrangler d1 migrations apply jufexk --local
-npm run dev
+bun ci
+bunx wrangler d1 migrations apply jufexk --local
+bun run dev
 ```
 
 管理员本地口令放在不提交的 `.dev.vars`：`ADMIN_PASSWORD=...`。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置，因此复用到其他高校时无需修改源码。
@@ -17,9 +17,9 @@ npm run dev
 仓库已经包含真实 D1 `database_id` 和 `xk.sein.moe` Custom Domain 配置。首次部署或轮换口令时，在交互式终端运行：
 
 ```bash
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler d1 migrations apply jufexk --remote
-npm run deploy
+bunx wrangler secret put ADMIN_PASSWORD
+bunx wrangler d1 migrations apply jufexk --remote
+bun run deploy
 ```
 
 不要把口令、API Token 或 `.dev.vars` 提交到仓库。
@@ -40,7 +40,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 投稿端已接入标准 Turnstile widget 与服务端 Siteverify。创建 Widget（域名包含 `xk.sein.moe`、`localhost`、`127.0.0.1`）后：
 
 1. 将公开 Site Key 配置为 `TURNSTILE_SITE_KEY` 普通变量；
-2. 交互式执行 `npx wrangler secret put TURNSTILE_SECRET`；
+2. 交互式执行 `bunx wrangler secret put TURNSTILE_SECRET`；
 3. 重新部署。
 
 只要 `TURNSTILE_SECRET` 存在，服务端即强制验证；未配置时仍有蜜罐、每 IP 哈希每小时 5 次限制及 30 天重复投稿控制。

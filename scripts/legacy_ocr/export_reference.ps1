@@ -12,7 +12,7 @@ $scope = if ($Local) { "--local" } else { "--remote" }
 function Read-D1Table([string]$Table) {
   $previousPreference = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
-  $raw = & npx wrangler d1 execute jufexk $scope --json --command "SELECT * FROM $Table" 2>$null
+  $raw = & bunx wrangler d1 execute jufexk $scope --json --command "SELECT * FROM $Table" 2>$null
   $ErrorActionPreference = $previousPreference
   if ($LASTEXITCODE -ne 0) { throw "读取 D1 表 $Table 失败" }
   $parsed = $raw | ConvertFrom-Json
