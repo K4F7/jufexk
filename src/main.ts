@@ -651,10 +651,10 @@ function importer() {
       body: JSON.stringify({ type: pendingType, rows: pendingRows }),
     });
     $("#import-preview").innerHTML =
-      `<p>总行数：${preview.total}；有效：${preview.validCount}；错误：${preview.errors.length}</p>` +
+      `<p>总行数：${preview.total}；新增：${preview.newCount}；跳过：${preview.skipCount}；错误：${preview.errors.length}</p>` +
       (preview.errors.length
         ? `<div class="table-scroll"><table><thead><tr><th>行</th><th>字段</th><th>问题</th></tr></thead><tbody>${preview.errors.map((item: any) => `<tr><td>${esc(item.row)}</td><td>${esc(item.field)}</td><td>${esc(item.message)}</td></tr>`).join("")}</tbody></table></div>`
-        : `<details><summary>查看规范化预览（前 50 行）</summary><pre>${esc(JSON.stringify(preview.preview, null, 2))}</pre></details>`);
+        : `<div class="table-scroll"><table><thead><tr><th>行</th><th>状态</th><th>规范化数据</th></tr></thead><tbody>${preview.preview.map((row: any, index: number) => `<tr><td>${index + 2}</td><td>${row.exists ? "已存在，将跳过" : "新增"}</td><td><code>${esc(JSON.stringify(row))}</code></td></tr>`).join("")}</tbody></table></div>`);
     $("#import-commit").classList.toggle("hidden", !preview.ok);
     $("#import-msg").textContent = preview.ok
       ? "校验通过，可以确认导入"
@@ -667,7 +667,7 @@ function importer() {
         method: "POST",
         body: JSON.stringify({ type: pendingType, rows: pendingRows }),
       });
-      $("#import-msg").textContent = `成功导入 ${result.count} 行`;
+      $("#import-msg").textContent = `新增 ${result.count} 行；跳过 ${result.skippedCount} 行`;
       $("#import-commit").classList.add("hidden");
       load();
       loadTeachers();
