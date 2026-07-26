@@ -345,6 +345,60 @@ app.post("/api/reviews", async (c) => {
   }
   return c.json({ ok: true, message: "投稿已进入审核队列" });
 });
+app.post("/api/catalog-requests", async (c) => {
+  const b = await c.req.json<Record<string, unknown>>();
+  if (clean(b.website)) return c.json({ ok: true });
+  const kind = clean(b.kind, 20),
+    courseCode = clean(b.courseCode, 40),
+    courseName = clean(b.courseName, 200),
+    category = clean(b.category, 20),
+    teacherName = clean(b.teacherName, 80),
+    department = clean(b.department, 80),
+    ip = c.req.header("CF-Connecting-IP") || "unknown",
+    ipHash = await digest(ip);
+  if (!(await verifyTurnstile(c, clean(b.turnstileToken, 2048), ip)))
+    return fail(c, "人机验证失败，请重试", 403);
+  if (!["course", "teacher"].includes(kind))
+    return fail(c, "申请类型必须是 course 或 teacher");
+  if (!courseName && !teacherName)
+    return fail(c, "请至少填写课程名称或教师姓名");
+  if (kind === "course" && !courseName) return fail(c, "请填写课程名称");
+  if (kind === "teacher" && !teacherName) return fail(c, "请填写教师姓名");
+  if (category && !["major", "pe", "general"].includes(category))
+    return fail(c, "课程类别必须为 major、pe 或 general");
+  const review = (b.review || null) as Record<string, unknown> | null;
+  const overall = review ? rating(review.overall) : null;
+  if (review && !overall) return fail(c, "随附评价必须包含 1 到 5 的总体评分");
+  if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))
+    return fail(c, "提交过于频繁，请稍后再试", 429);
+  const result = await c.env.DB.prepare(
+    `INSERT INTO catalog_requests(kind,course_code,course_name,category,teacher_name,department,note,pending_review_json,submitter_hash)
+     VALUES(?,?,?,?,?,?,?,?,?)`,
+  )
+    .bind(
+      kind,
+      courseCode,
+      courseName,
+      category,
+      teacherName,
+      department,
+      clean(b.note, 500),
+      review
+        ? JSON.stringify({
+            overall,
+            comment: clean(review.comment, 1200),
+            term: clean(review.term, 30),
+          })
+        : "",
+      ipHash,
+    )
+    .run();
+  return c.json({
+    ok: true,
+    id: Number(result.meta.last_row_id),
+    message: "补充申请已提交，待管理员审核",
+  });
+});
 
 app.post("/api/admin/login", async (c) => {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
@@ -485,6 +539,145 @@ app.get("/api/admin/reviews", async (c) => {
     page,
     pages: Math.ceil((total?.n || 0) / size),
   });
+});
+app.get("/api/admin/catalog-requests", async (c) => {
+  const { page, size } = pageArgs(c),
+    status = clean(c.req.query("status"), 20) || "pending";
+  if (!["pending", "approved", "rejected", "all"].includes(status))
+    return fail(c, "无效审核状态");
+  const total = await c.env.DB.prepare(
+    "SELECT COUNT(*) n FROM catalog_requests WHERE (?='all' OR status=?)",
+  )
+    .bind(status, status)
+    .first<{ n: number }>();
+  const results = (
+    await c.env.DB.prepare(
+      `SELECT id,kind,course_code,course_name,category,teacher_name,department,note,status,moderator_note,
+              created_course_id,created_teacher_id,created_review_id,created_at,reviewed_at,
+              pending_review_json<>'' AS has_review
+       FROM catalog_requests WHERE (?='all' OR status=?) ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    )
+      .bind(status, status, size, (page - 1) * size)
+      .all()
+  ).results;
+  return c.json({
+    items: results,
+    total: total?.n || 0,
+    page,
+    pages: Math.ceil((total?.n || 0) / size),
+  });
+});
+app.patch("/api/admin/catalog-requests/:id", async (c) => {
+  const id = integer(c.req.param("id")),
+    b = await c.req.json<Record<string, unknown>>(),
+    status = clean(b.status, 20),
+    note = clean(b.note, 500);
+  if (!id) return fail(c, "无效申请 ID");
+  if (!["approved", "rejected"].includes(status))
+    return fail(c, "审核结果必须是 approved 或 rejected");
+  const request = await c.env.DB.prepare(
+    "SELECT * FROM catalog_requests WHERE id=?",
+  )
+    .bind(id)
+    .first<Record<string, any>>();
+  if (!request) return fail(c, "补充申请不存在", 404);
+  if (request.status !== "pending")
+    return fail(c, "该申请已审核，不能重复处理", 409);
+  if (status === "rejected") {
+    if (!note) return fail(c, "驳回必须填写理由");
+    await c.env.DB.prepare(
+      "UPDATE catalog_requests SET status='rejected',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
+    )
+      .bind(note, id)
+      .run();
+    return c.json({ ok: true });
+  }
+  let teacherId: number | null = null;
+  if (request.teacher_name) {
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM teachers WHERE name=? AND department=?",
+    )
+      .bind(request.teacher_name, request.department)
+      .first<{ id: number }>();
+    teacherId =
+      existing?.id ??
+      Number(
+        (
+          await c.env.DB.prepare(
+            "INSERT INTO teachers(name,department) VALUES(?,?)",
+          )
+            .bind(request.teacher_name, request.department)
+            .run()
+        ).meta.last_row_id,
+      );
+  }
+  let courseId: number | null = null;
+  if (request.course_name) {
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM courses WHERE code=? AND name=?",
+    )
+      .bind(request.course_code, request.course_name)
+      .first<{ id: number }>();
+    courseId =
+      existing?.id ??
+      Number(
+        (
+          await c.env.DB.prepare(
+            "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+          )
+            .bind(
+              request.course_code,
+              request.course_name,
+              request.category || "major",
+              request.department,
+            )
+            .run()
+        ).meta.last_row_id,
+      );
+    if (teacherId)
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+      )
+        .bind(courseId, teacherId)
+        .run();
+  }
+  let reviewId: number | null = null;
+  if (request.pending_review_json && courseId && teacherId) {
+    const stashed = JSON.parse(request.pending_review_json) as {
+      overall: number;
+      comment: string;
+      term: string;
+    };
+    const category = (
+      await c.env.DB.prepare("SELECT category FROM courses WHERE id=?")
+        .bind(courseId)
+        .first<{ category: string }>()
+    )?.category;
+    reviewId = Number(
+      (
+        await c.env.DB.prepare(
+          `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,term,submitter_hash) VALUES(?,?,?,?,?,?,?)`,
+        )
+          .bind(
+            courseId,
+            teacherId,
+            category,
+            stashed.overall,
+            stashed.comment,
+            stashed.term,
+            request.submitter_hash,
+          )
+          .run()
+      ).meta.last_row_id,
+    );
+  }
+  await c.env.DB.prepare(
+    `UPDATE catalog_requests SET status='approved',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP,
+       created_course_id=?,created_teacher_id=?,created_review_id=? WHERE id=? AND status='pending'`,
+  )
+    .bind(note, courseId, teacherId, reviewId, id)
+    .run();
+  return c.json({ ok: true, courseId, teacherId, reviewId });
 });
 app.patch("/api/admin/reviews/:id", async (c) => {
   const b = await c.req.json<Record<string, unknown>>(),
