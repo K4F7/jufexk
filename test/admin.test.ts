@@ -428,6 +428,223 @@ describe("review protection", () => {
 });
 
 describe("two-stage imports", () => {
+  it("previews and skips an existing course without overwriting it", async () => {
+    const auth = await login();
+    await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department,credits,description) VALUES('KEEP101','保留课程','major','原学院',2,'人工简介')",
+    ).run();
+    const payload = {
+      type: "courses",
+      rows: [
+        {
+          code: "KEEP101",
+          name: "保留课程",
+          category: "general",
+          department: "导入学院",
+          credits: 9,
+          description: "导入简介",
+        },
+      ],
+    };
+
+    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await preview.json()).toMatchObject({
+      ok: true,
+      newCount: 0,
+      skipCount: 1,
+      preview: [{ code: "KEEP101", name: "保留课程", exists: true }],
+    });
+
+    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await commit.json()).toMatchObject({
+      ok: true,
+      count: 0,
+      skippedCount: 1,
+    });
+    expect(
+      await env.DB.prepare(
+        "SELECT category,department,credits,description FROM courses WHERE code='KEEP101' AND name='保留课程'",
+      ).first(),
+    ).toEqual({
+      category: "major",
+      department: "原学院",
+      credits: 2,
+      description: "人工简介",
+    });
+  });
+
+  it("distinguishes courses with empty codes by course name", async () => {
+    const auth = await login();
+    await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department) VALUES('','空号甲','major','测试学院')",
+    ).run();
+    const payload = {
+      type: "courses",
+      rows: [
+        { code: "", name: "空号甲", category: "major" },
+        { code: "", name: "空号乙", category: "general" },
+      ],
+    };
+    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await preview.json()).toMatchObject({
+      ok: true,
+      newCount: 1,
+      skipCount: 1,
+      preview: [
+        { code: "", name: "空号甲", exists: true },
+        { code: "", name: "空号乙", exists: false },
+      ],
+    });
+    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await commit.json()).toMatchObject({
+      ok: true,
+      count: 1,
+      skippedCount: 1,
+    });
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT COUNT(*) n FROM courses WHERE code='' AND name IN ('空号甲','空号乙')",
+        ).first<{ n: number }>()
+      )?.n,
+    ).toBe(2);
+  });
+
+  it("classifies duplicate new keys in one batch consistently", async () => {
+    const auth = await login();
+    const row = { code: "BATCH-DUP", name: "批内重复", category: "major" };
+    const payload = { type: "courses", rows: [row, row] };
+    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await preview.json()).toMatchObject({
+      ok: true,
+      newCount: 1,
+      skipCount: 1,
+      preview: [{ exists: false }, { exists: true }],
+    });
+    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await commit.json()).toMatchObject({
+      ok: true,
+      count: 1,
+      skippedCount: 1,
+    });
+  });
+
+  it("previews and skips an existing teacher without overwriting it", async () => {
+    const auth = await login();
+    await env.DB.prepare(
+      "INSERT INTO teachers(name,department,title,bio) VALUES('保留教师','保留学院','教授','人工简介')",
+    ).run();
+    const payload = {
+      type: "teachers",
+      rows: [
+        {
+          name: "保留教师",
+          department: "保留学院",
+          title: "助教",
+          bio: "导入简介",
+        },
+      ],
+    };
+
+    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await preview.json()).toMatchObject({
+      ok: true,
+      newCount: 0,
+      skipCount: 1,
+      preview: [{ name: "保留教师", department: "保留学院", exists: true }],
+    });
+    await SELF.fetch(`${origin}/api/admin/import`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(
+      await env.DB.prepare(
+        "SELECT title,bio FROM teachers WHERE name='保留教师' AND department='保留学院'",
+      ).first(),
+    ).toEqual({ title: "教授", bio: "人工简介" });
+  });
+
+  it("previews and skips an existing offering without overwriting it", async () => {
+    const auth = await login();
+    const course = await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department) VALUES('KEEP-OFF','保留开课','major','测试学院')",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO offerings(course_id,term,section,campus,schedule,status) VALUES(?,?,?,?,?,?)",
+    )
+      .bind(course.meta.last_row_id, "2026 秋", "001", "原校区", "周一", "active")
+      .run();
+    const payload = {
+      type: "offerings",
+      rows: [
+        {
+          course_code: "KEEP-OFF",
+          course_name: "保留开课",
+          teacher_name: "测试教师",
+          teacher_department: "测试学院",
+          term: "2026 秋",
+          section: "001",
+          campus: "导入校区",
+          schedule: "周五",
+          status: "archived",
+        },
+      ],
+    };
+
+    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await preview.json()).toMatchObject({
+      ok: true,
+      newCount: 0,
+      skipCount: 1,
+      preview: [{ term: "2026 秋", section: "001", exists: true }],
+    });
+    await SELF.fetch(`${origin}/api/admin/import`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(
+      await env.DB.prepare(
+        "SELECT campus,schedule,status FROM offerings WHERE course_id=? AND term='2026 秋' AND section='001'",
+      )
+        .bind(course.meta.last_row_id)
+        .first(),
+    ).toEqual({ campus: "原校区", schedule: "周一", status: "active" });
+  });
+
   it("imports a course-teacher relation without inventing an offering", async () => {
     const auth = await login();
     const course = await env.DB.prepare("INSERT INTO courses(code,name,category,department) VALUES('REL101','关系测试课','major','测试学院')").run();

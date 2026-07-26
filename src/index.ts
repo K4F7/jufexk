@@ -1100,7 +1100,8 @@ async function validateImport(
   input: Record<string, unknown>[],
 ) {
   const errors: ImportIssue[] = [],
-    rows: Record<string, unknown>[] = [];
+    rows: Record<string, unknown>[] = [],
+    seenKeys = new Set<string>();
   const issue = (index: number, field: string, code: string, message: string) =>
     errors.push({ row: index + 2, field, code, message });
   for (let index = 0; index < input.length; index++) {
@@ -1134,7 +1135,17 @@ async function validateImport(
         (!Number.isFinite(row.credits) || row.credits < 0)
       )
         issue(index, "credits", "invalid_number", "学分必须是非负数字");
-      rows.push(row);
+      const identityKey = JSON.stringify(["course", row.code, row.name]);
+      const existing = row.name
+        ? await c.env.DB.prepare(
+            "SELECT 1 FROM courses WHERE code=? AND name=? LIMIT 1",
+          )
+            .bind(row.code, row.name)
+            .first()
+        : null;
+      const exists = Boolean(existing) || seenKeys.has(identityKey);
+      if (row.name) seenKeys.add(identityKey);
+      rows.push({ ...row, exists });
     } else if (type === "teachers") {
       const row = {
         name: clean(source.name, 120),
@@ -1143,8 +1154,24 @@ async function validateImport(
         bio: clean(source.bio, 1000),
       };
       if (!row.name) issue(index, "name", "required", "教师姓名不能为空");
-      rows.push(row);
+      const identityKey = JSON.stringify([
+        "teacher",
+        row.name,
+        row.department,
+      ]);
+      const existing = row.name
+        ? await c.env.DB.prepare(
+            "SELECT 1 FROM teachers WHERE name=? AND department=? LIMIT 1",
+          )
+            .bind(row.name, row.department)
+            .first()
+        : null;
+      const exists = Boolean(existing) || seenKeys.has(identityKey);
+      if (row.name) seenKeys.add(identityKey);
+      rows.push({ ...row, exists });
     } else if (type === "relations" || type === "offerings") {
+      let courseId: number | null = null;
+      let teacherId: number | null = null;
       const row = {
         course_code: clean(source.course_code, 40),
         course_name: clean(source.course_name, 120),
@@ -1170,7 +1197,8 @@ async function validateImport(
         )
           .bind(row.course_code, row.course_name)
           .first();
-        if (!course)
+        courseId = Number(course?.id) || null;
+        if (!courseId)
           issue(
             index,
             "course_name",
@@ -1184,7 +1212,8 @@ async function validateImport(
         )
           .bind(row.teacher_name, row.teacher_department)
           .first();
-        if (!teacher)
+        teacherId = Number(teacher?.id) || null;
+        if (!teacherId)
           issue(
             index,
             "teacher_name",
@@ -1192,7 +1221,28 @@ async function validateImport(
             "找不到匹配教师，请先导入教师",
           );
       }
-      rows.push(row);
+      let existing = null;
+      const identityKey =
+        type === "relations"
+          ? JSON.stringify(["relation", courseId, teacherId])
+          : JSON.stringify(["offering", courseId, row.term, row.section]);
+      if (courseId && teacherId && type === "relations") {
+        existing = await c.env.DB.prepare(
+          "SELECT 1 FROM course_teachers WHERE course_id=? AND teacher_id=? LIMIT 1",
+        )
+          .bind(courseId, teacherId)
+          .first();
+      } else if (courseId && type === "offerings") {
+        existing = await c.env.DB.prepare(
+          "SELECT 1 FROM offerings WHERE course_id=? AND term=? AND section=? LIMIT 1",
+        )
+          .bind(courseId, row.term, row.section)
+          .first();
+      }
+      const exists = Boolean(existing) || seenKeys.has(identityKey);
+      if (courseId && teacherId && (type === "relations" || row.section))
+        seenKeys.add(identityKey);
+      rows.push({ ...row, exists });
     }
   }
   return { rows, errors };
@@ -1211,12 +1261,16 @@ app.post("/api/admin/import/preview", async (c) => {
   if (!["courses", "teachers", "relations", "offerings"].includes(type))
     return fail(c, "未知导入类型");
   const validation = await validateImport(c, type, input);
+  const validCount =
+      input.length - new Set(validation.errors.map((x) => x.row)).size,
+    skipCount = validation.rows.filter((row) => row.exists === true).length;
   return c.json({
     ok: validation.errors.length === 0,
     type,
     total: input.length,
-    validCount:
-      input.length - new Set(validation.errors.map((x) => x.row)).size,
+    validCount,
+    newCount: validCount - skipCount,
+    skipCount,
     errors: validation.errors,
     preview: validation.rows.slice(0, 50),
   });
@@ -1241,12 +1295,14 @@ app.post("/api/admin/import", async (c) => {
       { error: "导入数据校验失败", errors: validation.errors },
       422,
     );
-  const normalizedRows = validation.rows;
-  if (type === "teachers")
+  const normalizedRows = validation.rows.filter((row) => row.exists !== true);
+  if (normalizedRows.length === 0) {
+    // Every valid row already exists; a no-op import is still successful.
+  } else if (type === "teachers")
     await c.env.DB.batch(
       normalizedRows.map((x) =>
         c.env.DB.prepare(
-          `INSERT INTO teachers(name,department,title,bio) VALUES(?,?,?,?) ON CONFLICT(name,department) DO UPDATE SET title=excluded.title,bio=excluded.bio`,
+          `INSERT OR IGNORE INTO teachers(name,department,title,bio) VALUES(?,?,?,?)`,
         ).bind(
           clean(x.name, 120),
           clean(x.department, 80),
@@ -1282,7 +1338,7 @@ app.post("/api/admin/import", async (c) => {
         .first<{ id: number }>();
       if (!course || !teacher) continue;
       await c.env.DB.prepare(
-        `INSERT INTO offerings(course_id,term,section,campus,schedule,status) VALUES(?,?,?,?,?,?) ON CONFLICT(course_id,term,section) DO UPDATE SET campus=excluded.campus,schedule=excluded.schedule,status=excluded.status`,
+        `INSERT OR IGNORE INTO offerings(course_id,term,section,campus,schedule,status) VALUES(?,?,?,?,?,?)`,
       )
         .bind(course.id, x.term, x.section, x.campus, x.schedule, x.status)
         .run();
@@ -1301,7 +1357,7 @@ app.post("/api/admin/import", async (c) => {
     await c.env.DB.batch(
       normalizedRows.map((x) =>
         c.env.DB.prepare(
-          `INSERT INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?) ON CONFLICT(code,name) DO UPDATE SET category=excluded.category,department=excluded.department,credits=excluded.credits,description=excluded.description`,
+          `INSERT OR IGNORE INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?)`,
         ).bind(
           clean(x.code, 40),
           clean(x.name, 120),
@@ -1312,7 +1368,11 @@ app.post("/api/admin/import", async (c) => {
         ),
       ),
     );
-  return c.json({ ok: true, count: rows.length });
+  return c.json({
+    ok: true,
+    count: normalizedRows.length,
+    skippedCount: rows.length - normalizedRows.length,
+  });
 });
 
 type LegacyApprovedRow = {
