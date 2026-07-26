@@ -20,7 +20,7 @@
     "hono": "4.12.32"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.18.5",
+    "@cloudflare/vitest-pool-workers": "0.18.8",
     "@types/node": "26.1.1",
     "typescript": "7.0.2",
     "vite": "8.1.4",
