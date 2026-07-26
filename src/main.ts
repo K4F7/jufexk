@@ -39,9 +39,10 @@ let courses: Course[] = [],
   pages = 1,
   csrf = "";
 $("#app").innerHTML =
-  `<header><a class="brand" href="#"><i>J</i><span id="brand">选课志</span></a><nav><button data-go="browse">课程</button><button data-go="faculty">教师</button><button data-go="submit">写评价</button><button data-go="admin">后台</button></nav></header><main>
-<section id="browse" class="page"><div class="hero"><p class="eyebrow">COURSE INDEX</p><h1>关于一门课，<br><em>上过的人最清楚。</em></h1><div class="search"><label>查找</label><input id="q" placeholder="课程、课号或教师"><select id="category"><option value="">所有课程</option><option value="major">专业课</option><option value="pe">体育课</option><option value="general">公共选修</option></select><input id="department" placeholder="院系"><button data-go="submit">投稿</button></div></div><div class="catalog-main"><div class="section-head"><h2>课程目录</h2><span id="count"></span></div><div id="courses" class="grid"></div><div id="pager"></div></div></section>
-<section id="faculty" class="page hidden"><div class="section-head"><h2>教师资料</h2></div><div id="teachers" class="grid"></div></section>
+  `<header><nav><button data-go="browse">课程</button><button data-go="faculty">教师</button><button data-go="submit">写评价</button><button data-go="admin">后台</button></nav></header><main>
+<section id="landing" class="page"><div class="landing"><h1 class="slogan-hero">关于一门课，<br>上过的人最清楚。</h1><form id="landing-search"><input id="landing-q" placeholder="课程、课号或教师" aria-label="查找课程、课号或教师"><button class="primary">查找</button></form><button class="enter-catalog" data-go="browse">进入课程目录 →</button></div></section>
+<section id="browse" class="page hidden"><div class="toolbar"><input id="q" placeholder="搜索课程、课号或教师"><select id="category"><option value="">所有课程</option><option value="major">专业课</option><option value="pe">体育课</option><option value="general">公共选修</option></select><input id="department" placeholder="院系"><button class="primary" data-go="submit">写评价</button></div><div class="section-head"><h2>课程目录</h2><span id="count"></span></div><div class="table-scroll"><table class="list"><thead><tr><th>课号</th><th>课程</th><th>类别</th><th>教师</th><th>院系</th><th class="num">评分</th><th class="num">评价</th></tr></thead><tbody id="courses"></tbody></table></div><div id="pager"></div></section>
+<section id="faculty" class="page hidden"><div class="section-head"><h2>教师资料</h2></div><div class="table-scroll"><table class="list"><thead><tr><th>姓名</th><th>职称</th><th>院系</th><th class="num">评分</th><th class="num">课程数</th></tr></thead><tbody id="teachers"></tbody></table></div></section>
 <section id="detail" class="page hidden"><button class="back" data-go="browse">← 返回</button><div id="course-detail"></div></section>
 <section id="teacher-detail" class="page hidden"><button class="back" data-go="faculty">← 返回</button><div id="teacher-profile"></div></section>
 <section id="submit" class="page hidden narrow"><h1>写评价</h1><p class="lede">评价必须绑定具体任课教师，投稿经审核后公开。</p><form id="review-form"><label>课程<select name="courseId" id="course-select" required></select></label><label>任课教师<select name="teacherId" id="teacher-select" required></select></label><div class="two"><label>学期<input name="term" required placeholder="2025 秋"></label><label>总体推荐度<select name="overall" required><option value="">请选择</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label></div><div id="dynamic-fields"></div><label>补充说明<textarea name="comment"></textarea></label><input class="trap" name="website"><div id="turnstile"></div><button class="primary">提交审核</button><p id="form-msg"></p></form></section>
@@ -66,6 +67,13 @@ document.addEventListener("click", (e) => {
   const t = (e.target as HTMLElement).closest<HTMLElement>("[data-go]");
   if (t) go(t.dataset.go!);
 });
+$("#landing-search").onsubmit = (e) => {
+  e.preventDefault();
+  $("#q").value = $<HTMLInputElement>("#landing-q").value;
+  page = 1;
+  go("browse");
+  load();
+};
 async function load() {
   const d = await api(
     `/api/courses?q=${encodeURIComponent($("#q").value)}&category=${$("#category").value}&department=${encodeURIComponent($("#department").value)}&teacherId=${$("#teacher-filter").value}&page=${page}`,
@@ -77,9 +85,9 @@ async function load() {
     courses
       .map(
         (c) =>
-          `<article class="card" data-course="${c.id}"><div><span class="pill ${esc(c.category)}">${esc(labels[c.category])}</span><span class="code">${esc(c.code)}</span></div><div><h3>${esc(c.name)}</h3><p>${esc(c.teachers || "教师待补充")} · ${esc(c.department)}</p></div><div class="metrics"><b>${c.rating ? esc(c.rating) + "/5" : "暂无评分"}</b><span>${esc(c.review_count)} 份评价</span></div></article>`,
+          `<tr data-course="${c.id}"><td class="code">${esc(c.code)}</td><td class="name">${esc(c.name)}</td><td><span class="pill ${esc(c.category)}">${esc(labels[c.category])}</span></td><td class="wrap">${esc(c.teachers || "待补充")}</td><td class="dim">${esc(c.department)}</td><td class="num">${c.rating ? esc(c.rating) : "—"}</td><td class="num">${esc(c.review_count)}</td></tr>`,
       )
-      .join("") || '<div class="empty">没有匹配课程</div>';
+      .join("") || '<tr><td colspan="7" class="empty">没有匹配课程</td></tr>';
   document
     .querySelectorAll<HTMLElement>("[data-course]")
     .forEach((x) => (x.onclick = () => detail(Number(x.dataset.course))));
@@ -126,7 +134,7 @@ async function loadTeachers() {
   $("#teachers").innerHTML = ts
     .map(
       (t: any) =>
-        `<article class="card" data-teacher="${t.id}"><div><span class="pill">教师</span></div><div><h3>${esc(t.name)}</h3><p>${esc(t.title)} · ${esc(t.department)}</p></div><div class="metrics"><b>${t.rating ? esc(t.rating) + "/5" : "暂无评分"}</b><span>${esc(t.course_count)} 门课</span></div></article>`,
+        `<tr data-teacher="${t.id}"><td class="name">${esc(t.name)}</td><td class="dim">${esc(t.title) || "—"}</td><td class="dim">${esc(t.department)}</td><td class="num">${t.rating ? esc(t.rating) : "—"}</td><td class="num">${esc(t.course_count)}</td></tr>`,
     )
     .join("");
   document
@@ -848,7 +856,7 @@ $("#offering-select").onchange = async () => {
 };
 (async () => {
   const c = await api("/api/config");
-  $("#brand").textContent = c.siteName;
+  document.title = c.siteName;
   $("#footer").textContent = `${c.siteName} · ${c.universityName}`;
   if (c.turnstileSiteKey) {
     const s = document.createElement("script");
