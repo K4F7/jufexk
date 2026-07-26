@@ -1,5 +1,5 @@
 import "./style.css";
-import { reviewFieldsMarkup } from "./templates";
+import { reviewFieldsMarkup, teacherCourseRowMarkup } from "./templates";
 type Course = {
   id: number;
   code: string;
@@ -164,7 +164,7 @@ async function teacherDetail(id: number) {
   const d = await api(`/api/teachers/${id}`),
     t = d.teacher;
   $("#teacher-profile").innerHTML =
-    `<div class="detail-hero"><h1>${esc(t.name)}</h1><p>${esc(t.title)} · ${esc(t.department)}</p><p>${esc(t.bio)}</p></div><div class="grid">${d.courses.map((c: any) => `<article class="card" data-course="${c.id}"><div></div><div><h3>${esc(c.name)}</h3><p>${esc(c.code)}</p></div><div class="metrics"><b>${c.rating ? esc(c.rating) + "/5" : "暂无评分"}</b></div></article>`).join("")}</div>${legacyReviewSection(d.legacyReviews, true)}`;
+    `<div class="detail-hero"><h1>${esc(t.name)}</h1><p>${esc(t.title)} · ${esc(t.department)}</p><p>${esc(t.bio)}</p></div><div class="table-scroll"><table class="list"><thead><tr><th>课号</th><th>课程</th><th class="num">评分</th><th class="num">评价数</th></tr></thead><tbody>${d.courses.map(teacherCourseRowMarkup).join("")}</tbody></table></div>${legacyReviewSection(d.legacyReviews, true)}`;
   document
     .querySelectorAll<HTMLElement>("[data-course]")
     .forEach((x) => (x.onclick = () => detail(Number(x.dataset.course))));

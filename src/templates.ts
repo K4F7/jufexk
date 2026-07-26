@@ -10,3 +10,28 @@ export function reviewFieldsMarkup(category: string): string {
   }
   return `<div class="two"><label>点名<input name="attendance"></label><label>给分<input name="grading"></label></div><label>是否捞人<input name="rescue"></label><label>课堂质量<textarea name="teaching"></textarea></label><div class="two">${score("clarity", "讲解清晰度")}${score("knowledge", "知识收获")}</div>`;
 }
+
+type TeacherCourseRow = {
+  id: number;
+  code: string;
+  name: string;
+  rating: number | null;
+  review_count: number;
+};
+
+const escapeHtml = (value: unknown) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character]!,
+  );
+
+export function teacherCourseRowMarkup(course: TeacherCourseRow): string {
+  return `<tr data-course="${course.id}"><td class="code">${escapeHtml(course.code)}</td><td class="name">${escapeHtml(course.name)}</td><td class="num">${course.rating ? escapeHtml(course.rating) : "—"}</td><td class="num">${escapeHtml(course.review_count)}</td></tr>`;
+}
