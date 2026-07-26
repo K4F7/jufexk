@@ -45,7 +45,8 @@ $("#app").innerHTML =
 <section id="faculty" class="page hidden"><div class="section-head"><h2>教师资料</h2></div><div class="table-scroll"><table class="list"><thead><tr><th>姓名</th><th>职称</th><th>院系</th><th class="num">评分</th><th class="num">课程数</th></tr></thead><tbody id="teachers"></tbody></table></div></section>
 <section id="detail" class="page hidden"><button class="back" data-go="browse">← 返回</button><div id="course-detail"></div></section>
 <section id="teacher-detail" class="page hidden"><button class="back" data-go="faculty">← 返回</button><div id="teacher-profile"></div></section>
-<section id="submit" class="page hidden narrow"><h1>写评价</h1><p class="lede">评价必须绑定具体任课教师，投稿经审核后公开。</p><form id="review-form"><label>课程<select name="courseId" id="course-select" required></select></label><label>任课教师<select name="teacherId" id="teacher-select" required></select></label><div class="two"><label>学期<input name="term" required placeholder="2025 秋"></label><label>总体推荐度<select name="overall" required><option value="">请选择</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label></div><div id="dynamic-fields"></div><label>补充说明<textarea name="comment"></textarea></label><input class="trap" name="website"><div id="turnstile"></div><button class="primary">提交审核</button><p id="form-msg"></p></form></section>
+<section id="submit" class="page hidden narrow"><h1>写评价</h1><p class="lede">评价必须绑定具体任课教师，投稿经审核后公开。只有课程、任课教师和总体推荐度是必填。</p><ol id="wizard-progress" class="wizard-progress"><li data-step="1">评价对象</li><li data-step="2">总体评价</li><li data-step="3">课堂与考核</li><li data-step="4">确认提交</li></ol><form id="review-form"><fieldset class="step" data-step="1"><label>课程<select name="courseId" id="course-select" required></select></label><label>开课班（选填）<select id="offering-select"><option value="">不指定</option></select></label><label>任课教师<select name="teacherId" id="teacher-select" required></select></label><p class="form-note">找不到你的课程或教师？<button type="button" class="link" data-go="catalog-request">提交补充申请</button></p></fieldset><fieldset class="step hidden" data-step="2"><label>总体推荐度<select name="overall" required><option value="">请选择</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label><div id="dynamic-fields"></div></fieldset><fieldset class="step hidden" data-step="3"><label>学期（选填）<input name="term" placeholder="2025 秋"></label><label>补充说明（选填）<textarea name="comment"></textarea></label></fieldset><fieldset class="step hidden" data-step="4"><p class="form-note">投稿匿名提交，经管理员审核后公开；请确认内容真实、不含人身攻击。</p><input class="trap" name="website"><div id="turnstile"></div></fieldset><div class="wizard-nav"><button type="button" id="wizard-prev" class="ghost">上一页</button><button type="button" id="wizard-next" class="primary">下一页</button><button type="submit" id="wizard-submit" class="primary hidden">提交审核</button></div><p id="form-msg"></p></form></section>
+<section id="catalog-request" class="page hidden narrow"><button class="back" data-go="submit">← 返回</button><h1>补充课程或教师</h1><p class="lede">提交后进入管理员审核队列，通过后才会出现在课程目录中。</p><form id="catalog-request-form"><label>申请类型<select name="kind" id="request-kind"><option value="course">补充课程（可同时补充教师）</option><option value="teacher">仅补充教师</option></select></label><div class="two"><label>课号<input name="courseCode" placeholder="选填"></label><label>课程名称<input name="courseName"></label></div><div class="two"><label>课程类别<select name="category"><option value="">未确定</option><option value="major">专业课</option><option value="pe">体育课</option><option value="general">公共选修</option></select></label><label>院系<input name="department"></label></div><label>教师姓名<input name="teacherName"></label><label>补充说明（选填）<textarea name="note" placeholder="例如你在哪个学期上过这门课"></textarea></label><input class="trap" name="website"><button class="primary">提交补充申请</button><p id="request-msg"></p></form></section>
 <section id="admin" class="page hidden"><h1>管理后台</h1><div id="login" class="narrow"><form id="login-form"><label>管理员口令<input type="password" name="password" required></label><button class="primary">登录</button></form></div><div id="dashboard" class="hidden"><div class="tabs"><button data-tab="reviews">评价</button><button data-tab="courses">课程</button><button data-tab="teachers">教师</button><button data-tab="import">导入</button><button data-tab="legacy">历史评价</button></div><div id="admin-content"></div></div></section></main><footer id="footer"></footer>`;
 async function api(path: string, o: RequestInit = {}) {
   const h = new Headers(o.headers);
@@ -244,6 +245,7 @@ $("#review-form").onsubmit = async (e) => {
     $("#form-msg").textContent = d.message;
     f.reset();
     fields();
+    goToStep(1);
     (window as any).turnstile?.reset?.();
   } catch (x) {
     $("#form-msg").textContent = (x as Error).message;
@@ -811,37 +813,39 @@ $("#teacher-filter").onchange = () => {
   page = 1;
   load();
 };
-$("#teacher-select")
-  .closest("label")
-  .insertAdjacentHTML(
-    "beforebegin",
-    '<label>开课班<select name="offeringId" id="offering-select" required><option value="">请先选择课程</option></select></label>',
-  );
 $("#course-select").onchange = async () => {
   const id = Number($("#course-select").value);
-  $("#teacher-select").innerHTML = '<option value="">请先选择开课班</option>';
   if (!id) {
-    $("#offering-select").innerHTML = '<option value="">请先选择课程</option>';
+    $("#offering-select").innerHTML = '<option value="">不指定</option>';
+    $("#teacher-select").innerHTML = '<option value="">请先选择课程</option>';
     fields();
     return;
   }
-  const os = await api(`/api/offerings?courseId=${id}`);
+  const [offerings, detail] = await Promise.all([
+    api(`/api/offerings?courseId=${id}`),
+    api(`/api/courses/${id}`),
+  ]);
   $("#offering-select").innerHTML =
-    '<option value="">请选择学期与班次</option>' +
-    os
+    '<option value="">不指定</option>' +
+    offerings
       .map(
         (o: any) =>
           `<option value="${o.id}">${esc(o.term || "学期未标注")} · ${esc(o.section || "默认班")} ${o.campus ? "· " + esc(o.campus) : ""}</option>`,
+      )
+      .join("");
+  $("#teacher-select").innerHTML =
+    '<option value="">请选择任课教师</option>' +
+    detail.course.teachers
+      .map(
+        (t: Teacher) =>
+          `<option value="${t.id}">${esc(t.name)} · ${esc(t.department)}</option>`,
       )
       .join("");
   fields();
 };
 $("#offering-select").onchange = async () => {
   const id = Number($("#offering-select").value);
-  if (!id) {
-    $("#teacher-select").innerHTML = '<option value="">请先选择开课班</option>';
-    return;
-  }
+  if (!id) return;
   const d = await api(`/api/offerings/${id}`);
   $("#teacher-select").innerHTML =
     '<option value="">请选择任课教师</option>' +
@@ -854,10 +858,67 @@ $("#offering-select").onchange = async () => {
   const term = $<HTMLInputElement>("[name=term]");
   if (!term.value && d.offering.term) term.value = d.offering.term;
 };
+let wizardStep = 1;
+const wizardLastStep = 4;
+function renderWizard() {
+  document.querySelectorAll<HTMLElement>("#review-form .step").forEach((el) => {
+    el.classList.toggle("hidden", Number(el.dataset.step) !== wizardStep);
+  });
+  document
+    .querySelectorAll<HTMLElement>("#wizard-progress li")
+    .forEach((el) => {
+      const step = Number(el.dataset.step);
+      el.classList.toggle("active", step === wizardStep);
+      el.classList.toggle("done", step < wizardStep);
+    });
+  $("#wizard-prev").classList.toggle("hidden", wizardStep === 1);
+  $("#wizard-next").classList.toggle("hidden", wizardStep === wizardLastStep);
+  $("#wizard-submit").classList.toggle("hidden", wizardStep !== wizardLastStep);
+}
+function stepIsValid() {
+  const current = document.querySelector<HTMLElement>(
+    `#review-form .step[data-step="${wizardStep}"]`,
+  )!;
+  for (const field of current.querySelectorAll("[required]")) {
+    if (!(field as HTMLInputElement).reportValidity()) return false;
+  }
+  return true;
+}
+function goToStep(step: number) {
+  wizardStep = Math.min(wizardLastStep, Math.max(1, step));
+  renderWizard();
+  $("#form-msg").textContent = "";
+}
+$("#wizard-next").onclick = () => stepIsValid() && goToStep(wizardStep + 1);
+$("#wizard-prev").onclick = () => goToStep(wizardStep - 1);
+renderWizard();
+$("#request-kind").onchange = () => {
+  const courseOnly = $<HTMLSelectElement>("#request-kind").value === "course";
+  $<HTMLInputElement>("[name=courseName]").required = courseOnly;
+  $<HTMLInputElement>("[name=teacherName]").required = !courseOnly;
+};
+$("#request-kind").dispatchEvent(new Event("change"));
+$("#catalog-request-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget as HTMLFormElement;
+  try {
+    const body: any = Object.fromEntries(new FormData(form));
+    body.turnstileToken = (window as any).turnstile?.getResponse?.() || "";
+    const d = await api("/api/catalog-requests", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    $("#request-msg").textContent = d.message;
+    form.reset();
+  } catch (x) {
+    $("#request-msg").textContent = (x as Error).message;
+  }
+};
 (async () => {
   const c = await api("/api/config");
   document.title = c.siteName;
-  $("#footer").textContent = `${c.siteName} · ${c.universityName}`;
+  $("#footer").innerHTML =
+    `<span>${esc(c.siteName)} · ${esc(c.universityName)}</span><button class="link" data-go="catalog-request">找不到我的课程/教师</button>`;
   if (c.turnstileSiteKey) {
     const s = document.createElement("script");
     s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
