@@ -19,6 +19,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Vars }>();
 const clean = (v: unknown, n = 500) =>
   typeof v === "string" ? v.trim().slice(0, n) : "";
 const integer = (v: unknown) => {
+  if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isInteger(n) ? n : null;
 };
