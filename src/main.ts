@@ -1,4 +1,5 @@
 import "./style.css";
+import { reviewFieldsMarkup } from "./templates";
 type Course = {
   id: number;
   code: string;
@@ -205,21 +206,15 @@ async function detail(id: number) {
     );
   go("detail");
 }
-const score = (name: string, label: string, required = false) =>
-  `<label>${label}<select name="${name}" ${required ? "required" : ""}><option value="">未评价</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label>`;
 const adminScore = (name: string, label: string, value: unknown) =>
   `<label>${label}<select name="${name}"><option value="">未评价</option>${[5, 4, 3, 2, 1].map((x) => `<option value="${x}" ${Number(value) === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>`;
 function fields() {
   const c = courseOptions.find(
     (x) => x.id === Number($("#course-select").value),
   );
-  $("#dynamic-fields").innerHTML = !c
-    ? ""
-    : c.category === "pe"
-      ? `<div class="two"><label>点名<input name="attendance"></label><label>强度<input name="workload"></label></div><label>考核方式<textarea name="assessment"></textarea></label><div class="two"><label>给分说明<input name="grading"></label>${score("gradingScore", "给分评价")}</div>`
-      : c.category === "general"
-        ? `<p class="form-note">请评价这门公共选修课本身的体验。</p><div class="two">${score("interest", "内容吸引力", true)}${score("practicality", "实用与收获", true)}</div><div class="two">${score("workloadScore", "时间投入（5 为投入大）", true)}${score("fairness", "考核公平", true)}</div>${score("organization", "课堂组织", true)}<label>考核方式<textarea name="assessment"></textarea></label>`
-        : `<div class="two"><label>点名<input name="attendance"></label><label>给分<input name="grading"></label></div><label>是否捞人<input name="rescue"></label><label>课堂质量<textarea name="teaching"></textarea></label><div class="two">${score("clarity", "讲解清晰度")}${score("knowledge", "知识收获")}</div>`;
+  $("#dynamic-fields").innerHTML = c
+    ? reviewFieldsMarkup(c.category)
+    : "";
 }
 $("#course-select").onchange = async () => {
   const id = Number($("#course-select").value);
