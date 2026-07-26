@@ -101,7 +101,7 @@ async function load() {
     courses
       .map(
         (c) =>
-          `<tr data-course="${c.id}"><td class="code">${esc(c.code)}</td><td class="name">${esc(c.name)}</td><td><span class="pill ${esc(c.category)}">${esc(labels[c.category])}</span></td><td class="wrap">${esc(c.teachers || "待补充")}</td><td class="dim">${esc(c.department)}</td><td class="num">${c.rating ? esc(c.rating) : "—"}</td><td class="num">${esc(c.review_count)}</td></tr>`,
+          `<tr data-course="${c.id}"><td class="code">${esc(c.code)}</td><td class="name">${esc(c.name)}</td><td><span class="category-label">${esc(labels[c.category])}</span></td><td class="wrap">${esc(c.teachers || "待补充")}</td><td class="dim">${esc(c.department)}</td><td class="num">${c.rating ? esc(c.rating) : "—"}</td><td class="num">${esc(c.review_count)}</td></tr>`,
       )
       .join("") || '<tr><td colspan="7" class="empty">没有匹配课程</td></tr>';
   document
@@ -197,7 +197,7 @@ async function detail(id: number) {
   const d = await api(`/api/courses/${id}`),
     c = d.course;
   $("#course-detail").innerHTML =
-    `<div class="detail-hero"><span class="pill ${esc(c.category)}">${esc(labels[c.category])}</span><h1>${esc(c.name)}</h1><p>${esc(c.code)} · ${esc(c.department)} · ${c.teachers.map((t: Teacher) => `<button class="link" data-teacher="${t.id}">${esc(t.name)}</button>`).join(" ")}</p></div><h2>学生怎么说</h2><div class="reviews">${d.reviews.map((r: any) => `<article class="review"><div class="score">${esc(r.overall)}<small>/5</small></div><div><b>${esc(r.teacher_name || "未指定教师")} · ${esc(r.term)}</b><p>${esc(r.comment || r.teaching)}</p><dl>${reviewMetrics(r)}</dl></div></article>`).join("") || '<div class="empty">暂无评价</div>'}</div>${legacyReviewSection(d.legacyReviews)}`;
+    `<div class="detail-hero"><span class="category-label">${esc(labels[c.category])}</span><h1>${esc(c.name)}</h1><p>${esc(c.code)} · ${esc(c.department)} · ${c.teachers.map((t: Teacher) => `<button class="link" data-teacher="${t.id}">${esc(t.name)}</button>`).join(" ")}</p></div><h2>学生怎么说</h2><div class="reviews">${d.reviews.map((r: any) => `<article class="review"><div class="score">${esc(r.overall)}<small>/5</small></div><div><b>${esc(r.teacher_name || "未指定教师")} · ${esc(r.term)}</b><p>${esc(r.comment || r.teaching)}</p><dl>${reviewMetrics(r)}</dl></div></article>`).join("") || '<div class="empty">暂无评价</div>'}</div>${legacyReviewSection(d.legacyReviews)}`;
   document
     .querySelectorAll<HTMLElement>("[data-teacher]")
     .forEach(
@@ -808,7 +808,7 @@ async function catalogRequestsAdmin(status = "pending") {
           `<article class="queue"><b>${esc(r.kind === "course" ? "课程" : "教师")}申请 · ${esc(r.course_name || r.teacher_name)}</b><dl><div><dt>课号</dt><dd>${esc(r.course_code || "—")}</dd></div><div><dt>课程</dt><dd>${esc(r.course_name || "—")}</dd></div><div><dt>类别</dt><dd>${esc(labels[r.category] || "未确定")}</dd></div><div><dt>教师</dt><dd>${esc(r.teacher_name || "—")}</dd></div><div><dt>院系</dt><dd>${esc(r.department || "—")}</dd></div><div><dt>随附评价</dt><dd>${r.has_review ? "有" : "无"}</dd></div></dl>${r.note ? `<p>${esc(r.note)}</p>` : ""}<p class="form-note">${esc(r.created_at)}${r.moderator_note ? ` · ${esc(r.moderator_note)}` : ""}</p>${
             r.status === "pending"
               ? `<button data-approve-request="${r.id}">批准并建立目录对象</button><button class="danger" data-reject-request="${r.id}">驳回</button>`
-              : `<span class="pill">${esc(r.status === "approved" ? "已通过" : "已驳回")}</span>`
+              : `<span class="status-text">${esc(r.status === "approved" ? "已通过" : "已驳回")}</span>`
           }</article>`,
       )
       .join("") || '<div class="empty">没有补充申请</div>');
@@ -971,6 +971,15 @@ $("#request-kind").onchange = () => {
   const courseOnly = $<HTMLSelectElement>("#request-kind").value === "course";
   $<HTMLInputElement>("[name=courseName]").required = courseOnly;
   $<HTMLInputElement>("[name=teacherName]").required = !courseOnly;
+  $(".attached-review").classList.toggle("hidden", !courseOnly);
+  if (!courseOnly) {
+    for (const name of ["reviewOverall", "reviewTerm", "reviewComment"])
+      (
+        $<HTMLFormElement>("#catalog-request-form").elements.namedItem(
+          name,
+        ) as HTMLInputElement
+      ).value = "";
+  }
 };
 $("#request-kind").dispatchEvent(new Event("change"));
 $("#catalog-request-form").onsubmit = async (e) => {

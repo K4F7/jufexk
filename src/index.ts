@@ -156,7 +156,9 @@ app.get("/api/teachers/:id", async (c) => {
        FROM legacy_reviews lr JOIN courses c ON c.id=lr.course_id
        WHERE lr.teacher_id=? AND lr.status='approved'
        ORDER BY lr.created_at DESC,lr.id DESC LIMIT 100`,
-    ).bind(id).all()
+    )
+      .bind(id)
+      .all()
   ).results;
   return c.json({ teacher, courses, legacyReviews });
 });
@@ -202,7 +204,9 @@ app.get("/api/courses/:id", async (c) => {
        FROM legacy_reviews lr LEFT JOIN teachers t ON t.id=lr.teacher_id
        WHERE lr.course_id=? AND lr.status='approved'
        ORDER BY lr.created_at DESC,lr.id DESC LIMIT 100`,
-    ).bind(id).all()
+    )
+      .bind(id)
+      .all()
   ).results;
   return c.json({ course: { ...course, teachers }, reviews, legacyReviews });
 });
@@ -367,6 +371,8 @@ app.post("/api/catalog-requests", async (c) => {
   if (category && !["major", "pe", "general"].includes(category))
     return fail(c, "课程类别必须为 major、pe 或 general");
   const review = (b.review || null) as Record<string, unknown> | null;
+  if (kind === "teacher" && review)
+    return fail(c, "随附评价必须同时申请课程，以便绑定评价对象");
   const overall = review ? rating(review.overall) : null;
   if (review && !overall) return fail(c, "随附评价必须包含 1 到 5 的总体评分");
   if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))
@@ -592,92 +598,87 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       .run();
     return c.json({ ok: true });
   }
-  let teacherId: number | null = null;
-  if (request.teacher_name) {
-    const existing = await c.env.DB.prepare(
-      "SELECT id FROM teachers WHERE name=? AND department=?",
-    )
-      .bind(request.teacher_name, request.department)
-      .first<{ id: number }>();
-    teacherId =
-      existing?.id ??
-      Number(
-        (
-          await c.env.DB.prepare(
-            "INSERT INTO teachers(name,department) VALUES(?,?)",
-          )
-            .bind(request.teacher_name, request.department)
-            .run()
-        ).meta.last_row_id,
-      );
-  }
-  let courseId: number | null = null;
-  if (request.course_name) {
-    const existing = await c.env.DB.prepare(
-      "SELECT id FROM courses WHERE code=? AND name=?",
-    )
-      .bind(request.course_code, request.course_name)
-      .first<{ id: number }>();
-    courseId =
-      existing?.id ??
-      Number(
-        (
-          await c.env.DB.prepare(
-            "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
-          )
-            .bind(
-              request.course_code,
-              request.course_name,
-              request.category || "major",
-              request.department,
-            )
-            .run()
-        ).meta.last_row_id,
-      );
-    if (teacherId)
-      await c.env.DB.prepare(
-        "INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
-      )
-        .bind(courseId, teacherId)
-        .run();
-  }
-  let reviewId: number | null = null;
-  if (request.pending_review_json && courseId && teacherId) {
+  const statements: D1PreparedStatement[] = [];
+  if (request.teacher_name)
+    statements.push(
+      c.env.DB.prepare(
+        "INSERT OR IGNORE INTO teachers(name,department) VALUES(?,?)",
+      ).bind(request.teacher_name, request.department),
+    );
+  if (request.course_name)
+    statements.push(
+      c.env.DB.prepare(
+        "INSERT OR IGNORE INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+      ).bind(
+        request.course_code,
+        request.course_name,
+        request.category || "major",
+        request.department,
+      ),
+    );
+  if (request.course_name && request.teacher_name)
+    statements.push(
+      c.env.DB.prepare(
+        `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id)
+         SELECT c.id,t.id FROM courses c,teachers t
+         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
+      ).bind(
+        request.course_code,
+        request.course_name,
+        request.teacher_name,
+        request.department,
+      ),
+    );
+  if (request.pending_review_json) {
     const stashed = JSON.parse(request.pending_review_json) as {
       overall: number;
       comment: string;
       term: string;
     };
-    const category = (
-      await c.env.DB.prepare("SELECT category FROM courses WHERE id=?")
-        .bind(courseId)
-        .first<{ category: string }>()
-    )?.category;
-    reviewId = Number(
-      (
-        await c.env.DB.prepare(
-          `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,term,submitter_hash) VALUES(?,?,?,?,?,?,?)`,
-        )
-          .bind(
-            courseId,
-            teacherId,
-            category,
-            stashed.overall,
-            stashed.comment,
-            stashed.term,
-            request.submitter_hash,
-          )
-          .run()
-      ).meta.last_row_id,
+    statements.push(
+      c.env.DB.prepare(
+        `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,term,submitter_hash)
+         SELECT c.id,t.id,c.category,?,?,?,? FROM courses c,teachers t
+         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
+      ).bind(
+        stashed.overall,
+        stashed.comment,
+        stashed.term,
+        request.submitter_hash,
+        request.course_code,
+        request.course_name,
+        request.teacher_name,
+        request.department,
+      ),
     );
   }
-  await c.env.DB.prepare(
-    `UPDATE catalog_requests SET status='approved',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP,
-       created_course_id=?,created_teacher_id=?,created_review_id=? WHERE id=? AND status='pending'`,
+  statements.push(
+    c.env.DB.prepare(
+      `UPDATE catalog_requests SET status='approved',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP,
+         created_course_id=(SELECT id FROM courses WHERE code=? AND name=?),
+         created_teacher_id=(SELECT id FROM teachers WHERE name=? AND department=?),
+         created_review_id=${request.pending_review_json ? "last_insert_rowid()" : "NULL"}
+       WHERE id=? AND status='pending'`,
+    ).bind(
+      note,
+      request.course_code,
+      request.course_name,
+      request.teacher_name,
+      request.department,
+      id,
+    ),
+  );
+  await c.env.DB.batch(statements);
+  const approved = await c.env.DB.prepare(
+    "SELECT created_course_id courseId,created_teacher_id teacherId,created_review_id reviewId FROM catalog_requests WHERE id=?",
   )
-    .bind(note, courseId, teacherId, reviewId, id)
-    .run();
-  return c.json({ ok: true, courseId, teacherId, reviewId });
+    .bind(id)
+    .first<{
+      courseId: number | null;
+      teacherId: number | null;
+      reviewId: number | null;
+    }>();
+  return c.json({ ok: true, ...approved });
 });
 app.patch("/api/admin/reviews/:id", async (c) => {
   const b = await c.req.json<Record<string, unknown>>(),
@@ -767,7 +768,9 @@ app.get("/api/admin/legacy-reviews", async (c) => {
   const values = [status, status, batchId, batchId, q, q, q, q, q, q, q, q, q];
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id WHERE ${where}`,
-  ).bind(...values).first<{ n: number }>();
+  )
+    .bind(...values)
+    .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
     `SELECT lr.id,lr.import_batch_id,lr.source_file,lr.sheet_name,lr.source_row,lr.raw_ocr_text,
       lr.ocr_confidence,lr.inherited_from,lr.ocr_course_name,lr.course_id,lr.ocr_teacher_name,
@@ -776,8 +779,15 @@ app.get("/api/admin/legacy-reviews", async (c) => {
       c.name course_name,c.code,t.name teacher_name
      FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id
      WHERE ${where} ORDER BY lr.created_at DESC,lr.id DESC LIMIT ? OFFSET ?`,
-  ).bind(...values, size, (page - 1) * size).all();
-  return c.json({ items: results, total: total?.n || 0, page, pages: Math.max(1, Math.ceil((total?.n || 0) / size)) });
+  )
+    .bind(...values, size, (page - 1) * size)
+    .all();
+  return c.json({
+    items: results,
+    total: total?.n || 0,
+    page,
+    pages: Math.max(1, Math.ceil((total?.n || 0) / size)),
+  });
 });
 app.get("/api/admin/legacy-reviews/:id", async (c) => {
   const id = integer(c.req.param("id"));
@@ -785,7 +795,9 @@ app.get("/api/admin/legacy-reviews/:id", async (c) => {
     `SELECT lr.*,c.name course_name,c.code,t.name teacher_name,o.section offering_section
      FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id
      LEFT JOIN offerings o ON o.id=lr.offering_id WHERE lr.id=?`,
-  ).bind(id).first();
+  )
+    .bind(id)
+    .first();
   if (!review) return fail(c, "历史评价不存在", 404);
   return c.json(review);
 });
@@ -796,7 +808,11 @@ app.patch("/api/admin/legacy-reviews/:id", async (c) => {
     note = clean(body.note, 500);
   if (!["approved", "rejected"].includes(status)) return fail(c, "无效状态");
   if (status === "rejected" && !note) return fail(c, "驳回时必须填写理由");
-  const current = await c.env.DB.prepare("SELECT status FROM legacy_reviews WHERE id=?").bind(id).first<{ status: string }>();
+  const current = await c.env.DB.prepare(
+    "SELECT status FROM legacy_reviews WHERE id=?",
+  )
+    .bind(id)
+    .first<{ status: string }>();
   if (!current) return fail(c, "历史评价不存在", 404);
   if (current.status !== "pending") return fail(c, "历史评价已经审核", 409);
   const results = await c.env.DB.batch([
@@ -813,11 +829,17 @@ app.patch("/api/admin/legacy-reviews/:id", async (c) => {
 });
 app.get("/api/admin/legacy-reviews/:id/events", async (c) => {
   const id = integer(c.req.param("id"));
-  if (!(await c.env.DB.prepare("SELECT 1 FROM legacy_reviews WHERE id=?").bind(id).first()))
+  if (
+    !(await c.env.DB.prepare("SELECT 1 FROM legacy_reviews WHERE id=?")
+      .bind(id)
+      .first())
+  )
     return fail(c, "历史评价不存在", 404);
   const { results } = await c.env.DB.prepare(
     "SELECT id,action,note,created_at FROM legacy_review_moderation_events WHERE legacy_review_id=? ORDER BY created_at DESC,id DESC",
-  ).bind(id).all();
+  )
+    .bind(id)
+    .all();
   return c.json(results);
 });
 app.get("/api/admin/offerings", async (c) =>
@@ -1236,14 +1258,14 @@ app.post("/api/admin/import", async (c) => {
   else if (type === "relations") {
     for (let offset = 0; offset < normalizedRows.length; offset += 25) {
       const statements = normalizedRows.slice(offset, offset + 25).map((x) => {
-          const courseCode = clean(x.course_code, 40),
-            courseName = clean(x.course_name, 120),
-            teacherName = clean(x.teacher_name, 120),
-            teacherDepartment = clean(x.teacher_department, 80);
-          return c.env.DB.prepare(
-            `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) SELECT c.id,t.id FROM courses c,teachers t WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
-          ).bind(courseCode, courseName, teacherName, teacherDepartment);
-        });
+        const courseCode = clean(x.course_code, 40),
+          courseName = clean(x.course_name, 120),
+          teacherName = clean(x.teacher_name, 120),
+          teacherDepartment = clean(x.teacher_department, 80);
+        return c.env.DB.prepare(
+          `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) SELECT c.id,t.id FROM courses c,teachers t WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
+        ).bind(courseCode, courseName, teacherName, teacherDepartment);
+      });
       await c.env.DB.batch(statements);
     }
   } else if (type === "offerings") {
@@ -1324,21 +1346,34 @@ async function validateLegacyApproved(
     const rowNumber = offset + 2;
     const courseId = integer(raw.course_id),
       teacherId = integer(raw.teacher_id),
-      offeringId = raw.offering_id === "" || raw.offering_id == null
-        ? null
-        : integer(raw.offering_id),
+      offeringId =
+        raw.offering_id === "" || raw.offering_id == null
+          ? null
+          : integer(raw.offering_id),
       category = clean(raw.category, 20),
       comment = clean(raw.comment, 5000),
       sourceFile = clean(raw.source_file, 240),
       sourceRow = clean(raw.source_row, 80),
       rawText = clean(raw.raw_ocr_text, 10000),
       confidence = Number(raw.ocr_confidence);
-    if (typeof raw.comment !== "string" || raw.comment.length > 5000) add(rowNumber, "comment", "文字评价超过 5000 字限制");
-    if (typeof raw.raw_ocr_text !== "string" || raw.raw_ocr_text.length > 10000) add(rowNumber, "raw_ocr_text", "原始 OCR 文本超过 10000 字限制");
-    if (typeof raw.ocr_tokens_json !== "string" || raw.ocr_tokens_json.length > 100000) add(rowNumber, "ocr_tokens_json", "OCR token JSON 超过 100000 字限制");
-    if (!courseId || courseId < 1) add(rowNumber, "course_id", "必须填写现有课程 ID");
-    if (!teacherId || teacherId < 1) add(rowNumber, "teacher_id", "必须填写现有教师 ID");
-    if (raw.offering_id !== "" && raw.offering_id != null && (!offeringId || offeringId < 1))
+    if (typeof raw.comment !== "string" || raw.comment.length > 5000)
+      add(rowNumber, "comment", "文字评价超过 5000 字限制");
+    if (typeof raw.raw_ocr_text !== "string" || raw.raw_ocr_text.length > 10000)
+      add(rowNumber, "raw_ocr_text", "原始 OCR 文本超过 10000 字限制");
+    if (
+      typeof raw.ocr_tokens_json !== "string" ||
+      raw.ocr_tokens_json.length > 100000
+    )
+      add(rowNumber, "ocr_tokens_json", "OCR token JSON 超过 100000 字限制");
+    if (!courseId || courseId < 1)
+      add(rowNumber, "course_id", "必须填写现有课程 ID");
+    if (!teacherId || teacherId < 1)
+      add(rowNumber, "teacher_id", "必须填写现有教师 ID");
+    if (
+      raw.offering_id !== "" &&
+      raw.offering_id != null &&
+      (!offeringId || offeringId < 1)
+    )
       add(rowNumber, "offering_id", "开课班 ID 无效");
     if (!(["major", "pe", "general"] as string[]).includes(category))
       add(rowNumber, "category", "类别必须为 major、pe 或 general");
@@ -1348,9 +1383,15 @@ async function validateLegacyApproved(
     if (!rawText) add(rowNumber, "raw_ocr_text", "必须保留原始 OCR 文本");
     if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)
       add(rowNumber, "ocr_confidence", "OCR 置信度必须在 0 到 1 之间");
-    if (raw.source_type !== "legacy_ocr") add(rowNumber, "source_type", "来源类型必须为 legacy_ocr");
-    if (raw.source_label !== "腾讯表格历史资料") add(rowNumber, "source_label", "来源标签不正确");
-    if (Object.hasOwn(raw, "overall") && raw.overall !== "" && raw.overall != null)
+    if (raw.source_type !== "legacy_ocr")
+      add(rowNumber, "source_type", "来源类型必须为 legacy_ocr");
+    if (raw.source_label !== "腾讯表格历史资料")
+      add(rowNumber, "source_label", "来源标签不正确");
+    if (
+      Object.hasOwn(raw, "overall") &&
+      raw.overall !== "" &&
+      raw.overall != null
+    )
       add(rowNumber, "overall", "历史文字评价禁止填写或推算 overall");
     try {
       const parsed = JSON.parse(clean(raw.ocr_tokens_json, 100000) || "[]");
@@ -1380,27 +1421,65 @@ async function validateLegacyApproved(
   if (errors.length) return { rows, errors };
   const courseIds = [...new Set(rows.map((row) => row.course_id))],
     teacherIds = [...new Set(rows.map((row) => row.teacher_id))],
-    pairKeys = [...new Set(rows.map((row) => `${row.course_id}:${row.teacher_id}`))],
-    offeringIds = [...new Set(rows.flatMap((row) => row.offering_id ? [row.offering_id] : []))];
-  const courses = await db.prepare("SELECT id,category FROM courses WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))").bind(JSON.stringify(courseIds)).all<{ id: number; category: string }>();
-  const teachers = await db.prepare("SELECT id FROM teachers WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))").bind(JSON.stringify(teacherIds)).all<{ id: number }>();
-  const pairs = await db.prepare("SELECT course_id||':'||teacher_id key FROM course_teachers WHERE course_id||':'||teacher_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(pairKeys)).all<{ key: string }>();
+    pairKeys = [
+      ...new Set(rows.map((row) => `${row.course_id}:${row.teacher_id}`)),
+    ],
+    offeringIds = [
+      ...new Set(
+        rows.flatMap((row) => (row.offering_id ? [row.offering_id] : [])),
+      ),
+    ];
+  const courses = await db
+    .prepare(
+      "SELECT id,category FROM courses WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))",
+    )
+    .bind(JSON.stringify(courseIds))
+    .all<{ id: number; category: string }>();
+  const teachers = await db
+    .prepare(
+      "SELECT id FROM teachers WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))",
+    )
+    .bind(JSON.stringify(teacherIds))
+    .all<{ id: number }>();
+  const pairs = await db
+    .prepare(
+      "SELECT course_id||':'||teacher_id key FROM course_teachers WHERE course_id||':'||teacher_id IN (SELECT value FROM json_each(?))",
+    )
+    .bind(JSON.stringify(pairKeys))
+    .all<{ key: string }>();
   const offeringKeys = offeringIds.length
-    ? await db.prepare("SELECT o.id||':'||o.course_id||':'||ot.teacher_id key FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id WHERE o.id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))").bind(JSON.stringify(offeringIds)).all<{ key: string }>()
+    ? await db
+        .prepare(
+          "SELECT o.id||':'||o.course_id||':'||ot.teacher_id key FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id WHERE o.id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))",
+        )
+        .bind(JSON.stringify(offeringIds))
+        .all<{ key: string }>()
     : { results: [] as Array<{ key: string }> };
-  const knownCourses = new Map(courses.results.map((row) => [row.id, row.category])),
+  const knownCourses = new Map(
+      courses.results.map((row) => [row.id, row.category]),
+    ),
     knownTeachers = new Set(teachers.results.map((row) => row.id)),
     knownPairs = new Set(pairs.results.map((row) => row.key)),
     knownOfferings = new Set(offeringKeys.results.map((row) => row.key));
   rows.forEach((row, offset) => {
     const rowNumber = offset + 2;
-    if (!knownCourses.has(row.course_id)) add(rowNumber, "course_id", "课程不存在");
-    else if (knownCourses.get(row.course_id) !== row.category) add(rowNumber, "category", "类别与现有课程不一致");
-    if (!knownTeachers.has(row.teacher_id)) add(rowNumber, "teacher_id", "教师不存在");
-    if (!knownPairs.has(`${row.course_id}:${row.teacher_id}`)) add(rowNumber, "teacher_id", "教师不在课程已有任课关系中");
-    if (row.offering_id && !knownOfferings.has(`${row.offering_id}:${row.course_id}:${row.teacher_id}`))
+    if (!knownCourses.has(row.course_id))
+      add(rowNumber, "course_id", "课程不存在");
+    else if (knownCourses.get(row.course_id) !== row.category)
+      add(rowNumber, "category", "类别与现有课程不一致");
+    if (!knownTeachers.has(row.teacher_id))
+      add(rowNumber, "teacher_id", "教师不存在");
+    if (!knownPairs.has(`${row.course_id}:${row.teacher_id}`))
+      add(rowNumber, "teacher_id", "教师不在课程已有任课关系中");
+    if (
+      row.offering_id &&
+      !knownOfferings.has(
+        `${row.offering_id}:${row.course_id}:${row.teacher_id}`,
+      )
+    )
       add(rowNumber, "offering_id", "开课班与课程、教师不一致");
-    if (row.offering_id && !row.term) add(rowNumber, "term", "指定开课班时必须填写明确学期");
+    if (row.offering_id && !row.term)
+      add(rowNumber, "term", "指定开课班时必须填写明确学期");
   });
   return { rows, errors };
 }
@@ -1408,11 +1487,18 @@ async function validateLegacyApproved(
 app.get("/api/admin/legacy-imports", async (c) => {
   const { page, size } = pageArgs(c),
     status = clean(c.req.query("status"), 20);
-  if (status && !["preview", "approved", "imported", "rolled_back", "failed"].includes(status))
+  if (
+    status &&
+    !["preview", "approved", "imported", "rolled_back", "failed"].includes(
+      status,
+    )
+  )
     return fail(c, "批次状态无效");
   const total = await c.env.DB.prepare(
     "SELECT COUNT(*) n FROM legacy_import_batches WHERE (?='' OR status=?)",
-  ).bind(status, status).first<{ n: number }>();
+  )
+    .bind(status, status)
+    .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
     `SELECT b.id,b.source_type,b.source_label,b.status,b.row_count,b.created_at,b.imported_at,b.rolled_back_at,
       (SELECT COUNT(*) FROM legacy_reviews r WHERE r.import_batch_id=b.id AND r.status='pending') pending_count,
@@ -1420,56 +1506,124 @@ app.get("/api/admin/legacy-imports", async (c) => {
       (SELECT COUNT(*) FROM legacy_reviews r WHERE r.import_batch_id=b.id AND r.status='rejected') rejected_count
      FROM legacy_import_batches b WHERE (?='' OR b.status=?)
      ORDER BY b.created_at DESC,b.id DESC LIMIT ? OFFSET ?`,
-  ).bind(status, status, size, (page - 1) * size).all();
-  return c.json({ items: results, total: total?.n || 0, page, pages: Math.max(1, Math.ceil((total?.n || 0) / size)) });
+  )
+    .bind(status, status, size, (page - 1) * size)
+    .all();
+  return c.json({
+    items: results,
+    total: total?.n || 0,
+    page,
+    pages: Math.max(1, Math.ceil((total?.n || 0) / size)),
+  });
 });
 
 app.post("/api/admin/legacy-imports/preview", async (c) => {
-  if (Number(c.req.header("Content-Length") || 0) > 2_000_000) return fail(c, "批准数据过大", 413);
+  if (Number(c.req.header("Content-Length") || 0) > 2_000_000)
+    return fail(c, "批准数据过大", 413);
   const body = await c.req.json<{ rows?: Record<string, unknown>[] }>();
   const input = Array.isArray(body.rows) ? body.rows : [];
-  if (!input.length || input.length > 40) return fail(c, "每批必须包含 1–40 条记录");
+  if (!input.length || input.length > 40)
+    return fail(c, "每批必须包含 1–40 条记录");
   const validation = await validateLegacyApproved(c.env.DB, input);
-  return c.json({ ok: validation.errors.length === 0, total: input.length, errors: validation.errors });
+  return c.json({
+    ok: validation.errors.length === 0,
+    total: input.length,
+    errors: validation.errors,
+  });
 });
 
 app.post("/api/admin/legacy-imports", async (c) => {
-  if (Number(c.req.header("Content-Length") || 0) > 2_000_000) return fail(c, "批准数据过大", 413);
-  const body = await c.req.json<{ rows?: Record<string, unknown>[]; manifest?: Record<string, unknown>; idempotencyKey?: string }>();
+  if (Number(c.req.header("Content-Length") || 0) > 2_000_000)
+    return fail(c, "批准数据过大", 413);
+  const body = await c.req.json<{
+    rows?: Record<string, unknown>[];
+    manifest?: Record<string, unknown>;
+    idempotencyKey?: string;
+  }>();
   const input = Array.isArray(body.rows) ? body.rows : [];
-  if (!input.length || input.length > 40) return fail(c, "每批必须包含 1–40 条记录");
+  if (!input.length || input.length > 40)
+    return fail(c, "每批必须包含 1–40 条记录");
   const idempotencyKey = clean(body.idempotencyKey, 64);
-  if (!/^[a-f0-9]{32,64}$/.test(idempotencyKey)) return fail(c, "缺少有效的幂等键");
+  if (!/^[a-f0-9]{32,64}$/.test(idempotencyKey))
+    return fail(c, "缺少有效的幂等键");
   const validation = await validateLegacyApproved(c.env.DB, input);
-  if (validation.errors.length) return c.json({ error: "批准数据校验失败", errors: validation.errors }, 422);
+  if (validation.errors.length)
+    return c.json(
+      { error: "批准数据校验失败", errors: validation.errors },
+      422,
+    );
   const batchId = `legacy_${idempotencyKey}`;
-  if (await c.env.DB.prepare("SELECT 1 FROM legacy_import_batches WHERE id=?").bind(batchId).first())
+  if (
+    await c.env.DB.prepare("SELECT 1 FROM legacy_import_batches WHERE id=?")
+      .bind(batchId)
+      .first()
+  )
     return fail(c, "该批准批次已经导入", 409);
   const statements = [
-    c.env.DB.prepare("INSERT INTO legacy_import_batches(id,source_type,source_label,manifest_json,status,row_count,imported_at) VALUES(?,'legacy_ocr','腾讯表格历史资料',?,'imported',?,CURRENT_TIMESTAMP)").bind(batchId, JSON.stringify(body.manifest || {}), validation.rows.length),
-    ...validation.rows.map((row) => c.env.DB.prepare(
-      `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,ocr_tokens_json,inherited_from,ocr_course_name,course_id,ocr_teacher_name,teacher_id,offering_id,category,comment,term,source_type,source_label,status,duplicate_group)
+    c.env.DB.prepare(
+      "INSERT INTO legacy_import_batches(id,source_type,source_label,manifest_json,status,row_count,imported_at) VALUES(?,'legacy_ocr','腾讯表格历史资料',?,'imported',?,CURRENT_TIMESTAMP)",
+    ).bind(
+      batchId,
+      JSON.stringify(body.manifest || {}),
+      validation.rows.length,
+    ),
+    ...validation.rows.map((row) =>
+      c.env.DB.prepare(
+        `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,ocr_tokens_json,inherited_from,ocr_course_name,course_id,ocr_teacher_name,teacher_id,offering_id,category,comment,term,source_type,source_label,status,duplicate_group)
        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'legacy_ocr','腾讯表格历史资料','pending',?)`,
-    ).bind(batchId, row.source_file, row.sheet_name, row.source_row, row.raw_ocr_text, row.ocr_confidence, row.ocr_tokens_json, row.inherited_from, row.ocr_course_name, row.course_id, row.ocr_teacher_name, row.teacher_id, row.offering_id, row.category, row.comment, row.term, row.duplicate_group)),
+      ).bind(
+        batchId,
+        row.source_file,
+        row.sheet_name,
+        row.source_row,
+        row.raw_ocr_text,
+        row.ocr_confidence,
+        row.ocr_tokens_json,
+        row.inherited_from,
+        row.ocr_course_name,
+        row.course_id,
+        row.ocr_teacher_name,
+        row.teacher_id,
+        row.offering_id,
+        row.category,
+        row.comment,
+        row.term,
+        row.duplicate_group,
+      ),
+    ),
   ];
   await c.env.DB.batch(statements);
-  return c.json({ ok: true, batchId, count: validation.rows.length, batchStatus: "imported", reviewStatus: "pending" });
+  return c.json({
+    ok: true,
+    batchId,
+    count: validation.rows.length,
+    batchStatus: "imported",
+    reviewStatus: "pending",
+  });
 });
 
 app.post("/api/admin/legacy-imports/:id/rollback", async (c) => {
   const batchId = clean(c.req.param("id"), 80);
-  const batch = await c.env.DB.prepare("SELECT status FROM legacy_import_batches WHERE id=?").bind(batchId).first<{ status: string }>();
+  const batch = await c.env.DB.prepare(
+    "SELECT status FROM legacy_import_batches WHERE id=?",
+  )
+    .bind(batchId)
+    .first<{ status: string }>();
   if (!batch) return fail(c, "导入批次不存在", 404);
-  if (batch.status !== "imported") return fail(c, "只有 imported 批次可以回滚", 409);
+  if (batch.status !== "imported")
+    return fail(c, "只有 imported 批次可以回滚", 409);
   const results = await c.env.DB.batch([
     c.env.DB.prepare(
       `UPDATE legacy_import_batches SET status='rolled_back',rolled_back_at=CURRENT_TIMESTAMP
        WHERE id=? AND status='imported'
        AND NOT EXISTS(SELECT 1 FROM legacy_reviews WHERE import_batch_id=? AND status<>'pending')`,
     ).bind(batchId, batchId),
-    c.env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=? AND EXISTS(SELECT 1 FROM legacy_import_batches WHERE id=? AND status='rolled_back')").bind(batchId, batchId),
+    c.env.DB.prepare(
+      "DELETE FROM legacy_reviews WHERE import_batch_id=? AND EXISTS(SELECT 1 FROM legacy_import_batches WHERE id=? AND status='rolled_back')",
+    ).bind(batchId, batchId),
   ]);
-  if (!(results[0].meta.changes || 0)) return fail(c, "批次包含已审核记录，或状态已经变化", 409);
+  if (!(results[0].meta.changes || 0))
+    return fail(c, "批次包含已审核记录，或状态已经变化", 409);
   return c.json({ ok: true, batchId, status: "rolled_back" });
 });
 

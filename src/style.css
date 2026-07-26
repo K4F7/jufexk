@@ -242,23 +242,12 @@ td.num {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-.pill {
-  display: inline-block;
-  border: 1px solid currentColor;
-  border-radius: 2px;
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 700;
+.category-label,
+.status-text {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
-}
-.pill.major {
-  color: #1c6547;
-}
-.pill.pe {
-  color: #8a550a;
-}
-.pill.general {
-  color: #64428b;
 }
 .narrow {
   max-width: 720px;

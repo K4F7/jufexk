@@ -66,6 +66,16 @@ describe("catalog addition requests", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects an attached review when only a teacher is requested", async () => {
+    const response = await publicPost("/api/catalog-requests", {
+      kind: "teacher",
+      teacherName: "缺少课程的评价教师",
+      department: "测试学院",
+      review: { overall: 5, comment: "无法绑定课程" },
+    });
+    expect(response.status).toBe(400);
+  });
+
   it("lists pending requests for the admin", async () => {
     await publicPost("/api/catalog-requests", {
       kind: "teacher",
@@ -78,8 +88,12 @@ describe("catalog addition requests", () => {
       { headers },
     );
     expect(response.status).toBe(200);
-    const body = await response.json<{ items: Array<{ teacher_name: string }> }>();
-    expect(body.items.some((row) => row.teacher_name === "待审教师")).toBe(true);
+    const body = await response.json<{
+      items: Array<{ teacher_name: string }>;
+    }>();
+    expect(body.items.some((row) => row.teacher_name === "待审教师")).toBe(
+      true,
+    );
   });
 
   it("requires an admin session to list requests", async () => {
@@ -151,9 +165,7 @@ describe("catalog addition requests", () => {
 
     const catalog = await SELF.fetch(`${origin}/api/courses?q=被驳回的课程`);
     expect((await catalog.json<{ total: number }>()).total).toBe(0);
-    const teacher = await env.DB.prepare(
-      "SELECT id FROM teachers WHERE name=?",
-    )
+    const teacher = await env.DB.prepare("SELECT id FROM teachers WHERE name=?")
       .bind("被驳回的教师")
       .first();
     expect(teacher).toBe(null);
