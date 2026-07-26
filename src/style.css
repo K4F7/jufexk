@@ -60,14 +60,6 @@ header {
   top: 0;
   z-index: 5;
 }
-.slogan {
-  color: inherit;
-  text-decoration: none;
-  font: italic 16px var(--serif);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 nav {
   align-self: stretch;
   display: flex;
@@ -358,43 +350,6 @@ textarea {
 .review p {
   margin: 6px 0;
 }
-.grid {
-  display: grid;
-}
-.card {
-  display: grid;
-  grid-template-columns: 1fr 90px;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid var(--line);
-  padding: 10px 4px;
-  cursor: pointer;
-}
-.card:hover {
-  background: var(--acid);
-}
-.card h3 {
-  font: 600 15px/1.4 var(--sans);
-  margin: 0;
-}
-.card p {
-  color: var(--muted);
-  margin: 2px 0 0;
-  font-size: 13px;
-}
-.metrics {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-.metrics b {
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-.metrics span {
-  color: var(--muted);
-  font-size: 12px;
-}
 .legacy-section {
   border-top: 1px solid var(--line);
   padding-top: 20px;
@@ -623,9 +578,6 @@ footer {
 @media (max-width: 820px) {
   header {
     padding: 6px 12px;
-  }
-  .slogan {
-    font-size: 14px;
   }
   nav button {
     padding: 6px 8px;
