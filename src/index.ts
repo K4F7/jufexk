@@ -371,8 +371,8 @@ app.post("/api/catalog-requests", async (c) => {
   if (category && !["major", "pe", "general"].includes(category))
     return fail(c, "课程类别必须为 major、pe 或 general");
   const review = (b.review || null) as Record<string, unknown> | null;
-  if (kind === "teacher" && review)
-    return fail(c, "随附评价必须同时申请课程，以便绑定评价对象");
+  if (review && (!courseName || !teacherName))
+    return fail(c, "随附评价必须同时填写课程和教师，以便绑定任课关系");
   const overall = review ? rating(review.overall) : null;
   if (review && !overall) return fail(c, "随附评价必须包含 1 到 5 的总体评分");
   if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))

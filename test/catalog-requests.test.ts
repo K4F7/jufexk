@@ -76,6 +76,18 @@ describe("catalog addition requests", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects an attached review when the course request has no teacher", async () => {
+    const response = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-NO-TEACHER",
+      courseName: "缺少教师的评价课程",
+      category: "major",
+      department: "测试学院",
+      review: { overall: 5, comment: "无法绑定任课关系" },
+    });
+    expect(response.status).toBe(400);
+  });
+
   it("lists pending requests for the admin", async () => {
     await publicPost("/api/catalog-requests", {
       kind: "teacher",
