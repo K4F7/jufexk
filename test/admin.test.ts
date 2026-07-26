@@ -251,8 +251,8 @@ describe("admin sessions and catalog", () => {
       ocr_confidence: 0.98,
       ocr_tokens_json: "[]",
       inherited_from: "",
-      ocr_course_name: "程序设计基础",
-      ocr_teacher_name: "林老师",
+      ocr_course_name: "测试课程",
+      ocr_teacher_name: "测试教师",
       duplicate_group: "",
     };
     const preview = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
@@ -331,7 +331,7 @@ describe("admin sessions and catalog", () => {
       source_label: "腾讯表格历史资料", source_file: "主要课程_001.png",
       sheet_name: "主要课程", source_row: "T1R2C4", raw_ocr_text: "原始 OCR 文字",
       ocr_confidence: 0.98, ocr_tokens_json: "[]", inherited_from: "",
-      ocr_course_name: "程序设计基础", ocr_teacher_name: "林老师", duplicate_group: "",
+      ocr_course_name: "测试课程", ocr_teacher_name: "测试教师", duplicate_group: "",
     };
     const beforeCatalog = await (await SELF.fetch(`${origin}/api/courses`)).json<{ items: Array<{ id: number; review_count: number; rating: number }> }>();
     const beforeCourse = beforeCatalog.items.find((item) => item.id === 1)!;
@@ -356,7 +356,7 @@ describe("admin sessions and catalog", () => {
     expect(JSON.stringify(detail.legacyReviews)).not.toContain("moderator_note");
     expect(JSON.stringify(detail.legacyReviews)).not.toContain("overall");
     const teacherDetail = await (await SELF.fetch(`${origin}/api/teachers/1`)).json<{ legacyReviews: Array<Record<string, unknown>> }>();
-    expect(teacherDetail.legacyReviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", course_name: "程序设计基础" }));
+    expect(teacherDetail.legacyReviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", course_name: "测试课程" }));
     const afterCatalog = await (await SELF.fetch(`${origin}/api/courses`)).json<{ items: Array<{ id: number; review_count: number; rating: number }> }>();
     expect(afterCatalog.items.find((item) => item.id === 1)).toMatchObject({ review_count: beforeCourse.review_count, rating: beforeCourse.rating });
     const events = await (await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}/events`, { headers: { Cookie: auth.cookie } })).json<Array<Record<string, unknown>>>();
@@ -483,10 +483,10 @@ describe("two-stage imports", () => {
       type: "offerings",
       rows: [
         {
-          course_code: "CS101",
-          course_name: "程序设计基础",
-          teacher_name: "林老师",
-          teacher_department: "计算机学院",
+          course_code: "TEST101",
+          course_name: "测试课程",
+          teacher_name: "测试教师",
+          teacher_department: "测试学院",
           term: "2026 春",
           section: "导入测试班",
           campus: "蛟桥园",

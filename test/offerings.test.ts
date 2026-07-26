@@ -94,11 +94,11 @@ describe("offerings", () => {
     expect(rows[0]).toHaveProperty("name");
   });
 
-  it("backfills one legacy offering per seeded course", async () => {
-    const counts = await env.DB.prepare(
-      "SELECT (SELECT COUNT(*) FROM courses) courses,(SELECT COUNT(*) FROM offerings) offerings",
-    ).first<{ courses: number; offerings: number }>();
-    expect(counts?.offerings).toBe(counts?.courses);
+  it("gives every legacy-backfilled course exactly one legacy offering", async () => {
+    const duplicates = await env.DB.prepare(
+      "SELECT COUNT(*) n FROM (SELECT course_id FROM offerings WHERE section='历史数据' GROUP BY course_id HAVING COUNT(*)>1)",
+    ).first<{ n: number }>();
+    expect(duplicates?.n).toBe(0);
   });
 
   it("lists active offerings and their teachers", async () => {
