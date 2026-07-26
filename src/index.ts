@@ -1100,7 +1100,8 @@ async function validateImport(
   input: Record<string, unknown>[],
 ) {
   const errors: ImportIssue[] = [],
-    rows: Record<string, unknown>[] = [];
+    rows: Record<string, unknown>[] = [],
+    seenKeys = new Set<string>();
   const issue = (index: number, field: string, code: string, message: string) =>
     errors.push({ row: index + 2, field, code, message });
   for (let index = 0; index < input.length; index++) {
@@ -1134,6 +1135,7 @@ async function validateImport(
         (!Number.isFinite(row.credits) || row.credits < 0)
       )
         issue(index, "credits", "invalid_number", "学分必须是非负数字");
+      const identityKey = JSON.stringify(["course", row.code, row.name]);
       const existing = row.name
         ? await c.env.DB.prepare(
             "SELECT 1 FROM courses WHERE code=? AND name=? LIMIT 1",
@@ -1141,7 +1143,9 @@ async function validateImport(
             .bind(row.code, row.name)
             .first()
         : null;
-      rows.push({ ...row, exists: Boolean(existing) });
+      const exists = Boolean(existing) || seenKeys.has(identityKey);
+      if (row.name) seenKeys.add(identityKey);
+      rows.push({ ...row, exists });
     } else if (type === "teachers") {
       const row = {
         name: clean(source.name, 120),
@@ -1150,6 +1154,11 @@ async function validateImport(
         bio: clean(source.bio, 1000),
       };
       if (!row.name) issue(index, "name", "required", "教师姓名不能为空");
+      const identityKey = JSON.stringify([
+        "teacher",
+        row.name,
+        row.department,
+      ]);
       const existing = row.name
         ? await c.env.DB.prepare(
             "SELECT 1 FROM teachers WHERE name=? AND department=? LIMIT 1",
@@ -1157,7 +1166,9 @@ async function validateImport(
             .bind(row.name, row.department)
             .first()
         : null;
-      rows.push({ ...row, exists: Boolean(existing) });
+      const exists = Boolean(existing) || seenKeys.has(identityKey);
+      if (row.name) seenKeys.add(identityKey);
+      rows.push({ ...row, exists });
     } else if (type === "relations" || type === "offerings") {
       let courseId: number | null = null;
       let teacherId: number | null = null;
@@ -1211,6 +1222,10 @@ async function validateImport(
           );
       }
       let existing = null;
+      const identityKey =
+        type === "relations"
+          ? JSON.stringify(["relation", courseId, teacherId])
+          : JSON.stringify(["offering", courseId, row.term, row.section]);
       if (courseId && teacherId && type === "relations") {
         existing = await c.env.DB.prepare(
           "SELECT 1 FROM course_teachers WHERE course_id=? AND teacher_id=? LIMIT 1",
@@ -1224,7 +1239,10 @@ async function validateImport(
           .bind(courseId, row.term, row.section)
           .first();
       }
-      rows.push({ ...row, exists: Boolean(existing) });
+      const exists = Boolean(existing) || seenKeys.has(identityKey);
+      if (courseId && teacherId && (type === "relations" || row.section))
+        seenKeys.add(identityKey);
+      rows.push({ ...row, exists });
     }
   }
   return { rows, errors };

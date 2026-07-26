@@ -526,6 +526,33 @@ describe("two-stage imports", () => {
     ).toBe(2);
   });
 
+  it("classifies duplicate new keys in one batch consistently", async () => {
+    const auth = await login();
+    const row = { code: "BATCH-DUP", name: "批内重复", category: "major" };
+    const payload = { type: "courses", rows: [row, row] };
+    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await preview.json()).toMatchObject({
+      ok: true,
+      newCount: 1,
+      skipCount: 1,
+      preview: [{ exists: false }, { exists: true }],
+    });
+    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify(payload),
+    });
+    expect(await commit.json()).toMatchObject({
+      ok: true,
+      count: 1,
+      skippedCount: 1,
+    });
+  });
+
   it("previews and skips an existing teacher without overwriting it", async () => {
     const auth = await login();
     await env.DB.prepare(

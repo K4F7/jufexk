@@ -1,4 +1,5 @@
 import "./style.css";
+import { escapeHtml as esc } from "./html";
 import { reviewFieldsMarkup, teacherCourseRowMarkup } from "./templates";
 type Course = {
   id: number;
@@ -21,14 +22,6 @@ function $<T = any>(s: string): T;
 function $(s: string) {
   return document.querySelector(s)!;
 }
-const esc = (v: unknown) =>
-  String(v ?? "").replace(
-    /[&<>'"]/g,
-    (ch) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[
-        ch
-      ]!,
-  );
 const labels: Record<string, string> = {
   major: "专业课",
   pe: "体育课",
@@ -49,6 +42,8 @@ $("#app").innerHTML =
 <section id="submit" class="page hidden narrow"><h1>写评价</h1><p class="lede">评价必须绑定具体任课教师，投稿经审核后公开。只有课程、任课教师和总体推荐度是必填。</p><ol id="wizard-progress" class="wizard-progress"><li data-step="1">评价对象</li><li data-step="2">总体评价</li><li data-step="3">课堂与考核</li><li data-step="4">确认提交</li></ol><div id="review-turnstile"></div><p id="review-turnstile-status" class="form-note"></p><form id="review-form"><fieldset class="step" data-step="1"><label>课程<select name="courseId" id="course-select" required></select></label><label>开课班（选填）<select id="offering-select"><option value="">不指定</option></select></label><label>任课教师<select name="teacherId" id="teacher-select" required></select></label><p class="form-note">找不到你的课程或教师？<button type="button" class="link" data-go="catalog-request">提交补充申请</button></p></fieldset><fieldset class="step hidden" data-step="2"><label>总体推荐度<select name="overall" required><option value="">请选择</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label><div id="dynamic-fields"></div></fieldset><fieldset class="step hidden" data-step="3"><label>学期（选填）<input name="term" placeholder="2025 秋"></label><label>补充说明（选填）<textarea name="comment"></textarea></label></fieldset><fieldset class="step hidden" data-step="4"><p class="form-note">投稿匿名提交，经管理员审核后公开；请确认内容真实、不含人身攻击。</p><input class="trap" name="website"></fieldset><div class="wizard-nav"><button type="button" id="wizard-prev" class="ghost">上一页</button><button type="button" id="wizard-next" class="primary">下一页</button><button type="submit" id="wizard-submit" class="primary hidden">提交审核</button></div><p id="form-msg"></p></form></section>
 <section id="catalog-request" class="page hidden narrow"><button class="back" data-go="submit">← 返回</button><h1>补充课程或教师</h1><p class="lede">提交后进入管理员审核队列，通过后才会出现在课程目录中。</p><form id="catalog-request-form"><label>申请类型<select name="kind" id="request-kind"><option value="course">补充课程（可同时补充教师）</option><option value="teacher">仅补充教师</option></select></label><div class="two"><label>课号<input name="courseCode" placeholder="选填"></label><label>课程名称<input name="courseName"></label></div><div class="two"><label>课程类别<select name="category"><option value="">未确定</option><option value="major">专业课</option><option value="pe">体育课</option><option value="general">公共选修</option></select></label><label>院系<input name="department"></label></div><label>教师姓名<input name="teacherName"></label><label>补充说明（选填）<textarea name="note" placeholder="例如你在哪个学期上过这门课"></textarea></label><fieldset class="attached-review"><legend>随附评价（选填）</legend><p class="form-note">若问卷中已有内容会自动带入；目录对象获批后，评价进入待审核队列。</p><div class="two"><label>总体推荐度<select name="reviewOverall"><option value="">不随附评价</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label><label>学期<input name="reviewTerm" placeholder="2025 秋"></label></div><label>补充说明<textarea name="reviewComment"></textarea></label></fieldset><input class="trap" name="website"><div id="request-turnstile"></div><p id="request-turnstile-status" class="form-note"></p><button id="request-submit" class="primary">提交补充申请</button><p id="request-msg"></p></form></section>
 <section id="admin" class="page hidden"><h1>管理后台</h1><div id="login" class="narrow"><form id="login-form"><label>管理员口令<input type="password" name="password" required></label><button class="primary">登录</button></form></div><div id="dashboard" class="hidden"><div class="tabs"><button data-tab="reviews">评价</button><button data-tab="courses">课程</button><button data-tab="teachers">教师</button><button data-tab="import">导入</button><button data-tab="legacy">历史评价</button></div><div id="admin-content"></div></div></section></main><footer id="footer"></footer>`;
+$<HTMLButtonElement>("#wizard-submit").disabled = true;
+$<HTMLButtonElement>("#request-submit").disabled = true;
 async function api(path: string, o: RequestInit = {}) {
   const h = new Headers(o.headers);
   h.set("Content-Type", "application/json");
@@ -1088,6 +1083,12 @@ $("#catalog-request-form").onsubmit = async (e) => {
     });
     // @ts-expect-error DOM and Workers HTMLRewriter Element overloads collide on append()
     document.head.append(s);
+    if (!$("#submit").classList.contains("hidden")) renderTurnstile("review");
+    if (!$("#catalog-request").classList.contains("hidden"))
+      renderTurnstile("request");
+  } else {
+    $<HTMLButtonElement>("#wizard-submit").disabled = false;
+    $<HTMLButtonElement>("#request-submit").disabled = false;
   }
   await Promise.all([load(), loadTeachers(), loadCourseOptions()]);
 })().catch((e) => ($("#courses").textContent = e.message));

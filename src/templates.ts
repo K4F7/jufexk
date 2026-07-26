@@ -1,3 +1,5 @@
+import { escapeHtml } from "./html";
+
 const score = (name: string, label: string) =>
   `<label>${label}<select name="${name}"><option value="">未评价</option>${[5, 4, 3, 2, 1].map((value) => `<option>${value}</option>`).join("")}</select></label>`;
 
@@ -19,19 +21,6 @@ type TeacherCourseRow = {
   review_count: number;
 };
 
-const escapeHtml = (value: unknown) =>
-  String(value ?? "").replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      })[character]!,
-  );
-
 export function teacherCourseRowMarkup(course: TeacherCourseRow): string {
-  return `<tr data-course="${course.id}"><td class="code">${escapeHtml(course.code)}</td><td class="name">${escapeHtml(course.name)}</td><td class="num">${course.rating ? escapeHtml(course.rating) : "—"}</td><td class="num">${escapeHtml(course.review_count)}</td></tr>`;
+  return `<tr data-course="${course.id}"><td class="code num">${escapeHtml(course.code)}</td><td class="name">${escapeHtml(course.name)}</td><td class="num">${course.rating ? escapeHtml(course.rating) : "—"}</td><td class="num">${escapeHtml(course.review_count)}</td></tr>`;
 }

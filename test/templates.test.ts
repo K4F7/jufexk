@@ -60,7 +60,7 @@ describe("teacherCourseRowMarkup", () => {
     });
 
     expect(markup).toContain('<tr data-course="17">');
-    expect(markup).toContain('<td class="code">GEC101</td>');
+    expect(markup).toContain('<td class="code num">GEC101</td>');
     expect(markup).toContain('<td class="name">大学写作</td>');
     expect(markup).toContain('<td class="num">4.6</td>');
     expect(markup).toContain('<td class="num">23</td>');
