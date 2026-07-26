@@ -469,10 +469,10 @@ td.empty {
 }
 .queue {
   background: var(--sheet);
-  padding: 14px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 2px;
-  margin: 10px 0;
+  margin: 6px 0;
 }
 .queue button {
   border: 1px solid transparent;
@@ -504,9 +504,40 @@ td.empty {
   margin: 6px 0;
 }
 .drop {
-  padding: 24px;
-  border: 2px dashed var(--line);
+  padding: 14px;
+  border: 1px solid var(--line);
   text-align: center;
+}
+.admin-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.admin-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-row span,
+.admin-row p {
+  color: var(--muted);
+  margin: 0;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.attached-review {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+}
+.attached-review legend {
+  padding: 0 6px;
+  font-weight: 700;
 }
 code {
   background: var(--acid);
@@ -635,10 +666,22 @@ footer {
     background: var(--sheet);
     margin: 0 -20px -20px;
     padding: 12px 20px;
-    box-shadow: 0 -2px 8px rgb(0 0 0 / 8%);
+    border-top: 1px solid var(--line);
   }
   .wizard-nav button {
     flex: 1;
+  }
+  .admin-row > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .queue,
+  .queue input,
+  .queue select,
+  .queue textarea {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 @media print {
