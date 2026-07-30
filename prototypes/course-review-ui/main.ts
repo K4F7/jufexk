@@ -4,7 +4,6 @@ import "./style.css";
 
 // Three variants of the course-teacher review workspace, switchable via ?variant=.
 
-type VariantKey = "A" | "B" | "C";
 type SortKey = "catalog" | "rating" | "count";
 type ReviewSort = "recent" | "high" | "low";
 
@@ -222,18 +221,8 @@ const relations: Relation[] = [
   })),
 ];
 
-const variants: Record<VariantKey, string> = {
-  A: "目录阅读器",
-  B: "证据工作台",
-  C: "课程发现矩阵",
-};
-
 const url = new URL(window.location.href);
-const initialVariant = url.searchParams.get("variant");
 const state = {
-  variant: (["A", "B", "C"].includes(initialVariant || "")
-    ? initialVariant
-    : "A") as VariantKey,
   relationId: url.searchParams.get("relation") || "",
   query: url.searchParams.get("q") || "",
   department: url.searchParams.get("department") || "",
@@ -256,7 +245,6 @@ const esc = (value: unknown) =>
 
 function syncUrl() {
   const next = new URL(window.location.href);
-  next.searchParams.set("variant", state.variant);
   const pairs: Array<[string, string]> = [
     ["relation", state.relationId],
     ["q", state.query],
@@ -467,7 +455,7 @@ function RelationTitle(relation: Relation) {
   return `<div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><button data-teacher="${esc(relation.teacher)}" class="text-[20px] font-bold text-ink hover:text-accent">${esc(relation.teacher)}</button><span class="text-slate-300">×</span><button class="truncate text-[20px] font-bold text-ink hover:text-accent">${esc(relation.course)}</button><button data-pin="${relation.id}" class="ml-2 flex h-6 items-center rounded-[4px] border px-2 text-[11px] font-medium transition-colors ${relation.pinned ? "border-accent bg-accent-soft text-accent-strong" : "border-line text-muted hover:border-slate-300 hover:text-ink"}">${relation.pinned ? "已钉" : "钉在左侧"}</button></div><p class="mt-1 text-[11px] text-muted">${esc(relation.code)} · ${esc(relation.department)}</p></div>`;
 }
 
-function VariantA(list: Relation[], relation: Relation | null) {
+function App(list: Relation[], relation: Relation | null) {
   const listClass = relation ? "hidden lg:flex" : "flex";
   const detailClass = relation ? "flex" : "hidden lg:flex";
   return `<div class="flex min-h-screen flex-col bg-canvas">${Header()}
@@ -506,39 +494,12 @@ function VariantC(list: Relation[], relation: Relation | null) {
   </div>`;
 }
 
-function PrototypeSwitcher() {
-  if (!import.meta.env.DEV) return "";
-  const relation = selectedRelation();
-  const visibleState = [
-    relation ? `${relation.teacher} × ${relation.course}` : "未选择",
-    state.query ? `搜索:${state.query}` : "",
-    state.teacher ? `教师:${state.teacher}` : "",
-  ].filter(Boolean).join(" · ");
-  return `<div class="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-2 rounded-[6px] bg-slate-950 px-2 py-1.5 text-white shadow-lg" role="toolbar" aria-label="原型变体切换器">
-    <button data-cycle="-1" class="flex size-8 items-center justify-center rounded-[4px] hover:bg-white/15" title="上一个变体">←</button>
-    <div class="min-w-0 px-2 text-center"><b class="block text-[12px]">${state.variant} — ${variants[state.variant]}</b><span class="block max-w-72 truncate text-[9px] text-slate-300">${esc(visibleState)}</span></div>
-    <button data-cycle="1" class="flex size-8 items-center justify-center rounded-[4px] hover:bg-white/15" title="下一个变体">→</button>
-  </div>`;
-}
-
 function render(preserveSearch = false) {
   syncUrl();
   const list = filteredRelations();
   const relation = selectedRelation();
-  app.innerHTML =
-    (state.variant === "A"
-      ? VariantA(list, relation)
-      : state.variant === "B"
-        ? VariantB(list, relation)
-        : VariantC(list, relation)) + PrototypeSwitcher();
+  app.innerHTML = App(list, relation);
   bindInteractions(preserveSearch);
-}
-
-function cycleVariant(direction: number) {
-  const keys: VariantKey[] = ["A", "B", "C"];
-  const index = keys.indexOf(state.variant);
-  state.variant = keys[(index + direction + keys.length) % keys.length];
-  render();
 }
 
 function bindInteractions(preserveSearch: boolean) {
@@ -605,17 +566,7 @@ function bindInteractions(preserveSearch: boolean) {
     state.relationId = "";
     render();
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-cycle]").forEach((button) => {
-    button.addEventListener("click", () => cycleVariant(Number(button.dataset.cycle)));
-  });
 }
-
-window.addEventListener("keydown", (event) => {
-  const target = event.target as HTMLElement | null;
-  if (target?.matches("input, textarea, select, [contenteditable]")) return;
-  if (event.key === "ArrowLeft") cycleVariant(-1);
-  if (event.key === "ArrowRight") cycleVariant(1);
-});
 
 window.addEventListener("popstate", () => window.location.reload());
 
