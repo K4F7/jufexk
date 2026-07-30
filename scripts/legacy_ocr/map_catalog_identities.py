@@ -17,7 +17,7 @@ APPROVED_RECORD_VERSION = "catalog-baseline-approved-record/v1"
 COURSE_VERSION = "catalog-baseline-course/v1"
 TEACHER_VERSION = "catalog-baseline-teacher/v1"
 RELATION_VERSION = "catalog-baseline-relation/v2"
-VALID_CATEGORIES = {"required", "elective", "sports"}
+APPROVED_CATALOG_CATEGORIES = {"general", "required", "elective", "sports"}
 SPACE_PATTERN = re.compile(r"[\s\u200B-\u200D\u2060\uFEFF]+", re.UNICODE)
 
 
@@ -59,7 +59,7 @@ def catalog_indexes(rows: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any
             raise ValueError("invalid approved catalog record value")
         if kind == "course":
             code = value.get("courseCode")
-            if value.get("schemaVersion") != COURSE_VERSION or not isinstance(code, str) or not code or code in courses or value.get("category") not in VALID_CATEGORIES:
+            if value.get("schemaVersion") != COURSE_VERSION or not isinstance(code, str) or not code or code in courses or value.get("category") not in APPROVED_CATALOG_CATEGORIES:
                 raise ValueError("invalid or duplicate approved course")
             courses[code] = value
             names = {value.get("currentName"), *(item.get("rawName") for item in value.get("nameVariants", []) if isinstance(item, dict))}
@@ -150,7 +150,8 @@ def map_catalog_identities(staging_root: Path, catalog_root: Path, out: Path) ->
             "legacy_course_id": pair[0], "legacy_course_name": course_name,
             "legacy_teacher_id": pair[1], "legacy_teacher_name": teacher_name,
             "catalog_course_code": catalog_pair[0], "catalog_teacher_label": catalog_pair[1],
-            "category": course["category"], "course_match_method": course_method,
+            "category": "sports" if course["category"] == "sports" else "general",
+            "catalog_source_category": course["category"], "course_match_method": course_method,
             "teacher_match_method": teacher_method, "relation_verified": True,
         })
 
