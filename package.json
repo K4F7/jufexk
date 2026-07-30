@@ -10,10 +10,21 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "vite build",
-    "test": "vitest run",
+    "test": "vitest run && vitest run --config vitest.legacy-evidence.config.ts && vitest run --config vitest.catalog-baseline.config.ts",
+    "test:legacy-evidence": "vitest run --config vitest.legacy-evidence.config.ts",
+    "test:catalog-baseline": "vitest run --config vitest.catalog-baseline.config.ts",
+    "test:legacy-ocr-contract": "uv run --directory scripts/legacy_ocr --with openpyxl python -m unittest test_approval.py test_compile_production_staging.py test_map_catalog_identities.py test_build_review_workbook.py test_formula_bar_rebuild.py",
+    "build:catalog-userscript": "bun scripts/catalog-baseline/build-userscript.mjs",
+    "validate:catalog-capture": "bun scripts/catalog-baseline/validate-capture.ts",
+    "audit:catalog-pilot": "bun scripts/catalog-baseline/audit-pilot.ts",
+    "audit:catalog-full": "bun scripts/catalog-baseline/audit-full.ts",
+    "catalog-baseline": "bun scripts/catalog-baseline/cli.ts",
+    "legacy-evidence": "bun scripts/legacy_evidence/cli.ts",
+    "formula-bar-smoke": "bun scripts/legacy_evidence/formula_bar_smoke_cli.ts",
+    "formula-bar-full-audit": "bun scripts/legacy_evidence/formula_bar_full_scan_cli.ts",
     "deploy": "bun run build && wrangler deploy",
     "types": "wrangler types",
-    "check": "wrangler types && tsc --noEmit && vitest run && vite build && wrangler deploy --dry-run",
+    "check": "wrangler types && tsc --noEmit && vitest run && vitest run --config vitest.legacy-evidence.config.ts && vitest run --config vitest.catalog-baseline.config.ts && bun run test:legacy-ocr-contract && vite build && wrangler deploy --dry-run",
     "db:local": "wrangler d1 migrations apply jufexk --local"
   },
   "dependencies": {
@@ -22,6 +33,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.18.8",
     "@types/node": "26.1.1",
+    "iconv-lite": "^0.7.3",
     "typescript": "7.0.2",
     "vite": "8.1.5",
     "vitest": "4.1.10",

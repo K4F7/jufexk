@@ -1,0 +1,13 @@
+$ wrangler dev --port "8788"
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mProxy environment variables detected. We'll use your proxy for fetch requests.[0m
+
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mThe Workers runtime failed to start. There was likely a problem with the workerd binary or your configuration.[0m
+
+  Runtime stderr:
+  *** std::terminate() called with no exception
+  stack: 7fff6fb51249 7ff65d5863a5 7fff6fb6baff 7fff6fb53a9c 7fff6fb6ae8c 7fff6fb52ce1 7fff6fb6b8f7 7fff933a481e 7fff93282102 7fff6fb6b3d5 7fff6fb51c1f 7fff6fb52dd7 7fff6fb6b8f7 7fff933a479e 7fff93285e96 7fff932cd010 7fff90521ad9 7fff6fb555a8 7ff65ec1045f 7ff65d585f63 7ff65ec15512 7ff65ec1c416 7ff65ec15a6b 7ff65ec1c416 7ff65ec12fbb 7ff65d571e77 7ff660a4219e 7fff92bce956 7fff932ead6b
+
+
+🪵  Logs were written to "C:\Users\sern\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-07-29_08-37-38_354.log"
+error: script "dev" exited with code 1

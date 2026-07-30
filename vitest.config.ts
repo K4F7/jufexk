@@ -9,6 +9,18 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
+          d1Databases: [
+            "MIGRATION_DB",
+            "MIGRATION_CONFLICT_DB",
+            "CATEGORY_MIGRATION_DB",
+            "CATEGORY_CONFLICT_DB",
+            "BASELINE_PUBLISH_DB_1",
+            "BASELINE_PUBLISH_DB_2",
+            "BASELINE_PUBLISH_DB_3",
+            "BASELINE_PUBLISH_DB_4",
+            "BASELINE_PUBLISH_DB_5",
+            "BASELINE_PUBLISH_DB_6",
+          ],
           bindings: {
             ADMIN_PASSWORD: "test-password",
             TURNSTILE_SECRET: "",

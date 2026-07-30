@@ -46,9 +46,9 @@ describe("catalog addition requests", () => {
       kind: "course",
       courseCode: "REQ900",
       courseName: "申请中的课程",
-      category: "major",
+      category: "general",
       department: "测试学院",
-      teacherName: "申请中的教师",
+      teacherSourceLabel: "申请中的教师",
     });
     expect(response.status).toBe(200);
 
@@ -61,7 +61,7 @@ describe("catalog addition requests", () => {
     const response = await publicPost("/api/catalog-requests", {
       kind: "course",
       courseName: "",
-      teacherName: "",
+      teacherSourceLabel: "",
     });
     expect(response.status).toBe(400);
   });
@@ -69,7 +69,7 @@ describe("catalog addition requests", () => {
   it("rejects an attached review when only a teacher is requested", async () => {
     const response = await publicPost("/api/catalog-requests", {
       kind: "teacher",
-      teacherName: "缺少课程的评价教师",
+      teacherSourceLabel: "缺少课程的评价教师",
       department: "测试学院",
       review: { overall: 5, comment: "无法绑定课程" },
     });
@@ -81,7 +81,7 @@ describe("catalog addition requests", () => {
       kind: "course",
       courseCode: "REQ-NO-TEACHER",
       courseName: "缺少教师的评价课程",
-      category: "major",
+      category: "general",
       department: "测试学院",
       review: { overall: 5, comment: "无法绑定任课关系" },
     });
@@ -91,7 +91,7 @@ describe("catalog addition requests", () => {
   it("lists pending requests for the admin", async () => {
     await publicPost("/api/catalog-requests", {
       kind: "teacher",
-      teacherName: "待审教师",
+      teacherSourceLabel: "待审教师",
       department: "测试学院",
     });
     const headers = await login();
@@ -120,7 +120,7 @@ describe("catalog addition requests", () => {
       courseName: "批准后的课程",
       category: "general",
       department: "测试学院",
-      teacherName: "批准后的教师",
+      teacherSourceLabel: "批准后的教师",
       review: { overall: 5, comment: "随申请一起提交的评价" },
     });
     const { id } = await submitted.json<{ id: number }>();
@@ -158,9 +158,9 @@ describe("catalog addition requests", () => {
       kind: "course",
       courseCode: "REQ902",
       courseName: "被驳回的课程",
-      category: "major",
+      category: "general",
       department: "测试学院",
-      teacherName: "被驳回的教师",
+      teacherSourceLabel: "被驳回的教师",
     });
     const { id } = await submitted.json<{ id: number }>();
 
@@ -185,15 +185,15 @@ describe("catalog addition requests", () => {
 
   it("reuses an existing teacher instead of creating a duplicate", async () => {
     await env.DB.prepare(
-      "INSERT INTO teachers(name,department) VALUES('复用教师','测试学院')",
+      "INSERT INTO teachers(source_teacher_label,name,department) VALUES('复用教师','复用教师','测试学院')",
     ).run();
     const submitted = await publicPost("/api/catalog-requests", {
       kind: "course",
       courseCode: "REQ903",
       courseName: "复用教师的课程",
-      category: "major",
+      category: "general",
       department: "测试学院",
-      teacherName: "复用教师",
+      teacherSourceLabel: "复用教师",
     });
     const { id } = await submitted.json<{ id: number }>();
 
@@ -215,7 +215,7 @@ describe("catalog addition requests", () => {
   it("refuses to approve a request twice", async () => {
     const submitted = await publicPost("/api/catalog-requests", {
       kind: "teacher",
-      teacherName: "只能批准一次",
+      teacherSourceLabel: "只能批准一次",
       department: "测试学院",
     });
     const { id } = await submitted.json<{ id: number }>();
@@ -238,5 +238,33 @@ describe("catalog addition requests", () => {
       },
     );
     expect(second.status).toBe(409);
+  });
+
+  it("serializes concurrent approval without duplicate side effects", async () => {
+    const submitted = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-CONCURRENT",
+      courseName: "并发审批课程",
+      category: "general",
+      teacherSourceLabel: "并发审批教师",
+      review: { overall: 5, comment: "并发审批只应创建一次" },
+    });
+    const { id } = await submitted.json<{ id: number }>();
+    const headers = await login();
+    const statuses = await Promise.all(
+      ["第一次", "第二次"].map((note) =>
+        SELF.fetch(`${origin}/api/admin/catalog-requests/${id}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ status: "approved", note }),
+        }).then((response) => response.status),
+      ),
+    );
+    expect(statuses.sort()).toEqual([200, 409]);
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) n FROM reviews WHERE comment='并发审批只应创建一次'",
+      ).first(),
+    ).toEqual({ n: 1 });
   });
 });

@@ -1,0 +1,62 @@
+
+ ⛅️ wrangler 4.114.0
+────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                                  Resource                  Mode
+env.DB (jufexk)                                          D1 Database               local
+env.ASSETS                                               Assets                    local
+env.SITE_NAME ("JUFE 选课志")                               Environment Variable      local
+env.UNIVERSITY_NAME ("江西财经大学")                           Environment Variable      local
+env.TURNSTILE_SITE_KEY ("0x4AAAAAAD2pZlHJDQEqRlVH")      Environment Variable      local
+env.ADMIN_PASSWORD ("(hidden)")                          Environment Variable      local
+
+⎔ Starting local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+Wrangler detected this dev session is running in an AI agent.
+The Local Explorer API is available at http://127.0.0.1:8789/cdn-cgi/explorer/api
+Useful routes:
+  GET http://127.0.0.1:8789/cdn-cgi/explorer/api - OpenAPI schema
+  GET http://127.0.0.1:8789/cdn-cgi/explorer/api/d1/database - D1 databases
+  GET http://127.0.0.1:8789/cdn-cgi/explorer/api/local/workers - local Workers and bindings
+  GET http://127.0.0.1:8789/cdn-cgi/explorer/api/r2/buckets - R2 buckets
+  GET http://127.0.0.1:8789/cdn-cgi/explorer/api/storage/kv/namespaces - KV namespaces
+  GET http://127.0.0.1:8789/cdn-cgi/explorer/api/workers/durable_objects/namespaces - Durable Object namespaces
+  GET http://127.0.0.1:8789/cdn-cgi/explorer/api/workflows - Workflows
+[wrangler:info] Ready on http://127.0.0.1:8789
+[wrangler:info] GET / 200 OK (10ms)
+[wrangler:info] GET /assets/index-CPzsCf5i.js 200 OK (6ms)
+[wrangler:info] GET /assets/index-BsKgWDv7.css 200 OK (7ms)
+[wrangler:info] GET /api/config 200 OK (11ms)
+[wrangler:info] GET /favicon.ico 200 OK (10ms) `Sec-Fetch-Mode: navigate` header present - using `not_found_handling` behavior
+[wrangler:info] GET /api/courses 200 OK (32ms)
+[wrangler:info] GET /api/teachers 200 OK (39ms)
+[wrangler:info] GET /api/courses/options 200 OK (46ms)
+[wrangler:info] GET /api/admin/session 401 Unauthorized (5ms)
+[wrangler:info] POST /api/admin/login 200 OK (41ms)
+[wrangler:info] GET /api/admin/session 200 OK (11ms)
+[wrangler:info] GET /api/admin/reviews 200 OK (16ms)
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready
+⎔ Reloading local server...
+[wrangler:info] ✨ Parsed 1 valid header rule.
+⎔ Local server updated and ready

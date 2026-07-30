@@ -1,0 +1,18 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e3]:
+    - navigation [ref=f1e4]:
+      - button "课程" [ref=f1e5] [cursor=pointer]
+      - button "教师" [ref=f1e6] [cursor=pointer]
+      - button "写评价" [ref=f1e7] [cursor=pointer]
+      - button "后台" [ref=f1e8] [cursor=pointer]
+  - main [ref=f1e9]:
+    - generic [ref=f1e11]:
+      - heading "关于一门课， 上过的人最清楚。" [level=1] [ref=f1e12]: 关于一门课，上过的人最清楚。
+      - generic [ref=f1e13]:
+        - textbox "查找课程、课号或教师" [ref=f1e14]:
+          - /placeholder: 课程、课号或教师
+        - button "查找" [ref=f1e15] [cursor=pointer]
+      - button "进入课程目录 →" [ref=f1e16] [cursor=pointer]
+  - contentinfo [ref=f1e17]:
+    - generic [ref=f1e18]: JUFE 选课志 · 江西财经大学
+    - button "找不到我的课程/教师" [ref=f1e19] [cursor=pointer]

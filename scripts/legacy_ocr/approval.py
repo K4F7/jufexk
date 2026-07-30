@@ -19,6 +19,7 @@ APPROVED_FIELDS = [
     "raw_ocr_text", "ocr_confidence", "ocr_tokens_json", "inherited_from",
     "ocr_course_name", "ocr_teacher_name", "duplicate_group", "review_note",
 ]
+API_CATEGORIES = {"general", "sports"}
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -56,6 +57,8 @@ def finalize(queue: Path, reference_path: Path, approved_path: Path, errors_path
         course_id = row.get("approved_course_id", "").strip(); teacher_id = row.get("approved_teacher_id", "").strip(); offering_id = row.get("approved_offering_id", "").strip()
         reasons: list[str] = []
         if course_id not in courses: reasons.append("approved_course_id 不存在")
+        elif courses[course_id].get("category") not in API_CATEGORIES:
+            reasons.append("评价模板类型必须为 general 或 sports")
         if teacher_id not in teachers: reasons.append("approved_teacher_id 不存在")
         if course_id in courses and teacher_id in teachers and (course_id, teacher_id) not in relations: reasons.append("教师不在课程已有任课关系中")
         if offering_id:

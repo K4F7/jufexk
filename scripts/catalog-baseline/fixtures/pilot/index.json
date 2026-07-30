@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "catalog-pilot-fixtures/v1",
+  "sourceBatchId": "pilot-2026-07-28T16-39-32-453Z",
+  "sourceManifestContentSha256": "f6965b6a8ab00136379649f2a51cc832ce67ca01dc10a78d45c40ba107e2a7e4",
+  "sourceDictionarySha256": "7d90b36bb84a5391356efcd898dae21bd9732635bce4cc19c0c1c4f1596004d4",
+  "sourceCounts": {
+    "queries": 12,
+    "pages": 58,
+    "records": 4685,
+    "bytes": 8372316,
+    "statuses": {
+      "complete": 12
+    }
+  },
+  "sourceSnapshotBytes": 8310477,
+  "gbkReplacementCharacters": 0,
+  "counterexampleChecks": [
+    {
+      "queryId": "counterexample-2026-0-05-2021-1-major",
+      "baseQueryId": "main-2026-0-05-2021",
+      "records": 0,
+      "missingFromBase": 0
+    },
+    {
+      "queryId": "counterexample-2026-0-05-2021-2-homeUnit",
+      "baseQueryId": "main-2026-0-05-2021",
+      "records": 0,
+      "missingFromBase": 0
+    },
+    {
+      "queryId": "counterexample-2026-0-05-2025-3-nonempty-major",
+      "baseQueryId": "main-2026-0-05-2025",
+      "records": 201,
+      "missingFromBase": 0
+    },
+    {
+      "queryId": "counterexample-2026-0-05-2025-4-nonempty-homeUnit",
+      "baseQueryId": "main-2026-0-05-2025",
+      "records": 0,
+      "missingFromBase": 0
+    }
+  ],
+  "educationLevelComparisons": [
+    {
+      "left": "main-2026-0-01-2025",
+      "right": "main-2026-0-05-2025",
+      "rowsEqual": true
+    },
+    {
+      "left": "main-2026-0-01-2021",
+      "right": "main-2026-0-05-2021",
+      "rowsEqual": true
+    },
+    {
+      "left": "main-2025-2-01-2025",
+      "right": "main-2025-2-05-2025",
+      "rowsEqual": true
+    },
+    {
+      "left": "main-2025-2-01-2021",
+      "right": "main-2025-2-05-2021",
+      "rowsEqual": true
+    }
+  ],
+  "boundaries": {
+    "gbk": {
+      "status": "proven",
+      "fixtures": [
+        "gbk.html"
+      ],
+      "detail": "All raw pages decode as GBK without replacement characters."
+    },
+    "pagination": {
+      "status": "proven",
+      "fixtures": [
+        "pagination.html"
+      ],
+      "detail": "main-2026-0-05-2025 spans 22 pages."
+    },
+    "rowspan": {
+      "status": "not_observed",
+      "fixtures": [],
+      "detail": "No rowspan attribute was present in the Pilot pages."
+    },
+    "multi-teacher": {
+      "status": "not_observed",
+      "fixtures": [],
+      "detail": "No conclusive multi-teacher field was observed."
+    },
+    "teacher-digit-suffix": {
+      "status": "proven",
+      "fixtures": [
+        "teacher-digit-suffix.html"
+      ],
+      "detail": "A teacher source token with a numeric suffix was observed."
+    },
+    "course-rename": {
+      "status": "not_observed",
+      "fixtures": [],
+      "detail": "No same-code rename was observed."
+    },
+    "mooc": {
+      "status": "proven",
+      "fixtures": [
+        "mooc.html"
+      ],
+      "detail": "A MOOC/online-open-course token was observed."
+    },
+    "three-campuses": {
+      "status": "proven",
+      "fixtures": [
+        "three-campuses.html"
+      ],
+      "detail": "3 distinct non-empty campus values were sampled."
+    },
+    "empty-field": {
+      "status": "proven",
+      "fixtures": [
+        "empty-field.html"
+      ],
+      "detail": "At least one table row contains an empty cell."
+    },
+    "abnormal-format": {
+      "status": "proven",
+      "fixtures": [
+        "abnormal-format.html"
+      ],
+      "detail": "A row with an unexpected cell/course shape was observed."
+    }
+  }
+}

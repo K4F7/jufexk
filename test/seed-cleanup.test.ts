@@ -18,10 +18,10 @@ describe("seed sample cleanup", () => {
 
   it("leaves real catalog data untouched", async () => {
     await env.DB.prepare(
-      "INSERT INTO teachers(name,department) VALUES('真实教师','会计学院')",
+      "INSERT INTO teachers(source_teacher_label,name,department) VALUES('真实教师','真实教师','会计学院')",
     ).run();
     await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department) VALUES('REAL01','真实课程','major','会计学院')",
+      "INSERT INTO courses(code,name,category,department) VALUES('REAL01','真实课程','general','会计学院')",
     ).run();
     const survivors = await env.DB.prepare(
       "SELECT (SELECT COUNT(*) FROM courses WHERE code='REAL01') c, (SELECT COUNT(*) FROM teachers WHERE name='真实教师') t",

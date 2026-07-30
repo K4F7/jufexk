@@ -32,8 +32,23 @@ function adminHeaders(auth: { cookie: string; csrf: string }) {
   };
 }
 
+async function setBaselinePublished(published: boolean) {
+  await env.DB.prepare("DELETE FROM catalog_baseline_marker").run();
+  if (!published) return;
+  const hashes = Array.from({ length: 7 }, (_, index) =>
+    String(index).repeat(64),
+  );
+  await env.DB.prepare(`INSERT INTO catalog_baseline_marker(
+    singleton,batch_id,approved_schema_version,approved_manifest_content_sha256,artifact_sha256,
+    source_capture_manifest_content_sha256,derivation_content_sha256,quality_manifest_content_sha256,
+    decisions_sha256,boundary_fixture_content_sha256,courses,teachers,relations
+  ) VALUES(1,'admin-test-baseline','catalog-baseline-approved-manifest/v1',?,?,?,?,?,?,?,3,1,2)`)
+    .bind(...hashes)
+    .run();
+}
+
 describe("admin sessions and catalog", () => {
-  it("edits and validates public-elective scores", async () => {
+  it("edits and validates general-template scores while clearing retired fields", async () => {
     const auth = await login();
     const review = await env.DB.prepare(
       `INSERT INTO reviews(course_id,teacher_id,category,overall,status,submitter_hash)
@@ -45,7 +60,7 @@ describe("admin sessions and catalog", () => {
       {
         method: "PATCH",
         headers: adminHeaders(auth),
-        body: JSON.stringify({ interest: 9, note: "invalid" }),
+        body: JSON.stringify({ workloadScore: 9, note: "invalid" }),
       },
     );
     expect(invalid.status).toBe(400);
@@ -55,11 +70,8 @@ describe("admin sessions and catalog", () => {
         method: "PATCH",
         headers: adminHeaders(auth),
         body: JSON.stringify({
-          interest: 5,
-          practicality: 4,
           workloadScore: 2,
           fairness: 5,
-          organization: 4,
           note: "normalized",
         }),
       },
@@ -72,11 +84,11 @@ describe("admin sessions and catalog", () => {
         .bind(id)
         .first(),
     ).toEqual({
-      interest: 5,
-      practicality: 4,
+      interest: null,
+      practicality: null,
       workload_score: 2,
       fairness: 5,
-      organization: 4,
+      organization: null,
     });
     await env.DB.prepare("DELETE FROM reviews WHERE id=?").bind(id).run();
   });
@@ -156,7 +168,7 @@ describe("admin sessions and catalog", () => {
     const rejected = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: auth.cookie },
-      body: JSON.stringify({ name: "CSRF test", category: "major" }),
+      body: JSON.stringify({ name: "CSRF test", category: "general" }),
     });
     expect(rejected.status).toBe(403);
 
@@ -181,9 +193,9 @@ describe("admin sessions and catalog", () => {
       method: "POST",
       headers: adminHeaders(auth),
       body: JSON.stringify({
-        code: "TEST101",
+        code: "ADMIN101",
         name: "集成测试课程",
-        category: "major",
+        category: "general",
         department: "测试学院",
         teacherIds: [1, 1],
       }),
@@ -233,13 +245,41 @@ describe("admin sessions and catalog", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("keeps historical mapping locked until the baseline marker exists", async () => {
+    await setBaselinePublished(false);
+    const auth = await login();
+    const before = await env.DB.batch([
+      env.DB.prepare("SELECT COUNT(*) n FROM courses"),
+      env.DB.prepare("SELECT COUNT(*) n FROM teachers"),
+      env.DB.prepare("SELECT COUNT(*) n FROM course_teachers"),
+    ]);
+    for (const path of ["/api/admin/legacy-imports/preview", "/api/admin/legacy-imports"]) {
+      const response = await SELF.fetch(`${origin}${path}`, {
+        method: "POST",
+        headers: adminHeaders(auth),
+        body: "{}",
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: expect.stringContaining("基线尚未发布") });
+    }
+    const after = await env.DB.batch([
+      env.DB.prepare("SELECT COUNT(*) n FROM courses"),
+      env.DB.prepare("SELECT COUNT(*) n FROM teachers"),
+      env.DB.prepare("SELECT COUNT(*) n FROM course_teachers"),
+    ]);
+    expect(after.map((result) => result.results[0])).toEqual(
+      before.map((result) => result.results[0]),
+    );
+  });
+
   it("imports approved legacy text without a fabricated score and rolls back by batch", async () => {
+    await setBaselinePublished(true);
     const auth = await login();
     const approved = {
       course_id: 1,
       teacher_id: 1,
       offering_id: "",
-      category: "major",
+      category: "general",
       comment: "历史文字评价",
       term: "",
       source_type: "legacy_ocr",
@@ -255,6 +295,11 @@ describe("admin sessions and catalog", () => {
       ocr_teacher_name: "测试教师",
       duplicate_group: "",
     };
+    const beforeIdentities = await env.DB.batch([
+      env.DB.prepare("SELECT COUNT(*) n FROM courses"),
+      env.DB.prepare("SELECT COUNT(*) n FROM teachers"),
+      env.DB.prepare("SELECT COUNT(*) n FROM course_teachers"),
+    ]);
     const preview = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
       method: "POST",
       headers: adminHeaders(auth),
@@ -274,6 +319,14 @@ describe("admin sessions and catalog", () => {
       "SELECT comment,status,source_type FROM legacy_reviews WHERE import_batch_id=?",
     ).bind(result.batchId).first();
     expect(saved).toEqual({ comment: "历史文字评价", status: "pending", source_type: "legacy_ocr" });
+    const afterIdentities = await env.DB.batch([
+      env.DB.prepare("SELECT COUNT(*) n FROM courses"),
+      env.DB.prepare("SELECT COUNT(*) n FROM teachers"),
+      env.DB.prepare("SELECT COUNT(*) n FROM course_teachers"),
+    ]);
+    expect(afterIdentities.map((result) => result.results[0])).toEqual(
+      beforeIdentities.map((result) => result.results[0]),
+    );
     const batches = await SELF.fetch(`${origin}/api/admin/legacy-imports?status=imported`, {
       headers: { Cookie: auth.cookie },
     });
@@ -298,12 +351,14 @@ describe("admin sessions and catalog", () => {
       method: "POST", headers: adminHeaders(auth), body: "{}",
     });
     expect(secondRollback.status).toBe(409);
+    await setBaselinePublished(false);
   });
 
   it("rejects legacy rows with fabricated overall or an unrelated teacher", async () => {
+    await setBaselinePublished(true);
     const auth = await login();
     const row = {
-      course_id: 2, teacher_id: 1, category: "pe", comment: "文字",
+      course_id: 2, teacher_id: 1, category: "sports", comment: "文字",
       source_type: "legacy_ocr", source_label: "腾讯表格历史资料",
       source_file: "体育课_001.png", source_row: "2", raw_ocr_text: "文字",
       ocr_confidence: 0.99, ocr_tokens_json: "[]",
@@ -321,12 +376,14 @@ describe("admin sessions and catalog", () => {
     });
     const unrelatedBody = await unrelated.json<{ errors: Array<{ field: string; message: string }> }>();
     expect(unrelatedBody.errors).toContainEqual(expect.objectContaining({ field: "teacher_id", message: "教师不在课程已有任课关系中" }));
+    await setBaselinePublished(false);
   });
 
   it("moderates legacy text separately and publishes it without changing ratings", async () => {
+    await setBaselinePublished(true);
     const auth = await login();
     const row = {
-      course_id: 1, teacher_id: 1, offering_id: "", category: "major",
+      course_id: 1, teacher_id: 1, offering_id: "", category: "general",
       comment: "经审核的历史文字", term: "", source_type: "legacy_ocr",
       source_label: "腾讯表格历史资料", source_file: "主要课程_001.png",
       sheet_name: "主要课程", source_row: "T1R2C4", raw_ocr_text: "原始 OCR 文字",
@@ -368,6 +425,7 @@ describe("admin sessions and catalog", () => {
     expect(await env.DB.prepare("SELECT COUNT(*) n FROM legacy_review_moderation_events WHERE legacy_review_id=?").bind(id).first()).toEqual({ n: 1 });
     await env.DB.prepare("DELETE FROM legacy_reviews WHERE id=?").bind(id).run();
     await env.DB.prepare("DELETE FROM legacy_import_batches WHERE id=?").bind(batch.batchId).run();
+    await setBaselinePublished(false);
   });
 
   it("requires a reason when rejecting legacy text and never publishes it", async () => {
@@ -377,7 +435,7 @@ describe("admin sessions and catalog", () => {
     ).run();
     expect(result.success).toBe(true);
     const inserted = await env.DB.prepare(
-      `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,course_id,teacher_id,category,comment) VALUES('legacy_reject_test','x.png','主要课程','1','原文',.99,1,1,'major','不公开的文字')`,
+      `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,course_id,teacher_id,category,comment) VALUES('legacy_reject_test','x.png','主要课程','1','原文',.99,1,1,'general','不公开的文字')`,
     ).run();
     const id = Number(inserted.meta.last_row_id);
     expect((await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}`, { method: "PATCH", headers: adminHeaders(auth), body: JSON.stringify({ status: "rejected" }) })).status).toBe(400);
@@ -388,7 +446,6 @@ describe("admin sessions and catalog", () => {
     await env.DB.prepare("DELETE FROM legacy_import_batches WHERE id='legacy_reject_test'").run();
   });
 });
-
 describe("review protection", () => {
   it("returns 400 for malformed JSON instead of exposing a server error", async () => {
     const response = await SELF.fetch(`${origin}/api/reviews`, {
@@ -424,308 +481,5 @@ describe("review protection", () => {
       )?.n,
     ).toBe(before?.n);
     (env as Record<string, unknown>).TURNSTILE_SITE_KEY = "";
-  });
-});
-
-describe("two-stage imports", () => {
-  it("previews and skips an existing course without overwriting it", async () => {
-    const auth = await login();
-    await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department,credits,description) VALUES('KEEP101','保留课程','major','原学院',2,'人工简介')",
-    ).run();
-    const payload = {
-      type: "courses",
-      rows: [
-        {
-          code: "KEEP101",
-          name: "保留课程",
-          category: "general",
-          department: "导入学院",
-          credits: 9,
-          description: "导入简介",
-        },
-      ],
-    };
-
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await preview.json()).toMatchObject({
-      ok: true,
-      newCount: 0,
-      skipCount: 1,
-      preview: [{ code: "KEEP101", name: "保留课程", exists: true }],
-    });
-
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await commit.json()).toMatchObject({
-      ok: true,
-      count: 0,
-      skippedCount: 1,
-    });
-    expect(
-      await env.DB.prepare(
-        "SELECT category,department,credits,description FROM courses WHERE code='KEEP101' AND name='保留课程'",
-      ).first(),
-    ).toEqual({
-      category: "major",
-      department: "原学院",
-      credits: 2,
-      description: "人工简介",
-    });
-  });
-
-  it("distinguishes courses with empty codes by course name", async () => {
-    const auth = await login();
-    await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department) VALUES('','空号甲','major','测试学院')",
-    ).run();
-    const payload = {
-      type: "courses",
-      rows: [
-        { code: "", name: "空号甲", category: "major" },
-        { code: "", name: "空号乙", category: "general" },
-      ],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await preview.json()).toMatchObject({
-      ok: true,
-      newCount: 1,
-      skipCount: 1,
-      preview: [
-        { code: "", name: "空号甲", exists: true },
-        { code: "", name: "空号乙", exists: false },
-      ],
-    });
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await commit.json()).toMatchObject({
-      ok: true,
-      count: 1,
-      skippedCount: 1,
-    });
-    expect(
-      (
-        await env.DB.prepare(
-          "SELECT COUNT(*) n FROM courses WHERE code='' AND name IN ('空号甲','空号乙')",
-        ).first<{ n: number }>()
-      )?.n,
-    ).toBe(2);
-  });
-
-  it("classifies duplicate new keys in one batch consistently", async () => {
-    const auth = await login();
-    const row = { code: "BATCH-DUP", name: "批内重复", category: "major" };
-    const payload = { type: "courses", rows: [row, row] };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await preview.json()).toMatchObject({
-      ok: true,
-      newCount: 1,
-      skipCount: 1,
-      preview: [{ exists: false }, { exists: true }],
-    });
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await commit.json()).toMatchObject({
-      ok: true,
-      count: 1,
-      skippedCount: 1,
-    });
-  });
-
-  it("previews and skips an existing teacher without overwriting it", async () => {
-    const auth = await login();
-    await env.DB.prepare(
-      "INSERT INTO teachers(name,department,title,bio) VALUES('保留教师','保留学院','教授','人工简介')",
-    ).run();
-    const payload = {
-      type: "teachers",
-      rows: [
-        {
-          name: "保留教师",
-          department: "保留学院",
-          title: "助教",
-          bio: "导入简介",
-        },
-      ],
-    };
-
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await preview.json()).toMatchObject({
-      ok: true,
-      newCount: 0,
-      skipCount: 1,
-      preview: [{ name: "保留教师", department: "保留学院", exists: true }],
-    });
-    await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(
-      await env.DB.prepare(
-        "SELECT title,bio FROM teachers WHERE name='保留教师' AND department='保留学院'",
-      ).first(),
-    ).toEqual({ title: "教授", bio: "人工简介" });
-  });
-
-  it("previews and skips an existing offering without overwriting it", async () => {
-    const auth = await login();
-    const course = await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department) VALUES('KEEP-OFF','保留开课','major','测试学院')",
-    ).run();
-    await env.DB.prepare(
-      "INSERT INTO offerings(course_id,term,section,campus,schedule,status) VALUES(?,?,?,?,?,?)",
-    )
-      .bind(course.meta.last_row_id, "2026 秋", "001", "原校区", "周一", "active")
-      .run();
-    const payload = {
-      type: "offerings",
-      rows: [
-        {
-          course_code: "KEEP-OFF",
-          course_name: "保留开课",
-          teacher_name: "测试教师",
-          teacher_department: "测试学院",
-          term: "2026 秋",
-          section: "001",
-          campus: "导入校区",
-          schedule: "周五",
-          status: "archived",
-        },
-      ],
-    };
-
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(await preview.json()).toMatchObject({
-      ok: true,
-      newCount: 0,
-      skipCount: 1,
-      preview: [{ term: "2026 秋", section: "001", exists: true }],
-    });
-    await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(
-      await env.DB.prepare(
-        "SELECT campus,schedule,status FROM offerings WHERE course_id=? AND term='2026 秋' AND section='001'",
-      )
-        .bind(course.meta.last_row_id)
-        .first(),
-    ).toEqual({ campus: "原校区", schedule: "周一", status: "active" });
-  });
-
-  it("imports a course-teacher relation without inventing an offering", async () => {
-    const auth = await login();
-    const course = await env.DB.prepare("INSERT INTO courses(code,name,category,department) VALUES('REL101','关系测试课','major','测试学院')").run();
-    const teacher = await env.DB.prepare("INSERT INTO teachers(name,department) VALUES('关系教师','测试学院')").run();
-    const payload = { type: "relations", rows: [{ course_code: "REL101", course_name: "关系测试课", teacher_name: "关系教师", teacher_department: "测试学院" }] };
-    const response = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST", headers: adminHeaders(auth), body: JSON.stringify(payload),
-    });
-    expect(response.status).toBe(200);
-    expect(await env.DB.prepare("SELECT COUNT(*) n FROM course_teachers WHERE course_id=? AND teacher_id=?").bind(course.meta.last_row_id, teacher.meta.last_row_id).first()).toEqual({ n: 1 });
-    expect(await env.DB.prepare("SELECT COUNT(*) n FROM offerings WHERE course_id=?").bind(course.meta.last_row_id).first()).toEqual({ n: 0 });
-  });
-
-  it("previews row errors without writing and rejects the same invalid commit", async () => {
-    const auth = await login();
-    const before = await env.DB.prepare(
-      "SELECT COUNT(*) n FROM courses",
-    ).first<{
-      n: number;
-    }>();
-    const payload = {
-      type: "courses",
-      rows: [{ code: "BAD", name: "", category: "unknown", credits: "x" }],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(preview.status).toBe(200);
-    const result = await preview.json<{ ok: boolean; errors: unknown[] }>();
-    expect(result.ok).toBe(false);
-    expect(result.errors.length).toBeGreaterThanOrEqual(3);
-    expect(
-      (
-        await env.DB.prepare("SELECT COUNT(*) n FROM courses").first<{
-          n: number;
-        }>()
-      )?.n,
-    ).toBe(before?.n);
-
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(commit.status).toBe(422);
-  });
-
-  it("imports an offering and links its teacher after a clean preview", async () => {
-    const auth = await login();
-    const payload = {
-      type: "offerings",
-      rows: [
-        {
-          course_code: "TEST101",
-          course_name: "测试课程",
-          teacher_name: "测试教师",
-          teacher_department: "测试学院",
-          term: "2026 春",
-          section: "导入测试班",
-          campus: "蛟桥园",
-          status: "active",
-        },
-      ],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect((await preview.json<{ ok: boolean }>()).ok).toBe(true);
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: adminHeaders(auth),
-      body: JSON.stringify(payload),
-    });
-    expect(commit.status).toBe(200);
-    const linked = await env.DB.prepare(
-      `SELECT ot.teacher_id FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id WHERE o.term='2026 春' AND o.section='导入测试班'`,
-    ).first<{ teacher_id: number }>();
-    expect(linked?.teacher_id).toBe(1);
   });
 });
