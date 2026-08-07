@@ -37,7 +37,7 @@ function approvedPackage() {
 }
 let databaseSequence = 0;
 async function emptyDb() {
-  const databases = [env.BASELINE_PUBLISH_DB_1, env.BASELINE_PUBLISH_DB_2, env.BASELINE_PUBLISH_DB_3, env.BASELINE_PUBLISH_DB_4, env.BASELINE_PUBLISH_DB_5, env.BASELINE_PUBLISH_DB_6];
+  const databases = [env.BASELINE_PUBLISH_DB_1, env.BASELINE_PUBLISH_DB_2, env.BASELINE_PUBLISH_DB_3, env.BASELINE_PUBLISH_DB_4, env.BASELINE_PUBLISH_DB_5, env.BASELINE_PUBLISH_DB_6, env.BASELINE_PUBLISH_DB_7];
   const db = databases[databaseSequence++];
   if (!db) throw new Error("baseline publish test database pool exhausted");
   await applyD1Migrations(db, TEST_D1_MIGRATIONS);
@@ -67,7 +67,12 @@ describe("catalog baseline staging and one-time publish", () => {
     expect(await uploadChunk(db, batchId, 1, pkg.chunks[1])).toMatchObject({ idempotent: true });
     expect(await baselineUploadStatus(db, batchId)).toMatchObject({ missingChunks: [0] });
     await expect(finalizeBaselineUpload(db, batchId)).rejects.toMatchObject({ status: 422 });
+    expect(await db.prepare("SELECT COUNT(*) n FROM catalog_baseline_finalize_locks").first()).toEqual({ n: 0 });
     expect(await formalCounts(db)).toEqual([0, 0, 0, 0]);
+    await db.prepare("INSERT INTO catalog_baseline_finalize_locks(batch_id) VALUES(?)").bind(batchId).run();
+    await expect(uploadChunk(db, batchId, 0, pkg.chunks[0])).rejects.toMatchObject({ status: 409 });
+    expect(await baselineUploadStatus(db, batchId)).toMatchObject({ missingChunks: [0] });
+    await db.prepare("DELETE FROM catalog_baseline_finalize_locks WHERE batch_id=?").bind(batchId).run();
     await uploadChunk(db, batchId, 0, pkg.chunks[0]);
     expect(await finalizeBaselineUpload(db, batchId)).toMatchObject({ status: "staged", missingChunks: [] });
     expect(await formalCounts(db)).toEqual([0, 0, 0, 0]);
@@ -112,8 +117,26 @@ describe("catalog baseline staging and one-time publish", () => {
     }
   });
 
-  it("rejects non-empty formal tables and makes concurrent publish single-winner", async () => {
-    const { db, batchId } = await stagedDb("nonempty-1");
+  it("carries forward an exact identity subset without changing referenced IDs", async () => {
+    const { db, batchId } = await stagedDb("carry-forward-1");
+    const course = await db.prepare("INSERT INTO courses(code,name,category) VALUES('C-1','生产旧名称','sports') RETURNING id").first<{ id: number }>();
+    const teacher = await db.prepare("INSERT INTO teachers(source_teacher_label,name,department) VALUES('张三1','生产旧显示名','既有院系') RETURNING id").first<{ id: number }>();
+    await db.prepare("INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)").bind(course!.id, teacher!.id).run();
+    const offering = await db.prepare("INSERT INTO offerings(course_id,term,section) VALUES(?,'2026-1','01') RETURNING id").bind(course!.id).first<{ id: number }>();
+    await db.prepare("INSERT INTO offering_teachers(offering_id,teacher_id) VALUES(?,?)").bind(offering!.id, teacher!.id).run();
+    await db.prepare("INSERT INTO reviews(course_id,teacher_id,category,overall,offering_id) VALUES(?,?,'sports',5,?)").bind(course!.id, teacher!.id, offering!.id).run();
+
+    await expect(publishBaselineUpload(db, batchId)).resolves.toMatchObject({ batch_id: batchId });
+    expect(await formalCounts(db)).toEqual([1, 1, 1, 1]);
+    expect(await db.prepare("SELECT id,name,category FROM courses WHERE code='C-1'").first()).toEqual({ id: course!.id, name: "新课程名", category: "general" });
+    expect(await db.prepare("SELECT id,name,department FROM teachers WHERE source_teacher_label='张三1'").first()).toEqual({ id: teacher!.id, name: "张三1", department: "既有院系" });
+    expect(await db.prepare("SELECT course_id,teacher_id,offering_id FROM reviews").first()).toEqual({ course_id: course!.id, teacher_id: teacher!.id, offering_id: offering!.id });
+    expect((await db.prepare("SELECT name FROM course_name_variants ORDER BY name").all()).results).toEqual([{ name: "新课程名" }, { name: "旧课程名" }, { name: "生产旧名称" }]);
+    expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+  });
+
+  it("rejects identities outside the package and makes concurrent publish single-winner", async () => {
+    const { db, batchId } = await stagedDb("non-subset-1");
     await db.prepare("INSERT INTO courses(code,name,category) VALUES('EXISTING','existing','general')").run();
     await expect(publishBaselineUpload(db, batchId)).rejects.toMatchObject({ status: 409 });
     expect(await formalCounts(db)).toEqual([1, 0, 0, 0]);

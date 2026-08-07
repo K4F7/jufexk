@@ -20,6 +20,7 @@ export default defineConfig(async () => {
             "BASELINE_PUBLISH_DB_4",
             "BASELINE_PUBLISH_DB_5",
             "BASELINE_PUBLISH_DB_6",
+            "BASELINE_PUBLISH_DB_7",
           ],
           bindings: {
             ADMIN_PASSWORD: "test-password",

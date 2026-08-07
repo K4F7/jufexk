@@ -210,27 +210,38 @@ export async function putBaselineChunk(db: D1Database, batchIdInput: string, chu
   const existing = await db.prepare("SELECT * FROM catalog_baseline_chunks WHERE batch_id=? AND chunk_index=?").bind(batchId, chunkIndex).first<ChunkRow>();
   if (existing && existing.chunk_id === chunkId && existing.records === declaredRecords && existing.bytes === declaredBytes && existing.sha256 === declaredSha && existing.content === content) return { ok: true, idempotent: true, chunkIndex };
 
+  const writableGate = `EXISTS(SELECT 1 FROM catalog_baseline_uploads u WHERE u.batch_id=? AND u.status='uploading')
+    AND NOT EXISTS(SELECT 1 FROM catalog_baseline_finalize_locks l WHERE l.batch_id=?)`;
   const statements: D1PreparedStatement[] = [
-    db.prepare("DELETE FROM catalog_baseline_staged_relations WHERE batch_id=? AND chunk_index=?").bind(batchId, chunkIndex),
-    db.prepare("DELETE FROM catalog_baseline_staged_course_names WHERE batch_id=? AND chunk_index=?").bind(batchId, chunkIndex),
-    db.prepare("DELETE FROM catalog_baseline_staged_teachers WHERE batch_id=? AND chunk_index=?").bind(batchId, chunkIndex),
-    db.prepare("DELETE FROM catalog_baseline_staged_courses WHERE batch_id=? AND chunk_index=?").bind(batchId, chunkIndex),
-    db.prepare(`INSERT INTO catalog_baseline_chunks(batch_id,chunk_index,chunk_id,records,bytes,sha256,content) VALUES(?,?,?,?,?,?,?)
-      ON CONFLICT(batch_id,chunk_index) DO UPDATE SET chunk_id=excluded.chunk_id,records=excluded.records,bytes=excluded.bytes,sha256=excluded.sha256,content=excluded.content,uploaded_at=CURRENT_TIMESTAMP`).bind(batchId, chunkIndex, chunkId, declaredRecords, declaredBytes, declaredSha, content),
+    db.prepare(`DELETE FROM catalog_baseline_staged_relations WHERE batch_id=? AND chunk_index=? AND ${writableGate}`).bind(batchId, chunkIndex, batchId, batchId),
+    db.prepare(`DELETE FROM catalog_baseline_staged_course_names WHERE batch_id=? AND chunk_index=? AND ${writableGate}`).bind(batchId, chunkIndex, batchId, batchId),
+    db.prepare(`DELETE FROM catalog_baseline_staged_teachers WHERE batch_id=? AND chunk_index=? AND ${writableGate}`).bind(batchId, chunkIndex, batchId, batchId),
+    db.prepare(`DELETE FROM catalog_baseline_staged_courses WHERE batch_id=? AND chunk_index=? AND ${writableGate}`).bind(batchId, chunkIndex, batchId, batchId),
+    db.prepare(`INSERT INTO catalog_baseline_chunks(batch_id,chunk_index,chunk_id,records,bytes,sha256,content)
+      SELECT ?,?,?,?,?,?,? WHERE ${writableGate}
+      ON CONFLICT(batch_id,chunk_index) DO UPDATE SET chunk_id=excluded.chunk_id,records=excluded.records,bytes=excluded.bytes,sha256=excluded.sha256,content=excluded.content,uploaded_at=CURRENT_TIMESTAMP
+      WHERE EXISTS(SELECT 1 FROM catalog_baseline_uploads u WHERE u.batch_id=catalog_baseline_chunks.batch_id AND u.status='uploading')
+        AND NOT EXISTS(SELECT 1 FROM catalog_baseline_finalize_locks l WHERE l.batch_id=catalog_baseline_chunks.batch_id)`).bind(batchId, chunkIndex, chunkId, declaredRecords, declaredBytes, declaredSha, content, batchId, batchId),
   ];
   for (const record of records) {
     const sourceJson = JSON.stringify(record.value);
     if (record.recordType === "course") {
-      statements.push(db.prepare("INSERT INTO catalog_baseline_staged_courses(batch_id,chunk_index,course_code,name,category,source_json) VALUES(?,?,?,?,?,?)").bind(batchId, chunkIndex, record.value.courseCode, record.value.currentName, record.value.category, sourceJson));
+      statements.push(db.prepare(`INSERT INTO catalog_baseline_staged_courses(batch_id,chunk_index,course_code,name,category,source_json)
+        SELECT ?,?,?,?,?,? WHERE ${writableGate}`).bind(batchId, chunkIndex, record.value.courseCode, record.value.currentName, record.value.category, sourceJson, batchId, batchId));
       const names = new Set([record.value.currentName, ...record.value.nameVariants.map((variant) => variant.rawName)]);
-      for (const name of [...names].sort(compareText)) statements.push(db.prepare("INSERT INTO catalog_baseline_staged_course_names(batch_id,chunk_index,course_code,name) VALUES(?,?,?,?)").bind(batchId, chunkIndex, record.value.courseCode, name));
+      for (const name of [...names].sort(compareText)) statements.push(db.prepare(`INSERT INTO catalog_baseline_staged_course_names(batch_id,chunk_index,course_code,name)
+        SELECT ?,?,?,? WHERE ${writableGate}`).bind(batchId, chunkIndex, record.value.courseCode, name, batchId, batchId));
     } else if (record.recordType === "teacher") {
-      statements.push(db.prepare("INSERT INTO catalog_baseline_staged_teachers(batch_id,chunk_index,source_teacher_label,display_name,source_json) VALUES(?,?,?,?,?)").bind(batchId, chunkIndex, record.value.sourceTeacherLabel, record.value.normalizedTeacherLabel, sourceJson));
+      statements.push(db.prepare(`INSERT INTO catalog_baseline_staged_teachers(batch_id,chunk_index,source_teacher_label,display_name,source_json)
+        SELECT ?,?,?,?,? WHERE ${writableGate}`).bind(batchId, chunkIndex, record.value.sourceTeacherLabel, record.value.normalizedTeacherLabel, sourceJson, batchId, batchId));
     } else {
-      statements.push(db.prepare("INSERT INTO catalog_baseline_staged_relations(batch_id,chunk_index,course_code,source_teacher_label,provenance_json,source_json) VALUES(?,?,?,?,?,?)").bind(batchId, chunkIndex, record.value.courseCode, record.value.sourceTeacherLabel, JSON.stringify(record.value.provenance), sourceJson));
+      statements.push(db.prepare(`INSERT INTO catalog_baseline_staged_relations(batch_id,chunk_index,course_code,source_teacher_label,provenance_json,source_json)
+        SELECT ?,?,?,?,?,? WHERE ${writableGate}`).bind(batchId, chunkIndex, record.value.courseCode, record.value.sourceTeacherLabel, JSON.stringify(record.value.provenance), sourceJson, batchId, batchId));
     }
   }
-  try { await db.batch(statements) } catch { throw new BaselineImportError("分块与其他块存在重复身份或违反 staging 约束", 422) }
+  let results: D1Result[];
+  try { results = await db.batch(statements) } catch { throw new BaselineImportError("分块与其他块存在重复身份或违反 staging 约束", 422) }
+  if (!results[4]?.meta.changes) throw new BaselineImportError("批次正在 finalize 或已完成 staging，不能替换分块", 409);
   return { ok: true, idempotent: false, chunkIndex };
 }
 
@@ -247,26 +258,36 @@ export async function finalizeBaselineUpload(db: D1Database, batchIdInput: strin
   const batchId = batchIdFrom(batchIdInput), upload = await getUpload(db, batchId);
   if (!upload) throw new BaselineImportError("上传批次不存在", 404);
   if (upload.status === "published") return baselineUploadStatus(db, batchId);
-  const { results } = await db.prepare("SELECT chunk_index,records,bytes,content FROM catalog_baseline_chunks WHERE batch_id=? ORDER BY chunk_index").bind(batchId).all<Pick<ChunkRow, "chunk_index" | "records" | "bytes" | "content">>();
-  if (results.length !== upload.chunk_count || results.some((chunk, index) => chunk.chunk_index !== index)) throw new BaselineImportError("分块缺失或序号不连续", 422);
-  const hasher = createArtifactHasher();
-  let bytes = 0, records = 0;
-  for (const chunk of results) { hasher.update(chunk.content); bytes += chunk.bytes; records += chunk.records }
-  if (hasher.digest("hex") !== upload.artifact_sha256 || bytes !== upload.artifact_bytes || records !== upload.artifact_records) throw new BaselineImportError("整包 records/bytes/SHA-256 不匹配", 422);
-  const counts = await db.batch([
-    db.prepare("SELECT COUNT(*) n FROM catalog_baseline_staged_courses WHERE batch_id=?").bind(batchId),
-    db.prepare("SELECT COUNT(*) n FROM catalog_baseline_staged_teachers WHERE batch_id=?").bind(batchId),
-    db.prepare("SELECT COUNT(*) n FROM catalog_baseline_staged_relations WHERE batch_id=?").bind(batchId),
-    db.prepare(`SELECT COUNT(*) n FROM catalog_baseline_staged_relations r
-      LEFT JOIN catalog_baseline_staged_courses c ON c.batch_id=r.batch_id AND c.course_code=r.course_code
-      LEFT JOIN catalog_baseline_staged_teachers t ON t.batch_id=r.batch_id AND t.source_teacher_label=r.source_teacher_label
-      WHERE r.batch_id=? AND (c.course_code IS NULL OR t.source_teacher_label IS NULL)`).bind(batchId),
-  ]);
-  const numbers = counts.map((result) => Number((result.results[0] as { n: number }).n));
-  if (numbers[0] !== upload.expected_courses || numbers[1] !== upload.expected_teachers || numbers[2] !== upload.expected_relations || numbers[3] !== 0) throw new BaselineImportError("staging 类型计数或 Relation 引用不匹配", 422);
-  const updated = await db.prepare("UPDATE catalog_baseline_uploads SET status='staged',staged_at=CURRENT_TIMESTAMP WHERE batch_id=? AND status IN('uploading','staged')").bind(batchId).run();
-  if (!updated.meta.changes && upload.status !== "staged") throw new BaselineImportError("批次状态已变化", 409);
-  return baselineUploadStatus(db, batchId);
+  if (upload.status === "staged") return baselineUploadStatus(db, batchId);
+  const lock = await db.prepare(`INSERT INTO catalog_baseline_finalize_locks(batch_id)
+    SELECT ? WHERE EXISTS(SELECT 1 FROM catalog_baseline_uploads WHERE batch_id=? AND status='uploading')
+      AND NOT EXISTS(SELECT 1 FROM catalog_baseline_finalize_locks WHERE batch_id=?)`).bind(batchId, batchId, batchId).run();
+  if (!lock.meta.changes) throw new BaselineImportError("批次正在 finalize 或状态已变化", 409);
+  try {
+    const { results } = await db.prepare("SELECT chunk_index,records,bytes,content FROM catalog_baseline_chunks WHERE batch_id=? ORDER BY chunk_index").bind(batchId).all<Pick<ChunkRow, "chunk_index" | "records" | "bytes" | "content">>();
+    if (results.length !== upload.chunk_count || results.some((chunk, index) => chunk.chunk_index !== index)) throw new BaselineImportError("分块缺失或序号不连续", 422);
+    const hasher = createArtifactHasher();
+    let bytes = 0, records = 0;
+    for (const chunk of results) { hasher.update(chunk.content); bytes += chunk.bytes; records += chunk.records }
+    if (hasher.digest("hex") !== upload.artifact_sha256 || bytes !== upload.artifact_bytes || records !== upload.artifact_records) throw new BaselineImportError("整包 records/bytes/SHA-256 不匹配", 422);
+    const counts = await db.batch([
+      db.prepare("SELECT COUNT(*) n FROM catalog_baseline_staged_courses WHERE batch_id=?").bind(batchId),
+      db.prepare("SELECT COUNT(*) n FROM catalog_baseline_staged_teachers WHERE batch_id=?").bind(batchId),
+      db.prepare("SELECT COUNT(*) n FROM catalog_baseline_staged_relations WHERE batch_id=?").bind(batchId),
+      db.prepare(`SELECT COUNT(*) n FROM catalog_baseline_staged_relations r
+        LEFT JOIN catalog_baseline_staged_courses c ON c.batch_id=r.batch_id AND c.course_code=r.course_code
+        LEFT JOIN catalog_baseline_staged_teachers t ON t.batch_id=r.batch_id AND t.source_teacher_label=r.source_teacher_label
+        WHERE r.batch_id=? AND (c.course_code IS NULL OR t.source_teacher_label IS NULL)`).bind(batchId),
+    ]);
+    const numbers = counts.map((result) => Number((result.results[0] as { n: number }).n));
+    if (numbers[0] !== upload.expected_courses || numbers[1] !== upload.expected_teachers || numbers[2] !== upload.expected_relations || numbers[3] !== 0) throw new BaselineImportError("staging 类型计数或 Relation 引用不匹配", 422);
+    const updated = await db.prepare("UPDATE catalog_baseline_uploads SET status='staged',staged_at=CURRENT_TIMESTAMP WHERE batch_id=? AND status='uploading' AND EXISTS(SELECT 1 FROM catalog_baseline_finalize_locks WHERE batch_id=?)").bind(batchId, batchId).run();
+    if (!updated.meta.changes) throw new BaselineImportError("批次状态已变化", 409);
+    return baselineUploadStatus(db, batchId);
+  } catch (error) {
+    await db.prepare("DELETE FROM catalog_baseline_finalize_locks WHERE batch_id=? AND EXISTS(SELECT 1 FROM catalog_baseline_uploads WHERE batch_id=? AND status='uploading')").bind(batchId, batchId).run();
+    throw error;
+  }
 }
 
 export async function previewBaselineUpload(db: D1Database, batchIdInput: string, typeInput: string, pageInput: number, pageSizeInput: number) {
@@ -292,14 +313,43 @@ export async function publishBaselineUpload(db: D1Database, batchIdInput: string
       quality_manifest_content_sha256,decisions_sha256,boundary_fixture_content_sha256,expected_courses,expected_teachers,expected_relations
     FROM catalog_baseline_uploads WHERE batch_id=? AND status='staged'
       AND NOT EXISTS(SELECT 1 FROM catalog_baseline_marker)
-      AND NOT EXISTS(SELECT 1 FROM courses) AND NOT EXISTS(SELECT 1 FROM teachers) AND NOT EXISTS(SELECT 1 FROM course_teachers)`).bind(batchId);
+      AND NOT EXISTS(
+        SELECT 1 FROM courses c
+        LEFT JOIN catalog_baseline_staged_courses s ON s.batch_id=? AND s.course_code=c.code
+        WHERE s.course_code IS NULL
+      )
+      AND NOT EXISTS(
+        SELECT 1 FROM teachers t
+        LEFT JOIN catalog_baseline_staged_teachers s ON s.batch_id=? AND s.source_teacher_label=t.source_teacher_label
+        WHERE s.source_teacher_label IS NULL
+      )
+      AND NOT EXISTS(
+        SELECT 1 FROM course_teachers ct
+        JOIN courses c ON c.id=ct.course_id
+        JOIN teachers t ON t.id=ct.teacher_id
+        LEFT JOIN catalog_baseline_staged_relations s
+          ON s.batch_id=? AND s.course_code=c.code AND s.source_teacher_label=t.source_teacher_label
+        WHERE s.course_code IS NULL
+      )`).bind(batchId, batchId, batchId, batchId);
   const markerGate = "EXISTS(SELECT 1 FROM catalog_baseline_marker WHERE singleton=1 AND batch_id=?)";
   const statements = [
     guard,
-    db.prepare(`INSERT INTO courses(code,name,category) SELECT course_code,name,category FROM catalog_baseline_staged_courses WHERE batch_id=? AND ${markerGate} ORDER BY course_code`).bind(batchId, batchId),
+    db.prepare(`INSERT INTO courses(code,name,category)
+      SELECT s.course_code,s.name,s.category FROM catalog_baseline_staged_courses s
+      WHERE s.batch_id=? AND ${markerGate} AND NOT EXISTS(SELECT 1 FROM courses c WHERE c.code=s.course_code)
+      ORDER BY s.course_code`).bind(batchId, batchId),
+    db.prepare(`UPDATE courses SET
+      name=(SELECT s.name FROM catalog_baseline_staged_courses s WHERE s.batch_id=? AND s.course_code=courses.code),
+      category=(SELECT s.category FROM catalog_baseline_staged_courses s WHERE s.batch_id=? AND s.course_code=courses.code)
+      WHERE ${markerGate} AND EXISTS(SELECT 1 FROM catalog_baseline_staged_courses s WHERE s.batch_id=? AND s.course_code=courses.code)`).bind(batchId, batchId, batchId, batchId),
     db.prepare(`INSERT INTO course_name_variants(course_id,name) SELECT c.id,n.name FROM catalog_baseline_staged_course_names n JOIN courses c ON c.code=n.course_code WHERE n.batch_id=? AND ${markerGate} ORDER BY c.id,n.name ON CONFLICT(course_id,name) DO NOTHING`).bind(batchId, batchId),
-    db.prepare(`INSERT INTO teachers(source_teacher_label,name,department) SELECT source_teacher_label,display_name,NULL FROM catalog_baseline_staged_teachers WHERE batch_id=? AND ${markerGate} ORDER BY source_teacher_label`).bind(batchId, batchId),
-    db.prepare(`INSERT INTO course_teachers(course_id,teacher_id) SELECT c.id,t.id FROM catalog_baseline_staged_relations r JOIN courses c ON c.code=r.course_code JOIN teachers t ON t.source_teacher_label=r.source_teacher_label WHERE r.batch_id=? AND ${markerGate} ORDER BY c.id,t.id`).bind(batchId, batchId),
+    db.prepare(`INSERT INTO teachers(source_teacher_label,name,department)
+      SELECT s.source_teacher_label,s.display_name,NULL FROM catalog_baseline_staged_teachers s
+      WHERE s.batch_id=? AND ${markerGate} AND NOT EXISTS(SELECT 1 FROM teachers t WHERE t.source_teacher_label=s.source_teacher_label)
+      ORDER BY s.source_teacher_label`).bind(batchId, batchId),
+    db.prepare(`UPDATE teachers SET name=(SELECT s.display_name FROM catalog_baseline_staged_teachers s WHERE s.batch_id=? AND s.source_teacher_label=teachers.source_teacher_label)
+      WHERE ${markerGate} AND EXISTS(SELECT 1 FROM catalog_baseline_staged_teachers s WHERE s.batch_id=? AND s.source_teacher_label=teachers.source_teacher_label)`).bind(batchId, batchId, batchId),
+    db.prepare(`INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) SELECT c.id,t.id FROM catalog_baseline_staged_relations r JOIN courses c ON c.code=r.course_code JOIN teachers t ON t.source_teacher_label=r.source_teacher_label WHERE r.batch_id=? AND ${markerGate} ORDER BY c.id,t.id`).bind(batchId, batchId),
     db.prepare(`INSERT INTO catalog_relation_provenance(course_id,teacher_id,query_id,page,row_number,semester,education_level,grade)
       SELECT c.id,t.id,json_extract(p.value,'$.queryId'),json_extract(p.value,'$.page'),json_extract(p.value,'$.row'),json_extract(p.value,'$.semester'),json_extract(p.value,'$.educationLevel'),json_extract(p.value,'$.grade')
       FROM catalog_baseline_staged_relations r JOIN courses c ON c.code=r.course_code JOIN teachers t ON t.source_teacher_label=r.source_teacher_label, json_each(r.provenance_json) p
@@ -311,6 +361,6 @@ export async function publishBaselineUpload(db: D1Database, batchIdInput: string
     if (await db.prepare("SELECT 1 FROM catalog_baseline_marker WHERE singleton=1").first()) throw new BaselineImportError("目录基线入口已永久关闭", 409);
     throw error;
   }
-  if (!results[0]?.meta.changes || !results.at(-1)?.meta.changes) throw new BaselineImportError("正式目录非空、已有 marker 或发生并发发布", 409);
+  if (!results[0]?.meta.changes || !results.at(-1)?.meta.changes) throw new BaselineImportError("正式目录不是批准包的严格身份子集、已有 marker 或发生并发发布", 409);
   return db.prepare("SELECT * FROM catalog_baseline_marker WHERE singleton=1").first();
 }

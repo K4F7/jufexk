@@ -1,6 +1,9 @@
 node_modules/
 dist/
+.prototype-dist/
+prototypes/**/.dist-prototype/
 .wrangler/
+.playwright-cli/
 .dev.vars
 worker-configuration.d.ts
 *.zip
@@ -18,3 +21,5 @@ scripts/legacy_evidence/approvals/
 copy.xlsx
 handoff/
 scripts/catalog-baseline/captures/
+test-results/
+output/playwright/prototype-course-reviews-*.png

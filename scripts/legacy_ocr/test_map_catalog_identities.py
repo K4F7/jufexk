@@ -32,7 +32,7 @@ def approved_record(record_type: str, value: dict) -> dict:
     return {"schemaVersion": "catalog-baseline-approved-record/v1", "recordType": record_type, "value": value}
 
 
-def fixture_catalog(root: Path, *, relation=True) -> None:
+def fixture_catalog(root: Path, *, relation=True, extra_courses=None) -> None:
     rows = [
         approved_record("course", {
             "schemaVersion": "catalog-baseline-course/v1", "courseCode": "C001",
@@ -45,6 +45,7 @@ def fixture_catalog(root: Path, *, relation=True) -> None:
             "normalizedTeacherLabel": "教师甲",
         }),
     ]
+    rows.extend(approved_record("course", course) for course in (extra_courses or []))
     if relation:
         rows.append(approved_record("relation", {
             "schemaVersion": "catalog-baseline-relation/v2", "courseCode": "C001",
@@ -54,7 +55,7 @@ def fixture_catalog(root: Path, *, relation=True) -> None:
     (root / "catalog-baseline.jsonl").write_bytes(artifact)
     content = {
         "schemaVersion": "catalog-baseline-approved-manifest/v1", "status": "package_ready",
-        "counts": {"courses": 1, "teachers": 1, "relations": int(relation), "totalRecords": len(rows)},
+        "counts": {"courses": 1 + len(extra_courses or []), "teachers": 1, "relations": int(relation), "totalRecords": len(rows)},
         "artifact": {"path": "catalog-baseline.jsonl", "records": len(rows), "bytes": len(artifact), "sha256": hashlib.sha256(artifact).hexdigest()},
         "contentSha256": "b" * 64,
     }
@@ -99,6 +100,21 @@ class MapCatalogIdentitiesTests(unittest.TestCase):
             self.assertEqual(manifest["status"], "awaiting_owner_review")
             self.assertEqual(manifest["counts"]["alias_exceptions"], 1)
             self.assertEqual(manifest["counts"]["resolved"], 0)
+
+    def test_relation_graph_uniquely_disambiguates_same_name_course(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); staging = root / "staging"; catalog = root / "catalog"
+            staging.mkdir(); catalog.mkdir(); fixture_staging(staging, [requirement()])
+            fixture_catalog(catalog, extra_courses=[{
+                "schemaVersion": "catalog-baseline-course/v1", "courseCode": "C002",
+                "currentName": "课程甲", "normalizedCurrentName": "课程甲",
+                "nameVariants": [], "category": "general", "sourceCategoryTexts": ["选修"],
+            }])
+            manifest = map_catalog_identities(staging, catalog, root / "out")
+            self.assertEqual(manifest["counts"]["resolved"], 1)
+            row = json.loads((root / "out" / "resolved-mappings.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(row["catalog_course_code"], "C001")
+            self.assertEqual(row["course_match_method"], "pair_relation_unique")
 
     def test_missing_relation_becomes_catalog_addition_request(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -106,20 +106,63 @@ def map_catalog_identities(staging_root: Path, catalog_root: Path, out: Path) ->
     courses, teachers, relations, course_names, teacher_names = catalog_indexes(catalog_rows)
     required = read_jsonl(staging_root / "catalog-mapping-required.jsonl")
     required_pairs: set[tuple[str, str]] = set()
+    requirements_by_course: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in required:
+        pair = (row.get("legacy_course_id"), row.get("legacy_teacher_id"))
+        if not all(isinstance(item, str) and item for item in pair) or pair in required_pairs:
+            raise ValueError(f"invalid or duplicate required identity mapping: {pair}")
+        course_name, teacher_name = row.get("legacy_course_name"), row.get("legacy_teacher_name")
+        if not isinstance(course_name, str) or not course_name or not isinstance(teacher_name, str) or not teacher_name:
+            raise ValueError(f"required mapping lacks source labels: {pair}")
+        required_pairs.add(pair)
+        requirements_by_course[pair[0]].append(row)
+
+    graph_course_matches: dict[str, dict[str, Any]] = {}
+    for legacy_course_id, course_rows in requirements_by_course.items():
+        source_names = {row["legacy_course_name"] for row in course_rows}
+        if len(source_names) != 1:
+            raise ValueError(f"conflicting source labels for legacy course: {legacy_course_id}")
+        source_name = next(iter(source_names))
+        candidates = course_names.get(normalize_source_label(source_name), [])
+        exact = [candidate for candidate in candidates if candidate.get("currentName") == source_name]
+        candidates = exact if exact else candidates
+        if len(candidates) < 2:
+            continue
+        teacher_labels = set()
+        for row in course_rows:
+            teacher, _method, _candidates = match_identity(row["legacy_teacher_name"], teacher_names, "sourceTeacherLabel")
+            if teacher:
+                teacher_labels.add(teacher["sourceTeacherLabel"])
+        compatible = [
+            course for course in candidates
+            if any((course["courseCode"], teacher_label) in relations for teacher_label in teacher_labels)
+        ]
+        if len(compatible) == 1:
+            graph_course_matches[legacy_course_id] = compatible[0]
+
     resolved: list[dict[str, Any]] = []
     alias_exceptions_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     addition_requests_by_key: dict[tuple[str, str], dict[str, Any]] = {}
 
     for row in required:
         pair = (row.get("legacy_course_id"), row.get("legacy_teacher_id"))
-        if not all(isinstance(item, str) and item for item in pair) or pair in required_pairs:
-            raise ValueError(f"invalid or duplicate required identity mapping: {pair}")
-        required_pairs.add(pair)
         course_name, teacher_name = row.get("legacy_course_name"), row.get("legacy_teacher_name")
-        if not isinstance(course_name, str) or not course_name or not isinstance(teacher_name, str) or not teacher_name:
-            raise ValueError(f"required mapping lacks source labels: {pair}")
         course, course_method, course_candidates = match_identity(course_name, course_names, "currentName")
         teacher, teacher_method, teacher_candidates = match_identity(teacher_name, teacher_names, "sourceTeacherLabel")
+        pair_course_candidates = course_names.get(normalize_source_label(course_name), [])
+        exact_pair_courses = [candidate for candidate in pair_course_candidates if candidate.get("currentName") == course_name]
+        pair_course_candidates = exact_pair_courses if exact_pair_courses else pair_course_candidates
+        if teacher and course is None:
+            relation_matches = [
+                candidate for candidate in pair_course_candidates
+                if (candidate["courseCode"], teacher["sourceTeacherLabel"]) in relations
+            ]
+            if len(relation_matches) == 1:
+                course, course_method, course_candidates = relation_matches[0], "pair_relation_unique", []
+        if pair[0] in graph_course_matches:
+            graph_course = graph_course_matches[pair[0]]
+            if course_method != "pair_relation_unique":
+                course, course_method, course_candidates = graph_course, "relation_graph_unique", []
         if not course or not teacher:
             for kind, legacy_id, raw_name, method, candidates in (
                 ("course", pair[0], course_name, course_method, course_candidates),
