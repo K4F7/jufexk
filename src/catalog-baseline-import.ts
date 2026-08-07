@@ -5,6 +5,7 @@ export const APPROVED_RECORD_SCHEMA = "catalog-baseline-approved-record/v1";
 export const MAX_BASELINE_CHUNK_BYTES = 750_000;
 export const MAX_BASELINE_CHUNK_RECORDS = 100;
 const MAX_BASELINE_CHUNK_STATEMENTS = 1_000;
+const FINALIZE_LOCK_STALE_MS = 5 * 60 * 1_000;
 
 export interface ApprovedManifestInput {
   schemaVersion: string;
@@ -259,6 +260,12 @@ export async function finalizeBaselineUpload(db: D1Database, batchIdInput: strin
   if (!upload) throw new BaselineImportError("上传批次不存在", 404);
   if (upload.status === "published") return baselineUploadStatus(db, batchId);
   if (upload.status === "staged") return baselineUploadStatus(db, batchId);
+  const existingLock = await db.prepare("SELECT locked_at FROM catalog_baseline_finalize_locks WHERE batch_id=?").bind(batchId).first<{ locked_at: string }>();
+  if (existingLock) {
+    const lockedAt = Date.parse(`${existingLock.locked_at.replace(" ", "T")}Z`);
+    if (!Number.isFinite(lockedAt) || Date.now() - lockedAt < FINALIZE_LOCK_STALE_MS) throw new BaselineImportError("批次正在 finalize 或状态已变化", 409);
+    await db.prepare("DELETE FROM catalog_baseline_finalize_locks WHERE batch_id=? AND locked_at=? AND EXISTS(SELECT 1 FROM catalog_baseline_uploads WHERE batch_id=? AND status='uploading')").bind(batchId, existingLock.locked_at, batchId).run();
+  }
   const lock = await db.prepare(`INSERT INTO catalog_baseline_finalize_locks(batch_id)
     SELECT ? WHERE EXISTS(SELECT 1 FROM catalog_baseline_uploads WHERE batch_id=? AND status='uploading')
       AND NOT EXISTS(SELECT 1 FROM catalog_baseline_finalize_locks WHERE batch_id=?)`).bind(batchId, batchId, batchId).run();
