@@ -264,11 +264,19 @@ export async function finalizeBaselineUpload(db: D1Database, batchIdInput: strin
       AND NOT EXISTS(SELECT 1 FROM catalog_baseline_finalize_locks WHERE batch_id=?)`).bind(batchId, batchId, batchId).run();
   if (!lock.meta.changes) throw new BaselineImportError("批次正在 finalize 或状态已变化", 409);
   try {
-    const { results } = await db.prepare("SELECT chunk_index,records,bytes,content FROM catalog_baseline_chunks WHERE batch_id=? ORDER BY chunk_index").bind(batchId).all<Pick<ChunkRow, "chunk_index" | "records" | "bytes" | "content">>();
-    if (results.length !== upload.chunk_count || results.some((chunk, index) => chunk.chunk_index !== index)) throw new BaselineImportError("分块缺失或序号不连续", 422);
     const hasher = createArtifactHasher();
     let bytes = 0, records = 0;
-    for (const chunk of results) { hasher.update(chunk.content); bytes += chunk.bytes; records += chunk.records }
+    // Read one chunk at a time. Loading the whole 50+ MB artifact with a
+    // single D1 `.all()` result exceeds the Worker memory limit during the
+    // production finalize request, while retaining the same full-artifact
+    // SHA-256 verification.
+    for (let index = 0; index < upload.chunk_count; index += 1) {
+      const chunk = await db.prepare("SELECT chunk_index,records,bytes,content FROM catalog_baseline_chunks WHERE batch_id=? AND chunk_index=?").bind(batchId, index).first<Pick<ChunkRow, "chunk_index" | "records" | "bytes" | "content">>();
+      if (!chunk || chunk.chunk_index !== index) throw new BaselineImportError("分块缺失或序号不连续", 422);
+      hasher.update(chunk.content);
+      bytes += chunk.bytes;
+      records += chunk.records;
+    }
     if (hasher.digest("hex") !== upload.artifact_sha256 || bytes !== upload.artifact_bytes || records !== upload.artifact_records) throw new BaselineImportError("整包 records/bytes/SHA-256 不匹配", 422);
     const counts = await db.batch([
       db.prepare("SELECT COUNT(*) n FROM catalog_baseline_staged_courses WHERE batch_id=?").bind(batchId),

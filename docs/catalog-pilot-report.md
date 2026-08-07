@@ -35,7 +35,7 @@ Generated from the validated, gitignored raw package; no raw course or teacher v
 | gbk | proven | `gbk.html` | All raw pages decode as GBK without replacement characters. |
 | pagination | proven | `pagination.html` | main-2026-0-05-2025 spans 22 pages. |
 | rowspan | not_observed | - | No rowspan attribute was present in the Pilot pages. |
-| multi-teacher | not_observed | - | No conclusive multi-teacher field was observed. |
+| multi-teacher | proven | `multi-teacher.html` | The teacher field contains multiple source teacher tokens. |
 | teacher-digit-suffix | proven | `teacher-digit-suffix.html` | A teacher source token with a numeric suffix was observed. |
 | course-rename | not_observed | - | No same-code rename was observed. |
 | mooc | proven | `mooc.html` | A MOOC/online-open-course token was observed. |
@@ -43,7 +43,7 @@ Generated from the validated, gitignored raw package; no raw course or teacher v
 | empty-field | proven | `empty-field.html` | At least one table row contains an empty cell. |
 | abnormal-format | proven | `abnormal-format.html` | A row with an unexpected cell/course shape was observed. |
 
-Summary: 7 proven, 3 not observed. Fixtures are deterministic pseudonyms encoded as GBK. The source package remains only under the gitignored capture directory.
+Summary: 8 proven, 2 not observed. Fixtures are deterministic pseudonyms encoded as GBK. The source package remains only under the gitignored capture directory.
 
 ## Security
 

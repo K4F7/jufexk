@@ -83,9 +83,11 @@
       "detail": "No rowspan attribute was present in the Pilot pages."
     },
     "multi-teacher": {
-      "status": "not_observed",
-      "fixtures": [],
-      "detail": "No conclusive multi-teacher field was observed."
+      "status": "proven",
+      "fixtures": [
+        "multi-teacher.html"
+      ],
+      "detail": "The teacher field contains multiple source teacher tokens."
     },
     "teacher-digit-suffix": {
       "status": "proven",

@@ -154,6 +154,33 @@ describe("catalog baseline deterministic offline derivation", () => {
     })]);
   });
 
+  it("splits the verified Chinese space-separated multi-teacher format", async () => {
+    const captureRoot = await tempRoot("space-separated-teachers-capture");
+    const outputRoot = await tempRoot("space-separated-teachers-output");
+    await writeCapturePackage(captureRoot, {
+      batchId: "space-separated-teachers",
+      status: "complete",
+      sourceDictionarySha256: sourceDictionary().sha256,
+      sourceDictionary: sourceDictionary(),
+      queries: [query("main-space-teachers", "2026-1", 1)],
+      snapshots: [{
+        queryId: "main-space-teachers",
+        page: 1,
+        bytes: sourceShapedHtml(`<tr>${cells("[COURSE-SPACE]空格分隔教师课程", "教师甲 教师乙2")}</tr>`),
+      }],
+    });
+
+    const manifest = await deriveCatalogBaseline(captureRoot, outputRoot);
+    const teachers = await readJsonLines(join(outputRoot, "teachers.jsonl"));
+    const relations = await readJsonLines(join(outputRoot, "relations.jsonl"));
+    const exceptions = await readJsonLines(join(outputRoot, "exceptions.jsonl"));
+
+    expect(manifest.status).toBe("derived");
+    expect(teachers.map((teacher) => teacher.sourceTeacherLabel)).toEqual(["教师乙2", "教师甲"]);
+    expect(relations.map((relation) => relation.sourceTeacherLabel)).toEqual(["教师乙2", "教师甲"]);
+    expect(exceptions).toEqual([]);
+  });
+
   it("inherits a blank course cell within and across pages of the same query", async () => {
     const captureRoot = await tempRoot("inheritance-capture");
     const outputRoot = await tempRoot("inheritance-output");

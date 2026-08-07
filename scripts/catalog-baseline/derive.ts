@@ -60,6 +60,19 @@ function normalizeSourceLabel(value: string) {
   return value.normalize("NFC").replace(/[\s\u200B-\u200D\u2060\uFEFF]+/gu, " ").trim();
 }
 
+function teacherLabelsOf(value: string): { labels: string[]; hasUnknownStructure: boolean } {
+  const raw = value.trim();
+  if (!raw) return { labels: [], hasUnknownStructure: false };
+  const normalized = normalizeSourceLabel(raw);
+  const parts = normalized.split(" ");
+  const chineseNameParts = parts.length > 1
+    && !/\s{2,}/u.test(raw)
+    && parts.every((part) => /^[\p{Script=Han}·]{2,}\d?$/u.test(part));
+  if (chineseNameParts) return { labels: parts, hasUnknownStructure: false };
+  if (/[、,，;；/]\s*\S/u.test(raw)) return { labels: [], hasUnknownStructure: true };
+  return { labels: [raw], hasUnknownStructure: false };
+}
+
 function comparableHomeUnitLabel(value: string) {
   return normalizeSourceLabel(value).replace(/^\[\d+\]\s*/u, "");
 }
@@ -242,10 +255,11 @@ export async function deriveCatalogBaseline(captureDirectory: string, outputDire
         return;
       }
       const rawTeacher = row[14];
-      if (rawTeacher && /[、,，;；/]\s*\S/u.test(rawTeacher)) {
+      const teacherResult = teacherLabelsOf(rawTeacher);
+      if (teacherResult.hasUnknownStructure) {
         exceptions.push({ schemaVersion: EXCEPTION_SCHEMA_VERSION, code: "UNKNOWN_TEACHER_STRUCTURE", queryId, page, row: rowNumber, detail: "Teacher field contains an unverified multi-teacher separator." });
       }
-      const rawTeacherLabels = rawTeacher && !/[、,，;；/]\s*\S/u.test(rawTeacher) ? [rawTeacher] : [];
+      const rawTeacherLabels = teacherResult.labels;
       const rawHomeUnit = row[5];
       const homeUnitMatches = homeUnitsByLabel.get(comparableHomeUnitLabel(rawHomeUnit)) ?? [];
       if (rawHomeUnit && homeUnitMatches.length !== 1) {

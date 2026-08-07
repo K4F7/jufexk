@@ -84,6 +84,11 @@ for (const left of queries.filter((query) => query.kind === "main")) {
 }
 
 const courseIdentity = (row: Row) => /^\[([^\]]+)]\s*(.*)$/.exec(row.cells[0]?.text ?? "");
+const isChineseSpaceSeparatedTeacherList = (value: string) => {
+  if (/\s{2,}/u.test(value)) return false;
+  const parts = value.replace(/\s+/gu, " ").trim().split(" ");
+  return parts.length > 1 && parts.every((part) => /^[\p{Script=Han}·]{2,}\d?$/u.test(part));
+};
 const courseNames = new Map<string, Map<string, Row>>();
 for (const row of allRows) {
   const identity = courseIdentity(row);
@@ -98,7 +103,9 @@ const rowspanRow = allRows.find((row) => /\browspan\s*=/i.test(row.raw));
 const multiTeacherRow = allRows.find((row) => {
   const teacher = row.cells[14];
   if (!teacher?.text) return false;
-  return /<br\b/i.test(teacher.html) || /[、,，;；/]\s*[^\s]/.test(teacher.text);
+  return /<br\b/i.test(teacher.html)
+    || /[、,，;；/]\s*[^\s]/.test(teacher.text)
+    || isChineseSpaceSeparatedTeacherList(teacher.text);
 });
 const digitSuffixRow = allRows.find((row) => /[\p{Script=Han}A-Za-z·]{2,}\d+\b/u.test(row.cells[14]?.text ?? ""));
 const moocRow = allRows.find((row) => /MOOC|慕课|在线开放/i.test(row.cells.map((cell) => cell.text).join(" ")));
