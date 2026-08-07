@@ -28,7 +28,7 @@ interface Coverage {
 interface Checkpoint { batchId: string; phase: string; queries: unknown[] }
 
 const captureArgument = process.argv[2];
-if (!captureArgument) throw new Error("usage: bun run audit:catalog-full -- <capture-directory>");
+if (!captureArgument) throw new Error("usage: pnpm run audit:catalog-full <capture-directory>");
 
 const captureRoot = resolve(captureArgument);
 const scriptRoot = dirname(fileURLToPath(import.meta.url));

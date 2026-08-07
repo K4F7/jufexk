@@ -105,6 +105,6 @@ async function jsonFiles(directory: string): Promise<string[]> {
 
 function usage(): never {
   throw new Error(
-    "Usage: bun scripts/legacy_evidence/formula_bar_full_scan_cli.ts <scan-root> <targets.json> [audit.json]",
+    "Usage: pnpm run formula-bar-full-audit <scan-root> <targets.json> [audit.json]",
   );
 }

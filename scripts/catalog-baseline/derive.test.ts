@@ -288,12 +288,13 @@ describe("catalog baseline deterministic offline derivation", () => {
     }
   });
 
-  it("runs through bun run catalog-baseline derive without network access", async () => {
+  it("runs through pnpm run catalog-baseline derive without network access", async () => {
     const captureRoot = await tempRoot("cli-capture");
     const outputRoot = await tempRoot("cli-output");
     await buildBehaviorPackage(captureRoot);
 
-    const { stdout } = await execFileAsync("bun", ["run", "catalog-baseline", "derive", captureRoot, "--output", outputRoot], {
+    const packageManager = "pnpm";
+    const { stdout } = await execFileAsync(packageManager, ["--silent", "run", "catalog-baseline", "derive", captureRoot, "--output", outputRoot], {
       cwd: repositoryRoot,
       env: { ...process.env, HTTP_PROXY: "http://127.0.0.1:1", HTTPS_PROXY: "http://127.0.0.1:1", NO_PROXY: "" },
     });

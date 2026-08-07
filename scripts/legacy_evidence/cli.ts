@@ -20,9 +20,9 @@ function numberOption(name: string) {
 function usage() {
   return [
     "Usage:",
-    "  bun scripts/legacy_evidence/cli.ts pilot --source <dir> --batch <dir> --out <dir> [--pilot-job <id> x3] [--max-concurrent-jobs 4]",
-    "  bun scripts/legacy_evidence/cli.ts full --manifest <manifest.json> --approval <approval.json> --out <dir> [--max-concurrent-jobs 4]",
-    "  bun scripts/legacy_evidence/cli.ts recognize --manifest <recapture-manifest.json> --out <dir> [--max-concurrent-groups 2]",
+    "  pnpm run legacy-evidence pilot --source <dir> --batch <dir> --out <dir> [--pilot-job <id> x3] [--max-concurrent-jobs 4]",
+    "  pnpm run legacy-evidence full --manifest <manifest.json> --approval <approval.json> --out <dir> [--max-concurrent-jobs 4]",
+    "  pnpm run legacy-evidence recognize --manifest <recapture-manifest.json> --out <dir> [--max-concurrent-groups 2]",
   ].join("\n");
 }
 

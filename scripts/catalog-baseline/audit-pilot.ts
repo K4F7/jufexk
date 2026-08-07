@@ -10,7 +10,7 @@ interface Row { sourcePath: string; rowIndex: number; raw: string; cells: Cell[]
 interface BoundaryEvidence { status: "proven" | "not_observed"; fixtures: string[]; detail: string }
 
 const captureArgument = process.argv[2];
-if (!captureArgument) throw new Error("usage: bun run audit:catalog-pilot -- <capture-directory>");
+if (!captureArgument) throw new Error("usage: pnpm run audit:catalog-pilot <capture-directory>");
 
 const captureRoot = resolve(captureArgument);
 const scriptRoot = dirname(fileURLToPath(import.meta.url));

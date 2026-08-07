@@ -58,13 +58,13 @@
 - 采集包必须版本化，包含来源快照、脱敏查询参数、计划单元状态、计数和 SHA-256，不得包含账号密码、Cookie 或会话令牌。
 - 采集包是版本化目录而非浏览器内生成的压缩文件：根目录包含 `manifest.json`、`queries.jsonl` 和按查询编号组织的 `snapshots/<query-id>/page-xxxx.html`。
 - 用户从采集面板主动选择本地目录，脚本逐页写入来源快照，避免在内存中组装整个批次；IndexedDB 仅保存运行检查点与恢复所需状态，不作为长期证据库。
-- 浏览器脚本与离线解析器均使用 Bun + TypeScript，并共享采集包 schema 与类型；离线命令位于 `scripts/`。
-- 解析、分页、课程归并、教师归并、任课关系去重和冲突门禁必须使用脱敏 HTML fixture 编写 Vitest，并纳入现有 `bun run check`。
+- 浏览器脚本与离线解析器均使用 TypeScript，并共享采集包 schema 与类型；离线命令通过 Node.js 运行，userscript 使用 esbuild 打包，命令位于 `scripts/`。
+- 解析、分页、课程归并、教师归并、任课关系去重和冲突门禁必须使用脱敏 HTML fixture 编写 Vitest，并纳入现有 `pnpm run check`。
 
 ## 操作边界
 
 1. 用户人工登录教务系统，选择采集目录并点击开始；浏览器随后无人值守运行，直到完成、熔断或登录失效。
-2. 采集完成后，用户运行一次 `bun run catalog-baseline derive <capture-dir>`；离线阶段自动解析、执行门禁并生成异常队列或目录基线批准包。异常决定完成后重跑同一命令，不增加整包审核。
+2. 采集完成后，用户运行一次 `pnpm run catalog-baseline derive <capture-dir>`；离线阶段自动解析、执行门禁并生成异常队列或目录基线批准包。异常决定完成后重跑同一命令，不增加整包审核。
 3. 批准包就绪并完成暂存预览后，管理员执行一次生产导入。
 
 浏览器不得自动启动本地进程，两阶段之间不建设常驻本地桥接服务。
@@ -102,7 +102,7 @@
 - 当异常项全部获得终态且其他门禁通过时，系统自动编译并批准目录基线批准包，不再要求第二次人工批次确认。
 - 异常审核界面为离线生成的 `catalog-review.md`，固定包含 `summary`、`unit_decisions`、`course_conflicts`、`teacher_conflicts`、`coverage_exceptions` 和 `golden_sample` 六节。
 - Markdown 只允许表达固定枚举决定与必要修正值；程序必须验证决定合法性、来源键完整性和审核字段后再编译批准包。Markdown 永不得直接导入数据库。
-- `bun run catalog-baseline review <quality-directory> [--output <review-directory>]` 同时导出 `catalog-review.md` 与同名的六份确定性 UTF-8 CSV。所有视图绑定质量包哈希并保留来源证据；它们都不是权威导入数据源，只有验证后编译的 JSONL 决定与 approved 包具有权威性。
+- `pnpm run catalog-baseline review <quality-directory> [--output <review-directory>]` 同时导出 `catalog-review.md` 与同名的六份确定性 UTF-8 CSV。所有视图绑定质量包哈希并保留来源证据；它们都不是权威导入数据源，只有验证后编译的 JSONL 决定与 approved 包具有权威性。
 
 ## 批准与导入
 
@@ -120,7 +120,7 @@
 
 ## 留存和离线归档
 
-- `bun run catalog-baseline archive <capture-directory> --derived <derivation-directory> --approved <approved-directory> [--output <archive-manifest.json>]` 会重新验证三阶段 manifest、全部声明文件的 records/bytes/SHA-256 和跨阶段 hash 绑定，再生成确定性的 `catalog-baseline-archive-manifest/v1` 完整性清单。
+- `pnpm run catalog-baseline archive <capture-directory> --derived <derivation-directory> --approved <approved-directory> [--output <archive-manifest.json>]` 会重新验证三阶段 manifest、全部声明文件的 records/bytes/SHA-256 和跨阶段 hash 绑定，再生成确定性的 `catalog-baseline-archive-manifest/v1` 完整性清单。
 - 仅生成清单不代表留存期已经开始。基线正式发布和历史评价映射二者都完成前，清单必须保持 `retention_pending`，`triggerCompletedAt` 与 `archiveEligibleAt` 必须为空。
 - 两项工作完成并稳定运行后，以较晚的完成时间作为触发时间，连续保留 90 天；期间任何需要重新映射或重新发布的实质修复都会重新计算稳定期。
 - 到期后先复验清单，再将 capture、derived、approved 和清单整体加密转移到受控离线归档。确认离线副本可解密且哈希一致后，才可清理活跃原始快照；仓库和线上环境只保留 schema、非敏感汇总、manifest hash 与归档交接记录。
@@ -134,7 +134,7 @@
 - 权威交付：`approved/manifest.json` 与 `approved/catalog-baseline.jsonl`。
 - 所有 JSON/JSONL 契约必须携带 schema 版本；清单记录每个文件的字节数、记录数和 SHA-256。
 
-基础离线派生命令为 `bun run catalog-baseline derive <capture-directory> [--output <derivation-directory>]`。未指定输出目录时写入采集目录的同级 `<capture-directory>-derived`；命令先完整验证采集包，再以严格 GBK 解码离线生成 `inventory.jsonl`、`courses.jsonl`、`teachers.jsonl`、`relations.jsonl`、`exceptions.jsonl` 和 `manifest.json`，不发起网络请求。对应 schema 为 `catalog-baseline-inventory/v3`、`catalog-baseline-course/v1`、`catalog-baseline-teacher/v1`、`catalog-baseline-relation/v2`、`catalog-baseline-exception/v1` 与 `catalog-baseline-derivation/v1`。inventory v3 保留来源性质与分类文字、承担单位稳定代码与标签、校区和地点原文；承担单位标签只允许通过采集包内已哈希冻结的字典唯一映射到代码，未知或歧义映射进入异常。relation v2 的 provenance 同时保留培养层次与年级，供覆盖和金标准分层使用。异常派生物仍是可审计中间结果，不是批准包，也不得直接导入数据库。
+基础离线派生命令为 `pnpm run catalog-baseline derive <capture-directory> [--output <derivation-directory>]`。未指定输出目录时写入采集目录的同级 `<capture-directory>-derived`；命令先完整验证采集包，再以严格 GBK 解码离线生成 `inventory.jsonl`、`courses.jsonl`、`teachers.jsonl`、`relations.jsonl`、`exceptions.jsonl` 和 `manifest.json`，不发起网络请求。对应 schema 为 `catalog-baseline-inventory/v3`、`catalog-baseline-course/v1`、`catalog-baseline-teacher/v1`、`catalog-baseline-relation/v2`、`catalog-baseline-exception/v1` 与 `catalog-baseline-derivation/v1`。inventory v3 保留来源性质与分类文字、承担单位稳定代码与标签、校区和地点原文；承担单位标签只允许通过采集包内已哈希冻结的字典唯一映射到代码，未知或歧义映射进入异常。relation v2 的 provenance 同时保留培养层次与年级，供覆盖和金标准分层使用。异常派生物仍是可审计中间结果，不是批准包，也不得直接导入数据库。
 
 ## 实现顺序
 
@@ -145,4 +145,4 @@
 5. **暂存与原子导入**：实现分块断点上传、整包哈希与预览、空目录门禁、单次事务发布、失败回滚、成功后永久关闭入口。
 6. **试采与全量运行**：先用少量学期/层次/年级完成端到端 pilot 和反证查询，固定页面字典证据与金标准；通过后执行一次全量基线，再让历史评价流水线映射到正式目录身份。
 
-每个工作包都必须在 `bun run check` 中有对应验证；原子导入测试必须证明任一步骤失败时正式目录保持为空，采集安全测试必须证明采集包中不存在 Cookie、会话令牌或账号凭证。
+每个工作包都必须在 `pnpm run check` 中有对应验证；原子导入测试必须证明任一步骤失败时正式目录保持为空，采集安全测试必须证明采集包中不存在 Cookie、会话令牌或账号凭证。

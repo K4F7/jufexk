@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { validateCapturePackage } from "./capture-package";
 
 function usage(): never {
-  throw new Error("usage: bun run validate:catalog-capture -- <capture-directory> [--require-complete]");
+  throw new Error("usage: pnpm run validate:catalog-capture <capture-directory> [--require-complete]");
 }
 
 const args = process.argv.slice(2);

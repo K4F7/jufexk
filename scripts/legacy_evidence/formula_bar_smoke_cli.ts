@@ -62,7 +62,7 @@ if (command === "build-targets") {
 function usage(): never {
   throw new Error([
     "Usage:",
-    "  bun scripts/legacy_evidence/formula_bar_smoke_cli.ts build-targets <historical-evaluations.jsonl> <targets.json>",
-    "  bun scripts/legacy_evidence/formula_bar_smoke_cli.ts verify <targets.json> <evidence-dir> <gate.json> [manual-expectations.json] [manual-resolutions.json]",
+    "  pnpm run formula-bar-smoke build-targets <historical-evaluations.jsonl> <targets.json>",
+    "  pnpm run formula-bar-smoke verify <targets.json> <evidence-dir> <gate.json> [manual-expectations.json] [manual-resolutions.json]",
   ].join("\n"));
 }

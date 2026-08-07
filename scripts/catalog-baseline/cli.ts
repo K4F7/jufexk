@@ -5,7 +5,7 @@ import { deriveCatalogBaseline } from "./derive";
 import { runCatalogQuality } from "./quality";
 import { exportCatalogReview } from "./review";
 
-const usage = "usage: bun run catalog-baseline derive <capture-directory> [--output <derivation-directory>] | bun run catalog-baseline quality <derivation-directory> [--decisions <decisions.jsonl>] [--output <quality-directory>] | bun run catalog-baseline review <quality-directory> [--output <review-directory>] | bun run catalog-baseline approve <quality-directory> [--output <approved-directory>] | bun run catalog-baseline archive <capture-directory> --derived <derivation-directory> --approved <approved-directory> [--output <archive-manifest.json>]";
+const usage = "usage: pnpm run catalog-baseline derive <capture-directory> [--output <derivation-directory>] | pnpm run catalog-baseline quality <derivation-directory> [--decisions <decisions.jsonl>] [--output <quality-directory>] | pnpm run catalog-baseline review <quality-directory> [--output <review-directory>] | pnpm run catalog-baseline approve <quality-directory> [--output <approved-directory>] | pnpm run catalog-baseline archive <capture-directory> --derived <derivation-directory> --approved <approved-directory> [--output <archive-manifest.json>]";
 const [command, inputArgument, ...rest] = process.argv.slice(2);
 if (!inputArgument || !["derive", "quality", "review", "approve", "archive"].includes(command ?? "")) {
   throw new Error(usage);
