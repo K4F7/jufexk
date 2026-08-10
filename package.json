@@ -18,11 +18,21 @@
     "db:local": "wrangler d1 migrations apply jufexk --local"
   },
   "dependencies": {
-    "hono": "4.12.32"
+    "@heroui/react": "^3.2.4",
+    "@heroui/styles": "^3.2.4",
+    "hono": "4.12.32",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.18.8",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "26.1.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "tailwindcss": "^4.3.3",
     "typescript": "7.0.2",
     "vite": "8.1.5",
     "vitest": "4.1.10",

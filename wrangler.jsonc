@@ -20,7 +20,7 @@
     },
   ],
   "vars": {
-    "SITE_NAME": "JUFE 选课志",
+    "SITE_NAME": "江财选课参考",
     "UNIVERSITY_NAME": "江西财经大学",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
   },

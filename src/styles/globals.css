@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+:root {
+  /* Brand accent: restrained red for primary actions & ratings */
+  --accent: oklch(0.5 0.16 25);
+  --accent-foreground: oklch(0.99 0 0);
+  --radius: 0.25rem;
+  --field-radius: 0.25rem;
+  --serif: "Iowan Old Style", "Noto Serif SC", "Songti SC", Georgia, serif;
+  --sans:
+    Roboto, -apple-system, BlinkMacSystemFont, "Noto Sans SC",
+    "Microsoft YaHei", sans-serif;
+}
+
+.dark,
+[data-theme="dark"] {
+  --accent: oklch(0.72 0.12 25);
+  --accent-foreground: oklch(0.18 0.02 25);
+}
+
+html {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.slogan-serif {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.dense-table [data-slot="table-cell"],
+.dense-table [data-slot="table-column"] {
+  padding-block: 0.45rem;
+}
+
+.trap {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  height: 0;
+  width: 0;
+  pointer-events: none;
+}
+
+.field-control {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--field-background);
+  color: var(--field-foreground);
+  border-radius: var(--field-radius);
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+}
+
+.field-control:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.field-label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
