@@ -31,6 +31,10 @@ let courses: Course[] = [],
   courseOptions: Course[] = [],
   page = 1,
   pages = 1,
+  courseOptionsPage = 1,
+  courseOptionsPages = 1,
+  courseOptionsQuery = "",
+  selectedCourseOption: Course | null = null,
   csrf = "";
 $("#app").innerHTML =
   `<header><nav><button data-go="browse">课程</button><button data-go="faculty">教师</button><button data-go="submit">写评价</button><button data-go="admin">后台</button></nav></header><main>
@@ -193,18 +197,40 @@ async function load() {
         .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`)
         .join("");
 }
-async function loadCourseOptions() {
-  const allCourses = await loadAllPages<Course>("/api/courses/options");
-  courseOptions = allCourses;
+async function loadCourseOptions(
+  query = courseOptionsQuery,
+  requestedPage = courseOptionsPage,
+) {
+  const d = await api(
+    `/api/courses/options?q=${encodeURIComponent(query)}&page=${requestedPage}&pageSize=50`,
+  );
+  courseOptionsQuery = query;
+  courseOptionsPage = d.page;
+  courseOptionsPages = d.pages || 1;
+  courseOptions = d.items;
+  const visibleCourseOptions =
+    selectedCourseOption &&
+    !courseOptions.some((course) => course.id === selectedCourseOption?.id)
+      ? [selectedCourseOption, ...courseOptions]
+      : courseOptions;
   $("#course-select").innerHTML =
     '<option value="">请选择课程</option>' +
-    allCourses
+    visibleCourseOptions
       .map(
         (course: Course) =>
           `<option value="${course.id}">${esc(course.code)} · ${esc(course.name)} · ${esc(course.teachers || "教师待补充")}</option>`,
       )
       .join("");
+  if (selectedCourseOption) {
+    $("#course-select").value = String(selectedCourseOption.id);
+  }
   $("#course-select").dataset.loaded = "true";
+  $("#course-option-pager").innerHTML =
+    `<span>${d.total} 门课程 · ${courseOptionsPage}/${courseOptionsPages}</span> <button id="course-options-prev" ${courseOptionsPage <= 1 ? "disabled" : ""}>上一页</button> <button id="course-options-next" ${courseOptionsPage >= courseOptionsPages ? "disabled" : ""}>下一页</button>`;
+  $("#course-options-prev").onclick = () =>
+    loadCourseOptions(courseOptionsQuery, courseOptionsPage - 1);
+  $("#course-options-next").onclick = () =>
+    loadCourseOptions(courseOptionsQuery, courseOptionsPage + 1);
 }
 async function loadTeachers() {
   const ts = await loadAllPages<Teacher>("/api/teachers");
@@ -277,9 +303,12 @@ async function detail(id: number) {
 const adminScore = (name: string, label: string, value: unknown) =>
   `<label>${label}<select name="${name}"><option value="">未评价</option>${[5, 4, 3, 2, 1].map((x) => `<option value="${x}" ${Number(value) === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>`;
 function fields() {
-  const c = courseOptions.find(
-    (x) => x.id === Number($("#course-select").value),
-  );
+  const c =
+    selectedCourseOption?.id === Number($("#course-select").value)
+      ? selectedCourseOption
+      : courseOptions.find(
+          (x) => x.id === Number($("#course-select").value),
+        );
   $("#dynamic-fields").innerHTML = c
     ? reviewFieldsMarkup(c.category)
     : "";
@@ -951,13 +980,29 @@ $("#department").insertAdjacentHTML(
   "afterend",
   '<select id="teacher-filter"><option value="">所有教师</option></select>',
 );
+const courseField = $<HTMLSelectElement>("#course-select").closest("label");
+courseField?.insertAdjacentHTML(
+  "beforebegin",
+  '<label>搜索课程<input id="course-option-search" placeholder="课程名称、课号或教师" aria-label="搜索投稿课程"></label><div id="course-option-pager" class="form-note"></div>',
+);
+let courseOptionSearchTimer: number | undefined;
+$("#course-option-search").oninput = () => {
+  window.clearTimeout(courseOptionSearchTimer);
+  courseOptionSearchTimer = window.setTimeout(() => {
+    courseOptionsPage = 1;
+    loadCourseOptions($("#course-option-search").value.trim(), 1);
+  }, 320);
+};
 $("#teacher-filter").onchange = () => {
   page = 1;
   load();
 };
 $("#course-select").onchange = async () => {
   const id = Number($("#course-select").value);
+  selectedCourseOption =
+    courseOptions.find((course) => course.id === id) || null;
   if (!id) {
+    selectedCourseOption = null;
     $("#offering-select").innerHTML = '<option value="">不指定</option>';
     $("#teacher-select").innerHTML = '<option value="">请先选择课程</option>';
     fields();
