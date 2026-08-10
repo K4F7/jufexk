@@ -5,7 +5,7 @@ import { EmptyBox } from "../components/EmptyBox";
 import { SectionHead } from "../components/SectionHead";
 import { api } from "../lib/api";
 import { scoreText } from "../lib/labels";
-import type { Teacher } from "../lib/types";
+import type { Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
 
@@ -13,8 +13,10 @@ export function TeachersPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const q = params.get("q") || "";
+  const parsedPage = Number(params.get("page") || "1");
+  const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
   const [queryDraft, setQueryDraft] = useState(q);
-  const [teachers, setTeachers] = useState<Teacher[] | null>(null);
+  const [data, setData] = useState<Paginated<Teacher> | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -28,6 +30,7 @@ export function TeachersPage() {
       const sp = new URLSearchParams(params);
       if (nextQuery) sp.set("q", nextQuery);
       else sp.delete("q");
+      sp.set("page", "1");
       setParams(sp, { replace: true });
     }, FILTER_DELAY);
 
@@ -37,13 +40,17 @@ export function TeachersPage() {
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
-    const query = q ? `?q=${encodeURIComponent(q)}` : "";
+    const query = new URLSearchParams();
+    if (q) query.set("q", q);
+    query.set("page", String(page));
 
     setLoading(true);
     setError("");
-    api<Teacher[]>(`/api/teachers${query}`, { signal: controller.signal })
-      .then((list) => {
-        if (!cancelled) setTeachers(list);
+    api<Paginated<Teacher>>(`/api/teachers?${query}`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!cancelled) setData(result);
       })
       .catch((e) => {
         if (!cancelled) setError((e as Error).message || "教师资料加载失败");
@@ -56,7 +63,7 @@ export function TeachersPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [q]);
+  }, [q, page]);
 
   const hasSearch = Boolean(queryDraft.trim() || q);
 
@@ -64,8 +71,12 @@ export function TeachersPage() {
     setQueryDraft("");
     const sp = new URLSearchParams(params);
     sp.delete("q");
+    sp.set("page", "1");
     setParams(sp, { replace: true });
   }
+
+  const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
+  const totalPages = data?.pages || 1;
 
   return (
     <section>
@@ -104,10 +115,10 @@ export function TeachersPage() {
 
       <SectionHead
         title="教师资料"
-        meta={teachers ? `${teachers.length} 位教师` : ""}
+        meta={data ? `${data.total} 位教师` : ""}
       />
 
-      {loading && teachers ? (
+      {loading && data ? (
         <div
           aria-live="polite"
           className="mb-2 flex items-center gap-2 text-sm text-muted"
@@ -118,10 +129,10 @@ export function TeachersPage() {
         </div>
       ) : null}
       {error ? <EmptyBox role="alert">{error}</EmptyBox> : null}
-      {loading && !teachers && !error ? (
+      {loading && !data && !error ? (
         <EmptyBox role="status">加载中…</EmptyBox>
       ) : null}
-      {teachers ? (
+      {data ? (
         <div aria-busy={loading}>
           <Table className="dense-table">
             <Table.ScrollContainer>
@@ -134,7 +145,7 @@ export function TeachersPage() {
                   <Table.Column>课程数</Table.Column>
                 </Table.Header>
                 <Table.Body
-                  items={teachers}
+                  items={data.items}
                   renderEmptyState={() => (
                     <div className="py-8 text-center text-muted" role="status">
                       {q ? `没有找到匹配“${q}”的教师` : "暂无教师资料"}
@@ -173,6 +184,36 @@ export function TeachersPage() {
               </Table.Content>
             </Table.ScrollContainer>
           </Table>
+
+          <div className="mt-3 flex items-center justify-center gap-3 text-[13px] text-muted">
+            <Button
+              size="sm"
+              variant="outline"
+              isDisabled={loading || currentPage <= 1}
+              onPress={() => {
+                const sp = new URLSearchParams(params);
+                sp.set("page", String(currentPage - 1));
+                setParams(sp);
+              }}
+            >
+              上一页
+            </Button>
+            <span aria-live="polite">
+              {currentPage}/{totalPages}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              isDisabled={loading || currentPage >= totalPages}
+              onPress={() => {
+                const sp = new URLSearchParams(params);
+                sp.set("page", String(currentPage + 1));
+                setParams(sp);
+              }}
+            >
+              下一页
+            </Button>
+          </div>
         </div>
       ) : null}
     </section>

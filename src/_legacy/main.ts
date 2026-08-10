@@ -53,6 +53,20 @@ async function api(path: string, o: RequestInit = {}) {
   if (!r.ok) throw Error(d.error || "请求失败");
   return d;
 }
+async function loadAllPages<T>(path: string): Promise<T[]> {
+  const pageSize = 50;
+  const first = await api(`${path}?page=1&pageSize=${pageSize}`);
+  const rows = [...(first.items || [])] as T[];
+  const pages = Math.max(1, Number(first.pages) || 1);
+  if (pages <= 1) return rows;
+  const rest = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, index) =>
+      api(`${path}?page=${index + 2}&pageSize=${pageSize}`),
+    ),
+  );
+  for (const result of rest) rows.push(...((result.items || []) as T[]));
+  return rows;
+}
 function go(id: string) {
   document.querySelectorAll(".page").forEach((x) => x.classList.add("hidden"));
   $(`#${id}`).classList.remove("hidden");
@@ -180,7 +194,7 @@ async function load() {
         .join("");
 }
 async function loadCourseOptions() {
-  const allCourses = await api("/api/courses/options");
+  const allCourses = await loadAllPages<Course>("/api/courses/options");
   courseOptions = allCourses;
   $("#course-select").innerHTML =
     '<option value="">请选择课程</option>' +
@@ -193,7 +207,7 @@ async function loadCourseOptions() {
   $("#course-select").dataset.loaded = "true";
 }
 async function loadTeachers() {
-  const ts = await api("/api/teachers");
+  const ts = await loadAllPages<Teacher>("/api/teachers");
   $("#teacher-filter").innerHTML =
     '<option value="">所有教师</option>' +
     ts

@@ -86,12 +86,22 @@ describe("offerings", () => {
 
   it("provides the complete lightweight course option list", async () => {
     const response = await SELF.fetch(
-      "https://example.com/api/courses/options",
+      "https://example.com/api/courses/options?page=1&pageSize=2",
     );
     expect(response.status).toBe(200);
-    const rows = await response.json<Array<{ id: number; name: string }>>();
-    expect(rows.length).toBeGreaterThanOrEqual(2);
-    expect(rows[0]).toHaveProperty("name");
+    const body = await response.json<{
+      items: Array<{ id: number; name: string }>;
+      page: number;
+      pageSize: number;
+      total: number;
+      pages: number;
+    }>();
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(2);
+    expect(body.total).toBeGreaterThanOrEqual(3);
+    expect(body.pages).toBe(Math.ceil(body.total / body.pageSize));
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toHaveProperty("name");
   });
 
   it("gives every legacy-backfilled course exactly one legacy offering", async () => {

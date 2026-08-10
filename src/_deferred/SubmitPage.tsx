@@ -4,13 +4,29 @@ import { Link } from "react-router-dom";
 import { TurnstileBox } from "../components/TurnstileBox";
 import { api } from "../lib/api";
 import { reviewFieldsForCategory, reviewFieldNames } from "../lib/review-fields";
-import type { Course, Offering, SiteConfig, Teacher } from "../lib/types";
+import type {
+  CourseOption,
+  Offering,
+  Paginated,
+  SiteConfig,
+  Teacher,
+} from "../lib/types";
 
 const steps = ["评价对象", "总体评价", "课堂与考核", "确认提交"];
+const COURSE_OPTIONS_PAGE_SIZE = 20;
+const SEARCH_DELAY = 320;
 
 export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [step, setStep] = useState(1);
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [courseOptions, setCourseOptions] =
+    useState<Paginated<CourseOption> | null>(null);
+  const [courseQueryDraft, setCourseQueryDraft] = useState("");
+  const [courseQuery, setCourseQuery] = useState("");
+  const [courseOptionsPage, setCourseOptionsPage] = useState(1);
+  const [courseOptionsLoading, setCourseOptionsLoading] = useState(true);
+  const [selectedCourseOption, setSelectedCourseOption] =
+    useState<CourseOption | null>(null);
   const [offerings, setOfferings] = useState<Offering[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [courseId, setCourseId] = useState("");
@@ -26,14 +42,61 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const widgetRef = useRef<string | number | null>(null);
 
   const selectedCourse = useMemo(
-    () => courses.find((c) => String(c.id) === courseId),
-    [courses, courseId],
+    () =>
+      selectedCourseOption ||
+      courses.find((c) => String(c.id) === courseId) ||
+      null,
+    [courses, courseId, selectedCourseOption],
   );
+  const visibleCourses = useMemo(() => {
+    if (
+      !selectedCourseOption ||
+      courses.some((course) => course.id === selectedCourseOption.id)
+    ) {
+      return courses;
+    }
+    return [selectedCourseOption, ...courses];
+  }, [courses, selectedCourseOption]);
   const dynamicFields = reviewFieldsForCategory(selectedCourse?.category || "major");
 
   useEffect(() => {
-    api<Course[]>("/api/courses/options").then(setCourses).catch((e) => setMsg(e.message));
-  }, []);
+    const timer = window.setTimeout(() => {
+      setCourseQuery(courseQueryDraft.trim());
+      setCourseOptionsPage(1);
+    }, SEARCH_DELAY);
+    return () => window.clearTimeout(timer);
+  }, [courseQueryDraft]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    const query = new URLSearchParams({
+      page: String(courseOptionsPage),
+      pageSize: String(COURSE_OPTIONS_PAGE_SIZE),
+    });
+    if (courseQuery) query.set("q", courseQuery);
+
+    setCourseOptionsLoading(true);
+    api<Paginated<CourseOption>>(`/api/courses/options?${query}`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setCourseOptions(result);
+        setCourses(result.items);
+      })
+      .catch((e) => {
+        if (!cancelled) setMsg((e as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setCourseOptionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [courseOptionsPage, courseQuery]);
 
   useEffect(() => {
     if (!courseId) {
@@ -116,6 +179,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
       setMsg(d.message);
       setStep(1);
       setCourseId("");
+      setSelectedCourseOption(null);
       setOfferingId("");
       setTeacherId("");
       setOverall("");
@@ -178,21 +242,73 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         {step === 1 ? (
           <>
             <label className="field-label">
+              搜索课程
+              <Input
+                fullWidth
+                placeholder="输入课程名称、课号或教师"
+                value={courseQueryDraft}
+                onChange={(e) => setCourseQueryDraft(e.target.value)}
+              />
+            </label>
+            <label className="field-label">
               课程
               <select
                 className="field-control"
                 required
                 value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
+                disabled={courseOptionsLoading && !courses.length}
+                onChange={(e) => {
+                  const nextCourseId = e.target.value;
+                  setCourseId(nextCourseId);
+                  setSelectedCourseOption(
+                    visibleCourses.find(
+                      (course) => String(course.id) === nextCourseId,
+                    ) ||
+                      null,
+                  );
+                }}
               >
                 <option value="">请选择课程</option>
-                {courses.map((c) => (
+                {visibleCourses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.code} · {c.name} · {c.teachers || "教师待补充"}
                   </option>
                 ))}
               </select>
             </label>
+            {courseOptions ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[13px] text-muted">
+                <span>
+                  共 {courseOptions.total} 门课程，当前第 {courseOptions.page}/
+                  {courseOptions.pages || 1} 页
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    isDisabled={
+                      courseOptionsLoading || courseOptionsPage <= 1
+                    }
+                    onPress={() => setCourseOptionsPage((page) => page - 1)}
+                  >
+                    上一页
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    isDisabled={
+                      courseOptionsLoading ||
+                      courseOptionsPage >= (courseOptions.pages || 1)
+                    }
+                    onPress={() => setCourseOptionsPage((page) => page + 1)}
+                  >
+                    下一页
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <label className="field-label">
               开课班（选填）
               <select

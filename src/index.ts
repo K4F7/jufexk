@@ -129,13 +129,35 @@ app.get("/api/courses", async (c) => {
   });
 });
 app.get("/api/teachers", async (c) => {
+  const { page, size } = pageArgs(c);
   const q = `%${clean(c.req.query("q"), 80)}%`;
-  const { results } = await c.env.DB.prepare(
-    `SELECT t.*,COUNT(DISTINCT ct.course_id) course_count,COUNT(DISTINCT CASE WHEN r.status='approved' THEN r.id END) review_count,ROUND(AVG(CASE WHEN r.status='approved' THEN r.overall END),1) rating FROM teachers t LEFT JOIN course_teachers ct ON ct.teacher_id=t.id LEFT JOIN reviews r ON r.teacher_id=t.id WHERE t.name LIKE ? OR t.department LIKE ? GROUP BY t.id ORDER BY t.name LIMIT 100`,
+  const where = "t.name LIKE ? OR t.department LIKE ?";
+  const args = [q, q];
+  const total = await c.env.DB.prepare(
+    `SELECT COUNT(*) n FROM teachers t WHERE ${where}`,
   )
-    .bind(q, q)
+    .bind(...args)
+    .first<{ n: number }>();
+  const { results } = await c.env.DB.prepare(
+    `SELECT t.*,
+       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct WHERE ct.teacher_id=t.id) course_count,
+       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') review_count,
+       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') rating
+     FROM teachers t
+     WHERE ${where}
+     ORDER BY t.name,t.department,t.id
+     LIMIT ? OFFSET ?`,
+  )
+    .bind(...args, size, (page - 1) * size)
     .all();
-  return c.json(results);
+  const totalCount = total?.n || 0;
+  return c.json({
+    items: results,
+    page,
+    pageSize: size,
+    total: totalCount,
+    pages: Math.ceil(totalCount / size),
+  });
 });
 app.get("/api/teachers/:id", async (c) => {
   const id = integer(c.req.param("id"));
@@ -162,15 +184,31 @@ app.get("/api/teachers/:id", async (c) => {
   ).results;
   return c.json({ teacher, courses, legacyReviews });
 });
-app.get("/api/courses/options", async (c) =>
-  c.json(
-    (
-      await c.env.DB.prepare(
-        `SELECT c.id,c.code,c.name,c.category,c.department,GROUP_CONCAT(t.name) teachers FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id GROUP BY c.id ORDER BY c.name LIMIT 2000`,
-      ).all()
-    ).results,
-  ),
-);
+app.get("/api/courses/options", async (c) => {
+  const { page, size } = pageArgs(c);
+  const search = clean(c.req.query("q"), 80);
+  const q = `%${search}%`;
+  const where = `(?='' OR c.name LIKE ? OR c.code LIKE ? OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (search_t.name LIKE ? OR search_t.department LIKE ?)))`;
+  const args = [search, q, q, q, q];
+  const total = await c.env.DB.prepare(
+    `SELECT COUNT(*) n FROM courses c WHERE ${where}`,
+  )
+    .bind(...args)
+    .first<{ n: number }>();
+  const { results } = await c.env.DB.prepare(
+    `SELECT c.id,c.code,c.name,c.category,c.department,GROUP_CONCAT(DISTINCT t.name) teachers FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
+  )
+    .bind(...args, size, (page - 1) * size)
+    .all();
+  const totalCount = total?.n || 0;
+  return c.json({
+    items: results,
+    page,
+    pageSize: size,
+    total: totalCount,
+    pages: Math.ceil(totalCount / size),
+  });
+});
 app.get("/api/courses/:id", async (c) => {
   const id = integer(c.req.param("id"));
   const course = await c.env.DB.prepare("SELECT * FROM courses WHERE id=?")

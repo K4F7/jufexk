@@ -6,12 +6,17 @@ export type Course = {
   name: string;
   category: string;
   department: string;
-  teachers: string;
+  teachers: string | null;
   review_count: number;
   rating: number | null;
   description?: string;
   teacher_ids?: string;
 };
+
+export type CourseOption = Pick<
+  Course,
+  "id" | "code" | "name" | "category" | "department" | "teachers"
+>;
 
 export type Teacher = {
   id: number;
@@ -21,6 +26,7 @@ export type Teacher = {
   bio: string;
   rating?: number | null;
   course_count?: number;
+  review_count?: number;
 };
 
 export type Offering = {
@@ -93,6 +99,7 @@ export type Paginated<T> = {
   items: T[];
   total: number;
   page: number;
+  pageSize: number;
   pages: number;
 };
 

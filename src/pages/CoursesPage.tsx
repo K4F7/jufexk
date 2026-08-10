@@ -31,14 +31,25 @@ export function CoursesPage() {
 
   const [queryDraft, setQueryDraft] = useState(q);
   const [departmentDraft, setDepartmentDraft] = useState(department);
+  const [teacherQueryDraft, setTeacherQueryDraft] = useState("");
+  const [teacherQuery, setTeacherQuery] = useState("");
   const [data, setData] = useState<Paginated<Course> | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [error, setError] = useState("");
   const [teacherError, setTeacherError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [teacherLoading, setTeacherLoading] = useState(true);
 
   useEffect(() => setQueryDraft(q), [q]);
   useEffect(() => setDepartmentDraft(department), [department]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setTeacherQuery(teacherQueryDraft.trim()),
+      FILTER_DELAY,
+    );
+    return () => window.clearTimeout(timer);
+  }, [teacherQueryDraft]);
 
   const queryString = useMemo(() => {
     const sp = new URLSearchParams();
@@ -74,42 +85,55 @@ export function CoursesPage() {
 
     setLoading(true);
     setError("");
-    if (!teachers.length) setTeacherError("");
-
-    const courseRequest = api<Paginated<Course>>(`/api/courses?${queryString}`, {
+    api<Paginated<Course>>(`/api/courses?${queryString}`, {
       signal: controller.signal,
-    });
-    const teacherRequest = teachers.length
-      ? Promise.resolve(teachers)
-      : api<Teacher[]>("/api/teachers", { signal: controller.signal });
-
-    (async () => {
-      const [courseResult, teacherResult] = await Promise.allSettled([
-        courseRequest,
-        teacherRequest,
-      ]);
-      if (cancelled) return;
-
-      if (courseResult.status === "fulfilled") {
-        setData(courseResult.value);
-      } else {
-        setError((courseResult.reason as Error).message || "课程目录加载失败");
-      }
-
-      if (teacherResult.status === "fulfilled") {
-        if (!teachers.length) setTeachers(teacherResult.value);
-      } else if (!controller.signal.aborted) {
-        setTeacherError("教师筛选暂时不可用");
-      }
-
-      setLoading(false);
-    })();
+    })
+      .then((result) => {
+        if (!cancelled) setData(result);
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError((reason as Error).message || "课程目录加载失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;
       controller.abort();
     };
   }, [queryString]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    const query = new URLSearchParams({ page: "1", pageSize: "50" });
+    if (teacherQuery) query.set("q", teacherQuery);
+
+    setTeacherLoading(true);
+    setTeacherError("");
+    api<Paginated<Teacher>>(`/api/teachers?${query}`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!cancelled) setTeachers(result.items);
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setTeacherError((reason as Error).message || "教师筛选暂时不可用");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTeacherLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [teacherQuery]);
 
   function update(next: Record<string, string>, replace = false) {
     const sp = new URLSearchParams(params);
@@ -127,7 +151,9 @@ export function CoursesPage() {
       category ||
       departmentDraft.trim() ||
       department ||
-      teacherId,
+      teacherId ||
+      teacherQueryDraft.trim() ||
+      teacherQuery,
   );
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
@@ -135,6 +161,7 @@ export function CoursesPage() {
   function clearFilters() {
     setQueryDraft("");
     setDepartmentDraft("");
+    setTeacherQueryDraft("");
     update(
       { q: "", category: "", department: "", teacherId: "", page: "1" },
       true,
@@ -145,7 +172,7 @@ export function CoursesPage() {
     <section>
       <div
         aria-label="课程目录筛选"
-        className="mb-2.5 grid gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_minmax(190px,0.9fr)_auto] sm:items-end"
+        className="mb-2.5 grid gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_minmax(190px,0.9fr)_minmax(190px,0.9fr)_auto] sm:items-end"
         role="search"
       >
         <SearchField
@@ -208,9 +235,26 @@ export function CoursesPage() {
           onChange={(event) => setDepartmentDraft(event.target.value)}
         />
 
+        <SearchField
+          fullWidth
+          name="teacher-search"
+          value={teacherQueryDraft}
+          onChange={setTeacherQueryDraft}
+        >
+          <Label className="sr-only">搜索任课教师</Label>
+          <SearchField.Group>
+            <SearchField.SearchIcon />
+            <SearchField.Input
+              className="w-full"
+              placeholder="搜索任课教师姓名或院系"
+            />
+            <SearchField.ClearButton aria-label="清空教师搜索" />
+          </SearchField.Group>
+        </SearchField>
+
         <Select
           className="w-full"
-          isDisabled={!teachers.length && Boolean(teacherError)}
+          isDisabled={teacherLoading || (!teachers.length && Boolean(teacherError))}
           name="course-teacher"
           value={teacherId || ALL_VALUE}
           onChange={(value) =>
@@ -261,6 +305,9 @@ export function CoursesPage() {
           {departmentDraft.trim() ? (
             <span>院系“{departmentDraft.trim()}”</span>
           ) : null}
+          {teacherQueryDraft.trim() ? (
+            <span>教师搜索“{teacherQueryDraft.trim()}”</span>
+          ) : null}
           {teacherId
             ? (() => {
                 const teacher = teachers.find(
@@ -277,6 +324,11 @@ export function CoursesPage() {
       {teacherError ? (
         <p className="mb-2 text-sm text-muted" role="status">
           {teacherError}，可先使用关键词或院系筛选。
+        </p>
+      ) : null}
+      {!teacherError && !teacherQuery && teachers.length >= 50 ? (
+        <p className="mb-2 text-sm text-muted" role="status">
+          教师筛选默认显示前 50 位，请输入姓名或院系搜索更多教师。
         </p>
       ) : null}
       {error ? <EmptyBox role="alert">{error}</EmptyBox> : null}
