@@ -18,14 +18,18 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
         with:
-          bun-version: 1.3.14
-      - run: bun ci
-      - run: bun run check
+          version: 11.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
       - name: List pending D1 migrations
-        run: bunx wrangler d1 migrations list jufexk --remote
+        run: pnpm exec wrangler d1 migrations list jufexk --remote
       - name: Apply D1 migrations
-        run: bunx wrangler d1 migrations apply jufexk --remote
+        run: pnpm exec wrangler d1 migrations apply jufexk --remote
       - name: Deploy Worker
-        run: bunx wrangler deploy
+        run: pnpm exec wrangler deploy
