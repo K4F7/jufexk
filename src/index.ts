@@ -26,7 +26,7 @@ const integer = (v: unknown) => {
 const rating = (v: unknown) => {
   if (v === "" || v == null) return null;
   const n = integer(v);
-  return n && n >= 1 && n <= 5 ? n : null;
+  return n !== null && n >= 1 && n <= 5 ? n : null;
 };
 const digest = async (s: string) =>
   [
@@ -311,15 +311,22 @@ app.post("/api/reviews", async (c) => {
     return fail(c, "人机验证失败，请重试", 403);
   const course = offeringId
     ? await c.env.DB.prepare(
-        `SELECT c.id course_id,c.category FROM offerings o JOIN courses c ON c.id=o.course_id JOIN offering_teachers ot ON ot.offering_id=o.id WHERE o.id=? AND o.status='active' AND ot.teacher_id=? LIMIT 1`,
+        `SELECT c.id course_id,c.category,o.term offering_term
+         FROM offerings o JOIN courses c ON c.id=o.course_id
+         JOIN offering_teachers ot ON ot.offering_id=o.id
+         WHERE o.id=? AND o.status='active' AND ot.teacher_id=? LIMIT 1`,
       )
         .bind(offeringId, teacherId)
-        .first<{ course_id: number; category: string }>()
+        .first<{ course_id: number; category: string; offering_term: string }>()
     : await c.env.DB.prepare(
         `SELECT c.id course_id,c.category FROM courses c JOIN course_teachers ct ON ct.course_id=c.id WHERE c.id=? AND ct.teacher_id=? LIMIT 1`,
       )
         .bind(courseId, teacherId)
-        .first<{ course_id: number; category: string }>();
+        .first<{
+          course_id: number;
+          category: string;
+          offering_term?: string;
+        }>();
   if (course) courseId = course.course_id;
   if (!course || !overall)
     return fail(c, "请选择有效的课程、任课教师和总体评分");
@@ -331,20 +338,24 @@ app.post("/api/reviews", async (c) => {
     workloadScore = rating(b.workloadScore),
     fairness = rating(b.fairness),
     organization = rating(b.organization);
+  const provided = (value: unknown) =>
+    value !== undefined && value !== null && value !== "";
   if (
-    (b.clarity && !clarity) ||
-    (b.knowledge && !knowledge) ||
-    (b.gradingScore && !gradingScore) ||
-    (b.interest && !interest) ||
-    (b.practicality && !practicality) ||
-    (b.workloadScore && !workloadScore) ||
-    (b.fairness && !fairness) ||
-    (b.organization && !organization)
+    (provided(b.clarity) && !clarity) ||
+    (provided(b.knowledge) && !knowledge) ||
+    (provided(b.gradingScore) && !gradingScore) ||
+    (provided(b.interest) && !interest) ||
+    (provided(b.practicality) && !practicality) ||
+    (provided(b.workloadScore) && !workloadScore) ||
+    (provided(b.fairness) && !fairness) ||
+    (provided(b.organization) && !organization)
   )
     return fail(c, "评分必须在 1 到 5 之间");
   if (!(await takeRateLimit(c.env.DB, `review-submit:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
-  const term = clean(b.term, 30);
+  const term = offeringId
+    ? clean(course.offering_term, 30)
+    : clean(b.term, 30);
   const dedupeKey = await digest(
     `${courseId}|${teacherId}|${offeringId || 0}|${term}|${ipHash}`,
   );
@@ -629,29 +640,34 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
     return fail(c, "该申请已审核，不能重复处理", 409);
   if (status === "rejected") {
     if (!note) return fail(c, "驳回必须填写理由");
-    await c.env.DB.prepare(
+    const result = await c.env.DB.prepare(
       "UPDATE catalog_requests SET status='rejected',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
     )
       .bind(note, id)
       .run();
+    if (!(result.meta.changes || 0))
+      return fail(c, "该申请已审核，不能重复处理", 409);
     return c.json({ ok: true });
   }
   const statements: D1PreparedStatement[] = [];
   if (request.teacher_name)
     statements.push(
       c.env.DB.prepare(
-        "INSERT OR IGNORE INTO teachers(name,department) VALUES(?,?)",
-      ).bind(request.teacher_name, request.department),
+        `INSERT OR IGNORE INTO teachers(name,department)
+         SELECT ?,? WHERE EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
+      ).bind(request.teacher_name, request.department, id),
     );
   if (request.course_name)
     statements.push(
       c.env.DB.prepare(
-        "INSERT OR IGNORE INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+        `INSERT OR IGNORE INTO courses(code,name,category,department)
+         SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
         request.course_code,
         request.course_name,
         request.category || "major",
         request.department,
+        id,
       ),
     );
   if (request.course_name && request.teacher_name)
@@ -659,12 +675,14 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       c.env.DB.prepare(
         `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id)
          SELECT c.id,t.id FROM courses c,teachers t
-         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
+         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?
+           AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
         request.course_code,
         request.course_name,
         request.teacher_name,
         request.department,
+        id,
       ),
     );
   if (request.pending_review_json) {
@@ -677,7 +695,8 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       c.env.DB.prepare(
         `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,term,submitter_hash)
          SELECT c.id,t.id,c.category,?,?,?,? FROM courses c,teachers t
-         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
+         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?
+           AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
         stashed.overall,
         stashed.comment,
@@ -687,6 +706,7 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
         request.course_name,
         request.teacher_name,
         request.department,
+        id,
       ),
     );
   }
@@ -706,7 +726,10 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       id,
     ),
   );
-  await c.env.DB.batch(statements);
+  const results = await c.env.DB.batch(statements);
+  const finalUpdate = results[results.length - 1];
+  if (!(finalUpdate.meta.changes || 0))
+    return fail(c, "该申请已审核，不能重复处理", 409);
   const approved = await c.env.DB.prepare(
     "SELECT created_course_id courseId,created_teacher_id teacherId,created_review_id reviewId FROM catalog_requests WHERE id=?",
   )
@@ -723,59 +746,76 @@ app.patch("/api/admin/reviews/:id", async (c) => {
     status = clean(b.status, 20),
     note = clean(b.note, 500),
     id = integer(c.req.param("id"));
+  if (!id) return fail(c, "评价 ID 无效");
   if (!["approved", "rejected"].includes(status)) return fail(c, "无效状态");
   if (status === "rejected" && !note) return fail(c, "驳回时必须填写理由");
-  await c.env.DB.batch([
+  const results = await c.env.DB.batch([
     c.env.DB.prepare(
       "UPDATE reviews SET status=?,moderator_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?",
     ).bind(status, note, id),
     c.env.DB.prepare(
-      "INSERT INTO review_moderation_events(review_id,action,note) VALUES(?,?,?)",
-    ).bind(id, status, note),
+      `INSERT INTO review_moderation_events(review_id,action,note)
+       SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM reviews WHERE id=?)`,
+    ).bind(id, status, note, id),
   ]);
+  if (!(results[0].meta.changes || 0)) return fail(c, "评价不存在", 404);
   return c.json({ ok: true });
 });
 app.patch("/api/admin/reviews/:id/content", async (c) => {
   const b = await c.req.json<Record<string, unknown>>(),
     id = integer(c.req.param("id"));
-  const scores = [
-    rating(b.interest),
-    rating(b.practicality),
-    rating(b.workloadScore),
-    rating(b.fairness),
-    rating(b.organization),
-  ];
+  const current = await c.env.DB.prepare("SELECT id FROM reviews WHERE id=?")
+    .bind(id)
+    .first();
+  if (!current) return fail(c, "评价不存在", 404);
+  const scoreFields = [
+    ["interest", "interest"],
+    ["practicality", "practicality"],
+    ["workloadScore", "workload_score"],
+    ["fairness", "fairness"],
+    ["organization", "organization"],
+  ] as const;
+  const rawScores = scoreFields.map(([field]) => b[field]);
+  const scores = rawScores.map((value) => (value === undefined ? null : rating(value)));
   if (
-    [
-      b.interest,
-      b.practicality,
-      b.workloadScore,
-      b.fairness,
-      b.organization,
-    ].some((value, index) => value !== "" && value != null && !scores[index])
+    rawScores.some(
+      (value, index) =>
+        value !== undefined && value !== "" && value != null && !scores[index],
+    )
   )
     return fail(c, "评分必须在 1 到 5 之间");
-  const result = await c.env.DB.prepare(
-    "UPDATE reviews SET comment=?,teaching=?,attendance=?,grading=?,workload=?,rescue=?,assessment=?,interest=?,practicality=?,workload_score=?,fairness=?,organization=? WHERE id=?",
-  )
-    .bind(
-      clean(b.comment, 1200),
-      clean(b.teaching, 600),
-      clean(b.attendance, 120),
-      clean(b.grading, 120),
-      clean(b.workload, 120),
-      clean(b.rescue, 120),
-      clean(b.assessment, 200),
-      ...scores,
-      id,
-    )
-    .run();
-  if (!result.meta.changes) return fail(c, "评价不存在", 404);
-  await c.env.DB.prepare(
-    `INSERT INTO review_moderation_events(review_id,action,note) VALUES(?,'edited',?)`,
-  )
-    .bind(id, clean(b.note, 500))
-    .run();
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  const textFields = [
+    ["comment", "comment", 1200],
+    ["teaching", "teaching", 600],
+    ["attendance", "attendance", 120],
+    ["grading", "grading", 120],
+    ["workload", "workload", 120],
+    ["rescue", "rescue", 120],
+    ["assessment", "assessment", 200],
+  ] as const;
+  for (const [field, column, max] of textFields) {
+    if (Object.hasOwn(b, field)) {
+      updates.push(`${column}=?`);
+      values.push(clean(b[field], max));
+    }
+  }
+  scoreFields.forEach(([field, column], index) => {
+    if (rawScores[index] !== undefined) {
+      updates.push(`${column}=?`);
+      values.push(scores[index]);
+    }
+  });
+  const update = c.env.DB.prepare(
+    `UPDATE reviews SET ${updates.length ? updates.join(",") : "id=id"} WHERE id=?`,
+  ).bind(...values, id);
+  const event = c.env.DB.prepare(
+    `INSERT INTO review_moderation_events(review_id,action,note)
+     SELECT ?,'edited',? WHERE EXISTS(SELECT 1 FROM reviews WHERE id=?)`,
+  ).bind(id, clean(b.note, 500), id);
+  const results = await c.env.DB.batch([update, event]);
+  if (!(results[0].meta.changes || 0)) return fail(c, "评价不存在", 404);
   return c.json({ ok: true });
 });
 app.get("/api/admin/reviews/:id/events", async (c) => {
@@ -891,20 +931,24 @@ app.get("/api/admin/offerings", async (c) =>
 );
 app.post("/api/admin/offerings", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
+  const rawTeacherIds = Array.isArray(b.teacherIds) ? b.teacherIds : [];
+  const parsedTeacherIds = rawTeacherIds.map(integer);
+  if (parsedTeacherIds.some((teacherId) => teacherId === null || teacherId < 1))
+    return fail(c, "任课教师列表无效");
   const courseId = integer(b.courseId),
     term = clean(b.term, 30),
     section = clean(b.section, 80),
     status = clean(b.status, 20) || "active",
-    teacherIds = [
-      ...new Set(
-        (Array.isArray(b.teacherIds) ? b.teacherIds : [])
-          .map(integer)
-          .filter((x): x is number => !!x),
-      ),
-    ];
+    teacherIds = [...new Set(parsedTeacherIds as number[])];
   if (!courseId || !section || !["active", "archived"].includes(status))
     return fail(c, "课程、班次和状态无效");
   if (!teacherIds.length) return fail(c, "请至少选择一位任课教师");
+  const courseExists = await c.env.DB.prepare(
+    "SELECT id FROM courses WHERE id=?",
+  )
+    .bind(courseId)
+    .first();
+  if (!courseExists) return fail(c, "课程不存在", 400);
   const validTeachers = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM teachers WHERE id IN (${teacherIds.map(() => "?").join(",")})`,
   )
@@ -912,6 +956,14 @@ app.post("/api/admin/offerings", async (c) => {
     .first<{ n: number }>();
   if (validTeachers?.n !== teacherIds.length)
     return fail(c, "任课教师中存在无效记录");
+  const relatedTeachers = await c.env.DB.prepare(
+    `SELECT COUNT(*) n FROM course_teachers
+     WHERE course_id=? AND teacher_id IN (${teacherIds.map(() => "?").join(",")})`,
+  )
+    .bind(courseId, ...teacherIds)
+    .first<{ n: number }>();
+  if (relatedTeachers?.n !== teacherIds.length)
+    return fail(c, "任课教师不属于该课程");
   let offeringId = integer(b.id);
   const statements: D1PreparedStatement[] = [];
   if (offeringId) {
@@ -933,6 +985,16 @@ app.post("/api/admin/offerings", async (c) => {
         existing.section !== section)
     )
       return fail(c, "已有评价的开课班不能修改课程、学期或班次", 409);
+    const removedReviewedTeacher = await c.env.DB.prepare(
+      `SELECT 1 FROM reviews
+       WHERE offering_id=? AND teacher_id IS NOT NULL
+         AND teacher_id NOT IN (${teacherIds.map(() => "?").join(",")})
+       LIMIT 1`,
+    )
+      .bind(offeringId, ...teacherIds)
+      .first();
+    if (removedReviewedTeacher)
+      return fail(c, "已有评价的教师不能从开课班移除", 409);
     statements.push(
       c.env.DB.prepare(
         "UPDATE offerings SET course_id=?,term=?,section=?,campus=?,schedule=?,status=? WHERE id=?",
@@ -998,54 +1060,115 @@ app.get("/api/admin/courses", async (c) =>
 app.post("/api/admin/courses", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
   const name = clean(b.name, 120),
-    category = clean(b.category, 20);
+    code = clean(b.code, 40),
+    category = clean(b.category, 20),
+    department = clean(b.department, 80),
+    description = clean(b.description, 500),
+    teacherIdsProvided = Object.hasOwn(b, "teacherIds");
   if (!name || !["major", "pe", "general"].includes(category))
     return fail(c, "课程名称和类别无效");
   let id = integer(b.id);
-  if (id)
-    await c.env.DB.prepare(
-      "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=? WHERE id=?",
-    )
-      .bind(
-        clean(b.code, 40),
-        name,
-        category,
-        clean(b.department, 80),
-        Number(b.credits) || null,
-        clean(b.description, 500),
-        id,
+  const existing = id
+    ? await c.env.DB.prepare("SELECT * FROM courses WHERE id=?")
+        .bind(id)
+        .first<Record<string, any>>()
+    : null;
+  if (id && !existing) return fail(c, "课程不存在", 404);
+  let teacherIds: number[] | undefined;
+  if (teacherIdsProvided) {
+    if (!Array.isArray(b.teacherIds)) return fail(c, "任课教师列表无效");
+    const parsed = b.teacherIds.map(integer);
+    if (parsed.some((teacherId) => teacherId === null || teacherId < 1))
+      return fail(c, "任课教师列表无效");
+    teacherIds = [...new Set(parsed as number[])];
+    if (teacherIds.length) {
+      const validTeachers = await c.env.DB.prepare(
+        `SELECT COUNT(*) n FROM teachers WHERE id IN (${teacherIds
+          .map(() => "?")
+          .join(",")})`,
       )
-      .run();
-  else {
-    const result = await c.env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?)",
-    )
-      .bind(
-        clean(b.code, 40),
-        name,
-        category,
-        clean(b.department, 80),
-        Number(b.credits) || null,
-        clean(b.description, 500),
-      )
-      .run();
-    id = Number(result.meta.last_row_id);
+        .bind(...teacherIds)
+        .first<{ n: number }>();
+      if (validTeachers?.n !== teacherIds.length)
+        return fail(c, "任课教师中存在无效记录");
+    }
   }
-  const teacherIds = [
-    ...new Set(
-      (Array.isArray(b.teacherIds) ? b.teacherIds : [])
-        .map(integer)
-        .filter((x): x is number => !!x),
-    ),
-  ];
-  await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(id),
-    ...teacherIds.map((teacherId) =>
+  const creditsProvided = Object.hasOwn(b, "credits");
+  let credits = existing?.credits ?? null;
+  if (creditsProvided) {
+    if (b.credits === "" || b.credits == null) credits = null;
+    else {
+      credits = Number(b.credits);
+      if (!Number.isFinite(credits) || credits < 0)
+        return fail(c, "学分必须是非负数字");
+    }
+  }
+  if (id) {
+    const currentRelations = (
+      await c.env.DB.prepare(
+        "SELECT teacher_id FROM course_teachers WHERE course_id=?",
+      )
+        .bind(id)
+        .all<{ teacher_id: number }>()
+    ).results.map((row) => row.teacher_id);
+    if (teacherIdsProvided) {
+      const removed = currentRelations.filter(
+        (teacherId) => !teacherIds!.includes(teacherId),
+      );
+      if (removed.length) {
+        const placeholders = removed.map(() => "?").join(",");
+        const reviewDependency = await c.env.DB.prepare(
+          `SELECT 1 FROM reviews WHERE course_id=? AND teacher_id IN (${placeholders}) LIMIT 1`,
+        )
+          .bind(id, ...removed)
+          .first();
+        const offeringDependency = await c.env.DB.prepare(
+          `SELECT 1 FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id
+           WHERE o.course_id=? AND ot.teacher_id IN (${placeholders}) LIMIT 1`,
+        )
+          .bind(id, ...removed)
+          .first();
+        if (reviewDependency || offeringDependency)
+          return fail(c, "已有评价或开课班依赖该任课关系，不能删除", 409);
+      }
+    }
+    const statements: D1PreparedStatement[] = [
       c.env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
-      ).bind(id, teacherId),
-    ),
-  ]);
+        "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=? WHERE id=?",
+      ).bind(code, name, category, department, credits, description, id),
+    ];
+    if (teacherIdsProvided) {
+      statements.push(
+        c.env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(
+          id,
+        ),
+        ...teacherIds!.map((teacherId) =>
+          c.env.DB.prepare(
+            "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+          ).bind(id, teacherId),
+        ),
+      );
+    }
+    await c.env.DB.batch(statements);
+  } else {
+    const statements: D1PreparedStatement[] = [
+      c.env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?)",
+      ).bind(code, name, category, department, credits, description),
+    ];
+    if (teacherIds?.length) {
+      statements.push(
+        ...teacherIds.map((teacherId) =>
+          c.env.DB.prepare(
+            `INSERT INTO course_teachers(course_id,teacher_id)
+             SELECT id,? FROM courses WHERE code=? AND name=?`,
+          ).bind(teacherId, code, name),
+        ),
+      );
+    }
+    const results = await c.env.DB.batch(statements);
+    id = Number(results[0].meta.last_row_id);
+  }
   return c.json({ ok: true, id });
 });
 app.delete("/api/admin/courses/:id", async (c) => {
@@ -1056,6 +1179,18 @@ app.delete("/api/admin/courses/:id", async (c) => {
     .bind(id)
     .first();
   if (used) return fail(c, "已有评价的课程不能删除", 409);
+  const legacyUsed = await c.env.DB.prepare(
+    "SELECT id FROM legacy_reviews WHERE course_id=? AND status='approved' LIMIT 1",
+  )
+    .bind(id)
+    .first();
+  if (legacyUsed) return fail(c, "已有审核通过的历史评价，不能删除", 409);
+  const catalogReference = await c.env.DB.prepare(
+    "SELECT id FROM catalog_requests WHERE created_course_id=? LIMIT 1",
+  )
+    .bind(id)
+    .first();
+  if (catalogReference) return fail(c, "已有补充申请记录引用该课程，不能删除", 409);
   await c.env.DB.prepare("DELETE FROM courses WHERE id=?").bind(id).run();
   return c.json({ ok: true });
 });
@@ -1103,17 +1238,81 @@ app.delete("/api/admin/teachers/:id", async (c) => {
     .bind(id)
     .first();
   if (used) return fail(c, "已有评价的教师不能删除", 409);
+  const legacyUsed = await c.env.DB.prepare(
+    "SELECT id FROM legacy_reviews WHERE teacher_id=? AND status='approved' LIMIT 1",
+  )
+    .bind(id)
+    .first();
+  if (legacyUsed) return fail(c, "已有审核通过的历史评价，不能删除", 409);
+  const catalogReference = await c.env.DB.prepare(
+    "SELECT id FROM catalog_requests WHERE created_teacher_id=? LIMIT 1",
+  )
+    .bind(id)
+    .first();
+  if (catalogReference) return fail(c, "已有补充申请记录引用该教师，不能删除", 409);
+  const soleActiveOffering = await c.env.DB.prepare(
+    `SELECT 1
+     FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id
+     WHERE o.status='active' AND ot.teacher_id=?
+       AND (SELECT COUNT(*) FROM offering_teachers other WHERE other.offering_id=o.id)=1
+     LIMIT 1`,
+  )
+    .bind(id)
+    .first();
+  if (soleActiveOffering)
+    return fail(c, "该教师是开课班唯一任课教师，不能删除", 409);
   await c.env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(id).run();
   return c.json({ ok: true });
 });
 app.put("/api/admin/courses/:id/teachers", async (c) => {
   const courseId = integer(c.req.param("id")),
     b = await c.req.json<{ teacherIds?: unknown[] }>(),
-    ids = [
-      ...new Set(
-        (b.teacherIds || []).map(integer).filter((x): x is number => !!x),
-      ),
-    ];
+    rawIds = b.teacherIds || [];
+  if (!courseId) return fail(c, "课程 ID 无效");
+  if (!Array.isArray(rawIds)) return fail(c, "任课教师列表无效");
+  const parsedIds = rawIds.map(integer);
+  if (parsedIds.some((id) => id === null || id < 1))
+    return fail(c, "任课教师列表无效");
+  const ids = [...new Set(parsedIds as number[])];
+  if (
+    !(await c.env.DB.prepare("SELECT id FROM courses WHERE id=?")
+      .bind(courseId)
+      .first())
+  )
+    return fail(c, "课程不存在", 404);
+  if (ids.length) {
+    const validTeachers = await c.env.DB.prepare(
+      `SELECT COUNT(*) n FROM teachers WHERE id IN (${ids.map(() => "?").join(",")})`,
+    )
+      .bind(...ids)
+      .first<{ n: number }>();
+    if (validTeachers?.n !== ids.length)
+      return fail(c, "任课教师中存在无效记录");
+  }
+  const currentIds = (
+    await c.env.DB.prepare(
+      "SELECT teacher_id FROM course_teachers WHERE course_id=?",
+    )
+      .bind(courseId)
+      .all<{ teacher_id: number }>()
+  ).results.map((row) => row.teacher_id);
+  const removed = currentIds.filter((teacherId) => !ids.includes(teacherId));
+  if (removed.length) {
+    const placeholders = removed.map(() => "?").join(",");
+    const reviewDependency = await c.env.DB.prepare(
+      `SELECT 1 FROM reviews WHERE course_id=? AND teacher_id IN (${placeholders}) LIMIT 1`,
+    )
+      .bind(courseId, ...removed)
+      .first();
+    const offeringDependency = await c.env.DB.prepare(
+      `SELECT 1 FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id
+       WHERE o.course_id=? AND ot.teacher_id IN (${placeholders}) LIMIT 1`,
+    )
+      .bind(courseId, ...removed)
+      .first();
+    if (reviewDependency || offeringDependency)
+      return fail(c, "已有评价或开课班依赖该任课关系，不能删除", 409);
+  }
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(
       courseId,
@@ -1142,6 +1341,10 @@ async function validateImport(
     seenKeys = new Set<string>();
   const issue = (index: number, field: string, code: string, message: string) =>
     errors.push({ row: index + 2, field, code, message });
+  const addRow = (row: Record<string, unknown>, index: number) => {
+    Object.defineProperty(row, "__inputIndex", { value: index });
+    rows.push(row);
+  };
   for (let index = 0; index < input.length; index++) {
     const source = input[index];
     if (!source || typeof source !== "object" || Array.isArray(source)) {
@@ -1183,7 +1386,7 @@ async function validateImport(
         : null;
       const exists = Boolean(existing) || seenKeys.has(identityKey);
       if (row.name) seenKeys.add(identityKey);
-      rows.push({ ...row, exists });
+      addRow({ ...row, exists }, index);
     } else if (type === "teachers") {
       const row = {
         name: clean(source.name, 120),
@@ -1206,7 +1409,7 @@ async function validateImport(
         : null;
       const exists = Boolean(existing) || seenKeys.has(identityKey);
       if (row.name) seenKeys.add(identityKey);
-      rows.push({ ...row, exists });
+      addRow({ ...row, exists }, index);
     } else if (type === "relations" || type === "offerings") {
       let courseId: number | null = null;
       let teacherId: number | null = null;
@@ -1259,6 +1462,20 @@ async function validateImport(
             "找不到匹配教师，请先导入教师",
           );
       }
+      if (type === "offerings" && courseId && teacherId) {
+        const relation = await c.env.DB.prepare(
+          "SELECT 1 FROM course_teachers WHERE course_id=? AND teacher_id=? LIMIT 1",
+        )
+          .bind(courseId, teacherId)
+          .first();
+        if (!relation)
+          issue(
+            index,
+            "teacher_name",
+            "teacher_not_related",
+            "教师不在课程已有任课关系中",
+          );
+      }
       let existing = null;
       const identityKey =
         type === "relations"
@@ -1277,10 +1494,13 @@ async function validateImport(
           .bind(courseId, row.term, row.section)
           .first();
       }
-      const exists = Boolean(existing) || seenKeys.has(identityKey);
+      const exists =
+        type === "offerings"
+          ? Boolean(existing)
+          : Boolean(existing) || seenKeys.has(identityKey);
       if (courseId && teacherId && (type === "relations" || row.section))
         seenKeys.add(identityKey);
-      rows.push({ ...row, exists });
+      addRow({ ...row, exists }, index);
     }
   }
   return { rows, errors };
@@ -1299,15 +1519,35 @@ app.post("/api/admin/import/preview", async (c) => {
   if (!["courses", "teachers", "relations", "offerings"].includes(type))
     return fail(c, "未知导入类型");
   const validation = await validateImport(c, type, input);
-  const validCount =
-      input.length - new Set(validation.errors.map((x) => x.row)).size,
-    skipCount = validation.rows.filter((row) => row.exists === true).length;
+  const invalidIndexes = new Set(validation.errors.map((issue) => issue.row - 2));
+  const validRows = validation.rows.filter(
+    (row) => !invalidIndexes.has(Number(row.__inputIndex)),
+  );
+  const validCount = validRows.length;
+  const offeringKey = (row: Record<string, unknown>) =>
+    JSON.stringify([row.course_code, row.course_name, row.term, row.section]);
+  const skipCount =
+    type === "offerings"
+      ? new Set(
+          validRows
+            .filter((row) => row.exists === true)
+            .map((row) => offeringKey(row)),
+        ).size
+      : validRows.filter((row) => row.exists === true).length;
+  const newCount =
+    type === "offerings"
+      ? new Set(
+          validRows
+            .filter((row) => row.exists !== true)
+            .map((row) => offeringKey(row)),
+        ).size
+      : validCount - skipCount;
   return c.json({
     ok: validation.errors.length === 0,
     type,
     total: input.length,
     validCount,
-    newCount: validCount - skipCount,
+    newCount,
     skipCount,
     errors: validation.errors,
     preview: validation.rows.slice(0, 50),
@@ -1401,16 +1641,30 @@ app.post("/api/admin/import", async (c) => {
           clean(x.name, 120),
           clean(x.category, 20) || "major",
           clean(x.department, 80),
-          Number(x.credits) || null,
+          x.credits == null ? null : Number(x.credits),
           clean(x.description, 500),
         ),
       ),
     );
-  return c.json({
-    ok: true,
-    count: normalizedRows.length,
-    skippedCount: rows.length - normalizedRows.length,
-  });
+  const offeringKey = (row: Record<string, unknown>) =>
+    JSON.stringify([row.course_code, row.course_name, row.term, row.section]);
+  const count =
+    type === "offerings"
+      ? new Set(
+          normalizedRows
+            .filter((row) => row.exists !== true)
+            .map((row) => offeringKey(row)),
+        ).size
+      : normalizedRows.length;
+  const skippedCount =
+    type === "offerings"
+      ? new Set(
+          validation.rows
+            .filter((row) => row.exists === true)
+            .map((row) => offeringKey(row)),
+        ).size
+      : rows.length - normalizedRows.length;
+  return c.json({ ok: true, count, skippedCount });
 });
 
 type LegacyApprovedRow = {

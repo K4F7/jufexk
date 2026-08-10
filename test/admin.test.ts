@@ -599,6 +599,11 @@ describe("two-stage imports", () => {
       "INSERT INTO courses(code,name,category,department) VALUES('KEEP-OFF','保留开课','major','测试学院')",
     ).run();
     await env.DB.prepare(
+      "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,1)",
+    )
+      .bind(course.meta.last_row_id)
+      .run();
+    await env.DB.prepare(
       "INSERT INTO offerings(course_id,term,section,campus,schedule,status) VALUES(?,?,?,?,?,?)",
     )
       .bind(course.meta.last_row_id, "2026 秋", "001", "原校区", "周一", "active")
