@@ -32,6 +32,23 @@ beforeAll(async () => {
 });
 
 describe("public teacher catalog pagination", () => {
+  it("uses the bounded default page when page size is omitted", async () => {
+    const response = await SELF.fetch(`${origin}/api/teachers?page=1`);
+    expect(response.status).toBe(200);
+    const body = await response.json<{
+      items: unknown[];
+      page: number;
+      pageSize: number;
+      total: number;
+      pages: number;
+    }>();
+
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(20);
+    expect(body.items.length).toBeLessThanOrEqual(20);
+    expect(body.pages).toBe(Math.ceil(body.total / body.pageSize));
+  });
+
   it("returns a paginated envelope with a complete count", async () => {
     const response = await SELF.fetch(`${origin}/api/teachers?page=1&pageSize=2`);
     expect(response.status).toBe(200);

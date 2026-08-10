@@ -118,7 +118,20 @@ export function CoursesPage() {
       signal: controller.signal,
     })
       .then((result) => {
-        if (!cancelled) setTeachers(result.items);
+        if (!cancelled) {
+          setTeachers((current) => {
+            const selected = current.find(
+              (teacher) => String(teacher.id) === teacherId,
+            );
+            if (
+              !selected ||
+              result.items.some((teacher) => teacher.id === selected.id)
+            ) {
+              return result.items;
+            }
+            return [selected, ...result.items];
+          });
+        }
       })
       .catch((reason) => {
         if (!cancelled) {
@@ -133,7 +146,32 @@ export function CoursesPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [teacherQuery]);
+  }, [teacherQuery, teacherId]);
+
+  useEffect(() => {
+    if (!teacherId) {
+      return;
+    }
+    const controller = new AbortController();
+    let cancelled = false;
+    api<{ teacher: Teacher }>(`/api/teachers/${teacherId}`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setTeachers((current) =>
+          current.some((teacher) => teacher.id === result.teacher.id)
+            ? current
+            : [result.teacher, ...current],
+        );
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [teacherId]);
 
   function update(next: Record<string, string>, replace = false) {
     const sp = new URLSearchParams(params);
@@ -258,7 +296,9 @@ export function CoursesPage() {
           name="course-teacher"
           value={teacherId || ALL_VALUE}
           onChange={(value) =>
-            update({ teacherId: value === ALL_VALUE ? "" : String(value || "") })
+            update({
+              teacherId: value === ALL_VALUE ? "" : String(value || ""),
+            })
           }
         >
           <Label>任课教师</Label>
