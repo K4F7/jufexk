@@ -1,27 +1,105 @@
-import {
-  Button,
-  Input,
-  Label,
-  ListBox,
-  SearchField,
-  Select,
-  Spinner,
-  Table,
-} from "@heroui/react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
+import { CatalogFilters } from "../components/CatalogFilters";
+import {
+  CatalogResultsStates,
+  COURSE_CATALOG_COPY,
+} from "../components/CatalogResultsStates";
+import { CatalogSearchHeader } from "../components/CatalogSearchHeader";
+import { CourseResultTable } from "../components/CourseResultTable";
 import { EmptyBox } from "../components/EmptyBox";
-import { SectionHead } from "../components/SectionHead";
 import { api } from "../lib/api";
-import { categoryLabel, scoreText } from "../lib/labels";
 import type { Course, Paginated, Teacher } from "../lib/types";
 
-const ALL_VALUE = "__all__";
 const FILTER_DELAY = 320;
+
+/** DEV-only: live catalog-search A/B/C compare (production default is C). */
+const CatalogSearchPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/CatalogSearchVariants").then((m) => ({
+        default: m.CatalogSearchHeader,
+      })),
+    )
+  : null;
+
+/** DEV-only: live catalog-filters A/B/C compare. */
+const CatalogFiltersPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/CatalogFiltersVariants").then((m) => ({
+        default: m.CatalogFiltersPrototype,
+      })),
+    )
+  : null;
+
+/** DEV-only: live course-table A/B/C compare. */
+const CourseTablePrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/CourseTableVariants").then((m) => ({
+        default: m.CourseTablePrototype,
+      })),
+    )
+  : null;
+
+/** DEV-only: live catalog-states A/B/C compare. */
+const CatalogStatesPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/CatalogStatesVariants").then((m) => ({
+        default: m.CatalogStatesPrototype,
+      })),
+    )
+  : null;
+
+function useCatalogSearchPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "catalog-search") return null;
+    const key = (params.get("variant") || "C").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "C";
+  }, [params]);
+}
+
+function useCatalogFiltersPrototypeVariant(): "A" | "B" | "C" | "D" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "catalog-filters") return null;
+    const key = (params.get("variant") || "D").toUpperCase();
+    if (key === "A" || key === "B" || key === "C" || key === "D") return key;
+    return "D";
+  }, [params]);
+}
+
+function useCourseTablePrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "course-table") return null;
+    const key = (params.get("variant") || "B").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "B";
+  }, [params]);
+}
+
+function useCatalogStatesPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "catalog-states") return null;
+    const key = (params.get("variant") || "A").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "A";
+  }, [params]);
+}
 
 export function CoursesPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
+  const catalogSearchVariant = useCatalogSearchPrototypeVariant();
+  const catalogFiltersVariant = useCatalogFiltersPrototypeVariant();
+  const courseTableVariant = useCourseTablePrototypeVariant();
+  const catalogStatesVariant = useCatalogStatesPrototypeVariant();
   const q = params.get("q") || "";
   const category = params.get("category") || "";
   const department = params.get("department") || "";
@@ -39,6 +117,8 @@ export function CoursesPage() {
   const [teacherError, setTeacherError] = useState("");
   const [loading, setLoading] = useState(true);
   const [teacherLoading, setTeacherLoading] = useState(true);
+  /** Bumps to re-fetch the current catalog query (prototype retry / force-reload). */
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => setQueryDraft(q), [q]);
   useEffect(() => setDepartmentDraft(department), [department]);
@@ -104,7 +184,7 @@ export function CoursesPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [queryString]);
+  }, [queryString, reloadToken]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -206,270 +286,166 @@ export function CoursesPage() {
     );
   }
 
+  const courseMeta = data ? `${data.total} 门课程` : "";
+  const comparingSearch =
+    Boolean(catalogSearchVariant) && Boolean(CatalogSearchPrototypeLazy);
+  const comparingFilters =
+    Boolean(catalogFiltersVariant) && Boolean(CatalogFiltersPrototypeLazy);
+  const comparingTable =
+    Boolean(courseTableVariant) && Boolean(CourseTablePrototypeLazy);
+  const comparingStates =
+    Boolean(catalogStatesVariant) && Boolean(CatalogStatesPrototypeLazy);
+
+  const pageSize = data?.pageSize || 20;
+
+  const filtersModel = {
+    queryDraft,
+    category,
+    departmentDraft,
+    teacherQueryDraft,
+    teacherId,
+    teachers,
+    teacherLoading,
+    teacherError,
+    teacherQuery,
+    hasFilters,
+    setCategory: (value: string) => update({ category: value }),
+    setDepartmentDraft,
+    setTeacherQueryDraft,
+    setTeacherId: (value: string) => update({ teacherId: value }),
+    clearFilters,
+  };
+
+  const defaultFilters = (
+    <CatalogFilters
+      queryDraft={queryDraft}
+      category={category}
+      departmentDraft={departmentDraft}
+      teacherQueryDraft={teacherQueryDraft}
+      teacherId={teacherId}
+      teachers={teachers}
+      teacherLoading={teacherLoading}
+      teacherError={teacherError}
+      teacherQuery={teacherQuery}
+      hasFilters={hasFilters}
+      onCategoryChange={(value) => update({ category: value })}
+      onDepartmentDraftChange={setDepartmentDraft}
+      onTeacherQueryDraftChange={setTeacherQueryDraft}
+      onTeacherIdChange={(value) => update({ teacherId: value })}
+      onClear={clearFilters}
+    />
+  );
+
+  const statesModel = {
+    items: data?.items ?? [],
+    search: location.search,
+    emptyQuery: q || undefined,
+    loading,
+    hasPayload: data != null,
+    error,
+    currentPage,
+    totalPages,
+    total: data?.total ?? 0,
+    pageSize,
+    hasFilters,
+    onPageChange: (nextPage: number) => update({ page: String(nextPage) }),
+    onRetry: () => setReloadToken((n) => n + 1),
+    onClearFilters: clearFilters,
+  };
+
+  const productionResults = (
+    <CatalogResultsStates
+      loading={loading}
+      hasPayload={data != null}
+      error={error}
+      itemCount={data?.items.length ?? 0}
+      hasFilters={hasFilters}
+      emptyQuery={q || undefined}
+      currentPage={currentPage}
+      totalPages={totalPages}
+      total={data?.total ?? 0}
+      onPageChange={(nextPage) => update({ page: String(nextPage) })}
+      onRetry={() => setReloadToken((n) => n + 1)}
+      onClearFilters={clearFilters}
+      copy={COURSE_CATALOG_COPY}
+    >
+      {data ? (
+        comparingTable && courseTableVariant && CourseTablePrototypeLazy ? (
+          <Suspense
+            fallback={<EmptyBox role="status">加载结果表原型…</EmptyBox>}
+          >
+            <CourseTablePrototypeLazy
+              key={courseTableVariant}
+              variant={courseTableVariant}
+              items={data.items}
+              emptyQuery={q || undefined}
+            />
+          </Suspense>
+        ) : (
+          <CourseResultTable
+            items={data.items}
+            search={location.search}
+            emptyQuery={q || undefined}
+          />
+        )
+      ) : null}
+    </CatalogResultsStates>
+  );
+
+  const results =
+    comparingStates && catalogStatesVariant && CatalogStatesPrototypeLazy ? (
+      <Suspense fallback={<EmptyBox role="status">加载状态原型…</EmptyBox>}>
+        <CatalogStatesPrototypeLazy
+          key={catalogStatesVariant}
+          variant={catalogStatesVariant}
+          model={statesModel}
+        />
+      </Suspense>
+    ) : (
+      productionResults
+    );
+
   return (
     <section>
-      <div
-        aria-label="课程目录筛选"
-        className="mb-2.5 grid gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_minmax(190px,0.9fr)_minmax(190px,0.9fr)_auto] sm:items-end"
-        role="search"
-      >
-        <SearchField
-          fullWidth
-          name="course-search"
+      {comparingSearch && catalogSearchVariant && CatalogSearchPrototypeLazy ? (
+        <Suspense fallback={null}>
+          <CatalogSearchPrototypeLazy
+            variant={catalogSearchVariant}
+            value={queryDraft}
+            onChange={setQueryDraft}
+            meta={courseMeta}
+          />
+        </Suspense>
+      ) : (
+        <CatalogSearchHeader
+          title="课程目录"
+          meta={courseMeta}
           value={queryDraft}
           onChange={setQueryDraft}
-        >
-          <Label className="sr-only">搜索课程</Label>
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input
-              className="w-full"
-              placeholder="搜索课程、课号或教师"
-            />
-            <SearchField.ClearButton aria-label="清空课程搜索" />
-          </SearchField.Group>
-        </SearchField>
-
-        <Select
-          className="w-full"
-          name="course-category"
-          value={category || ALL_VALUE}
-          onChange={(value) =>
-            update({ category: value === ALL_VALUE ? "" : String(value || "") })
-          }
-        >
-          <Label>课程类型</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id={ALL_VALUE} textValue="所有课程">
-                所有课程
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="major" textValue="专业课">
-                专业课
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="pe" textValue="体育课">
-                体育课
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="general" textValue="公共选修">
-                公共选修
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
-
-        <Input
-          aria-label="按院系筛选"
-          className="w-full"
-          placeholder="院系"
-          value={departmentDraft}
-          onChange={(event) => setDepartmentDraft(event.target.value)}
+          placeholder="搜索课程、课号或教师"
+          searchLabel="搜索课程"
+          clearAriaLabel="清空课程搜索"
+          name="course-search"
         />
+      )}
 
-        <SearchField
-          fullWidth
-          name="teacher-search"
-          value={teacherQueryDraft}
-          onChange={setTeacherQueryDraft}
-        >
-          <Label className="sr-only">搜索任课教师</Label>
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input
-              className="w-full"
-              placeholder="搜索任课教师姓名或院系"
-            />
-            <SearchField.ClearButton aria-label="清空教师搜索" />
-          </SearchField.Group>
-        </SearchField>
-
-        <Select
-          className="w-full"
-          isDisabled={teacherLoading || (!teachers.length && Boolean(teacherError))}
-          name="course-teacher"
-          value={teacherId || ALL_VALUE}
-          onChange={(value) =>
-            update({
-              teacherId: value === ALL_VALUE ? "" : String(value || ""),
-            })
-          }
-        >
-          <Label>任课教师</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id={ALL_VALUE} textValue="所有教师">
-                所有教师
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              {teachers.map((teacher) => (
-                <ListBox.Item
-                  key={teacher.id}
-                  id={String(teacher.id)}
-                  textValue={`${teacher.name} ${teacher.department}`}
-                >
-                  {teacher.name} · {teacher.department}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
-
-        <Button
-          className="w-full sm:w-auto"
-          isDisabled={!hasFilters}
-          onPress={clearFilters}
-          size="sm"
-          variant="ghost"
-        >
-          清空筛选
-        </Button>
-      </div>
-
-      {hasFilters ? (
-        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-          <span>当前筛选：</span>
-          {queryDraft.trim() ? <span>关键词“{queryDraft.trim()}”</span> : null}
-          {category ? <span>{categoryLabel(category)}</span> : null}
-          {departmentDraft.trim() ? (
-            <span>院系“{departmentDraft.trim()}”</span>
-          ) : null}
-          {teacherQueryDraft.trim() ? (
-            <span>教师搜索“{teacherQueryDraft.trim()}”</span>
-          ) : null}
-          {teacherId
-            ? (() => {
-                const teacher = teachers.find(
-                  (item) => String(item.id) === teacherId,
-                );
-                return <span>教师“{teacher?.name || teacherId}”</span>;
-              })()
-            : null}
-        </div>
-      ) : null}
-
-      <SectionHead title="课程目录" meta={data ? `${data.total} 门课程` : ""} />
-
-      {teacherError ? (
-        <p className="mb-2 text-sm text-muted" role="status">
-          {teacherError}，可先使用关键词或院系筛选。
-        </p>
-      ) : null}
-      {!teacherError && !teacherQuery && teachers.length >= 50 ? (
-        <p className="mb-2 text-sm text-muted" role="status">
-          教师筛选默认显示前 50 位，请输入姓名或院系搜索更多教师。
-        </p>
-      ) : null}
-      {error ? <EmptyBox role="alert">{error}</EmptyBox> : null}
-      {loading && !data ? <EmptyBox role="status">加载中…</EmptyBox> : null}
-      {loading && data ? (
-        <div
-          aria-live="polite"
-          className="mb-2 flex items-center gap-2 text-sm text-muted"
-          role="status"
-        >
-          <Spinner size="sm" />
-          正在更新课程目录…
-        </div>
-      ) : null}
-
-      {data ? (
-        <div aria-busy={loading}>
-          <Table className="dense-table">
-            <Table.ScrollContainer>
-              <Table.Content aria-label="课程目录" className="min-w-[860px]">
-                <Table.Header>
-                  <Table.Column isRowHeader>课号</Table.Column>
-                  <Table.Column>课程</Table.Column>
-                  <Table.Column>类别</Table.Column>
-                  <Table.Column>教师</Table.Column>
-                  <Table.Column>院系</Table.Column>
-                  <Table.Column>评分</Table.Column>
-                  <Table.Column>评价</Table.Column>
-                </Table.Header>
-                <Table.Body
-                  items={data.items}
-                  renderEmptyState={() => (
-                    <div className="py-8 text-center text-muted" role="status">
-                      {q ? `没有找到匹配“${q}”的课程` : "没有课程数据"}
-                    </div>
-                  )}
-                >
-                  {(course) => (
-                    <Table.Row
-                      id={String(course.id)}
-                      key={course.id}
-                      href={`/courses/${course.id}${location.search}`}
-                      className="cursor-pointer"
-                    >
-                      <Table.Cell>
-                        <span className="tabular text-[13px] text-muted">
-                          {course.code}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="font-semibold">{course.name}</span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="text-[13px] text-muted">
-                          {categoryLabel(course.category)}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>{course.teachers || "待补充"}</Table.Cell>
-                      <Table.Cell>
-                        <span className="text-muted">{course.department}</span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="tabular font-semibold text-accent">
-                          {scoreText(course.rating)}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="tabular font-semibold text-accent">
-                          {course.review_count}
-                        </span>
-                      </Table.Cell>
-                    </Table.Row>
-                  )}
-                </Table.Body>
-              </Table.Content>
-            </Table.ScrollContainer>
-          </Table>
-
-          <div className="mt-3 flex items-center justify-center gap-3 text-[13px] text-muted">
-            <Button
-              size="sm"
-              variant="outline"
-              isDisabled={loading || currentPage <= 1}
-              onPress={() => update({ page: String(currentPage - 1) })}
-            >
-              上一页
-            </Button>
-            <span aria-live="polite">
-              {currentPage}/{totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              isDisabled={loading || currentPage >= totalPages}
-              onPress={() => update({ page: String(currentPage + 1) })}
-            >
-              下一页
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {comparingFilters &&
+      catalogFiltersVariant &&
+      CatalogFiltersPrototypeLazy ? (
+        <Suspense fallback={null}>
+          <CatalogFiltersPrototypeLazy
+            variant={catalogFiltersVariant}
+            model={filtersModel}
+          >
+            {results}
+          </CatalogFiltersPrototypeLazy>
+        </Suspense>
+      ) : (
+        <>
+          {defaultFilters}
+          {results}
+        </>
+      )}
     </section>
   );
 }

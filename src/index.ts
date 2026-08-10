@@ -116,7 +116,19 @@ app.get("/api/courses", async (c) => {
     .bind(...args)
     .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
-    `SELECT c.*,GROUP_CONCAT(DISTINCT t.name) teachers,COUNT(DISTINCT r.id) review_count,ROUND(AVG(r.overall),1) rating FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id LEFT JOIN reviews r ON r.course_id=c.id AND r.status='approved' WHERE ${where} GROUP BY c.id ORDER BY review_count DESC,c.name LIMIT ? OFFSET ?`,
+    `SELECT c.*,
+       GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
+       GROUP_CONCAT(DISTINCT t.name) teachers,
+       COUNT(DISTINCT r.id) review_count,
+       ROUND(AVG(r.overall),1) rating
+     FROM courses c
+     LEFT JOIN course_teachers ct ON ct.course_id=c.id
+     LEFT JOIN teachers t ON t.id=ct.teacher_id
+     LEFT JOIN reviews r ON r.course_id=c.id AND r.status='approved'
+     WHERE ${where}
+     GROUP BY c.id
+     ORDER BY review_count DESC,c.name
+     LIMIT ? OFFSET ?`,
   )
     .bind(...args, size, (page - 1) * size)
     .all();

@@ -12,3 +12,6 @@ scripts/legacy_ocr/input/
 scripts/legacy_ocr/reference.json
 copy.xlsx
 handoff/
+
+# Local D1 dumps / preview data (never commit)
+.local-data/

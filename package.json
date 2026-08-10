@@ -10,12 +10,16 @@
   },
   "scripts": {
     "dev": "wrangler dev",
+    "prototype": "vite",
     "build": "vite build",
     "test": "vitest run",
     "deploy": "pnpm run build && wrangler deploy",
     "types": "wrangler types",
     "check": "wrangler types && tsc --noEmit && vitest run && vite build && wrangler deploy --dry-run",
-    "db:local": "wrangler d1 migrations apply jufexk --local"
+    "db:local": "wrangler d1 migrations apply jufexk --local",
+    "db:seed-preview": "wrangler d1 execute jufexk --local --file=scripts/prototype-local-seed.sql",
+    "db:export-remote": "mkdir -p .local-data && wrangler d1 export jufexk --remote --output=.local-data/remote-export.sql -y",
+    "db:import-remote-local": "python3 scripts/import-remote-export-local.py"
   },
   "dependencies": {
     "@heroui/react": "^3.2.4",
@@ -33,6 +37,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.11",
     "typescript": "7.0.2",
     "vite": "8.1.5",
     "vitest": "4.1.10",

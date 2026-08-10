@@ -1,6 +1,7 @@
 export const categoryLabels: Record<string, string> = {
   major: "专业课",
   pe: "体育课",
+  sports: "体育课", // remote catalog enum (post 0011)
   general: "公共选修",
 };
 

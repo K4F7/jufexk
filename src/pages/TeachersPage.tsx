@@ -1,10 +1,17 @@
-import { Button, Label, SearchField, Spinner, Table } from "@heroui/react";
+/**
+ * Teacher catalog — adapted from frozen course-catalog language:
+ * CatalogSearchHeader C · CatalogResultsStates A · TeacherResultTable (B fold).
+ * No separate A/B/C prototype round (foundations).
+ */
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
-import { EmptyBox } from "../components/EmptyBox";
-import { SectionHead } from "../components/SectionHead";
+import {
+  CatalogResultsStates,
+  TEACHER_CATALOG_COPY,
+} from "../components/CatalogResultsStates";
+import { CatalogSearchHeader } from "../components/CatalogSearchHeader";
+import { TeacherResultTable } from "../components/TeacherResultTable";
 import { api } from "../lib/api";
-import { scoreText } from "../lib/labels";
 import type { Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
@@ -19,6 +26,7 @@ export function TeachersPage() {
   const [data, setData] = useState<Paginated<Teacher> | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => setQueryDraft(q), [q]);
 
@@ -63,9 +71,12 @@ export function TeachersPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [q, page]);
+  }, [q, page, reloadToken]);
 
-  const hasSearch = Boolean(queryDraft.trim() || q);
+  const hasFilters = Boolean(queryDraft.trim() || q);
+  const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
+  const totalPages = data?.pages || 1;
+  const teacherMeta = data ? `${data.total} 位教师` : "";
 
   function clearSearch() {
     setQueryDraft("");
@@ -75,147 +86,44 @@ export function TeachersPage() {
     setParams(sp, { replace: true });
   }
 
-  const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
-  const totalPages = data?.pages || 1;
+  function goToPage(nextPage: number) {
+    const sp = new URLSearchParams(params);
+    sp.set("page", String(nextPage));
+    setParams(sp);
+  }
 
   return (
     <section>
-      <div
-        aria-label="教师资料筛选"
-        className="mb-2.5 flex flex-col gap-2 sm:flex-row sm:items-end"
-        role="search"
-      >
-        <SearchField
-          fullWidth
-          name="teacher-search"
-          value={queryDraft}
-          onChange={setQueryDraft}
-          className="sm:max-w-[520px]"
-        >
-          <Label className="sr-only">搜索教师</Label>
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input
-              className="w-full"
-              placeholder="搜索教师姓名或院系"
-            />
-            <SearchField.ClearButton aria-label="清空教师搜索" />
-          </SearchField.Group>
-        </SearchField>
-        <Button
-          className="w-full sm:w-auto"
-          isDisabled={!hasSearch}
-          onPress={clearSearch}
-          size="sm"
-          variant="ghost"
-        >
-          清空搜索
-        </Button>
-      </div>
-
-      <SectionHead
+      <CatalogSearchHeader
         title="教师资料"
-        meta={data ? `${data.total} 位教师` : ""}
+        meta={teacherMeta}
+        value={queryDraft}
+        onChange={setQueryDraft}
+        placeholder="搜索教师姓名或院系"
+        searchLabel="搜索教师"
+        clearAriaLabel="清空教师搜索"
+        name="teacher-search"
       />
 
-      {loading && data ? (
-        <div
-          aria-live="polite"
-          className="mb-2 flex items-center gap-2 text-sm text-muted"
-          role="status"
-        >
-          <Spinner size="sm" />
-          正在更新教师资料…
-        </div>
-      ) : null}
-      {error ? <EmptyBox role="alert">{error}</EmptyBox> : null}
-      {loading && !data && !error ? (
-        <EmptyBox role="status">加载中…</EmptyBox>
-      ) : null}
-      {data ? (
-        <div aria-busy={loading}>
-          <Table className="dense-table">
-            <Table.ScrollContainer>
-              <Table.Content aria-label="教师资料" className="min-w-[640px]">
-                <Table.Header>
-                  <Table.Column isRowHeader>姓名</Table.Column>
-                  <Table.Column>职称</Table.Column>
-                  <Table.Column>院系</Table.Column>
-                  <Table.Column>评分</Table.Column>
-                  <Table.Column>课程数</Table.Column>
-                </Table.Header>
-                <Table.Body
-                  items={data.items}
-                  renderEmptyState={() => (
-                    <div className="py-8 text-center text-muted" role="status">
-                      {q ? `没有找到匹配“${q}”的教师` : "暂无教师资料"}
-                    </div>
-                  )}
-                >
-                  {(teacher) => (
-                    <Table.Row
-                      id={String(teacher.id)}
-                      key={teacher.id}
-                      href={`/teachers/${teacher.id}${location.search}`}
-                      className="cursor-pointer"
-                    >
-                      <Table.Cell>
-                        <span className="font-semibold">{teacher.name}</span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="text-muted">{teacher.title || "—"}</span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="text-muted">{teacher.department}</span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="tabular font-semibold text-accent">
-                          {scoreText(teacher.rating)}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="tabular font-semibold text-accent">
-                          {teacher.course_count ?? 0}
-                        </span>
-                      </Table.Cell>
-                    </Table.Row>
-                  )}
-                </Table.Body>
-              </Table.Content>
-            </Table.ScrollContainer>
-          </Table>
-
-          <div className="mt-3 flex items-center justify-center gap-3 text-[13px] text-muted">
-            <Button
-              size="sm"
-              variant="outline"
-              isDisabled={loading || currentPage <= 1}
-              onPress={() => {
-                const sp = new URLSearchParams(params);
-                sp.set("page", String(currentPage - 1));
-                setParams(sp);
-              }}
-            >
-              上一页
-            </Button>
-            <span aria-live="polite">
-              {currentPage}/{totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              isDisabled={loading || currentPage >= totalPages}
-              onPress={() => {
-                const sp = new URLSearchParams(params);
-                sp.set("page", String(currentPage + 1));
-                setParams(sp);
-              }}
-            >
-              下一页
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      <CatalogResultsStates
+        loading={loading}
+        hasPayload={data != null}
+        error={error}
+        itemCount={data?.items.length ?? 0}
+        hasFilters={hasFilters}
+        emptyQuery={q || undefined}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        total={data?.total ?? 0}
+        onPageChange={goToPage}
+        onRetry={() => setReloadToken((n) => n + 1)}
+        onClearFilters={clearSearch}
+        copy={TEACHER_CATALOG_COPY}
+      >
+        {data ? (
+          <TeacherResultTable items={data.items} search={location.search} />
+        ) : null}
+      </CatalogResultsStates>
     </section>
   );
 }

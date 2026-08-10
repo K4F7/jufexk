@@ -10,6 +10,8 @@ export type Course = {
   review_count: number;
   rating: number | null;
   description?: string;
+  /** Catalog list: "id:name,id:name" for real teacher links */
+  teacher_refs?: string;
   teacher_ids?: string;
 };
 

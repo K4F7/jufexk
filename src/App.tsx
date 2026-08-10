@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { api } from "./lib/api";
@@ -7,6 +7,41 @@ import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
+
+const THEME_STORAGE_KEY = "jufexk-theme";
+
+/** Dev-only: lazy so production builds do not ship Gallery / switcher / token CSS. */
+const PrototypeGalleryPage = import.meta.env.DEV
+  ? lazy(() =>
+      import("./prototype/PrototypeGalleryPage").then((m) => ({
+        default: m.PrototypeGalleryPage,
+      })),
+    )
+  : null;
+
+function DevPrototypeMount() {
+  const [chrome, setChrome] = useState<ReactNode>(null);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let cancelled = false;
+    import("./prototype/DevPrototypeChrome").then((m) => {
+      if (!cancelled) setChrome(<m.DevPrototypeChrome />);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return <>{chrome}</>;
+}
+
+function applyColorScheme(mode: "light" | "dark") {
+  const root = document.documentElement;
+  root.classList.toggle("dark", mode === "dark");
+  root.classList.toggle("light", mode !== "dark");
+  root.dataset.theme = mode;
+}
 
 export function App() {
   const [config, setConfig] = useState<SiteConfig | null>(null);
@@ -25,18 +60,48 @@ export function App() {
       });
   }, []);
 
+  // Initial visit follows system; manual choice is remembered (foundations).
   useEffect(() => {
-    const root = document.documentElement;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      const dark = media.matches;
-      root.classList.toggle("dark", dark);
-      root.classList.toggle("light", !dark);
-      root.dataset.theme = dark ? "dark" : "light";
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+    const resolve = (): "light" | "dark" => {
+      if (stored === "light" || stored === "dark") return stored;
+      return media.matches ? "dark" : "light";
     };
-    apply();
-    media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
+
+    applyColorScheme(resolve());
+
+    const onMedia = () => {
+      const current = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (current === "light" || current === "dark") return;
+      applyColorScheme(media.matches ? "dark" : "light");
+    };
+
+    media.addEventListener("change", onMedia);
+
+    (
+      window as unknown as {
+        __jufexkSetTheme?: (m: "light" | "dark" | "system") => void;
+      }
+    ).__jufexkSetTheme = (mode) => {
+      if (mode === "system") {
+        window.localStorage.removeItem(THEME_STORAGE_KEY);
+        applyColorScheme(media.matches ? "dark" : "light");
+        return;
+      }
+      window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+      applyColorScheme(mode);
+    };
+
+    return () => {
+      media.removeEventListener("change", onMedia);
+      delete (
+        window as unknown as {
+          __jufexkSetTheme?: unknown;
+        }
+      ).__jufexkSetTheme;
+    };
   }, []);
 
   return (
@@ -48,8 +113,19 @@ export function App() {
           <Route path="/courses/:id" element={<CourseDetailPage />} />
           <Route path="/teachers" element={<TeachersPage />} />
           <Route path="/teachers/:id" element={<TeacherDetailPage />} />
+          {PrototypeGalleryPage ? (
+            <Route
+              path="/prototype"
+              element={
+                <Suspense fallback={<p className="text-sm text-muted">加载 Prototype…</p>}>
+                  <PrototypeGalleryPage />
+                </Suspense>
+              }
+            />
+          ) : null}
           <Route path="*" element={<Navigate to="/courses" replace />} />
         </Routes>
+        {import.meta.env.DEV ? <DevPrototypeMount /> : null}
       </AppShell>
     </BrowserRouter>
   );

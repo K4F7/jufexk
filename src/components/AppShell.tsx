@@ -1,11 +1,104 @@
 import { Button } from "@heroui/react";
-import { NavLink, useLocation } from "react-router-dom";
+import { lazy, Suspense, useMemo, type ReactNode } from "react";
+import { NavLink, useLocation, useSearchParams } from "react-router-dom";
 import type { SiteConfig } from "../lib/types";
+import { ThemeToggle } from "./ThemeToggle";
 
 const links = [
-  { to: "/courses", label: "课程" },
-  { to: "/teachers", label: "教师" },
-];
+  { id: "courses", to: "/courses", label: "课程" },
+  { id: "teachers", to: "/teachers", label: "教师" },
+] as const;
+
+/** DEV-only: live shell-nav prototype shell (dynamic so production never ships it). */
+const PrototypeShellLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/ShellNavVariants").then((m) => ({
+        default: m.PrototypeShell,
+      })),
+    )
+  : null;
+
+function useShellNavPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "shell-nav") return null;
+    const key = (params.get("variant") || "C").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "C";
+  }, [params]);
+}
+
+function navSelectedKey(pathname: string): string {
+  if (pathname === "/teachers" || pathname.startsWith("/teachers/")) {
+    return "teachers";
+  }
+  return "courses";
+}
+
+/**
+ * Production shell — visually frozen: left-cluster + HeroUI Button nav (prototype C).
+ * Brand wordmark · Button secondary/ghost 课程/教师 · university + ThemeToggle.
+ */
+function DefaultShell({
+  config,
+  children,
+}: {
+  config: SiteConfig | null;
+  children: ReactNode;
+}) {
+  const location = useLocation();
+  const selectedKey = navSelectedKey(location.pathname);
+  const siteName = config?.siteName || "江财选课参考";
+  const universityName = config?.universityName || "江西财经大学";
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
+        <div className="mx-auto flex min-h-14 max-w-[1280px] items-center gap-4 px-4 py-2.5 sm:px-5">
+          <NavLink
+            to="/courses"
+            className="shrink-0 text-sm font-semibold tracking-tight text-foreground no-underline"
+          >
+            {siteName}
+          </NavLink>
+
+          <nav aria-label="主导航" className="flex min-w-0 items-center gap-1">
+            {links.map((link) => {
+              const active = selectedKey === link.id;
+              return (
+                <NavLink key={link.id} to={link.to} className="no-underline">
+                  <Button size="sm" variant={active ? "secondary" : "ghost"}>
+                    {link.label}
+                  </Button>
+                </NavLink>
+              );
+            })}
+          </nav>
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2">
+            <span className="hidden text-xs text-muted sm:inline">
+              {universityName}
+            </span>
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-4 sm:px-5">
+        {children}
+      </main>
+
+      <footer className="border-t border-border px-4 py-4 text-center text-sm text-muted sm:px-5">
+        <div className="mx-auto max-w-[1280px]">
+          {siteName} · {universityName}
+        </div>
+      </footer>
+    </div>
+  );
+}
 
 export function AppShell({
   config,
@@ -14,50 +107,17 @@ export function AppShell({
   config: SiteConfig | null;
   children: React.ReactNode;
 }) {
-  const location = useLocation();
+  const prototypeVariant = useShellNavPrototypeVariant();
 
-  return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex min-h-12 max-w-[1100px] items-center justify-between gap-3 px-4 sm:px-5">
-          <NavLink
-            to="/courses"
-            className="text-sm font-semibold text-foreground no-underline"
-          >
-            {config?.siteName || "江财选课参考"}
-          </NavLink>
-          <nav className="flex flex-wrap items-center gap-1">
-            {links.map((link) => {
-              const active =
-                location.pathname === link.to ||
-                location.pathname.startsWith(`${link.to}/`);
-              return (
-                <NavLink key={link.to} to={link.to} className="no-underline">
-                  <Button
-                    size="sm"
-                    variant={active ? "secondary" : "ghost"}
-                    className="font-semibold"
-                  >
-                    {link.label}
-                  </Button>
-                </NavLink>
-              );
-            })}
-          </nav>
-        </div>
-      </header>
+  if (prototypeVariant && PrototypeShellLazy) {
+    return (
+      <Suspense fallback={<DefaultShell config={config}>{children}</DefaultShell>}>
+        <PrototypeShellLazy variant={prototypeVariant} config={config}>
+          {children}
+        </PrototypeShellLazy>
+      </Suspense>
+    );
+  }
 
-      <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 py-4 sm:px-5">
-        {children}
-      </main>
-
-      <footer className="border-t border-border px-4 py-4 text-center text-sm text-muted sm:px-5">
-        <div className="mx-auto max-w-[1100px]">
-          {(config?.siteName || "江财选课参考") +
-            " · " +
-            (config?.universityName || "江西财经大学")}
-        </div>
-      </footer>
-    </div>
-  );
+  return <DefaultShell config={config}>{children}</DefaultShell>;
 }

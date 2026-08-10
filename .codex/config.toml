@@ -1,0 +1,10 @@
+# Project-scoped Codex config for jufexk (HeroUI v3).
+# Loaded only for this trusted project.
+
+[mcp_servers.heroui-react]
+command = "/opt/actions-runner/externals/node24/bin/npx"
+args = ["-y", "@heroui/react-mcp@latest"]
+cwd = "/home/sern/workload/jufexk"
+
+[mcp_servers.heroui-react.env]
+PATH = "/opt/actions-runner/externals/node24/bin:/home/sern/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
