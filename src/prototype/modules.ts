@@ -33,7 +33,7 @@ export type PrototypeModuleDef = {
  */
 /**
  * Catalog-facing modules through teacher adapt are visually frozen.
- * Detail modules (course/teacher summary, reviews) are next when started.
+ * course-detail-summary: B 意向冻结、页级可砍（issue #60 / module 9）。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -224,6 +224,38 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
         name: "底栏状态条",
         summary:
           "分页与状态 Chip 同在 sticky 底栏；刷新半透明遮罩；空态居中大按钮。",
+      },
+    ],
+  },
+  {
+    id: "course-detail-summary",
+    title: "课程详情摘要",
+    question: "课程详情顶部摘要如何组织身份元数据与总体评分？",
+    status: "visually-frozen",
+    preview: "live",
+    /** Prefer a real course id from local D1; Gallery deep-link uses this path. */
+    livePath: "/courses/3",
+    winner: "B（若保留该页）",
+    notes:
+      "Issue #60 · 用户反馈：评价绑定课程+教师，课程单独详情价值有限，本页可能不做；若保留/重开，摘要取 B（左身份/右评分）。不进入生产重写。投稿/历史资料仍属模块 10。",
+    variants: [
+      {
+        key: "A",
+        name: "标题流 + 分隔元数据",
+        summary:
+          "单列纵向：返回 → Chip+课名 → 课号·院系·教师链接 → 分隔后大号评分与投稿数。",
+      },
+      {
+        key: "B",
+        name: "左身份 / 右评分",
+        summary:
+          "两列：左身份与教师链接；右 Surface 竖排大号评分，评分作视觉锚点。",
+      },
+      {
+        key: "C",
+        name: "评分优先摘要条",
+        summary:
+          "顶部 Surface 横条先放评分与投稿；其下才是课名与元数据（评分先于身份）。",
       },
     ],
   },
