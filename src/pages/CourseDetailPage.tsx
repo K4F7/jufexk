@@ -23,11 +23,20 @@ const CourseDetailSummaryPrototypeLazy = import.meta.env.DEV
     )
   : null;
 
-/** DEV-only: live course-detail-reviews A/B/C compare (module 10). */
+/** DEV-only: live course-detail-reviews A/B/C compare (module 10 / #61). */
 const CourseDetailReviewsPrototypeLazy = import.meta.env.DEV
   ? lazy(() =>
       import("../prototype/CourseDetailReviewsVariants").then((m) => ({
         default: m.CourseDetailReviewsPrototype,
+      })),
+    )
+  : null;
+
+/** DEV-only: 任课评价文字流 (module 12 / #68). */
+const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/TeachingReviewsFeedVariants").then((m) => ({
+        default: m.TeachingReviewsFeedPrototype,
       })),
     )
   : null;
@@ -50,6 +59,15 @@ function useCourseDetailReviewsPrototypeVariant(): "A" | "B" | "C" | null {
     if (params.get("module") !== "course-detail-reviews") return null;
     const key = (params.get("variant") || "A").toUpperCase();
     if (key === "A" || key === "B" || key === "C") return key;
+    return "A";
+  }, [params]);
+}
+
+function useTeachingReviewsFeedPrototypeVariant(): "A" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "teaching-reviews-feed") return null;
     return "A";
   }, [params]);
 }
@@ -99,6 +117,7 @@ export function CourseDetailPage() {
   const location = useLocation();
   const summaryVariant = useCourseDetailSummaryPrototypeVariant();
   const reviewsVariant = useCourseDetailReviewsPrototypeVariant();
+  const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
 
@@ -133,6 +152,8 @@ export function CourseDetailPage() {
     Boolean(summaryVariant) && Boolean(CourseDetailSummaryPrototypeLazy);
   const comparingReviews =
     Boolean(reviewsVariant) && Boolean(CourseDetailReviewsPrototypeLazy);
+  const comparingTeachingFeed =
+    Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
 
   return (
     <section>
@@ -153,7 +174,24 @@ export function CourseDetailPage() {
         <ProductionSummary course={c} onBack={goBack} />
       )}
 
-      {comparingReviews && reviewsVariant && CourseDetailReviewsPrototypeLazy ? (
+      {comparingTeachingFeed &&
+      teachingFeedVariant &&
+      TeachingReviewsFeedPrototypeLazy ? (
+        <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
+          <TeachingReviewsFeedPrototypeLazy
+            key={teachingFeedVariant}
+            variant={teachingFeedVariant}
+            model={{
+              counterpartMode: "teacher",
+              hostLabel: c.name,
+              liveReviews: data.reviews ?? [],
+              liveRatingCount: data.reviews?.length ?? 0,
+            }}
+          />
+        </Suspense>
+      ) : comparingReviews &&
+        reviewsVariant &&
+        CourseDetailReviewsPrototypeLazy ? (
         <Suspense fallback={<EmptyBox role="status">加载投稿原型…</EmptyBox>}>
           <CourseDetailReviewsPrototypeLazy
             key={reviewsVariant}

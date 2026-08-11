@@ -7,12 +7,19 @@
  * 3. Related student submissions — ReviewCard identity=course (module 10 freeze)
  * 4. Historical materials — LegacyReviews showCourse (module 10 freeze)
  *
+ * DEV-only: ?module=teaching-reviews-feed replaces section 3 with #68 prototype.
+ *
  * Back restores teacher-catalog URL state (drops prototype params if any).
  * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
  */
 import { Button, Surface } from "@heroui/react";
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { EmptyBox } from "../components/EmptyBox";
 import { LegacyReviews } from "../components/LegacyReviews";
 import { ReviewCard } from "../components/ReviewCard";
@@ -20,6 +27,24 @@ import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { api } from "../lib/api";
 import { scoreText } from "../lib/labels";
 import type { Course, LegacyReview, Review, Teacher } from "../lib/types";
+
+/** DEV-only: 任课评价文字流 (module 12 / #68). */
+const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/TeachingReviewsFeedVariants").then((m) => ({
+        default: m.TeachingReviewsFeedPrototype,
+      })),
+    )
+  : null;
+
+function useTeachingReviewsFeedPrototypeVariant(): "A" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "teaching-reviews-feed") return null;
+    return "A";
+  }, [params]);
+}
 
 type Detail = {
   teacher: Teacher;
@@ -115,6 +140,7 @@ export function TeacherDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
 
@@ -150,6 +176,9 @@ export function TeacherDetailPage() {
     navigate(q ? `/teachers?${q}` : "/teachers");
   };
 
+  const comparingTeachingFeed =
+    Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
+
   return (
     <section>
       <TeacherSummary teacher={t} courseCount={courseCount} onBack={goBack} />
@@ -169,36 +198,56 @@ export function TeacherDetailPage() {
         <TeacherCourseTable items={courses} />
       </section>
 
-      <section className="mb-2" aria-labelledby="teacher-submissions-heading">
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h2
-            id="teacher-submissions-heading"
-            className="m-0 text-[17px] font-bold leading-snug"
-          >
-            学生投稿
-          </h2>
-          {reviews.length ? (
-            <span className="text-[13px] text-muted">{reviews.length} 条</span>
-          ) : null}
-        </div>
-        {reviews.length ? (
-          <div role="list" aria-label="学生投稿列表">
-            {reviews.map((r, i) => (
-              <div key={r.id} role="listitem">
-                <ReviewCard
-                  review={r}
-                  showSeparator={i > 0}
-                  identity="course"
-                />
-              </div>
-            ))}
+      {comparingTeachingFeed &&
+      teachingFeedVariant &&
+      TeachingReviewsFeedPrototypeLazy ? (
+        <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
+          <TeachingReviewsFeedPrototypeLazy
+            key={teachingFeedVariant}
+            variant={teachingFeedVariant}
+            model={{
+              counterpartMode: "course",
+              hostLabel: t.name,
+              liveReviews: reviews,
+              liveRatingCount: reviews.length,
+            }}
+          />
+        </Suspense>
+      ) : (
+        <section className="mb-2" aria-labelledby="teacher-submissions-heading">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h2
+              id="teacher-submissions-heading"
+              className="m-0 text-[17px] font-bold leading-snug"
+            >
+              学生投稿
+            </h2>
+            {reviews.length ? (
+              <span className="text-[13px] text-muted">{reviews.length} 条</span>
+            ) : null}
           </div>
-        ) : (
-          <EmptyBox>暂无投稿</EmptyBox>
-        )}
-      </section>
+          {reviews.length ? (
+            <div role="list" aria-label="学生投稿列表">
+              {reviews.map((r, i) => (
+                <div key={r.id} role="listitem">
+                  <ReviewCard
+                    review={r}
+                    showSeparator={i > 0}
+                    identity="course"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyBox>暂无投稿</EmptyBox>
+          )}
+        </section>
+      )}
 
-      <LegacyReviews rows={data.legacyReviews} showCourse />
+      {/* #69 owns historical empty/combined states; keep production legacy when not in #68 prototype. */}
+      {comparingTeachingFeed ? null : (
+        <LegacyReviews rows={data.legacyReviews} showCourse />
+      )}
     </section>
   );
 }

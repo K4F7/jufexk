@@ -34,9 +34,10 @@ export type PrototypeModuleDef = {
 /**
  * Catalog-facing modules through teacher adapt are visually frozen.
  * course-detail-summary: B 意向冻结、页级可砍（issue #60 / module 9）。
- * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）。
+ * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）— 已被 #68 领域改版重开。
  * teacher-detail: 课程详情语言迁移，不单开 A/B/C（issue #62 / module 11）。
  * catalog-followup: 收藏 / 本专业入口 + 条件密度（issue #63）— 探索中。
+ * teaching-reviews-feed: 任课评价文字流（issue #68 / module 12）— 探索中。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -344,6 +345,26 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
         name: "条件密度 + Tag 清单",
         summary:
           "无筛选七列 / 有筛选或收藏·本专业四列；TagGroup 管理收藏集。",
+      },
+    ],
+  },
+  {
+    id: "teaching-reviews-feed",
+    title: "任课评价条目与文字评价流",
+    question:
+      "共享的匿名「任课评价」文字流：counterpart 身份、统计摘要、维度均分与条目结构应如何呈现？",
+    status: "exploring",
+    preview: "live",
+    /** Prefer a real course with reviews; teacher projection via /teachers/:id. */
+    livePath: "/courses/3",
+    notes:
+      "Issue #68 · 重开 #61 视觉决策。规格已确认 Separator 结构；单强提案 A。课程页与教师页共用条目，仅身份方向不同。确认前不改 foundations / 生产 UI。",
+    variants: [
+      {
+        key: "A",
+        name: "匿名文字流",
+        summary:
+          "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 学期 · 评分 · 可选维度均分 Chip · 正文 · 发布时间；无逐维度 Chip / 无作者。",
       },
     ],
   },
