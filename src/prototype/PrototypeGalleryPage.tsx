@@ -122,7 +122,8 @@ function PrototypeGalleryContent() {
           切换，可复制、可刷新。
         </p>
         <p className="m-0 text-xs text-muted">
-          顺序见 docs/ui/foundations.md · 当前优先：教师详情（模块 11）· 启动：
+          顺序见 docs/ui/foundations.md · 当前优先：目录后续收藏/条件密度（issue
+          #63 · module=catalog-followup）· 启动：
           <code className="rounded bg-default px-1">pnpm prototype</code>
           （API 另开{" "}
           <code className="rounded bg-default px-1">pnpm dev</code>）

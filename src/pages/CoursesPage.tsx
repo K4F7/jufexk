@@ -49,6 +49,15 @@ const CatalogStatesPrototypeLazy = import.meta.env.DEV
     )
   : null;
 
+/** DEV-only: issue #63 catalog follow-up (favorites + conditional density). */
+const CatalogFollowupPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/CatalogFollowupVariants").then((m) => ({
+        default: m.CatalogFollowupPrototype,
+      })),
+    )
+  : null;
+
 function useCatalogSearchPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
   return useMemo(() => {
@@ -93,6 +102,17 @@ function useCatalogStatesPrototypeVariant(): "A" | "B" | "C" | null {
   }, [params]);
 }
 
+function useCatalogFollowupPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "catalog-followup") return null;
+    const key = (params.get("variant") || "A").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "A";
+  }, [params]);
+}
+
 export function CoursesPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -100,6 +120,7 @@ export function CoursesPage() {
   const catalogFiltersVariant = useCatalogFiltersPrototypeVariant();
   const courseTableVariant = useCourseTablePrototypeVariant();
   const catalogStatesVariant = useCatalogStatesPrototypeVariant();
+  const catalogFollowupVariant = useCatalogFollowupPrototypeVariant();
   const q = params.get("q") || "";
   const category = params.get("category") || "";
   const department = params.get("department") || "";
@@ -295,6 +316,8 @@ export function CoursesPage() {
     Boolean(courseTableVariant) && Boolean(CourseTablePrototypeLazy);
   const comparingStates =
     Boolean(catalogStatesVariant) && Boolean(CatalogStatesPrototypeLazy);
+  const comparingFollowup =
+    Boolean(catalogFollowupVariant) && Boolean(CatalogFollowupPrototypeLazy);
 
   const pageSize = data?.pageSize || 20;
 
@@ -404,6 +427,63 @@ export function CoursesPage() {
     ) : (
       productionResults
     );
+
+  const followupModel = {
+    items: data?.items ?? [],
+    emptyQuery: q || undefined,
+    loading,
+    hasPayload: data != null,
+    error,
+    currentPage,
+    totalPages,
+    total: data?.total ?? 0,
+    onPageChange: (nextPage: number) => update({ page: String(nextPage) }),
+    onRetry: () => setReloadToken((n) => n + 1),
+    queryDraft,
+    category,
+    departmentDraft,
+    teacherQueryDraft,
+    teacherId,
+    teachers,
+    teacherLoading,
+    teacherError,
+    teacherQuery,
+    hasFilters,
+    onCategoryChange: (value: string) => update({ category: value }),
+    onDepartmentDraftChange: setDepartmentDraft,
+    onTeacherQueryDraftChange: setTeacherQueryDraft,
+    onTeacherIdChange: (value: string) => update({ teacherId: value }),
+    onClear: clearFilters,
+  };
+
+  // Follow-up prototype owns filters + table; keep search C + states A footer.
+  if (
+    comparingFollowup &&
+    catalogFollowupVariant &&
+    CatalogFollowupPrototypeLazy
+  ) {
+    return (
+      <section>
+        <CatalogSearchHeader
+          title="课程目录"
+          meta={courseMeta}
+          value={queryDraft}
+          onChange={setQueryDraft}
+          placeholder="搜索课程、课号或教师"
+          searchLabel="搜索课程"
+          clearAriaLabel="清空课程搜索"
+          name="course-search"
+        />
+        <Suspense fallback={<EmptyBox role="status">加载目录后续原型…</EmptyBox>}>
+          <CatalogFollowupPrototypeLazy
+            key={catalogFollowupVariant}
+            variant={catalogFollowupVariant}
+            model={followupModel}
+          />
+        </Suspense>
+      </section>
+    );
+  }
 
   return (
     <section>

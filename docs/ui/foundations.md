@@ -187,6 +187,7 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 | 课程详情摘要 | 意向冻结（页级可砍） | **B — 左身份 / 右评分**（若保留该页） | 评价必须绑定课程+任课教师（见 CONTEXT）；课程单独详情对选课决策价值有限，用户倾向本页可不做。若保留/重开，摘要结构取 B；**不**做生产重写 | 原型：`src/prototype/CourseDetailSummaryVariants.tsx` B · Issue #60 |
 | 学生投稿条目与历史文字资料 | 视觉冻结 | **A 结构 + B 维度胶囊**：紧凑左评分/右正文 + `Separator`；维度用 soft Chip（白胶囊高亮）；历史独立区 + 「历史」Chip + 空态「暂无历史资料」 | 用户确认 A 为主体，并吸收 B 的维度 soft Chip | 生产：`ReviewCard.tsx` · `LegacyReviews.tsx` · 原型：`CourseDetailReviewsVariants.tsx` A+B · Issue #61 |
 | 教师详情与任课课程表 | 视觉冻结 | **课程详情语言迁移**：摘要 B（左身份/右评分）· 任课表课程域折叠 · 投稿/历史对齐模块 10（投稿身份行=课程名） | foundations 规定不单开变体；与详情冻结语言一致、字段保持课程域 | 生产：`TeacherDetailPage.tsx` · `TeacherCourseTable.tsx` · Issue #62 |
+| 目录后续：收藏与条件密度 | 探索中 | — | Issue #63：比较收藏/本专业入口位与「无筛选七列 / 有筛选四列」条件密度；无账号，内存演示 | DEV：`?module=catalog-followup&variant=A\|B\|C` · `src/prototype/CatalogFollowupVariants.tsx` |
 
 ### 首轮顺序
 
@@ -201,6 +202,7 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 9. ~~课程详情摘要~~ → **B 意向冻结；页级可砍，不进生产**（Issue #60）
 10. ~~学生投稿条目与历史文字资料~~ → **A + B 维度胶囊 视觉冻结**（Issue #61）
 11. ~~教师详情与任课课程表~~ → **课程语言迁移 视觉冻结**（Issue #62）
+12. 目录后续：收藏入口 + 条件密度（Issue #63）— Prototype 探索中
 
 ## Prototype 选择后的处理
 

@@ -36,6 +36,7 @@ export type PrototypeModuleDef = {
  * course-detail-summary: B 意向冻结、页级可砍（issue #60 / module 9）。
  * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）。
  * teacher-detail: 课程详情语言迁移，不单开 A/B/C（issue #62 / module 11）。
+ * catalog-followup: 收藏 / 本专业入口 + 条件密度（issue #63）— 探索中。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -312,6 +313,37 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
         name: "生产冻结方案",
         summary:
           "单页纵向：返回 → 左身份/右评分 Surface → 任课课程折叠表 → 投稿（课程身份）→ 历史资料。",
+      },
+    ],
+  },
+  {
+    id: "catalog-followup",
+    title: "目录后续：收藏与条件密度",
+    question:
+      "收藏 / 本专业入口应挂在哪、条件密度（无筛选七列 / 有筛选四列）是否值得做？",
+    status: "exploring",
+    preview: "live",
+    livePath: "/courses",
+    notes:
+      "Issue #63 · 无账号/存储：收藏内存演示；本专业 stub≈专业课。生产清理与 a11y 验收另项。",
+    variants: [
+      {
+        key: "A",
+        name: "扩展位 Toggle + 固定四列",
+        summary:
+          "筛选下「仅收藏 / 本专业」ToggleButton；行首星标；表始终四列 B。",
+      },
+      {
+        key: "B",
+        name: "独立工具行 + 固定七列",
+        summary:
+          "筛选下 Surface 工具行（Chip · Switch · 清空）；表始终七列粗扫。",
+      },
+      {
+        key: "C",
+        name: "条件密度 + Tag 清单",
+        summary:
+          "无筛选七列 / 有筛选或收藏·本专业四列；TagGroup 管理收藏集。",
       },
     ],
   },
