@@ -35,8 +35,8 @@ describe("public course-teacher review projection", () => {
       const result = await env.DB.prepare(
         `INSERT INTO reviews(
           course_id,teacher_id,category,overall,comment,term,status,
-          submitter_hash,moderator_note,created_at
-        ) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+          submitter_hash,moderator_note,created_at,reviewed_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
       )
         .bind(
           courseId,
@@ -49,6 +49,7 @@ describe("public course-teacher review projection", () => {
           `private-${comment || "rating-only"}`,
           "private moderation note",
           createdAt,
+          null,
         )
         .run();
       return Number(result.meta.last_row_id);
@@ -145,14 +146,14 @@ describe("public course-teacher review projection", () => {
         teacher_id: teacherId,
         teacher_name: teacherName,
         term: null,
-        publishedAt: timestamp,
+        publishedAt: null,
       });
       expect(teacherBody.reviews[0]).toMatchObject({
         course_id: courseId,
         course_name: `投影课程-${code}`,
         course_code: code,
         term: null,
-        publishedAt: timestamp,
+        publishedAt: null,
       });
       expect(courseBody.legacyReviews).toHaveLength(1);
       expect(courseBody.legacyReviews[0]).toMatchObject({

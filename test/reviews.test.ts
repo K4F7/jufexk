@@ -102,6 +102,41 @@ describe("review submission minimal required fields", () => {
     expect(mismatchedCourse.status).toBe(400);
   });
 
+  it("requires the offering course-teacher relation as well", async () => {
+    const course = await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department) VALUES('REQ007','开课关系缺失','major','测试学院')",
+    ).run();
+    const courseId = Number(course.meta.last_row_id);
+    const offering = await env.DB.prepare(
+      "INSERT INTO offerings(course_id,term,section,status) VALUES(?,?,?,'active')",
+    )
+      .bind(courseId, "2026 秋", "A")
+      .run();
+    const offeringId = Number(offering.meta.last_row_id);
+    await env.DB.prepare(
+      "INSERT INTO offering_teachers(offering_id,teacher_id) VALUES(?,1)",
+    )
+      .bind(offeringId)
+      .run();
+    try {
+      const response = await submit({
+        courseId,
+        offeringId,
+        teacherId: 1,
+        overall: 4,
+      });
+      expect(response.status).toBe(400);
+    } finally {
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM offering_teachers WHERE offering_id=?").bind(
+          offeringId,
+        ),
+        env.DB.prepare("DELETE FROM offerings WHERE id=?").bind(offeringId),
+        env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId),
+      ]);
+    }
+  });
+
   it("still validates dimension ranges when provided", async () => {
     const courseId = await createBoundCourse("general", "REQ006");
     const response = await submit({

@@ -336,7 +336,7 @@ app.get("/api/teachers/:id", async (c) => {
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
         r.comment,NULLIF(r.term,'') term,NULLIF(r.created_at,'') created_at,
-        NULLIF(r.created_at,'') publishedAt,
+        NULLIF(r.reviewed_at,'') publishedAt,
         c.name course_name,c.code course_code
        FROM reviews r
        LEFT JOIN courses c ON c.id=r.course_id
@@ -412,7 +412,7 @@ app.get("/api/courses/:id", async (c) => {
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
         r.comment,NULLIF(r.term,'') term,NULLIF(r.created_at,'') created_at,
-        NULLIF(r.created_at,'') publishedAt,t.name teacher_name
+        NULLIF(r.reviewed_at,'') publishedAt,t.name teacher_name
        FROM reviews r LEFT JOIN teachers t ON t.id=r.teacher_id
        WHERE r.course_id=? AND r.status='approved'
          AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
@@ -530,6 +530,8 @@ app.post("/api/reviews", async (c) => {
         `SELECT c.id course_id,c.category,o.term offering_term
          FROM offerings o JOIN courses c ON c.id=o.course_id
          JOIN offering_teachers ot ON ot.offering_id=o.id
+         JOIN course_teachers ct
+           ON ct.course_id=o.course_id AND ct.teacher_id=ot.teacher_id
          WHERE o.id=? AND o.course_id=? AND o.status='active' AND ot.teacher_id=? LIMIT 1`,
       )
         .bind(offeringId, courseId, teacherId)
