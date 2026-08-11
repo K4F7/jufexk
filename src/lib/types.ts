@@ -49,6 +49,7 @@ export type Review = {
   course_id?: number;
   teacher_id?: number;
   course_name?: string;
+  course_code?: string;
   teacher_name?: string;
   overall: number;
   term: string;

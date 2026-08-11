@@ -35,6 +35,7 @@ export type PrototypeModuleDef = {
  * Catalog-facing modules through teacher adapt are visually frozen.
  * course-detail-summary: B 意向冻结、页级可砍（issue #60 / module 9）。
  * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）。
+ * teacher-detail: 课程详情语言迁移，不单开 A/B/C（issue #62 / module 11）。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -290,6 +291,27 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
         name: "维度优先 + 归档区",
         summary:
           "维度网格先于正文；overall 为 accent Chip；历史是更弱的虚线归档列表。",
+      },
+    ],
+  },
+  {
+    id: "teacher-detail",
+    title: "教师详情与任课课程表",
+    question:
+      "教师详情如何沿用课程详情冻结语言组织摘要、任课课程与相关投稿？",
+    status: "visually-frozen",
+    preview: "live",
+    /** Prefer a real teacher with courses from local D1 (e.g. 张可). */
+    livePath: "/teachers/650",
+    winner: "课程语言迁移（摘要 B + 课程域表 + 模块 10 投稿/历史）",
+    notes:
+      "Issue #62 · foundations 规定不单开 A/B/C。生产：摘要左身份/右评分；TeacherCourseTable 课程域折叠；ReviewCard identity=course；LegacyReviews showCourse。",
+    variants: [
+      {
+        key: "A",
+        name: "生产冻结方案",
+        summary:
+          "单页纵向：返回 → 左身份/右评分 Surface → 任课课程折叠表 → 投稿（课程身份）→ 历史资料。",
       },
     ],
   },

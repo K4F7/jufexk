@@ -173,15 +173,42 @@ app.get("/api/teachers", async (c) => {
 });
 app.get("/api/teachers/:id", async (c) => {
   const id = integer(c.req.param("id"));
-  const teacher = await c.env.DB.prepare("SELECT * FROM teachers WHERE id=?")
+  const teacher = await c.env.DB.prepare(
+    `SELECT t.*,
+       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct WHERE ct.teacher_id=t.id) course_count,
+       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') review_count,
+       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') rating
+     FROM teachers t WHERE t.id=?`,
+  )
     .bind(id)
     .first();
   if (!teacher) return fail(c, "教师不存在", 404);
   const courses = (
     await c.env.DB.prepare(
-      `SELECT c.*,COUNT(r.id) review_count,ROUND(AVG(r.overall),1) rating FROM course_teachers ct JOIN courses c ON c.id=ct.course_id LEFT JOIN reviews r ON r.course_id=c.id AND r.teacher_id=? AND r.status='approved' WHERE ct.teacher_id=? GROUP BY c.id`,
+      `SELECT c.*,COUNT(r.id) review_count,ROUND(AVG(r.overall),1) rating
+       FROM course_teachers ct
+       JOIN courses c ON c.id=ct.course_id
+       LEFT JOIN reviews r ON r.course_id=c.id AND r.teacher_id=? AND r.status='approved'
+       WHERE ct.teacher_id=?
+       GROUP BY c.id
+       ORDER BY review_count DESC,c.name,c.id`,
     )
       .bind(id, id)
+      .all()
+  ).results;
+  const reviews = (
+    await c.env.DB.prepare(
+      `SELECT r.id,r.course_id,r.teacher_id,r.offering_id,r.category,
+        r.attendance,r.grading,r.grading_score,r.workload,r.rescue,
+        r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
+        r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
+        r.comment,r.term,r.created_at,c.name course_name,c.code course_code
+       FROM reviews r
+       LEFT JOIN courses c ON c.id=r.course_id
+       WHERE r.teacher_id=? AND r.status='approved'
+       ORDER BY r.created_at DESC LIMIT 100`,
+    )
+      .bind(id)
       .all()
   ).results;
   const legacyReviews = (
@@ -194,7 +221,7 @@ app.get("/api/teachers/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
-  return c.json({ teacher, courses, legacyReviews });
+  return c.json({ teacher, courses, reviews, legacyReviews });
 });
 app.get("/api/courses/options", async (c) => {
   const { page, size } = pageArgs(c);

@@ -2,6 +2,9 @@
  * Student submission entry — visually frozen: prototype A structure + B dimension chips.
  * Compact left score / right body; metrics as HeroUI Chip soft (white capsule highlight).
  * Issue #61 · docs/ui/foundations.md §详情体验.
+ *
+ * identity="teacher" (default): header shows teacher · term (course detail page).
+ * identity="course": header shows course · term (teacher detail page, #62).
  */
 import { Chip, Separator } from "@heroui/react";
 import type { Review } from "../lib/types";
@@ -51,13 +54,23 @@ function bodyText(r: Review): string {
 export function ReviewCard({
   review,
   showSeparator = false,
+  identity = "teacher",
 }: {
   review: Review;
   /** When true, draw a Separator above this entry (list glue). */
   showSeparator?: boolean;
+  /**
+   * Which peer entity to emphasize in the meta line.
+   * - teacher: course detail (default)
+   * - course: teacher detail
+   */
+  identity?: "teacher" | "course";
 }) {
   const items = metricItems(review);
-  const teacher = review.teacher_name || "未指定教师";
+  const primary =
+    identity === "course"
+      ? review.course_name || "课程未标注"
+      : review.teacher_name || "未指定教师";
   const term = review.term || "学期未标注";
 
   return (
@@ -65,7 +78,7 @@ export function ReviewCard({
       {showSeparator ? <Separator /> : null}
       <article
         className="grid gap-3 py-4 sm:grid-cols-[4.5rem_1fr] sm:gap-4"
-        aria-label={`学生投稿 ${review.overall}/5 · ${teacher} · ${term}`}
+        aria-label={`学生投稿 ${review.overall}/5 · ${primary} · ${term}`}
       >
         <div className="tabular text-[26px] font-bold leading-none text-accent">
           {review.overall}
@@ -73,7 +86,7 @@ export function ReviewCard({
         </div>
         <div className="min-w-0">
           <p className="m-0 text-sm font-semibold">
-            {teacher}
+            {primary}
             <span className="mx-1.5 font-normal text-muted" aria-hidden>
               ·
             </span>

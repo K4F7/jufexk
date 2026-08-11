@@ -1,17 +1,115 @@
-import { Button, Table } from "@heroui/react";
+/**
+ * Teacher detail — adapted from frozen course-detail language (no separate A/B/C).
+ *
+ * Layout (single-page vertical):
+ * 1. Compact summary B: left identity (name / title / dept / bio) · right score Surface
+ * 2. Courses taught — TeacherCourseTable (course-domain dense fold)
+ * 3. Related student submissions — ReviewCard identity=course (module 10 freeze)
+ * 4. Historical materials — LegacyReviews showCourse (module 10 freeze)
+ *
+ * Back restores teacher-catalog URL state (drops prototype params if any).
+ * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
+ */
+import { Button, Surface } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { EmptyBox } from "../components/EmptyBox";
 import { LegacyReviews } from "../components/LegacyReviews";
+import { ReviewCard } from "../components/ReviewCard";
+import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { api } from "../lib/api";
 import { scoreText } from "../lib/labels";
-import type { Course, LegacyReview, Teacher } from "../lib/types";
+import type { Course, LegacyReview, Review, Teacher } from "../lib/types";
 
 type Detail = {
   teacher: Teacher;
   courses: Course[];
+  reviews?: Review[];
   legacyReviews?: LegacyReview[];
 };
+
+function formatOverall(rating: number | null | undefined): string {
+  if (rating === null || rating === undefined || Number(rating) === 0) {
+    return "—";
+  }
+  return scoreText(rating);
+}
+
+function TeacherSummary({
+  teacher,
+  courseCount,
+  onBack,
+}: {
+  teacher: Teacher;
+  courseCount: number;
+  onBack: () => void;
+}) {
+  const reviewCount = teacher.review_count ?? 0;
+  const rating = teacher.rating ?? null;
+
+  return (
+    <header className="mb-4" aria-label="教师摘要">
+      <Button variant="ghost" size="sm" className="mb-1 px-0" onPress={onBack}>
+        ← 返回教师目录
+      </Button>
+      <div className="mt-1 grid gap-4 border-b border-border pb-4 md:grid-cols-[1fr_auto] md:items-stretch">
+        <div className="min-w-0">
+          <h1 className="mb-2 mt-0 text-[26px] font-bold leading-tight tracking-tight">
+            {teacher.name}
+          </h1>
+          <dl className="m-0 grid gap-1.5 text-sm">
+            <div className="flex flex-wrap gap-x-2">
+              <dt className="shrink-0 text-muted">职称</dt>
+              <dd className="m-0 text-foreground">
+                {teacher.title || "职称未标注"}
+              </dd>
+            </div>
+            <div className="flex flex-wrap gap-x-2">
+              <dt className="shrink-0 text-muted">院系</dt>
+              <dd className="m-0 text-foreground">
+                {teacher.department || "院系未标注"}
+              </dd>
+            </div>
+            <div className="flex flex-wrap gap-x-2">
+              <dt className="shrink-0 text-muted">任课课程</dt>
+              <dd className="m-0 tabular text-foreground">{courseCount} 门</dd>
+            </div>
+          </dl>
+          {teacher.bio ? (
+            <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
+              {teacher.bio}
+            </p>
+          ) : null}
+        </div>
+        <Surface
+          className="flex min-w-[9.5rem] flex-col justify-center rounded-2xl border border-border px-5 py-4 md:self-start"
+          variant="secondary"
+        >
+          <div className="flex flex-col items-center gap-1 text-center">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-5xl font-bold leading-none tabular text-accent">
+                {formatOverall(rating)}
+              </span>
+              <span className="text-sm font-medium text-muted">/ 5</span>
+            </div>
+            <p className="m-0 text-sm text-muted">
+              {reviewCount > 0 ? (
+                <>
+                  <span className="tabular font-semibold text-foreground">
+                    {reviewCount}
+                  </span>{" "}
+                  条学生投稿
+                </>
+              ) : (
+                "暂无学生投稿"
+              )}
+            </p>
+          </div>
+        </Surface>
+      </div>
+    </header>
+  );
+}
 
 export function TeacherDetailPage() {
   const { id } = useParams();
@@ -37,72 +135,69 @@ export function TeacherDetailPage() {
 
   if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
   if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
+
   const t = data.teacher;
+  const courses = data.courses ?? [];
+  const reviews = data.reviews ?? [];
+  const courseCount = t.course_count ?? courses.length;
+
+  /** Restore catalog filters; drop prototype module/variant if present. */
+  const goBack = () => {
+    const sp = new URLSearchParams(location.search);
+    sp.delete("module");
+    sp.delete("variant");
+    const q = sp.toString();
+    navigate(q ? `/teachers?${q}` : "/teachers");
+  };
 
   return (
     <section>
-      <Button
-        variant="ghost"
-        className="mb-2 px-0"
-        onPress={() => navigate(`/teachers${location.search}`)}
-      >
-        ← 返回
-      </Button>
-      <div className="mb-4 border-b border-border pb-4 pt-2">
-        <h1 className="mb-1 mt-0 text-[26px] font-bold">{t.name}</h1>
-        <p className="m-0 text-muted">
-          {t.title || "职称未标注"} · {t.department}
-        </p>
-        {t.bio ? <p className="mt-2 text-muted">{t.bio}</p> : null}
-      </div>
-      <Table className="dense-table">
-        <Table.ScrollContainer>
-          <Table.Content aria-label="任课课程" className="min-w-[560px]">
-            <Table.Header>
-              <Table.Column isRowHeader>课号</Table.Column>
-              <Table.Column>课程</Table.Column>
-              <Table.Column>评分</Table.Column>
-              <Table.Column>评价数</Table.Column>
-            </Table.Header>
-            <Table.Body
-              items={data.courses || []}
-              renderEmptyState={() => (
-                <div className="py-8 text-center text-muted" role="status">
-                  暂无任课课程
-                </div>
-              )}
-            >
-              {(course) => (
-                <Table.Row
-                  id={String(course.id)}
-                  key={course.id}
-                  href={`/courses/${course.id}`}
-                  className="cursor-pointer"
-                >
-                  <Table.Cell>
-                    <span className="tabular text-[13px] text-muted">
-                      {course.code}
-                    </span>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <span className="font-semibold">{course.name}</span>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <span className="tabular font-semibold text-accent">
-                      {scoreText(course.rating)}
-                    </span>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <span className="tabular font-semibold text-accent">
-                      {course.review_count}
-                    </span>
-                  </Table.Cell>
-                </Table.Row>
-              )}
-            </Table.Body>
-          </Table.Content>
-        </Table.ScrollContainer>
-      </Table>
+      <TeacherSummary teacher={t} courseCount={courseCount} onBack={goBack} />
+
+      <section className="mb-6" aria-labelledby="teacher-courses-heading">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2
+            id="teacher-courses-heading"
+            className="m-0 text-[17px] font-bold leading-snug"
+          >
+            任课课程
+          </h2>
+          {courses.length ? (
+            <span className="text-[13px] text-muted">{courses.length} 门</span>
+          ) : null}
+        </div>
+        <TeacherCourseTable items={courses} />
+      </section>
+
+      <section className="mb-2" aria-labelledby="teacher-submissions-heading">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2
+            id="teacher-submissions-heading"
+            className="m-0 text-[17px] font-bold leading-snug"
+          >
+            学生投稿
+          </h2>
+          {reviews.length ? (
+            <span className="text-[13px] text-muted">{reviews.length} 条</span>
+          ) : null}
+        </div>
+        {reviews.length ? (
+          <div role="list" aria-label="学生投稿列表">
+            {reviews.map((r, i) => (
+              <div key={r.id} role="listitem">
+                <ReviewCard
+                  review={r}
+                  showSeparator={i > 0}
+                  identity="course"
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyBox>暂无投稿</EmptyBox>
+        )}
+      </section>
+
       <LegacyReviews rows={data.legacyReviews} showCourse />
     </section>
   );
