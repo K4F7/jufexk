@@ -32,7 +32,7 @@ const CourseDetailReviewsPrototypeLazy = import.meta.env.DEV
     )
   : null;
 
-/** DEV-only: 任课评价文字流 (module 12 / #68). */
+/** DEV-only: 任课评价文字流 (module 12 / #71 承接 #68). */
 const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
   ? lazy(() =>
       import("../prototype/TeachingReviewsFeedVariants").then((m) => ({

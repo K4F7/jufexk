@@ -8,9 +8,12 @@
  * 本模块只改：筛选条扩展位 + 行内收藏 + 结果表密度策略。
  * 官方优先：ToggleButton · Switch · Chip · Button · Table · TagGroup。
  *
- * A — 类别区下 Toggle 扩展位 + 固定四列：收藏/本专业 ToggleButton；表始终 B
+ * 用户反馈（本轮）：A 的整体结构可作底；C 的 Tag 清单有意思；行内星标需优化。
+ * A 现吸收 C 的 Tag 栏（固定四列不变）；B/C 仍可比较。
+ *
+ * A — 扩展位 Toggle + Tag 清单 + 固定四列 B；优化后的行内星标
  * B — 独立收藏工具行 + 固定七列：Switch/Chip/清空；表始终 A 粗浏览
- * C — 条件密度：无筛选七列 A、有筛选（含仅收藏/本专业）四列 B；Tag 清单管理收藏
+ * C — 条件密度：无筛选七列 A、有筛选（含仅收藏/本专业）四列 B；Tag 清单
  *
  * 状态纯内存；本专业为 stub（category=major 近似，见横幅）。
  * Mounted via CoursesPage when ?module=catalog-followup&variant=A|B|C (DEV only).
@@ -93,9 +96,9 @@ const VARIANT_HINT: Record<
   { title: string; lookFor: string }
 > = {
   A: {
-    title: "A — 扩展位 Toggle + 固定四列",
+    title: "A — 扩展位 Toggle + Tag 清单 + 固定四列",
     lookFor:
-      "筛选下方「仅收藏 / 本专业」ToggleButton；行首星标；表始终四列折叠 B",
+      "筛选下「仅收藏 / 本专业」· Tag 可移除清单（取自 C）· 行内星标选中态更清晰 · 表始终四列 B",
   },
   B: {
     title: "B — 独立收藏工具行 + 固定七列",
@@ -263,24 +266,22 @@ function emptyState(emptyQuery?: string, favoritesOnly?: boolean) {
 }
 
 /**
- * v1 star look (user preferred) — HeroUI ToggleButton + outline/fill SVG.
+ * Row favorite control — HeroUI ToggleButton (official controlled + render prop).
  *
- * KNOWN BUG (handoff): favorites Set state does update (banner `favorites=N`,
- * 「仅收藏」 filter works) but this SVG does not visibly recolor when
- * `isFavorite` flips. Do NOT replace with ★ text buttons — fix paint/update
- * path while keeping this visual. See handoff doc.
+ * Paint path: children render-prop reads `isSelected` from the button so the
+ * SVG fill/stroke always tracks the pressed state (parent Set alone was not
+ * enough for reliable recolor). Selected uses accent soft surface.
  *
- * Official Controlled pattern for reference:
  * https://heroui.com/docs/react/components/toggle-button#controlled
  */
 function StarIcon({ filled }: { filled: boolean }) {
   return (
     <svg
       aria-hidden
-      className="size-3.5"
+      className="size-4 shrink-0"
       fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
-      strokeWidth="1.75"
+      strokeWidth={filled ? 0 : 1.75}
       viewBox="0 0 24 24"
     >
       <path
@@ -308,10 +309,57 @@ function FavoriteToggle({
       size="sm"
       variant="ghost"
       aria-label={isFavorite ? "取消收藏" : "收藏课程"}
-      onChange={() => onToggle(courseId)}
+      className={
+        isFavorite
+          ? "text-accent data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent"
+          : "text-muted hover:text-foreground"
+      }
+      onChange={(selected) => {
+        // Only flip when the controlled value disagrees (avoid double-toggle).
+        if (selected !== isFavorite) onToggle(courseId);
+      }}
     >
-      <StarIcon filled={isFavorite} />
+      {({ isSelected }) => <StarIcon filled={isSelected} />}
     </ToggleButton>
+  );
+}
+
+/** Shared removable Tag list (C language) — used by A and C. */
+function FavoriteTagBar({
+  tags,
+  onRemove,
+}: {
+  tags: Course[];
+  onRemove: (id: number) => void;
+}) {
+  if (tags.length === 0) {
+    return (
+      <p className="m-0 text-xs text-muted">
+        点行内星标收藏后，这里会出现可移除的课程 Tag。
+      </p>
+    );
+  }
+
+  return (
+    <TagGroup
+      aria-label="已收藏课程"
+      size="sm"
+      onRemove={(keys) => {
+        for (const key of keys) {
+          const id = Number(key);
+          if (Number.isFinite(id)) onRemove(id);
+        }
+      }}
+    >
+      <TagGroup.List>
+        {tags.map((course) => (
+          <Tag key={course.id} id={String(course.id)} textValue={course.name}>
+            {course.name}
+            <Tag.RemoveButton aria-label={`取消收藏 ${course.name}`} />
+          </Tag>
+        ))}
+      </TagGroup.List>
+    </TagGroup>
   );
 }
 
@@ -662,30 +710,43 @@ export function CatalogFollowupPrototype({
       <ProductionFilters {...model} />
 
       {variant === "A" ? (
-        <div className="mb-2.5 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2">
-          <span className="mr-1 text-xs text-muted">快捷</span>
-          <ToggleButton
-            size="sm"
-            isSelected={favoritesOnly}
-            onChange={setFavoritesOnly}
-          >
-            仅收藏
+        <div className="mb-2.5 grid gap-2 border-t border-border/60 pt-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs text-muted">快捷</span>
+            <ToggleButton
+              size="sm"
+              isSelected={favoritesOnly}
+              onChange={setFavoritesOnly}
+            >
+              仅收藏
+              {favorites.count > 0 ? (
+                <Chip size="sm" variant="soft" className="ms-1">
+                  <Chip.Label>{favorites.count}</Chip.Label>
+                </Chip>
+              ) : null}
+            </ToggleButton>
+            <ToggleButton
+              size="sm"
+              isSelected={majorOnly}
+              onChange={setMajorOnly}
+            >
+              本专业
+            </ToggleButton>
             {favorites.count > 0 ? (
-              <Chip size="sm" variant="soft" className="ms-1">
-                <Chip.Label>{favorites.count}</Chip.Label>
-              </Chip>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ms-0.5"
+                onPress={favorites.clear}
+              >
+                清空
+              </Button>
             ) : null}
-          </ToggleButton>
-          <ToggleButton
-            size="sm"
-            isSelected={majorOnly}
-            onChange={setMajorOnly}
-          >
-            本专业
-          </ToggleButton>
-          <span className="ms-auto text-[11px] text-muted">
-            扩展位：筛选区下方（生产可并入类别条 trailing）
-          </span>
+            <span className="ms-auto text-[11px] text-muted">
+              扩展位 + Tag 清单（取 C）· 表固定四列
+            </span>
+          </div>
+          <FavoriteTagBar tags={favoriteTags} onRemove={favorites.remove} />
         </div>
       ) : null}
 
@@ -758,34 +819,7 @@ export function CatalogFollowupPrototype({
               条件切换：无筛选→A，有筛选/收藏/本专业→B
             </span>
           </div>
-          {favoriteTags.length > 0 ? (
-            <TagGroup
-              aria-label="已收藏课程"
-              size="sm"
-              onRemove={(keys) => {
-                for (const key of keys) {
-                  const id = Number(key);
-                  if (Number.isFinite(id)) favorites.remove(id);
-                }
-              }}
-            >
-              <TagGroup.List>
-                {favoriteTags.map((course) => (
-                  <Tag
-                    key={course.id}
-                    id={String(course.id)}
-                    textValue={course.name}
-                  >
-                    {course.name}
-                  </Tag>
-                ))}
-              </TagGroup.List>
-            </TagGroup>
-          ) : (
-            <p className="m-0 text-xs text-muted">
-              点行内星标收藏后，这里会出现可移除的 Tag 清单。
-            </p>
-          )}
+          <FavoriteTagBar tags={favoriteTags} onRemove={favorites.remove} />
         </div>
       ) : null}
 

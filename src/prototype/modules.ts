@@ -34,10 +34,10 @@ export type PrototypeModuleDef = {
 /**
  * Catalog-facing modules through teacher adapt are visually frozen.
  * course-detail-summary: B 意向冻结、页级可砍（issue #60 / module 9）。
- * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）— 已被 #68 领域改版重开。
+ * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）— 已被 #68/#71 领域改版重开。
  * teacher-detail: 课程详情语言迁移，不单开 A/B/C（issue #62 / module 11）。
- * catalog-followup: 收藏 / 本专业入口 + 条件密度（issue #63）— 探索中。
- * teaching-reviews-feed: 任课评价文字流（issue #68 / module 12）— 探索中。
+ * catalog-followup: 收藏 / 本专业入口（issue #63）— A+C Tag 意向冻结。
+ * teaching-reviews-feed: 任课评价文字流视觉确认（issue #71 承接 #68 / module 12）— 探索中。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -322,17 +322,18 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     title: "目录后续：收藏与条件密度",
     question:
       "收藏 / 本专业入口应挂在哪、条件密度（无筛选七列 / 有筛选四列）是否值得做？",
-    status: "exploring",
+    status: "visually-frozen",
     preview: "live",
     livePath: "/courses",
+    winner: "A + C Tag",
     notes:
-      "Issue #63 · 无账号/存储：收藏内存演示；本专业 stub≈专业课。生产清理与 a11y 验收另项。",
+      "Issue #63 · 用户确认 A：扩展位 Toggle + 固定四列 B，吸收 C 的 Tag 可移除清单；不采用条件密度。行内星标用 ToggleButton render prop。无账号/持久化；生产实现另开。",
     variants: [
       {
         key: "A",
-        name: "扩展位 Toggle + 固定四列",
+        name: "扩展位 + Tag + 固定四列",
         summary:
-          "筛选下「仅收藏 / 本专业」ToggleButton；行首星标；表始终四列 B。",
+          "筛选下「仅收藏 / 本专业」· Tag 可移除清单（取 C）· 优化星标；表始终四列 B。",
       },
       {
         key: "B",
@@ -352,19 +353,19 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     id: "teaching-reviews-feed",
     title: "任课评价条目与文字评价流",
     question:
-      "共享的匿名「任课评价」文字流：counterpart 身份、统计摘要、维度均分与条目结构应如何呈现？",
+      "共享的匿名「任课评价」文字流：counterpart 身份、统计摘要与条目结构是否可视觉冻结？",
     status: "exploring",
     preview: "live",
     /** Prefer a real course with reviews; teacher projection via /teachers/:id. */
     livePath: "/courses/3",
     notes:
-      "Issue #68 · 重开 #61 视觉决策。规格已确认 Separator 结构；单强提案 A。课程页与教师页共用条目，仅身份方向不同。确认前不改 foundations / 生产 UI。",
+      "Issue #71（承接 #68）· 视觉冻结闸门。单强提案 A：Separator 紧凑流 · 课程页强调教师 / 教师页强调课程 · 仅有补充说明入流 · 总体评分 + 学期 + 发布时间 · 无逐维度 Chip / 无维度均分（#66）/ 无作者。确认后写入 foundations；生产由独立 frontend MVP Issue 重写。",
     variants: [
       {
         key: "A",
         name: "匿名文字流",
         summary:
-          "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 学期 · 评分 · 可选维度均分 Chip · 正文 · 发布时间；无逐维度 Chip / 无作者。",
+          "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 学期 · 总体评分 · 正文 · 发布时间；无逐维度 Chip / 无维度均分 / 无作者。",
       },
     ],
   },

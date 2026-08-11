@@ -1,21 +1,19 @@
 /**
  * PROTOTYPE — teaching-reviews-feed (throwaway; not production-ready).
  *
- * Question (issue #68 / module 12): 课程与教师详情上，共享的匿名「任课评价」
- * 文字流应如何呈现条目结构、counterpart 身份、统计摘要与维度均分？
+ * Question (issue #71 / module 12, 承接 #68): 课程与教师详情上，共享的匿名
+ * 「任课评价」文字流应如何呈现条目结构、counterpart 身份与统计摘要？
  *
- * 已确认方向（规格）：Separator 紧凑列表 · 无逐维度 Chip · 仅有补充说明入流 ·
- * 课程页强调教师 / 教师页强调课程 · 文案「任课评价」。
- * 本原型交付一条强提案（A），用确定性 DEMO 覆盖长文本、长名称、缺学期、
- * 旧维度不完整、rating-only 排除、两端身份投影。
+ * 单强提案（规格已收口）：Separator 紧凑列表 · 无逐维度 Chip · 无维度均分 ·
+ * 仅有补充说明入流 · 课程页强调教师 / 教师页强调课程 · 文案「任课评价」·
+ * 无作者身份。维度均分等待 #66；历史资料 #69；认可 #70。
  *
- * A — 匿名文字流：身份链接 · 学期 · 可用评分 · 可选「维度均分」Chip · 正文 · 发布时间
+ * A — 匿名文字流：身份真链接 · 学期 · 总体评分 · 正文 · 发布时间
  *
- * 历史文字资料（#69）与认可（#70）不在本模块。
  * Mounted via CourseDetailPage / TeacherDetailPage when
  * ?module=teaching-reviews-feed&variant=A (DEV only).
  */
-import { Chip, Link, Separator } from "@heroui/react";
+import { Link, Separator } from "@heroui/react";
 import { useMemo, useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { Review } from "../lib/types";
@@ -37,13 +35,11 @@ export type TeachingReviewsFeedEntry = {
   term: string | null;
   /** ISO-ish timestamp or null; never invent a semester/date. */
   publishedAt: string | null;
-  /** Available per-review score (display contract from #66; not redefined here). */
-  score: number | null;
   /**
-   * Dimension average only when every required score for the rule version is present.
-   * Incomplete legacy dimensions → null (no fabricated chip).
+   * Available overall score (display contract from #66; not redefined here).
+   * Shown as 总体评分 when present; never fabricated.
    */
-  dimensionAverage: number | null;
+  score: number | null;
   teacherId: number | null;
   teacherName: string | null;
   courseId: number | null;
@@ -68,13 +64,17 @@ const VARIANT_HINT: Record<
   A: {
     title: "A — 匿名任课评价文字流",
     lookFor:
-      "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 无逐维度 Chip · 仅完整时显示维度均分 · 无作者信息",
+      "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 总体评分 · 学期 · 发布时间 · 无逐维度 Chip · 无维度均分 · 无作者",
   },
 };
 
 type DemoSource = "demo" | "api";
 
-/** DEMO — wipe after visual freeze; covers edge cases in issue #68. */
+/**
+ * DEMO — wipe after visual freeze (#71).
+ * Covers: long note, long teacher/course names, missing term, missing
+ * publishedAt, null identity, rating-only excluded from feed.
+ */
 const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   {
     id: -101,
@@ -82,7 +82,6 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
     term: "2024-2025-2",
     publishedAt: "2025-06-18T10:20:00Z",
     score: 4.6,
-    dimensionAverage: 4.4,
     teacherId: 1,
     teacherName: "林晓雯",
     courseId: 1,
@@ -94,7 +93,6 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
     term: "2024-2025-1",
     publishedAt: "2025-01-09T08:00:00Z",
     score: 4,
-    dimensionAverage: 3.8,
     teacherId: 2,
     teacherName: "陈启明·金融学院货币金融学教研室（演示用超长姓名）",
     courseId: 2,
@@ -106,7 +104,6 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
     term: "2023-2024-2",
     publishedAt: "2024-07-02T14:30:00Z",
     score: 5,
-    dimensionAverage: 4.9,
     teacherId: 3,
     teacherName: "王若舟",
     courseId: 3,
@@ -115,11 +112,10 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   },
   {
     id: -104,
-    note: "旧数据：只有文字说明，学期字段缺失；维度也不完整，因此不应出现「维度均分」胶囊。",
+    note: "旧数据：只有文字说明，学期字段缺失；发布时间仍诚实显示。",
     term: null,
     publishedAt: "2022-12-01T00:00:00Z",
     score: 3,
-    dimensionAverage: null,
     teacherId: 4,
     teacherName: "赵敏",
     courseId: 4,
@@ -127,15 +123,14 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   },
   {
     id: -105,
-    note: "发布时间与学期均未知时的诚实回退。评分可用，但没有完整维度。",
+    note: "发布时间与学期均未知时的诚实回退。评分可用；counterpart 身份也缺失时不伪造链接。",
     term: null,
     publishedAt: null,
     score: 4,
-    dimensionAverage: null,
     teacherId: null,
     teacherName: null,
-    courseId: 5,
-    courseName: "管理信息系统",
+    courseId: null,
+    courseName: null,
   },
   {
     id: -106,
@@ -143,11 +138,21 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
     term: "2024-2025-1",
     publishedAt: "2025-03-20T11:00:00Z",
     score: 4.5,
-    dimensionAverage: 4.5,
     teacherId: 6,
     teacherName: "周慧",
     courseId: 10,
     courseName: "羽毛球",
+  },
+  {
+    id: -107,
+    note: "无总体评分时只展示身份、学期与正文，不编造分数。",
+    term: "2022-2023-1",
+    publishedAt: "2023-01-15T09:00:00Z",
+    score: null,
+    teacherId: 7,
+    teacherName: "何清",
+    courseId: 11,
+    courseName: "高等数学 A",
   },
 ];
 
@@ -223,8 +228,8 @@ function noteText(r: Review): string {
 
 /**
  * Map live Review rows → feed entries.
- * Rating-only (empty note) are dropped. Dimension average is never fabricated
- * from partial legacy fields in this prototype (always null from live data).
+ * Rating-only (empty note) are dropped. Dimension averages are out of MVP
+ * scope for this freeze gate (#71 / #66).
  */
 function mapLiveReviews(reviews: Review[]): TeachingReviewsFeedEntry[] {
   return (reviews ?? [])
@@ -241,7 +246,6 @@ function mapLiveReviews(reviews: Review[]): TeachingReviewsFeedEntry[] {
         r.overall === null || r.overall === undefined
           ? null
           : Number(r.overall),
-      dimensionAverage: null,
       teacherId: r.teacher_id ?? null,
       teacherName: r.teacher_name?.trim() ? r.teacher_name : null,
       courseId: r.course_id ?? null,
@@ -417,7 +421,6 @@ function FeedEntry({
 }) {
   const term = entry.term || "学期未标注";
   const scoreLabel = formatScore(entry.score);
-  const dimLabel = formatScore(entry.dimensionAverage);
   const published = formatPublishedAt(entry.publishedAt);
   const identityName =
     mode === "teacher"
@@ -428,8 +431,7 @@ function FeedEntry({
     "任课评价",
     identityName,
     term,
-    scoreLabel ? `评分 ${scoreLabel}` : null,
-    dimLabel ? `维度均分 ${dimLabel}` : null,
+    scoreLabel ? `总体评分 ${scoreLabel}` : null,
     published,
   ].filter(Boolean);
 
@@ -453,13 +455,6 @@ function FeedEntry({
                 <span className="text-xs font-normal text-muted">/5</span>
               </span>
             </>
-          ) : null}
-          {dimLabel ? (
-            <Chip size="sm" variant="soft" className="align-middle">
-              <Chip.Label className="tabular">
-                维度均分 · {dimLabel}
-              </Chip.Label>
-            </Chip>
           ) : null}
         </div>
         <p className="my-2 text-sm leading-relaxed text-foreground">
@@ -555,8 +550,9 @@ export function TeachingReviewsFeedPrototype({
         />
       ) : null}
       <p className="sr-only" aria-live="polite">
-        变体 {variant} · {model.counterpartMode === "teacher" ? "课程页" : "教师页"} ·
-        评分 {ratingCount} · 补充说明 {entries.length} · 数据源 {source} · 宿主{" "}
+        变体 {variant} ·{" "}
+        {model.counterpartMode === "teacher" ? "课程页" : "教师页"} · 评分{" "}
+        {ratingCount} · 补充说明 {entries.length} · 数据源 {source} · 宿主{" "}
         {model.hostLabel}
       </p>
     </div>

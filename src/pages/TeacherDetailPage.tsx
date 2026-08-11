@@ -7,7 +7,7 @@
  * 3. Related student submissions — ReviewCard identity=course (module 10 freeze)
  * 4. Historical materials — LegacyReviews showCourse (module 10 freeze)
  *
- * DEV-only: ?module=teaching-reviews-feed replaces section 3 with #68 prototype.
+ * DEV-only: ?module=teaching-reviews-feed replaces section 3 with #71 prototype.
  *
  * Back restores teacher-catalog URL state (drops prototype params if any).
  * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
@@ -28,7 +28,7 @@ import { api } from "../lib/api";
 import { scoreText } from "../lib/labels";
 import type { Course, LegacyReview, Review, Teacher } from "../lib/types";
 
-/** DEV-only: 任课评价文字流 (module 12 / #68). */
+/** DEV-only: 任课评价文字流 (module 12 / #71 承接 #68). */
 const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
   ? lazy(() =>
       import("../prototype/TeachingReviewsFeedVariants").then((m) => ({
@@ -244,7 +244,7 @@ export function TeacherDetailPage() {
         </section>
       )}
 
-      {/* #69 owns historical empty/combined states; keep production legacy when not in #68 prototype. */}
+      {/* #69 owns historical empty/combined states; keep production legacy when not in teaching-reviews-feed prototype. */}
       {comparingTeachingFeed ? null : (
         <LegacyReviews rows={data.legacyReviews} showCourse />
       )}
