@@ -76,6 +76,53 @@ describe("catalog addition requests", () => {
     expect(response.status).toBe(400);
   });
 
+  it("never lets a teacher request create a course or relation", async () => {
+    const publicResponse = await publicPost("/api/catalog-requests", {
+      kind: "teacher",
+      teacherName: "越界申请教师",
+      department: "测试学院",
+      courseCode: "SHOULD-NOT-EXIST",
+      courseName: "不应创建的课程",
+      category: "major",
+    });
+    expect(publicResponse.status).toBe(400);
+
+    const malformed = await env.DB.prepare(
+      `INSERT INTO catalog_requests(
+        kind,teacher_name,department,course_code,course_name,category,
+        pending_review_json,status,submitter_hash
+      ) VALUES('teacher','防御性审批教师','测试学院','MALFORMED','恶意课程','major',
+        '{"overall":5,"comment":"恶意附带评价","term":""}','pending','test')`,
+    ).run();
+    const id = Number(malformed.meta.last_row_id);
+    const headers = await login();
+    const approval = await SELF.fetch(
+      `${origin}/api/admin/catalog-requests/${id}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ status: "approved" }),
+      },
+    );
+    expect(approval.status).toBe(200);
+    expect(
+      await env.DB.prepare(
+        "SELECT created_course_id,created_review_id FROM catalog_requests WHERE id=?",
+      )
+        .bind(id)
+        .first(),
+    ).toEqual({ created_course_id: null, created_review_id: null });
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) n FROM courses WHERE code='MALFORMED' OR name='恶意课程'",
+      ).first(),
+    ).toEqual({ n: 0 });
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) n FROM reviews WHERE comment='恶意附带评价'")
+        .first(),
+    ).toEqual({ n: 0 });
+  });
+
   it("rejects an attached review when the course request has no teacher", async () => {
     const response = await publicPost("/api/catalog-requests", {
       kind: "course",

@@ -9,8 +9,10 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
+          d1Databases: { MIGRATION_DB: "migration-upgrade-test" },
           bindings: {
             ADMIN_PASSWORD: "test-password",
+            IP_HASH_SECRET: "test-ip-hash-secret",
             TURNSTILE_SECRET: "",
             TURNSTILE_SITE_KEY: "",
           },

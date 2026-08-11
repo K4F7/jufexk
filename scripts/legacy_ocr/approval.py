@@ -17,7 +17,8 @@ APPROVED_FIELDS = [
     "course_id", "teacher_id", "offering_id", "category", "comment", "term",
     "source_type", "source_label", "source_file", "sheet_name", "source_row",
     "raw_ocr_text", "ocr_confidence", "ocr_tokens_json", "inherited_from",
-    "ocr_course_name", "ocr_teacher_name", "duplicate_group", "review_note",
+    "ocr_course_name", "ocr_teacher_name", "duplicate_group",
+    "duplicate_action", "review_note",
 ]
 
 
@@ -62,8 +63,12 @@ def finalize(queue: Path, reference_path: Path, approved_path: Path, errors_path
             offering = offerings.get(offering_id)
             if not offering: reasons.append("approved_offering_id 不存在")
             elif str(offering["course_id"]) != course_id or (offering_id, teacher_id) not in offering_teachers: reasons.append("开课班与课程、教师不一致")
+            elif str(offering.get("term", "")).strip() != row.get("term", "").strip(): reasons.append("学期与开课班不一致")
             if not row.get("term", "").strip(): reasons.append("学期为空时不得指定开课班")
-        if row.get("duplicate_group") and row.get("duplicate_action", "").strip().lower() != "keep": reasons.append("疑似重复记录必须明确填写 duplicate_action=keep，或将 decision 设为 skip")
+        duplicate_action = row.get("duplicate_action", "").strip().lower()
+        if duplicate_action not in {"", "keep"}: reasons.append("duplicate_action 只能为空或 keep")
+        if row.get("duplicate_group") and duplicate_action != "keep": reasons.append("疑似重复记录必须明确填写 duplicate_action=keep，或将 decision 设为 skip")
+        if not row.get("duplicate_group") and duplicate_action: reasons.append("非重复记录不得填写 duplicate_action")
         if not row.get("review_note", "").strip(): reasons.append("批准记录必须填写 review_note")
         if not row.get("comment", "").strip(): reasons.append("comment 不能为空")
         if not row.get("raw_ocr_text", "").strip(): reasons.append("raw_ocr_text 不能为空")
@@ -81,7 +86,9 @@ def finalize(queue: Path, reference_path: Path, approved_path: Path, errors_path
             "source_file": row["source_file"], "sheet_name": row.get("sheet_name", ""), "source_row": row["source_row"],
             "raw_ocr_text": row["raw_ocr_text"], "ocr_confidence": row["ocr_confidence"], "ocr_tokens_json": row.get("ocr_tokens_json", "[]"),
             "inherited_from": row.get("inherited_from", ""), "ocr_course_name": row.get("ocr_course_name", ""), "ocr_teacher_name": row.get("ocr_teacher_name", ""),
-            "duplicate_group": row.get("duplicate_group", ""), "review_note": row["review_note"],
+            "duplicate_group": row.get("duplicate_group", ""),
+            "duplicate_action": row.get("duplicate_action", "").strip().lower(),
+            "review_note": row["review_note"],
         })
     write_csv(errors_path, errors, ["row", "source_file", "source_row", "error"])
     if errors:

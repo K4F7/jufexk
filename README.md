@@ -31,7 +31,11 @@ pnpm run deploy
 - `CLOUDFLARE_API_TOKEN`：具有 Workers Scripts Edit 与 D1 Edit 权限的 API Token。
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID。
 
-`ADMIN_PASSWORD` 是 Worker Secret，不由 CI 写入。
+`ADMIN_PASSWORD` 与 `IP_HASH_SECRET` 是 Worker Secret，不由 CI 写入。后者用于对来源 IP 做 HMAC 假名化，必须使用与管理员口令、Turnstile Secret 不同的随机值：
+
+```bash
+pnpm exec wrangler secret put IP_HASH_SECRET
+```
 
 CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `pnpm exec wrangler d1 export`，并将备份保存到受限存储。
 
@@ -43,7 +47,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 2. 交互式执行 `pnpm exec wrangler secret put TURNSTILE_SECRET`；
 3. 重新部署。
 
-只要 `TURNSTILE_SECRET` 存在，服务端即强制验证；未配置时仍有蜜罐、每 IP 哈希每小时 5 次限制及 30 天重复投稿控制。
+Site Key 与 Secret 同时存在时服务端才启用并强制验证。仅有 Site Key 时隐藏无效 widget，并使用蜜罐、同源校验、每 IP HMAC 假名每小时 5 次限制及 30 天重复投稿控制；仅有 Secret 时视为配置错误并拒绝公开写入。两者均未配置时也要求同源提交。
 
 ## CSV 导入
 

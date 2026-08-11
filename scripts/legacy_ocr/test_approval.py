@@ -32,6 +32,8 @@ class ApprovalTests(unittest.TestCase):
             with approved.open(encoding="utf-8-sig", newline="") as handle: row = next(csv.DictReader(handle))
             self.assertEqual(row["source_type"], "legacy_ocr")
             self.assertEqual(row["category"], "major")
+            self.assertEqual(row["review_note"], "人工核对截图")
+            self.assertEqual(row["duplicate_action"], "")
             self.assertNotIn("overall", APPROVED_FIELDS)
             payload_data = json.loads((payload / "legacy_import_payload_001.json").read_text(encoding="utf-8"))
             self.assertRegex(payload_data["idempotencyKey"], r"^[a-f0-9]{64}$")
@@ -43,6 +45,44 @@ class ApprovalTests(unittest.TestCase):
             self.assertEqual(finalize(queue, reference, approved, errors, root / "payload"), 2)
             self.assertFalse(approved.exists())
             self.assertIn("duplicate_action=keep", errors.read_text(encoding="utf-8-sig"))
+
+    def test_duplicate_keep_is_preserved_in_the_payload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue, reference = self.fixture(
+                root,
+                duplicate_group="abc",
+                duplicate_action="keep",
+            )
+            approved = root / "approved.csv"
+            errors = root / "errors.csv"
+            payload = root / "payload"
+            self.assertEqual(finalize(queue, reference, approved, errors, payload), 0)
+            data = json.loads(
+                (payload / "legacy_import_payload_001.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(data["rows"][0]["duplicate_action"], "keep")
+            self.assertEqual(data["rows"][0]["review_note"], "人工核对截图")
+
+    def test_offering_term_must_match_the_reference_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue, reference = self.fixture(
+                root,
+                approved_offering_id="9",
+                term="2025 秋",
+            )
+            data = json.loads(reference.read_text(encoding="utf-8-sig"))
+            data["offerings"] = [{"id": 9, "course_id": 1, "term": "2026 秋"}]
+            data["offering_teachers"] = [{"offering_id": 9, "teacher_id": 2}]
+            reference.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            approved = root / "approved.csv"
+            errors = root / "errors.csv"
+            self.assertEqual(
+                finalize(queue, reference, approved, errors, root / "payload"),
+                2,
+            )
+            self.assertIn("学期与开课班不一致", errors.read_text(encoding="utf-8-sig"))
 
 
 if __name__ == "__main__": unittest.main()

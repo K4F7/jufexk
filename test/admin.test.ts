@@ -4,6 +4,29 @@ import { describe, expect, it } from "vitest";
 const origin = "https://example.com";
 let loginSequence = 10;
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value))
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    return `{${Object.keys(object)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+async function legacyIdempotencyKey(rows: Record<string, unknown>[]) {
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonicalJson(rows)),
+  );
+  return [...new Uint8Array(bytes)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 async function login() {
   const response = await SELF.fetch(`${origin}/api/admin/login`, {
     method: "POST",
@@ -33,6 +56,25 @@ function adminHeaders(auth: { cookie: string; csrf: string }) {
 }
 
 describe("admin sessions and catalog", () => {
+  it("does not expose submitter hashes in the admin review list", async () => {
+    const inserted = await env.DB.prepare(
+      `INSERT INTO reviews(course_id,teacher_id,category,overall,status,submitter_hash,comment)
+       VALUES(1,1,'major',4,'pending','stable-private-hash','hash privacy review')`,
+    ).run();
+    const auth = await login();
+    const response = await SELF.fetch(`${origin}/api/admin/reviews?q=hash%20privacy`, {
+      headers: { Cookie: auth.cookie },
+    });
+    expect(response.status).toBe(200);
+    const raw = await response.text();
+    expect(raw).toContain("hash privacy review");
+    expect(raw).not.toContain("stable-private-hash");
+    expect(raw).not.toContain("submitter_hash");
+    await env.DB.prepare("DELETE FROM reviews WHERE id=?")
+      .bind(Number(inserted.meta.last_row_id))
+      .run();
+  });
+
   it("edits and validates public-elective scores", async () => {
     const auth = await login();
     const review = await env.DB.prepare(
@@ -226,6 +268,7 @@ describe("admin sessions and catalog", () => {
       body: JSON.stringify({
         id: 999999,
         courseId: 1,
+        term: "2026 春",
         section: "不存在",
         teacherIds: [1],
       }),
@@ -254,6 +297,8 @@ describe("admin sessions and catalog", () => {
       ocr_course_name: "测试课程",
       ocr_teacher_name: "测试教师",
       duplicate_group: "",
+      duplicate_action: "",
+      review_note: "人工核对截图与目录绑定",
     };
     const preview = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
       method: "POST",
@@ -264,16 +309,22 @@ describe("admin sessions and catalog", () => {
     const imported = await SELF.fetch(`${origin}/api/admin/legacy-imports`, {
       method: "POST",
       headers: adminHeaders(auth),
-      body: JSON.stringify({ rows: [approved], manifest: { approvedBy: "test" }, idempotencyKey: "a".repeat(64) }),
+      body: JSON.stringify({ rows: [approved], manifest: { approvedBy: "test" }, idempotencyKey: await legacyIdempotencyKey([approved]) }),
     });
     expect(imported.status).toBe(200);
     const result = await imported.json<{ batchId: string; reviewStatus: string; batchStatus: string }>();
     expect(result.reviewStatus).toBe("pending");
     expect(result.batchStatus).toBe("imported");
     const saved = await env.DB.prepare(
-      "SELECT comment,status,source_type FROM legacy_reviews WHERE import_batch_id=?",
+      "SELECT comment,status,source_type,duplicate_action,review_note FROM legacy_reviews WHERE import_batch_id=?",
     ).bind(result.batchId).first();
-    expect(saved).toEqual({ comment: "历史文字评价", status: "pending", source_type: "legacy_ocr" });
+    expect(saved).toEqual({
+      comment: "历史文字评价",
+      status: "pending",
+      source_type: "legacy_ocr",
+      duplicate_action: "",
+      review_note: "人工核对截图与目录绑定",
+    });
     const batches = await SELF.fetch(`${origin}/api/admin/legacy-imports?status=imported`, {
       headers: { Cookie: auth.cookie },
     });
@@ -298,6 +349,16 @@ describe("admin sessions and catalog", () => {
       method: "POST", headers: adminHeaders(auth), body: "{}",
     });
     expect(secondRollback.status).toBe(409);
+    const retryAfterRollback = await SELF.fetch(`${origin}/api/admin/legacy-imports`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({
+        rows: [approved],
+        manifest: { approvedBy: "test" },
+        idempotencyKey: await legacyIdempotencyKey([approved]),
+      }),
+    });
+    expect(retryAfterRollback.status).toBe(409);
   });
 
   it("rejects legacy rows with fabricated overall or an unrelated teacher", async () => {
@@ -306,7 +367,7 @@ describe("admin sessions and catalog", () => {
       course_id: 2, teacher_id: 1, category: "pe", comment: "文字",
       source_type: "legacy_ocr", source_label: "腾讯表格历史资料",
       source_file: "体育课_001.png", source_row: "2", raw_ocr_text: "文字",
-      ocr_confidence: 0.99, ocr_tokens_json: "[]",
+      ocr_confidence: 0.99, ocr_tokens_json: "[]", review_note: "人工核对截图",
     };
     const response = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
       method: "POST",
@@ -323,6 +384,180 @@ describe("admin sessions and catalog", () => {
     expect(unrelatedBody.errors).toContainEqual(expect.objectContaining({ field: "teacher_id", message: "教师不在课程已有任课关系中" }));
   });
 
+  it("binds the legacy import idempotency key to the canonical rows payload", async () => {
+    const auth = await login();
+    const row = {
+      course_id: 1,
+      teacher_id: 1,
+      offering_id: "",
+      category: "major",
+      comment: "幂等键测试",
+      term: "",
+      source_type: "legacy_ocr",
+      source_label: "腾讯表格历史资料",
+      source_file: "idempotency.png",
+      sheet_name: "主要课程",
+      source_row: "2",
+      raw_ocr_text: "幂等键原始文字",
+      ocr_confidence: 0.99,
+      ocr_tokens_json: "[]",
+      inherited_from: "",
+      ocr_course_name: "测试课程",
+      ocr_teacher_name: "测试教师",
+      duplicate_group: "",
+      duplicate_action: "",
+      review_note: "人工核对幂等键测试行",
+    };
+    const expectedKey = await legacyIdempotencyKey([row]);
+    const mismatched = await SELF.fetch(`${origin}/api/admin/legacy-imports`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ rows: [row], idempotencyKey: "f".repeat(64) }),
+    });
+    expect(mismatched.status).toBe(400);
+    const responses = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        SELF.fetch(`${origin}/api/admin/legacy-imports`, {
+          method: "POST",
+          headers: adminHeaders(auth),
+          body: JSON.stringify({ rows: [row], idempotencyKey: expectedKey }),
+        }),
+      ),
+    );
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    const bodies = await Promise.all(
+      responses.map((response) =>
+        response.json<{ batchId: string; idempotent?: boolean }>(),
+      ),
+    );
+    expect(new Set(bodies.map((body) => body.batchId))).toEqual(
+      new Set([`legacy_${expectedKey}`]),
+    );
+    expect(bodies.filter((body) => body.idempotent)).toHaveLength(3);
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) n FROM legacy_reviews WHERE import_batch_id=?",
+      )
+        .bind(`legacy_${expectedKey}`)
+        .first(),
+    ).toEqual({ n: 1 });
+    await env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=?")
+      .bind(`legacy_${expectedKey}`)
+      .run();
+    await env.DB.prepare("DELETE FROM legacy_import_batches WHERE id=?")
+      .bind(`legacy_${expectedKey}`)
+      .run();
+  });
+
+  it("requires persisted human-review evidence for every legacy row", async () => {
+    const auth = await login();
+    const row = {
+      course_id: 1,
+      teacher_id: 1,
+      offering_id: "",
+      category: "major",
+      comment: "人工审批证据测试",
+      term: "",
+      source_type: "legacy_ocr",
+      source_label: "腾讯表格历史资料",
+      source_file: "approval-evidence.png",
+      sheet_name: "主要课程",
+      source_row: "3",
+      raw_ocr_text: "人工审批证据原文",
+      ocr_confidence: 0.99,
+      ocr_tokens_json: "[]",
+      inherited_from: "",
+      ocr_course_name: "测试课程",
+      ocr_teacher_name: "测试教师",
+      duplicate_group: "",
+      duplicate_action: "",
+      review_note: "",
+    };
+    const missingNote = await SELF.fetch(
+      `${origin}/api/admin/legacy-imports/preview`,
+      {
+        method: "POST",
+        headers: adminHeaders(auth),
+        body: JSON.stringify({ rows: [row] }),
+      },
+    );
+    const missingNoteBody = await missingNote.json<{
+      ok: boolean;
+      errors: Array<{ field: string }>;
+    }>();
+    expect(missingNoteBody.ok).toBe(false);
+    expect(missingNoteBody.errors.map((error) => error.field)).toContain(
+      "review_note",
+    );
+    const duplicateWithoutKeep = await SELF.fetch(
+      `${origin}/api/admin/legacy-imports/preview`,
+      {
+        method: "POST",
+        headers: adminHeaders(auth),
+        body: JSON.stringify({
+          rows: [{ ...row, review_note: "人工确认保留", duplicate_group: "dup-1" }],
+        }),
+      },
+    );
+    const duplicateBody = await duplicateWithoutKeep.json<{
+      ok: boolean;
+      errors: Array<{ field: string }>;
+    }>();
+    expect(duplicateBody.ok).toBe(false);
+    expect(duplicateBody.errors.map((error) => error.field)).toContain(
+      "duplicate_action",
+    );
+  });
+
+  it("requires a legacy row term to match its offering", async () => {
+    const auth = await login();
+    const offering = await env.DB.prepare(
+      "INSERT INTO offerings(course_id,term,section,status) VALUES(1,'2026 秋','历史学期校验','archived')",
+    ).run();
+    const offeringId = Number(offering.meta.last_row_id);
+    await env.DB.prepare(
+      "INSERT INTO offering_teachers(offering_id,teacher_id) VALUES(?,1)",
+    )
+      .bind(offeringId)
+      .run();
+    const row = {
+      course_id: 1,
+      teacher_id: 1,
+      offering_id: offeringId,
+      category: "major",
+      comment: "开课班学期校验",
+      term: "2025 秋",
+      source_type: "legacy_ocr",
+      source_label: "腾讯表格历史资料",
+      source_file: "term-mismatch.png",
+      sheet_name: "主要课程",
+      source_row: "4",
+      raw_ocr_text: "开课班学期校验原文",
+      ocr_confidence: 0.99,
+      ocr_tokens_json: "[]",
+      inherited_from: "",
+      ocr_course_name: "测试课程",
+      ocr_teacher_name: "测试教师",
+      duplicate_group: "",
+      duplicate_action: "",
+      review_note: "人工核对开课班",
+    };
+    const preview = await SELF.fetch(`${origin}/api/admin/legacy-imports/preview`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ rows: [row] }),
+    });
+    const body = await preview.json<{
+      ok: boolean;
+      errors: Array<{ field: string; message: string }>;
+    }>();
+    expect(body.ok).toBe(false);
+    expect(body.errors).toContainEqual(
+      expect.objectContaining({ field: "term", message: "学期与开课班不一致" }),
+    );
+    await env.DB.prepare("DELETE FROM offerings WHERE id=?").bind(offeringId).run();
+  });
+
   it("moderates legacy text separately and publishes it without changing ratings", async () => {
     const auth = await login();
     const row = {
@@ -332,12 +567,13 @@ describe("admin sessions and catalog", () => {
       sheet_name: "主要课程", source_row: "T1R2C4", raw_ocr_text: "原始 OCR 文字",
       ocr_confidence: 0.98, ocr_tokens_json: "[]", inherited_from: "",
       ocr_course_name: "测试课程", ocr_teacher_name: "测试教师", duplicate_group: "",
+      duplicate_action: "", review_note: "人工核对截图与目录绑定",
     };
     const beforeCatalog = await (await SELF.fetch(`${origin}/api/courses`)).json<{ items: Array<{ id: number; review_count: number; rating: number }> }>();
     const beforeCourse = beforeCatalog.items.find((item) => item.id === 1)!;
     const imported = await SELF.fetch(`${origin}/api/admin/legacy-imports`, {
       method: "POST", headers: adminHeaders(auth),
-      body: JSON.stringify({ rows: [row], idempotencyKey: "b".repeat(64) }),
+      body: JSON.stringify({ rows: [row], idempotencyKey: await legacyIdempotencyKey([row]) }),
     });
     const batch = await imported.json<{ batchId: string }>();
     const pending = await (await SELF.fetch(`${origin}/api/admin/legacy-reviews?batchId=${batch.batchId}`, { headers: { Cookie: auth.cookie } })).json<{ items: Array<{ id: number }> }>();
@@ -399,31 +635,90 @@ describe("review protection", () => {
     expect(response.status).toBe(400);
   });
 
-  it("fails closed when Turnstile is configured but no valid token is supplied", async () => {
-    (env as Record<string, unknown>).TURNSTILE_SITE_KEY = "test-site-key";
-    const before = await env.DB.prepare(
-      "SELECT COUNT(*) n FROM reviews",
-    ).first<{ n: number }>();
-    const response = await SELF.fetch(`${origin}/api/reviews`, {
+  it("handles all four Turnstile configuration states explicitly", async () => {
+    const mutableEnv = env as Record<string, unknown>;
+    const submit = (ip: string, comment: string) =>
+      SELF.fetch(`${origin}/api/reviews`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: origin,
+          "CF-Connecting-IP": ip,
+        },
+        body: JSON.stringify({
+          courseId: 1,
+          teacherId: 1,
+          overall: 5,
+          comment,
+        }),
+      });
+    try {
+      mutableEnv.TURNSTILE_SITE_KEY = "";
+      mutableEnv.TURNSTILE_SECRET = "";
+      expect((await submit("203.0.113.241", "turnstile-disabled")).status).toBe(200);
+
+      mutableEnv.TURNSTILE_SITE_KEY = "test-site-key";
+      mutableEnv.TURNSTILE_SECRET = "";
+      expect((await submit("203.0.113.242", "turnstile-site-only")).status).toBe(200);
+      expect(
+        (await (await SELF.fetch(`${origin}/api/config`)).json<{ turnstileSiteKey: string }>())
+          .turnstileSiteKey,
+      ).toBe("");
+
+      mutableEnv.TURNSTILE_SITE_KEY = "";
+      mutableEnv.TURNSTILE_SECRET = "test-secret";
+      expect((await submit("203.0.113.243", "turnstile-secret-only")).status).toBe(503);
+
+      mutableEnv.TURNSTILE_SITE_KEY = "test-site-key";
+      mutableEnv.TURNSTILE_SECRET = "test-secret";
+      expect((await submit("203.0.113.244", "turnstile-enabled")).status).toBe(403);
+      const crossSite = await SELF.fetch(`${origin}/api/reviews`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://attacker.example",
+          "CF-Connecting-IP": "203.0.113.245",
+        },
+        body: JSON.stringify({
+          courseId: 1,
+          teacherId: 1,
+          overall: 5,
+          turnstileToken: "attacker-token",
+        }),
+      });
+      expect(crossSite.status).toBe(403);
+      expect(await crossSite.json()).toEqual({ error: "来源校验失败" });
+    } finally {
+      mutableEnv.TURNSTILE_SITE_KEY = "";
+      mutableEnv.TURNSTILE_SECRET = "";
+      await env.DB.prepare(
+        "DELETE FROM reviews WHERE comment IN('turnstile-disabled','turnstile-site-only')",
+      ).run();
+    }
+  });
+
+  it("blocks cross-site browser writes when Turnstile is degraded", async () => {
+    const headers = {
+      "Content-Type": "text/plain",
+      Origin: "https://attacker.example",
+      "CF-Connecting-IP": "203.0.113.240",
+    };
+    const review = await SELF.fetch(`${origin}/api/reviews`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
+      body: JSON.stringify({ courseId: 1, teacherId: 1, overall: 5 }),
+    });
+    expect(review.status).toBe(403);
+    const request = await SELF.fetch(`${origin}/api/catalog-requests`, {
+      method: "POST",
+      headers,
       body: JSON.stringify({
-        courseId: 1,
-        offeringId: 1,
-        teacherId: 1,
-        overall: 5,
-        term: "2026 春",
+        kind: "teacher",
+        teacherName: "跨站恶意教师",
+        department: "测试学院",
       }),
     });
-    expect(response.status).toBe(403);
-    expect(
-      (
-        await env.DB.prepare("SELECT COUNT(*) n FROM reviews").first<{
-          n: number;
-        }>()
-      )?.n,
-    ).toBe(before?.n);
-    (env as Record<string, unknown>).TURNSTILE_SITE_KEY = "";
+    expect(request.status).toBe(403);
   });
 });
 

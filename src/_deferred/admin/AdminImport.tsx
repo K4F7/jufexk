@@ -31,7 +31,11 @@ export function AdminImport() {
     try {
       const result = await api("/api/admin/import", {
         method: "POST",
-        body: JSON.stringify({ type, rows: pendingRows }),
+        body: JSON.stringify({
+          type,
+          rows: pendingRows,
+          confirmWarnings: Boolean(preview?.warnings?.length),
+        }),
       });
       setMsg(`新增 ${result.count} 行；跳过 ${result.skippedCount} 行`);
       setPreview(null);
@@ -85,8 +89,21 @@ export function AdminImport() {
         <div className="space-y-2 text-sm">
           <p>
             总行数：{preview.total}；新增：{preview.newCount}；跳过：
-            {preview.skipCount}；错误：{preview.errors?.length || 0}
+            {preview.skipCount}；错误：{preview.errors?.length || 0}；警告：
+            {preview.warnings?.length || 0}
           </p>
+          {preview.warnings?.length ? (
+            <div className="rounded border border-border p-3">
+              <p className="m-0 font-medium">请确认以下风险后再导入：</p>
+              <ul className="mb-0 mt-2 list-disc pl-5">
+                {preview.warnings.map((item: any, i: number) => (
+                  <li key={i}>
+                    第 {item.row} 行（{item.field}）：{item.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {preview.errors?.length ? (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-border">
@@ -136,7 +153,7 @@ export function AdminImport() {
           )}
           {preview.ok ? (
             <Button isPending={committing} onPress={commit}>
-              确认导入
+              {preview.warnings?.length ? "确认风险并导入" : "确认导入"}
             </Button>
           ) : null}
         </div>
