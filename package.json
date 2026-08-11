@@ -30,7 +30,7 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.18.8",
+    "@cloudflare/vitest-pool-workers": "0.20.3",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "26.1.1",
     "@types/react": "^19.2.18",
