@@ -23,11 +23,31 @@ const CourseDetailSummaryPrototypeLazy = import.meta.env.DEV
     )
   : null;
 
+/** DEV-only: live course-detail-reviews A/B/C compare (module 10). */
+const CourseDetailReviewsPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/CourseDetailReviewsVariants").then((m) => ({
+        default: m.CourseDetailReviewsPrototype,
+      })),
+    )
+  : null;
+
 function useCourseDetailSummaryPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
   return useMemo(() => {
     if (!import.meta.env.DEV) return null;
     if (params.get("module") !== "course-detail-summary") return null;
+    const key = (params.get("variant") || "A").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "A";
+  }, [params]);
+}
+
+function useCourseDetailReviewsPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "course-detail-reviews") return null;
     const key = (params.get("variant") || "A").toUpperCase();
     if (key === "A" || key === "B" || key === "C") return key;
     return "A";
@@ -78,6 +98,7 @@ export function CourseDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const summaryVariant = useCourseDetailSummaryPrototypeVariant();
+  const reviewsVariant = useCourseDetailReviewsPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
 
@@ -110,6 +131,8 @@ export function CourseDetailPage() {
   };
   const comparingSummary =
     Boolean(summaryVariant) && Boolean(CourseDetailSummaryPrototypeLazy);
+  const comparingReviews =
+    Boolean(reviewsVariant) && Boolean(CourseDetailReviewsPrototypeLazy);
 
   return (
     <section>
@@ -130,15 +153,52 @@ export function CourseDetailPage() {
         <ProductionSummary course={c} onBack={goBack} />
       )}
 
-      <h2 className="mb-2 text-[17px] font-bold">学生怎么说</h2>
-      <div>
-        {data.reviews?.length ? (
-          data.reviews.map((r) => <ReviewCard key={r.id} review={r} />)
-        ) : (
-          <EmptyBox>暂无评价</EmptyBox>
-        )}
-      </div>
-      <LegacyReviews rows={data.legacyReviews} />
+      {comparingReviews && reviewsVariant && CourseDetailReviewsPrototypeLazy ? (
+        <Suspense fallback={<EmptyBox role="status">加载投稿原型…</EmptyBox>}>
+          <CourseDetailReviewsPrototypeLazy
+            key={reviewsVariant}
+            variant={reviewsVariant}
+            model={{
+              reviews: data.reviews ?? [],
+              legacyReviews: data.legacyReviews ?? [],
+              courseName: c.name,
+            }}
+          />
+        </Suspense>
+      ) : (
+        <>
+          <section
+            className="mb-2"
+            aria-labelledby="course-submissions-heading"
+          >
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <h2
+                id="course-submissions-heading"
+                className="m-0 text-[17px] font-bold leading-snug"
+              >
+                学生投稿
+              </h2>
+              {data.reviews?.length ? (
+                <span className="text-[13px] text-muted">
+                  {data.reviews.length} 条
+                </span>
+              ) : null}
+            </div>
+            {data.reviews?.length ? (
+              <div role="list" aria-label="学生投稿列表">
+                {data.reviews.map((r, i) => (
+                  <div key={r.id} role="listitem">
+                    <ReviewCard review={r} showSeparator={i > 0} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyBox>暂无投稿</EmptyBox>
+            )}
+          </section>
+          <LegacyReviews rows={data.legacyReviews} />
+        </>
+      )}
     </section>
   );
 }

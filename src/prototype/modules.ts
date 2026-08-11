@@ -34,6 +34,7 @@ export type PrototypeModuleDef = {
 /**
  * Catalog-facing modules through teacher adapt are visually frozen.
  * course-detail-summary: B 意向冻结、页级可砍（issue #60 / module 9）。
+ * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -256,6 +257,39 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
         name: "评分优先摘要条",
         summary:
           "顶部 Surface 横条先放评分与投稿；其下才是课名与元数据（评分先于身份）。",
+      },
+    ],
+  },
+  {
+    id: "course-detail-reviews",
+    title: "学生投稿条目与历史文字资料",
+    question:
+      "课程详情页上，学生投稿列表与历史文字资料应如何分区、如何呈现条目？",
+    status: "visually-frozen",
+    preview: "live",
+    /** Prefer a real course with approved submissions from local D1. */
+    livePath: "/courses/3",
+    winner: "A + B 维度 soft Chip",
+    notes:
+      "Issue #61 · 用户确认 A 结构，并吸收 B 的维度 soft Chip 白胶囊。生产 ReviewCard / LegacyReviews。对照原型仍可 DEV 预览 A/B/C。",
+    variants: [
+      {
+        key: "A",
+        name: "紧凑分隔列表",
+        summary:
+          "左评分右正文；条目 Separator；历史独立区 + 「历史」Chip；空态始终可见。",
+      },
+      {
+        key: "B",
+        name: "Card 条目栈",
+        summary:
+          "每条投稿一张 Card；维度 soft Chip；历史 secondary Surface + Alert 免计分。",
+      },
+      {
+        key: "C",
+        name: "维度优先 + 归档区",
+        summary:
+          "维度网格先于正文；overall 为 accent Chip；历史是更弱的虚线归档列表。",
       },
     ],
   },
