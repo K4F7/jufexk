@@ -75,6 +75,33 @@ describe("review submission minimal required fields", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects an invalid optional offering id", async () => {
+    const response = await submit({
+      courseId: 1,
+      teacherId: 1,
+      offeringId: 0,
+      overall: 4,
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("requires a matching course when an offering is selected", async () => {
+    const missingCourse = await submit({
+      teacherId: 1,
+      offeringId: 1,
+      overall: 4,
+    });
+    expect(missingCourse.status).toBe(400);
+
+    const mismatchedCourse = await submit({
+      courseId: 2,
+      teacherId: 1,
+      offeringId: 1,
+      overall: 4,
+    });
+    expect(mismatchedCourse.status).toBe(400);
+  });
+
   it("still validates dimension ranges when provided", async () => {
     const courseId = await createBoundCourse("general", "REQ006");
     const response = await submit({

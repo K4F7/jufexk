@@ -5,12 +5,13 @@ describe("offerings", () => {
   it("applies every production migration on a clean database", async () => {
     const tables = (
       await env.DB.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('offerings','offering_teachers','admin_sessions','rate_limit_counters','review_dedupe')",
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('offerings','offering_teachers','admin_sessions','catalog_request_moderation_events','rate_limit_counters','review_dedupe')",
       ).all<{ name: string }>()
     ).results.map((row) => row.name);
     expect(tables.sort()).toEqual(
       [
         "admin_sessions",
+        "catalog_request_moderation_events",
         "offering_teachers",
         "offerings",
         "rate_limit_counters",
@@ -60,8 +61,13 @@ describe("offerings", () => {
     ).run();
     const courseId = Number(course.meta.last_row_id);
     await env.DB.prepare(
-      `INSERT INTO reviews(course_id,teacher_id,category,overall,interest,practicality,workload_score,fairness,organization,status,submitter_hash)
-       VALUES(?,1,'general',4,5,4,2,5,4,'approved','private')`,
+      "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,1)",
+    )
+      .bind(courseId)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO reviews(course_id,teacher_id,category,overall,interest,practicality,workload_score,fairness,organization,comment,status,submitter_hash)
+       VALUES(?,1,'general',4,5,4,2,5,4,'general dimensions','approved','private')`,
     )
       .bind(courseId)
       .run();
@@ -79,6 +85,9 @@ describe("offerings", () => {
       organization: 4,
     });
     await env.DB.prepare("DELETE FROM reviews WHERE course_id=?")
+      .bind(courseId)
+      .run();
+    await env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?")
       .bind(courseId)
       .run();
     await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();

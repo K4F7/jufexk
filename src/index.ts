@@ -16,6 +16,25 @@ type Vars = {
   adminSessionId?: string;
   adminCsrf?: string;
 };
+type StashedReview = {
+  attendance: string;
+  grading: string;
+  gradingScore: number | null;
+  workload: string;
+  rescue: string;
+  assessment: string;
+  teaching: string;
+  clarity: number | null;
+  knowledge: number | null;
+  interest: number | null;
+  practicality: number | null;
+  workloadScore: number | null;
+  fairness: number | null;
+  organization: number | null;
+  overall: number;
+  comment: string;
+  term: string;
+};
 const app = new Hono<{ Bindings: Bindings; Variables: Vars }>();
 const clean = (v: unknown, n = 500) =>
   typeof v === "string" ? v.trim().slice(0, n) : "";
@@ -29,6 +48,57 @@ const rating = (v: unknown) => {
   if (v === "" || v == null) return null;
   const n = integer(v);
   return n !== null && n >= 1 && n <= 5 ? n : null;
+};
+const parseStashedReview = (json: string): StashedReview | null => {
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const object = value as Record<string, unknown>;
+  const scoreFields = [
+    "gradingScore",
+    "clarity",
+    "knowledge",
+    "interest",
+    "practicality",
+    "workloadScore",
+    "fairness",
+    "organization",
+  ] as const;
+  const scores = Object.fromEntries(
+    scoreFields.map((field) => [field, rating(object[field])]),
+  ) as Record<(typeof scoreFields)[number], number | null>;
+  if (
+    scoreFields.some((field) => {
+      const raw = object[field];
+      return raw !== undefined && raw !== null && raw !== "" && scores[field] === null;
+    })
+  )
+    return null;
+  const overall = rating(object.overall);
+  if (!overall) return null;
+  return {
+    attendance: clean(object.attendance, 120),
+    grading: clean(object.grading, 120),
+    gradingScore: scores.gradingScore,
+    workload: clean(object.workload, 120),
+    rescue: clean(object.rescue, 120),
+    assessment: clean(object.assessment, 200),
+    teaching: clean(object.teaching, 600),
+    clarity: scores.clarity,
+    knowledge: scores.knowledge,
+    interest: scores.interest,
+    practicality: scores.practicality,
+    workloadScore: scores.workloadScore,
+    fairness: scores.fairness,
+    organization: scores.organization,
+    overall,
+    comment: clean(object.comment, 1200),
+    term: clean(object.term, 30),
+  };
 };
 const digest = async (s: string) =>
   [
@@ -77,6 +147,37 @@ const originOk = (c: any) => {
   const origin = c.req.header("Origin");
   return origin === new URL(c.req.url).origin;
 };
+const publicReviewBinding = `
+       AND EXISTS(
+         SELECT 1 FROM course_teachers public_relation
+         WHERE public_relation.course_id=r.course_id
+           AND public_relation.teacher_id=r.teacher_id
+       )
+       AND (
+         r.offering_id IS NULL OR EXISTS(
+           SELECT 1
+           FROM offerings public_offering
+           JOIN offering_teachers public_offering_teacher
+             ON public_offering_teacher.offering_id=public_offering.id
+            AND public_offering_teacher.teacher_id=r.teacher_id
+           WHERE public_offering.id=r.offering_id
+             AND public_offering.course_id=r.course_id
+         )
+       )`;
+const getPublicReviewStats = async (
+  db: D1Database,
+  subject: "course_id" | "teacher_id",
+  id: number | null,
+) =>
+  db
+    .prepare(
+      `SELECT COUNT(*) ratingCount,
+         COALESCE(SUM(CASE WHEN trim(COALESCE(r.comment,''))<>'' THEN 1 ELSE 0 END),0) noteCount
+       FROM reviews r
+       WHERE r.${subject}=? AND r.status='approved'${publicReviewBinding}`,
+    )
+    .bind(id)
+    .first<{ ratingCount: number; noteCount: number }>();
 const csrfOk = (c: any, expected: string) => {
   const header = c.req.header("X-CSRF-Token"),
     cookie = getCookie(c, "jufexk_csrf");
@@ -155,7 +256,7 @@ app.get("/api/courses", async (c) => {
      FROM courses c
      LEFT JOIN course_teachers ct ON ct.course_id=c.id
      LEFT JOIN teachers t ON t.id=ct.teacher_id
-     LEFT JOIN reviews r ON r.course_id=c.id AND r.status='approved'
+     LEFT JOIN reviews r ON r.course_id=c.id AND r.status='approved'${publicReviewBinding}
      WHERE ${where}
      GROUP BY c.id
      ORDER BY review_count DESC,c.name
@@ -184,8 +285,8 @@ app.get("/api/teachers", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT t.*,
        (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct WHERE ct.teacher_id=t.id) course_count,
-       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') review_count,
-       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') rating
+       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) review_count,
+       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
      FROM teachers t
      WHERE ${where}
      ORDER BY t.name,t.department,t.id
@@ -207,19 +308,20 @@ app.get("/api/teachers/:id", async (c) => {
   const teacher = await c.env.DB.prepare(
     `SELECT t.*,
        (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct WHERE ct.teacher_id=t.id) course_count,
-       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') review_count,
-       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved') rating
+       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) review_count,
+       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
      FROM teachers t WHERE t.id=?`,
   )
     .bind(id)
     .first();
   if (!teacher) return fail(c, "教师不存在", 404);
+  const reviewStats = await getPublicReviewStats(c.env.DB, "teacher_id", id);
   const courses = (
     await c.env.DB.prepare(
       `SELECT c.*,COUNT(r.id) review_count,ROUND(AVG(r.overall),1) rating
        FROM course_teachers ct
        JOIN courses c ON c.id=ct.course_id
-       LEFT JOIN reviews r ON r.course_id=c.id AND r.teacher_id=? AND r.status='approved'
+       LEFT JOIN reviews r ON r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${publicReviewBinding}
        WHERE ct.teacher_id=?
        GROUP BY c.id
        ORDER BY review_count DESC,c.name,c.id`,
@@ -233,11 +335,14 @@ app.get("/api/teachers/:id", async (c) => {
         r.attendance,r.grading,r.grading_score,r.workload,r.rescue,
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
-        r.comment,r.term,r.created_at,c.name course_name,c.code course_code
+        r.comment,NULLIF(r.term,'') term,NULLIF(r.created_at,'') created_at,
+        NULLIF(r.created_at,'') publishedAt,
+        c.name course_name,c.code course_code
        FROM reviews r
        LEFT JOIN courses c ON c.id=r.course_id
        WHERE r.teacher_id=? AND r.status='approved'
-       ORDER BY r.created_at DESC LIMIT 100`,
+         AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
+       ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
     )
       .bind(id)
       .all()
@@ -252,7 +357,14 @@ app.get("/api/teachers/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
-  return c.json({ teacher, courses, reviews, legacyReviews });
+  return c.json({
+    teacher,
+    courses,
+    reviews,
+    legacyReviews,
+    ratingCount: reviewStats?.ratingCount || 0,
+    noteCount: reviewStats?.noteCount || 0,
+  });
 });
 app.get("/api/courses/options", async (c) => {
   const { page, size } = pageArgs(c);
@@ -285,6 +397,7 @@ app.get("/api/courses/:id", async (c) => {
     .bind(id)
     .first();
   if (!course) return fail(c, "课程不存在", 404);
+  const reviewStats = await getPublicReviewStats(c.env.DB, "course_id", id);
   const teachers = (
     await c.env.DB.prepare(
       "SELECT t.* FROM teachers t JOIN course_teachers ct ON ct.teacher_id=t.id WHERE ct.course_id=? ORDER BY t.name",
@@ -298,10 +411,12 @@ app.get("/api/courses/:id", async (c) => {
         r.attendance,r.grading,r.grading_score,r.workload,r.rescue,
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
-        r.comment,r.term,r.created_at,t.name teacher_name
+        r.comment,NULLIF(r.term,'') term,NULLIF(r.created_at,'') created_at,
+        NULLIF(r.created_at,'') publishedAt,t.name teacher_name
        FROM reviews r LEFT JOIN teachers t ON t.id=r.teacher_id
        WHERE r.course_id=? AND r.status='approved'
-       ORDER BY r.created_at DESC LIMIT 100`,
+         AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
+       ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
     )
       .bind(id)
       .all()
@@ -316,7 +431,13 @@ app.get("/api/courses/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
-  return c.json({ course: { ...course, teachers }, reviews, legacyReviews });
+  return c.json({
+    course: { ...course, teachers },
+    reviews,
+    legacyReviews,
+    ratingCount: reviewStats?.ratingCount || 0,
+    noteCount: reviewStats?.noteCount || 0,
+  });
 });
 
 const turnstileMode = (
@@ -387,21 +508,31 @@ app.post("/api/reviews", async (c) => {
     return fail(c, "人机验证配置异常", 503);
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
   let courseId = integer(b.courseId);
-  const offeringId = integer(b.offeringId),
+  const rawOfferingId = b.offeringId,
+    offeringId = integer(rawOfferingId),
     teacherId = integer(b.teacherId),
     overall = rating(b.overall),
     ip = c.req.header("CF-Connecting-IP") || "unknown",
     ipHash = await keyedDigest(ip, c.env.IP_HASH_SECRET);
+  if (
+    rawOfferingId !== undefined &&
+    rawOfferingId !== null &&
+    rawOfferingId !== "" &&
+    (!offeringId || offeringId < 1)
+  )
+    return fail(c, "开课班无效");
   if (!(await verifyTurnstile(c, clean(b.turnstileToken, 2048), ip)))
     return fail(c, "人机验证失败，请重试", 403);
+  if (!courseId || !teacherId || !overall)
+    return fail(c, "请选择有效的课程、任课教师和总体评分");
   const course = offeringId
     ? await c.env.DB.prepare(
         `SELECT c.id course_id,c.category,o.term offering_term
          FROM offerings o JOIN courses c ON c.id=o.course_id
          JOIN offering_teachers ot ON ot.offering_id=o.id
-         WHERE o.id=? AND o.status='active' AND ot.teacher_id=? LIMIT 1`,
+         WHERE o.id=? AND o.course_id=? AND o.status='active' AND ot.teacher_id=? LIMIT 1`,
       )
-        .bind(offeringId, teacherId)
+        .bind(offeringId, courseId, teacherId)
         .first<{ course_id: number; category: string; offering_term: string }>()
     : await c.env.DB.prepare(
         `SELECT c.id course_id,c.category FROM courses c JOIN course_teachers ct ON ct.course_id=c.id WHERE c.id=? AND ct.teacher_id=? LIMIT 1`,
@@ -518,11 +649,69 @@ app.post("/api/catalog-requests", async (c) => {
     return fail(c, "教师申请不得携带课程字段或随附评价");
   if (category && !["major", "pe", "general"].includes(category))
     return fail(c, "课程类别必须为 major、pe 或 general");
-  const review = (b.review || null) as Record<string, unknown> | null;
+  const rawReview = b.review;
+  if (
+    rawReview !== undefined &&
+    rawReview !== null &&
+    (typeof rawReview !== "object" || Array.isArray(rawReview))
+  )
+    return fail(c, "随附评价格式无效");
+  const review = rawReview as Record<string, unknown> | null;
   if (review && (!courseName || !teacherName))
     return fail(c, "随附评价必须同时填写课程和教师，以便绑定任课关系");
   const overall = review ? rating(review.overall) : null;
   if (review && !overall) return fail(c, "随附评价必须包含 1 到 5 的总体评分");
+  const reviewScores = review
+    ? {
+        clarity: rating(review.clarity),
+        knowledge: rating(review.knowledge),
+        gradingScore: rating(review.gradingScore),
+        interest: rating(review.interest),
+        practicality: rating(review.practicality),
+        workloadScore: rating(review.workloadScore),
+        fairness: rating(review.fairness),
+        organization: rating(review.organization),
+      }
+    : null;
+  if (
+    review &&
+    Object.entries({
+      clarity: review.clarity,
+      knowledge: review.knowledge,
+      gradingScore: review.gradingScore,
+      interest: review.interest,
+      practicality: review.practicality,
+      workloadScore: review.workloadScore,
+      fairness: review.fairness,
+      organization: review.organization,
+    }).some(
+      ([field, value]) =>
+        value !== undefined && value !== null && value !== "" &&
+        !reviewScores?.[field as keyof typeof reviewScores],
+    )
+  )
+    return fail(c, "评分必须在 1 到 5 之间");
+  const stashedReview: StashedReview | null = review
+    ? {
+        attendance: clean(review.attendance, 120),
+        grading: clean(review.grading, 120),
+        gradingScore: reviewScores?.gradingScore || null,
+        workload: clean(review.workload, 120),
+        rescue: clean(review.rescue, 120),
+        assessment: clean(review.assessment, 200),
+        teaching: clean(review.teaching, 600),
+        clarity: reviewScores?.clarity || null,
+        knowledge: reviewScores?.knowledge || null,
+        interest: reviewScores?.interest || null,
+        practicality: reviewScores?.practicality || null,
+        workloadScore: reviewScores?.workloadScore || null,
+        fairness: reviewScores?.fairness || null,
+        organization: reviewScores?.organization || null,
+        overall: overall as number,
+        comment: clean(review.comment, 1200),
+        term: clean(review.term, 30),
+      }
+    : null;
   if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
   const result = await c.env.DB.prepare(
@@ -537,13 +726,7 @@ app.post("/api/catalog-requests", async (c) => {
       teacherName,
       department,
       clean(b.note, 500),
-      review
-        ? JSON.stringify({
-            overall,
-            comment: clean(review.comment, 1200),
-            term: clean(review.term, 30),
-          })
-        : "",
+      stashedReview ? JSON.stringify(stashedReview) : "",
       ipHash,
     )
     .run();
@@ -752,18 +935,31 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
     return fail(c, "该申请已审核，不能重复处理", 409);
   if (status === "rejected") {
     if (!note) return fail(c, "驳回必须填写理由");
-    const result = await c.env.DB.prepare(
-      "UPDATE catalog_requests SET status='rejected',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
-    )
-      .bind(note, id)
-      .run();
-    if (!(result.meta.changes || 0))
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE catalog_requests SET status='rejected',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
+      ).bind(note, id),
+      c.env.DB.prepare(
+        `INSERT OR IGNORE INTO catalog_request_moderation_events(
+           catalog_request_id,action,note,actor_session_id
+         )
+         SELECT ?,?,?,? WHERE EXISTS(
+           SELECT 1 FROM catalog_requests WHERE id=? AND status='rejected'
+         ) AND NOT EXISTS(
+           SELECT 1 FROM catalog_request_moderation_events
+           WHERE catalog_request_id=?
+         )`,
+      ).bind(id, status, note, c.get("adminSessionId"), id, id),
+    ]);
+    if (!(results[0].meta.changes || 0))
       return fail(c, "该申请已审核，不能重复处理", 409);
     return c.json({ ok: true });
   }
   const statements: D1PreparedStatement[] = [];
   const createsCourse = request.kind === "course";
   const createsReview = createsCourse && Boolean(request.pending_review_json);
+  if (createsReview && (!request.course_name || !request.teacher_name))
+    return fail(c, "暂存评价无法绑定课程与任课教师", 409);
   if (request.teacher_name)
     statements.push(
       c.env.DB.prepare(
@@ -800,21 +996,38 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       ),
     );
   if (createsReview) {
-    const stashed = JSON.parse(request.pending_review_json) as {
-      overall: number;
-      comment: string;
-      term: string;
-    };
+    const stashed = parseStashedReview(request.pending_review_json);
+    if (!stashed) return fail(c, "暂存评价数据无效", 409);
     statements.push(
       c.env.DB.prepare(
-        `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,term,submitter_hash)
-         SELECT c.id,t.id,c.category,?,?,?,? FROM courses c,teachers t
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,attendance,grading,grading_score,
+           workload,rescue,assessment,teaching,clarity,knowledge,interest,
+           practicality,workload_score,fairness,organization,overall,comment,
+           term,submitter_hash
+         )
+         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+         FROM courses c,teachers t
          WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
+        stashed.attendance || "",
+        stashed.grading || "",
+        stashed.gradingScore ?? null,
+        stashed.workload || "",
+        stashed.rescue || "",
+        stashed.assessment || "",
+        stashed.teaching || "",
+        stashed.clarity ?? null,
+        stashed.knowledge ?? null,
+        stashed.interest ?? null,
+        stashed.practicality ?? null,
+        stashed.workloadScore ?? null,
+        stashed.fairness ?? null,
+        stashed.organization ?? null,
         stashed.overall,
-        stashed.comment,
-        stashed.term,
+        stashed.comment || "",
+        stashed.term || "",
         request.submitter_hash,
         request.course_code,
         request.course_name,
@@ -824,6 +1037,7 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       ),
     );
   }
+  const updateIndex = statements.length;
   statements.push(
     c.env.DB.prepare(
       `UPDATE catalog_requests SET status='approved',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP,
@@ -841,9 +1055,21 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       id,
     ),
   );
+  statements.push(
+    c.env.DB.prepare(
+      `INSERT OR IGNORE INTO catalog_request_moderation_events(
+         catalog_request_id,action,note,actor_session_id
+       )
+       SELECT ?,?,?,? WHERE EXISTS(
+         SELECT 1 FROM catalog_requests WHERE id=? AND status='approved'
+       ) AND NOT EXISTS(
+         SELECT 1 FROM catalog_request_moderation_events
+         WHERE catalog_request_id=?
+       )`,
+    ).bind(id, status, note, c.get("adminSessionId"), id, id),
+  );
   const results = await c.env.DB.batch(statements);
-  const finalUpdate = results[results.length - 1];
-  if (!(finalUpdate.meta.changes || 0))
+  if (!(results[updateIndex].meta.changes || 0))
     return fail(c, "该申请已审核，不能重复处理", 409);
   const approved = await c.env.DB.prepare(
     "SELECT created_course_id courseId,created_teacher_id teacherId,created_review_id reviewId FROM catalog_requests WHERE id=?",
@@ -855,6 +1081,27 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       reviewId: number | null;
     }>();
   return c.json({ ok: true, ...approved });
+});
+app.get("/api/admin/catalog-requests/:id/events", async (c) => {
+  const id = integer(c.req.param("id"));
+  if (
+    !(await c.env.DB.prepare("SELECT 1 FROM catalog_requests WHERE id=?")
+      .bind(id)
+      .first())
+  )
+    return fail(c, "补充申请不存在", 404);
+  return c.json(
+    (
+      await c.env.DB.prepare(
+        `SELECT id,action,note,created_at
+         FROM catalog_request_moderation_events
+         WHERE catalog_request_id=?
+         ORDER BY created_at DESC,id DESC`,
+      )
+        .bind(id)
+        .all()
+    ).results,
+  );
 });
 app.patch("/api/admin/reviews/:id", async (c) => {
   const b = await c.req.json<Record<string, unknown>>(),

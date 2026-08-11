@@ -52,7 +52,9 @@ export type Review = {
   course_code?: string;
   teacher_name?: string;
   overall: number;
-  term: string;
+  term: string | null;
+  created_at?: string | null;
+  publishedAt?: string | null;
   comment: string;
   teaching: string;
   attendance: string;
