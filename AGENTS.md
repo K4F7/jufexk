@@ -8,6 +8,21 @@
 
 Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` CLI。见 `docs/agents/issue-tracker.md`。
 
+### Issue 完整 PR 流程
+
+修复或实现任何 issue 时，必须完整执行以下流程，不得直接在主工作区或 `main` 分支上修改：
+
+1. **读取 issue**：使用 `gh issue view <number> --comments` 获取最新需求、讨论和标签。
+2. **同步源码**：在主工作区确认没有覆盖用户改动的风险，然后执行 `git fetch origin`，并将本地 `main` 快进到最新的 `origin/main`。每个 issue 都必须从最新主干开始。
+3. **创建 worktree**：从最新 `origin/main` 创建 `codex/<issue-number>-<slug>` 分支，并在仓库根目录的 `.worktree/<issue-number>-<slug>/` 创建独立 worktree。后续代码修改、依赖安装、测试和 Git 操作都在该 worktree 中完成。
+4. **安装依赖**：进入新 worktree 后，先执行 `pnpm install --frozen-lockfile`，再开始修改。不得复用主工作区的依赖目录来跳过安装。
+5. **实现与验证**：完成修改并运行与改动范围匹配的格式检查、类型检查、测试和构建；不得绕过失败的检查。
+6. **提交并推送**：提交 issue 范围内的改动，将分支推送到远端，并使用 `gh pr create` 创建目标分支为 `main` 的 PR；PR 正文应关联对应 issue。
+7. **跟进至合入**：持续检查 CI、冲突和 review 意见，修复后重新推送，直到 PR 实际合入 `main`。除非用户明确要求，否则不得在 PR 尚未合入时把任务视为完成或提前清理。
+8. **清理 worktree**：确认 PR 已合入且远端 `main` 已包含该提交后，回到主工作区同步最新 `main`，再用 `git worktree remove .worktree/<issue-number>-<slug>` 清理 worktree，并删除已合入的本地分支；远端分支按仓库 PR 合并设置或明确要求处理。
+
+如果同步、安装依赖、CI、review 或合并权限造成阻塞，应保留 worktree 和分支，报告当前状态并继续跟进；只有 PR 合入后才能执行清理步骤。
+
 ### Triage labels
 
 沿用五个规范角色的默认标签字符串。见 `docs/agents/triage-labels.md`。
