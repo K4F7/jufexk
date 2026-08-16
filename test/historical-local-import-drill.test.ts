@@ -19,7 +19,11 @@ const manifest = {
 async function adminHeaders() {
   const response = await SELF.fetch(`${origin}/api/admin/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: origin },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+      "CF-Connecting-IP": `198.18.92.${Math.floor(Math.random() * 200) + 1}`,
+    },
     body: JSON.stringify({ password: "test-password" }),
   });
   expect(response.status).toBe(200);
@@ -152,6 +156,7 @@ describe("frozen historical package local D1 drill", () => {
       cursor = page.nextCursor;
     } while (cursor);
     expect(seen.size).toBe(941);
+    expect(seen).toEqual(new Set(rows.map((row) => `historical:${row.review_id}`)));
     } finally {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(courseId),
