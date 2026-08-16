@@ -16,7 +16,7 @@
     "test": "vitest run && vitest run --config vitest.legacy-evidence.config.ts && vitest run --config vitest.catalog-baseline.config.ts",
     "test:legacy-evidence": "vitest run --config vitest.legacy-evidence.config.ts",
     "test:catalog-baseline": "vitest run --config vitest.catalog-baseline.config.ts",
-    "test:legacy-ocr-contract": "uv run --directory scripts/legacy_ocr --with openpyxl --with pandas==3.0.3 python -m unittest test_approval.py test_compile_production_staging.py test_compile_historical_approved_package.py test_build_unresolved_authority_reconciliation.py test_compile_catalog_augmentation_requests.py test_map_catalog_identities.py test_approve_catalog_additions.py test_build_review_workbook.py test_formula_bar_rebuild.py",
+    "test:legacy-ocr-contract": "uv run --directory scripts/legacy_ocr --with openpyxl --with pandas==3.0.3 python -m unittest test_approval.py test_compile_production_staging.py test_compile_historical_approved_package.py test_freeze_historical_production_package.py test_build_unresolved_authority_reconciliation.py test_compile_catalog_augmentation_requests.py test_map_catalog_identities.py test_approve_catalog_additions.py test_build_review_workbook.py test_formula_bar_rebuild.py",
     "build:catalog-userscript": "node scripts/catalog-baseline/build-userscript.mjs",
     "validate:catalog-capture": "tsx scripts/catalog-baseline/validate-capture.ts",
     "audit:catalog-pilot": "tsx scripts/catalog-baseline/audit-pilot.ts",
