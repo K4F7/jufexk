@@ -18,7 +18,7 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 4. **安装依赖**：进入新 worktree 后，先执行 `pnpm install --frozen-lockfile`，再开始修改。不得复用主工作区的依赖目录来跳过安装。
 5. **实现与验证**：完成修改并运行与改动范围匹配的格式检查、类型检查、测试和构建；不得绕过失败的检查。
 6. **提交并推送**：提交 issue 范围内的改动，将分支推送到远端，并使用 `gh pr create` 创建目标分支为 `main` 的 PR；PR 正文应关联对应 issue。
-7. **跟进至合入**：持续检查 CI、冲突和 review 意见，修复后重新推送，直到 PR 实际合入 `main`。除非用户明确要求，否则不得在 PR 尚未合入时把任务视为完成或提前清理。
+7. **启用 auto-merge 并跟进至合入**：PR 创建后立即执行 `gh pr merge <number> --auto --merge` 排队自动合并。只处理必需 CI、分支保护和合并冲突；不等待 CodeRabbit 等非必需 review。必需 CI 通过且仓库规则允许后应直接自动合入 `main`。检查失败、出现冲突或收到阻塞性 review 时修复并重新推送，直到 PR 实际合入。除非用户明确要求，否则不得在 PR 尚未合入时把任务视为完成或提前清理。
 8. **清理 worktree**：确认 PR 已合入且远端 `main` 已包含该提交后，回到主工作区同步最新 `main`，再用 `git worktree remove .worktree/<issue-number>-<slug>` 清理 worktree，并删除已合入的本地分支；远端分支按仓库 PR 合并设置或明确要求处理。
 
 如果同步、安装依赖、CI、review 或合并权限造成阻塞，应保留 worktree 和分支，报告当前状态并继续跟进；只有 PR 合入后才能执行清理步骤。
