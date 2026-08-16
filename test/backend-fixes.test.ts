@@ -52,7 +52,7 @@ function submitReview(body: Record<string, unknown>) {
 
 async function insertCourse(
   code: string,
-  category = "major",
+  category = "general",
   credits: number | null = null,
 ) {
   const result = await env.DB.prepare(
@@ -65,15 +65,15 @@ async function insertCourse(
 
 async function insertTeacher(name: string) {
   const result = await env.DB.prepare(
-    "INSERT INTO teachers(name,department) VALUES(?, '测试学院')",
+    "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?, '测试学院')",
   )
-    .bind(name)
+    .bind(name, name)
     .run();
   return Number(result.meta.last_row_id);
 }
 
 describe("backend regression fixes: fields and catalog relations", () => {
-  it("preserves public-elective scores when editing only review text", async () => {
+  it("clears retired scores when editing review text", async () => {
     const inserted = await env.DB.prepare(
       `INSERT INTO reviews(
         course_id,teacher_id,category,overall,
@@ -99,18 +99,18 @@ describe("backend regression fixes: fields and catalog relations", () => {
         .bind(id)
         .first(),
     ).toEqual({
-      interest: 3,
-      practicality: 4,
+      interest: null,
+      practicality: null,
       workload_score: 2,
       fairness: 5,
-      organization: 1,
+      organization: null,
     });
     await env.DB.prepare("DELETE FROM reviews WHERE id=?").bind(id).run();
   });
 
   it("preserves omitted course credits and rejects negative credits", async () => {
     const code = unique("CREDIT");
-    const courseId = await insertCourse(code, "major", 3);
+    const courseId = await insertCourse(code, "general", 3);
     await env.DB.prepare(
       "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,1)",
     )
@@ -124,7 +124,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
         id: courseId,
         code,
         name: `${code} 测试课程`,
-        category: "major",
+        category: "general",
         department: "测试学院",
         description: "编辑文字",
         teacherIds: [1],
@@ -144,7 +144,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
         id: courseId,
         code,
         name: `${code} 测试课程`,
-        category: "major",
+        category: "general",
         credits: -1,
         teacherIds: [1],
       }),
@@ -272,7 +272,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
         id: courseId,
         code,
         name: `${code} 测试课程`,
-        category: "major",
+        category: "general",
         teacherIds: [],
       }),
     });
@@ -352,9 +352,9 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         kind: "course",
         courseCode: code,
         courseName: `${code} 申请课程`,
-        category: "major",
+        category: "general",
         department: "测试学院",
-        teacherName: `${code} 申请教师`,
+        teacherSourceLabel: `${code} 申请教师`,
         review: { overall: 5, comment: `${code} 附带评价` },
       }),
     });
@@ -442,7 +442,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         0.99,
         courseId,
         teacherId,
-        "major",
+        "general",
         "已审核历史文字",
       )
       .run();
@@ -521,7 +521,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         courseId,
         teacherId,
         offeringId,
-        "major",
+        "general",
         "待审历史文字",
         term,
       )
@@ -625,7 +625,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         0.99,
         courseId,
         teacherId,
-        "major",
+        "general",
         "重新校验历史文字",
       )
       .run();
@@ -674,7 +674,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       `INSERT INTO catalog_requests(
         kind,course_code,course_name,category,teacher_name,department,status,
         created_course_id,created_teacher_id
-      ) VALUES('course',?,?, 'major',?, '测试学院','approved',?,?)`,
+      ) VALUES('course',?,?, 'general',?, '测试学院','approved',?,?)`,
     )
       .bind(code, `${code} 测试课程`, teacherName, courseId, teacherId)
       .run();
@@ -821,7 +821,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       courseId,
       teacherId: 1,
       overall: 4,
-      interest: 0,
+      clarity: 0,
     });
     expect(response.status).toBe(400);
     await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();
@@ -848,11 +848,11 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
 });
 
 describe("backend regression fixes: atomic course saves and imports", () => {
-  it("requires an explicit import type for preview and commit", async () => {
+  it("permanently disables the legacy merge/skip import endpoints", async () => {
     const auth = await login();
     const code = unique("NO-IMPORT-TYPE");
     const payload = {
-      rows: [{ code, name: `${code} 课程`, category: "major" }],
+      rows: [{ code, name: `${code} 课程`, category: "general" }],
     };
     expect(
       (
@@ -862,7 +862,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
           body: JSON.stringify(payload),
         })
       ).status,
-    ).toBe(400);
+    ).toBe(409);
     expect(
       (
         await SELF.fetch(`${origin}/api/admin/import`, {
@@ -871,7 +871,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
           body: JSON.stringify(payload),
         })
       ).status,
-    ).toBe(400);
+    ).toBe(409);
     expect(
       await env.DB.prepare("SELECT COUNT(*) n FROM courses WHERE code=?")
         .bind(code)
@@ -879,7 +879,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     ).toEqual({ n: 0 });
   });
 
-  it("rejects blank terms for new and imported offerings", async () => {
+  it("rejects blank terms for new offerings", async () => {
     const auth = await login();
     const direct = await SELF.fetch(`${origin}/api/admin/offerings`, {
       method: "POST",
@@ -892,84 +892,8 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       }),
     });
     expect(direct.status).toBe(400);
-    const payload = {
-      type: "offerings",
-      rows: [
-        {
-          course_code: "TEST101",
-          course_name: "测试课程",
-          teacher_name: "测试教师",
-          teacher_department: "测试学院",
-          term: "",
-          section: unique("导入空学期班"),
-          status: "active",
-        },
-      ],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    const body = await preview.json<{
-      ok: boolean;
-      errors: Array<{ code: string }>;
-    }>();
-    expect(body.ok).toBe(false);
-    expect(body.errors.map((error) => error.code)).toContain("term_required");
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    expect(commit.status).toBe(422);
   });
 
-  it("rejects an offering import whose teacher is not related to the course", async () => {
-    const auth = await login();
-    const term = unique("导入非法学期");
-    const section = unique("导入非法班");
-    const payload = {
-      type: "offerings",
-      rows: [
-        {
-          course_code: "TEST102",
-          course_name: "测试体育课",
-          teacher_name: "测试教师",
-          teacher_department: "测试学院",
-          term,
-          section,
-          status: "active",
-        },
-      ],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    const previewBody = await preview.json<{
-      ok: boolean;
-      errors: Array<{ code: string }>;
-    }>();
-    expect(previewBody.ok).toBe(false);
-    expect(previewBody.errors.map((error) => error.code)).toContain(
-      "teacher_not_related",
-    );
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    expect(commit.status).toBe(422);
-    expect(
-      await env.DB.prepare(
-        "SELECT COUNT(*) n FROM offerings WHERE course_id=2 AND term=? AND section=?",
-      )
-        .bind(term, section)
-        .first(),
-    ).toEqual({ n: 0 });
-  });
 
   it("validates teacher ids before either creating or editing a course", async () => {
     const auth = await login();
@@ -980,7 +904,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       body: JSON.stringify({
         code: newCode,
         name: `${newCode} 课程`,
-        category: "major",
+        category: "general",
         teacherIds: [999999],
       }),
     });
@@ -992,7 +916,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     ).toBeNull();
 
     const editCode = unique("ATOMIC-EDIT");
-    const courseId = await insertCourse(editCode, "major", 3);
+    const courseId = await insertCourse(editCode, "general", 3);
     await env.DB.prepare(
       "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,1)",
     )
@@ -1005,7 +929,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
         id: courseId,
         code: editCode,
         name: `${editCode} 测试课程`,
-        category: "major",
+        category: "general",
         description: "不应保存的半成功编辑",
         teacherIds: [999999],
       }),
@@ -1026,119 +950,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();
   });
 
-  it("keeps zero credits when importing a new course", async () => {
-    const auth = await login();
-    const code = unique("ZERO-CREDIT");
-    const payload = {
-      type: "courses",
-      rows: [
-        {
-          code,
-          name: `${code} 零学分课`,
-          category: "general",
-          department: "测试学院",
-          credits: 0,
-        },
-      ],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    expect(await preview.json()).toMatchObject({ ok: true, newCount: 1 });
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    expect(commit.status).toBe(200);
-    expect(
-      await env.DB.prepare("SELECT credits FROM courses WHERE code=?")
-        .bind(code)
-        .first(),
-    ).toEqual({ credits: 0 });
-    await env.DB.prepare("DELETE FROM courses WHERE code=?").bind(code).run();
-  });
 
-  it("warns and requires confirmation for a same-name teacher in another department", async () => {
-    const auth = await login();
-    const name = unique("同名教师");
-    await env.DB.prepare(
-      "INSERT INTO teachers(name,department) VALUES(?,'原学院')",
-    )
-      .bind(name)
-      .run();
-    const payload = {
-      type: "teachers",
-      rows: [{ name, department: "新学院", title: "讲师" }],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    const previewBody = await preview.json<{
-      ok: boolean;
-      warnings: Array<{ code: string }>;
-    }>();
-    expect(previewBody.ok).toBe(true);
-    expect(previewBody.warnings.map((warning) => warning.code)).toContain(
-      "same_name_different_department",
-    );
-    const unconfirmed = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    expect(unconfirmed.status).toBe(409);
-    expect(
-      await env.DB.prepare(
-        "SELECT COUNT(*) n FROM teachers WHERE name=? AND department='新学院'",
-      )
-        .bind(name)
-        .first(),
-    ).toEqual({ n: 0 });
-    const confirmed = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({ ...payload, confirmWarnings: true }),
-    });
-    expect(confirmed.status).toBe(200);
-    expect(
-      await env.DB.prepare("SELECT COUNT(*) n FROM teachers WHERE name=?")
-        .bind(name)
-        .first(),
-    ).toEqual({ n: 2 });
-    await env.DB.prepare("DELETE FROM teachers WHERE name=?").bind(name).run();
-  });
-
-  it("warns for a same-name teacher split across departments in one CSV", async () => {
-    const auth = await login();
-    const name = unique("批内同名教师");
-    const response = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({
-        type: "teachers",
-        rows: [
-          { name, department: "学院甲" },
-          { name, department: "学院乙" },
-        ],
-      }),
-    });
-    const body = await response.json<{
-      ok: boolean;
-      warnings: Array<{ row: number; code: string }>;
-    }>();
-    expect(body.ok).toBe(true);
-    expect(body.warnings).toContainEqual({
-      row: 3,
-      field: "department",
-      code: "same_name_different_department",
-      message: expect.any(String),
-    });
-  });
 
   it("blocks category changes while legacy reviews depend on the course", async () => {
     const auth = await login();
@@ -1154,7 +966,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
         `INSERT INTO legacy_reviews(
           import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,
           ocr_confidence,course_id,teacher_id,category,comment,status
-        ) VALUES(?, 'x.png', '主要课程', '1', '原文', .99, ?, 1, 'major', '历史评价', 'pending')`,
+        ) VALUES(?, 'x.png', '主要课程', '1', '原文', .99, ?, 1, 'general', '历史评价', 'pending')`,
       ).bind(`batch-${code}`, courseId),
     ]);
     const response = await SELF.fetch(`${origin}/api/admin/courses`, {
@@ -1164,7 +976,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
         id: courseId,
         code,
         name: `课程-${code}`,
-        category: "general",
+        category: "sports",
       }),
     });
     expect(response.status).toBe(409);
@@ -1172,7 +984,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       await env.DB.prepare("SELECT category FROM courses WHERE id=?")
         .bind(courseId)
         .first(),
-    ).toEqual({ category: "major" });
+    ).toEqual({ category: "general" });
     await env.DB.batch([
       env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=?").bind(
         `batch-${code}`,
@@ -1184,206 +996,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();
   });
 
-  it("accumulates teachers for one new offering across duplicate CSV rows", async () => {
-    const auth = await login();
-    const code = unique("MULTI-OFFERING");
-    const courseId = await insertCourse(code);
-    const teacherName = unique("多教师");
-    const teacherId = await insertTeacher(teacherName);
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,1)",
-      ).bind(courseId),
-      env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
-      ).bind(courseId, teacherId),
-    ]);
-    const term = unique("2026秋");
-    const section = unique("多教师班");
-    const payload = {
-      type: "offerings",
-      rows: [
-        {
-          course_code: code,
-          course_name: `${code} 测试课程`,
-          teacher_name: "测试教师",
-          teacher_department: "测试学院",
-          term,
-          section,
-          status: "active",
-        },
-        {
-          course_code: code,
-          course_name: `${code} 测试课程`,
-          teacher_name: teacherName,
-          teacher_department: "测试学院",
-          term,
-          section,
-          status: "active",
-        },
-      ],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    expect(await preview.json()).toMatchObject({ ok: true, newCount: 1 });
-    const commit = await SELF.fetch(`${origin}/api/admin/import`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    expect(commit.status).toBe(200);
-    const offering = await env.DB.prepare(
-      "SELECT id FROM offerings WHERE course_id=? AND term=? AND section=?",
-    )
-      .bind(courseId, term, section)
-      .first<{ id: number }>();
-    expect(offering).toBeTruthy();
-    expect(
-      await env.DB.prepare(
-        "SELECT COUNT(*) n FROM offering_teachers WHERE offering_id=?",
-      )
-        .bind(offering?.id)
-        .first(),
-    ).toEqual({ n: 2 });
-    await env.DB.prepare("DELETE FROM offerings WHERE id=?").bind(offering?.id).run();
-    await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();
-    await env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId).run();
-  });
 
-  it("rejects conflicting non-identity fields for one offering import key", async () => {
-    const auth = await login();
-    const term = unique("冲突学期");
-    const section = unique("冲突班");
-    const payload = {
-      type: "offerings",
-      rows: [
-        {
-          course_code: "TEST101",
-          course_name: "测试课程",
-          teacher_name: "测试教师",
-          teacher_department: "测试学院",
-          term,
-          section,
-          campus: "蛟桥园",
-          schedule: "周一",
-          status: "active",
-        },
-        {
-          course_code: "TEST101",
-          course_name: "测试课程",
-          teacher_name: "测试教师",
-          teacher_department: "测试学院",
-          term,
-          section,
-          campus: "麦庐园",
-          schedule: "周一",
-          status: "active",
-        },
-      ],
-    };
-    const preview = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify(payload),
-    });
-    const body = await preview.json<{
-      ok: boolean;
-      errors: Array<{ code: string }>;
-    }>();
-    expect(body.ok).toBe(false);
-    expect(body.errors.map((error) => error.code)).toContain(
-      "conflicting_offering",
-    );
-    expect(
-      (
-        await SELF.fetch(`${origin}/api/admin/import`, {
-          method: "POST",
-          headers: auth,
-          body: JSON.stringify(payload),
-        })
-      ).status,
-    ).toBe(422);
-    expect(
-      await env.DB.prepare(
-        "SELECT COUNT(*) n FROM offerings WHERE course_id=1 AND term=? AND section=?",
-      )
-        .bind(term, section)
-        .first(),
-    ).toEqual({ n: 0 });
-  });
-
-  it("rolls back the whole offering import when a later statement fails", async () => {
-    const auth = await login();
-    const code = unique("ATOMIC-OFFERING");
-    const courseId = await insertCourse(code);
-    const teacherName = unique("原子导入教师");
-    const teacherId = await insertTeacher(teacherName);
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,1)",
-      ).bind(courseId),
-      env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
-      ).bind(courseId, teacherId),
-    ]);
-    const term = unique("原子学期");
-    const section = unique("原子班");
-    await env.DB.prepare(
-      `CREATE TRIGGER fail_atomic_offering_import
-       BEFORE INSERT ON offering_teachers
-       WHEN NEW.teacher_id=${teacherId}
-       BEGIN SELECT RAISE(ABORT,'forced offering import failure'); END;`,
-    ).run();
-    try {
-      const response = await SELF.fetch(`${origin}/api/admin/import`, {
-        method: "POST",
-        headers: auth,
-        body: JSON.stringify({
-          type: "offerings",
-          rows: [
-            {
-              course_code: code,
-              course_name: `${code} 测试课程`,
-              teacher_name: "测试教师",
-              teacher_department: "测试学院",
-              term,
-              section,
-              campus: "蛟桥园",
-              status: "active",
-            },
-            {
-              course_code: code,
-              course_name: `${code} 测试课程`,
-              teacher_name: teacherName,
-              teacher_department: "测试学院",
-              term,
-              section,
-              campus: "蛟桥园",
-              status: "active",
-            },
-          ],
-        }),
-      });
-      expect(response.status).toBe(500);
-      expect(
-        await env.DB.prepare(
-          "SELECT COUNT(*) n FROM offerings WHERE course_id=? AND term=? AND section=?",
-        )
-          .bind(courseId, term, section)
-          .first(),
-      ).toEqual({ n: 0 });
-    } finally {
-      await env.DB.exec("DROP TRIGGER IF EXISTS fail_atomic_offering_import;");
-      await env.DB.prepare("DELETE FROM offerings WHERE course_id=?")
-        .bind(courseId)
-        .run();
-      await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();
-      await env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId).run();
-    }
-  });
 
   it("returns 404 without creating an event when moderating a missing review", async () => {
     const auth = await login();
@@ -1406,7 +1019,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
   it("accepts only the first moderation decision for a review", async () => {
     const inserted = await env.DB.prepare(
       `INSERT INTO reviews(course_id,teacher_id,category,overall,status,submitter_hash)
-       VALUES(1,1,'major',4,'pending','moderation-cas')`,
+       VALUES(1,1,'general',4,'pending','moderation-cas')`,
     ).run();
     const id = Number(inserted.meta.last_row_id);
     const auth = await login();
@@ -1436,28 +1049,4 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     await env.DB.prepare("DELETE FROM reviews WHERE id=?").bind(id).run();
   });
 
-  it("does not count invalid existing rows as skipped in import preview", async () => {
-    const auth = await login();
-    const response = await SELF.fetch(`${origin}/api/admin/import/preview`, {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({
-        type: "courses",
-        rows: [
-          {
-            code: "TEST101",
-            name: "测试课程",
-            category: "not-a-category",
-            credits: -1,
-          },
-        ],
-      }),
-    });
-    expect(await response.json()).toMatchObject({
-      ok: false,
-      validCount: 0,
-      skipCount: 0,
-      newCount: 0,
-    });
-  });
 });

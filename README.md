@@ -49,16 +49,13 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 
 Site Key 与 Secret 同时存在时服务端才启用并强制验证。仅有 Site Key 时隐藏无效 widget，并使用蜜罐、同源校验、每 IP HMAC 假名每小时 5 次限制及 30 天重复投稿控制；仅有 Secret 时视为配置错误并拒绝公开写入。两者均未配置时也要求同源提交。
 
-## CSV 导入
+## 目录基线
 
-后台支持符合 CSV 引号规则的逗号、双引号和单元格换行，可分别导入：
+课程、教师与任课关系由审核通过的原子目录基线包统一发布。基线发布后，旧式 CSV 合并/跳过入口永久返回 `409`；新增目录实体必须走目录补充申请及管理员审核，不能绕过源身份约束直接导入。
 
-- 课程：`code,name,category,department,credits,description`
-- 教师：`name,department,title,bio`
-- 任课关系：`course_code,course_name,teacher_name,teacher_department`
-- 开课班：`course_code,course_name,teacher_name,teacher_department,term,section,campus,schedule,status`
+当前 JUFE 权威包为 `scripts/catalog-baseline/captures/full-approved-v2/manifest.json` 对应的 v2 基线。采集、派生、审核与发布流程见 `docs/catalog-baseline-acquisition.md`。
 
-建议顺序为课程、教师、任课关系。学生统一身份认证需要学校提供可信的 SSO/OIDC/CAS 身份源，当前未伪造实现。
+学生统一身份认证需要学校提供可信的 SSO/OIDC/CAS 身份源，当前未伪造实现。
 
 ### 教务课程快照与 OCR 校对工作簿
 
@@ -77,7 +74,7 @@ uv run python scripts/legacy_ocr/build_review_workbook.py `
   --catalog-html "<第3页目录>/saved_resource(1).html"
 ```
 
-生成器会校验重复键、枚举、字段长度和课程/教师引用。后台仍须按 `01` 到 `04` 的顺序逐份预览并导入。OCR 课程别名和重匹配结果始终需要人工确认，不得直接作为批准数据。
+生成器会校验重复键、枚举、字段长度和课程/教师引用。生成的 CSV 仅用于离线核对和历史管道兼容，不得提交到已禁用的旧式目录导入接口。OCR 课程别名和重匹配结果始终需要人工确认，不得直接作为批准数据。
 
 人工在工作簿 `OCR课程别名核对` 页的 `decision` 列选择 `approve`、`reject` 或 `skip` 并保存后，使用以下命令生成新的评价预览。每个 OCR 课程名最多只能批准一个目标；课程代码和名称必须同时存在于匹配快照中：
 
@@ -99,7 +96,7 @@ uv run python scripts/legacy_ocr/apply_alias_decisions.py `
 1. 用 `pnpm exec wrangler d1 create <数据库名>` 创建独立 D1，并替换 `database_name` 与 `database_id`；
 2. 修改 Worker `name`、`routes`、`SITE_NAME` 和 `UNIVERSITY_NAME`；
 3. 为新域名创建独立 Turnstile Widget，替换 Site Key，并写入对应 Secret；
-4. 应用全部迁移，再从后台导入本校课程、教师和开课班；
+4. 应用全部迁移，再为本校采集、审核并发布独立的原子目录基线包；
 5. 删除初始迁移产生的两门示例课程和示例教师后再开放投稿。
 
 不同学校不得共用 D1、管理员口令或 Turnstile Secret。
@@ -174,7 +171,7 @@ RTX 5060 Ti 实测环境为 PyTorch 2.11.0+cu128、ONNX Runtime GPU 1.23.2、Rap
 
 审核人员逐行填写 `decision=approve|reject|skip`、现有课程/教师 ID 和 `review_note`；疑似重复但仍保留时还要填写 `duplicate_action=keep`。存在任意批准错误时不会生成批准文件。校验包括对象存在性、课程—教师关系、开课班归属、原始 OCR 证据和重复确认，输出字段不包含 `overall`。
 
-基础目录队列与评价批准队列相互独立。先人工确认教师和课程，使用后台两阶段 CSV 预览/导入；随后重新导出 D1 快照，再确认任课关系。导入 `relations` 现在只写 `course_teachers`，不会虚构空学期或“导入默认班”；开课班必须通过 `offerings` 类型单独提供明确数据。
+基础目录队列与评价批准队列相互独立。先人工确认教师、课程和任课关系，并将批准结果编译进原子目录基线或目录补充申请；不要调用已永久禁用的旧式两阶段 CSV 接口。开课班必须单独提供明确的学期和班次数据，不能虚构空学期或“导入默认班”。
 
 每个生成的 JSON payload 最多 40 条，并包含内容哈希幂等键，以兼容 D1 免费计划每次 Worker 调用的查询额度并避免重复提交。先提交到管理员接口 `/api/admin/legacy-imports/preview`，再提交 `/api/admin/legacy-imports`。D1 `batch()` 保证单个导入批次原子写入，记录默认 `pending`；`POST /api/admin/legacy-imports/:id/rollback` 可原子删除该批次记录并保留回滚审计状态。不要在未审核前调用导入接口。
 

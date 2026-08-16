@@ -33,7 +33,7 @@ async function createBoundCourse(category: string, code: string) {
 
 describe("review submission minimal required fields", () => {
   it("accepts course + teacher + overall with nothing else", async () => {
-    const courseId = await createBoundCourse("major", "REQ001");
+    const courseId = await createBoundCourse("general", "REQ001");
     const response = await submit({ courseId, teacherId: 1, overall: 4 });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true });
@@ -47,7 +47,7 @@ describe("review submission minimal required fields", () => {
   });
 
   it("accepts a submission without a term", async () => {
-    const courseId = await createBoundCourse("major", "REQ003");
+    const courseId = await createBoundCourse("general", "REQ003");
     const response = await submit({
       courseId,
       teacherId: 1,
@@ -58,14 +58,14 @@ describe("review submission minimal required fields", () => {
   });
 
   it("rejects a submission without an overall rating", async () => {
-    const courseId = await createBoundCourse("major", "REQ004");
+    const courseId = await createBoundCourse("general", "REQ004");
     const response = await submit({ courseId, teacherId: 1 });
     expect(response.status).toBe(400);
   });
 
   it("rejects a course-teacher pair that is not in the catalog", async () => {
     const course = await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department) VALUES('REQ005','未绑定课','major','测试学院')",
+      "INSERT INTO courses(code,name,category,department) VALUES('REQ005','未绑定课','general','测试学院')",
     ).run();
     const response = await submit({
       courseId: Number(course.meta.last_row_id),
@@ -104,7 +104,7 @@ describe("review submission minimal required fields", () => {
 
   it("requires the offering course-teacher relation as well", async () => {
     const course = await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department) VALUES('REQ007','开课关系缺失','major','测试学院')",
+      "INSERT INTO courses(code,name,category,department) VALUES('REQ007','开课关系缺失','general','测试学院')",
     ).run();
     const courseId = Number(course.meta.last_row_id);
     const offering = await env.DB.prepare(
@@ -143,7 +143,7 @@ describe("review submission minimal required fields", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      interest: 9,
+      workloadScore: 9,
     });
     expect(response.status).toBe(400);
   });

@@ -13,8 +13,9 @@ type Course = {
 };
 type Teacher = {
   id: number;
+  source_teacher_label: string;
   name: string;
-  department: string;
+  department: string | null;
   title: string;
   bio: string;
 };
@@ -23,9 +24,8 @@ function $(s: string) {
   return document.querySelector(s)!;
 }
 const labels: Record<string, string> = {
-  major: "专业课",
-  pe: "体育课",
-  general: "公共选修",
+  general: "普通课程",
+  sports: "体育课",
 };
 let courses: Course[] = [],
   courseOptions: Course[] = [],
@@ -39,12 +39,12 @@ let courses: Course[] = [],
 $("#app").innerHTML =
   `<header><nav><button data-go="browse">课程</button><button data-go="faculty">教师</button><button data-go="submit">写评价</button><button data-go="admin">后台</button></nav></header><main>
 <section id="landing" class="page"><div class="landing"><h1 class="slogan-hero">关于一门课，<br>上过的人最清楚。</h1><form id="landing-search"><input id="landing-q" placeholder="课程、课号或教师" aria-label="查找课程、课号或教师"><button class="primary">查找</button></form><button class="enter-catalog" data-go="browse">进入课程目录 →</button></div></section>
-<section id="browse" class="page hidden"><div class="toolbar"><input id="q" placeholder="搜索课程、课号或教师"><select id="category"><option value="">所有课程</option><option value="major">专业课</option><option value="pe">体育课</option><option value="general">公共选修</option></select><input id="department" placeholder="院系"><button class="primary" data-go="submit">写评价</button></div><div class="section-head"><h2>课程目录</h2><span id="count"></span></div><div class="table-scroll"><table class="list"><thead><tr><th>课号</th><th>课程</th><th>类别</th><th>教师</th><th>院系</th><th class="num">评分</th><th class="num">评价</th></tr></thead><tbody id="courses"></tbody></table></div><div id="pager"></div></section>
+<section id="browse" class="page hidden"><div class="toolbar"><input id="q" placeholder="搜索课程、课号或教师"><select id="category"><option value="">所有课程</option><option value="sports">仅体育课</option></select><input id="department" placeholder="院系"><button class="primary" data-go="submit">写评价</button></div><div class="section-head"><h2>课程目录</h2><span id="count"></span></div><div class="table-scroll"><table class="list"><thead><tr><th>课号</th><th>课程</th><th>模板</th><th>教师</th><th>院系</th><th class="num">评分</th><th class="num">评价</th></tr></thead><tbody id="courses"></tbody></table></div><div id="pager"></div></section>
 <section id="faculty" class="page hidden"><div class="section-head"><h2>教师资料</h2></div><div class="table-scroll"><table class="list"><thead><tr><th>姓名</th><th>职称</th><th>院系</th><th class="num">评分</th><th class="num">课程数</th></tr></thead><tbody id="teachers"></tbody></table></div></section>
 <section id="detail" class="page hidden"><button class="back" data-go="browse">← 返回</button><div id="course-detail"></div></section>
 <section id="teacher-detail" class="page hidden"><button class="back" data-go="faculty">← 返回</button><div id="teacher-profile"></div></section>
 <section id="submit" class="page hidden narrow"><h1>写评价</h1><p class="lede">评价必须绑定具体任课教师，投稿经审核后公开。只有课程、任课教师和总体推荐度是必填。</p><ol id="wizard-progress" class="wizard-progress"><li data-step="1">评价对象</li><li data-step="2">总体评价</li><li data-step="3">课堂与考核</li><li data-step="4">确认提交</li></ol><div id="review-turnstile"></div><p id="review-turnstile-status" class="form-note"></p><form id="review-form"><fieldset class="step" data-step="1"><label>课程<select name="courseId" id="course-select" required></select></label><label>开课班（选填）<select id="offering-select"><option value="">不指定</option></select></label><label>任课教师<select name="teacherId" id="teacher-select" required></select></label><p class="form-note">找不到你的课程或教师？<button type="button" class="link" data-go="catalog-request">提交补充申请</button></p></fieldset><fieldset class="step hidden" data-step="2"><label>总体推荐度<select name="overall" required><option value="">请选择</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label><div id="dynamic-fields"></div></fieldset><fieldset class="step hidden" data-step="3"><label>学期（选填）<input name="term" placeholder="2025 秋"></label><label>补充说明（选填）<textarea name="comment"></textarea></label></fieldset><fieldset class="step hidden" data-step="4"><p class="form-note">投稿匿名提交，经管理员审核后公开；请确认内容真实、不含人身攻击。</p><input class="trap" name="website"></fieldset><div class="wizard-nav"><button type="button" id="wizard-prev" class="ghost">上一页</button><button type="button" id="wizard-next" class="primary">下一页</button><button type="submit" id="wizard-submit" class="primary hidden">提交审核</button></div><p id="form-msg"></p></form></section>
-<section id="catalog-request" class="page hidden narrow"><button class="back" data-go="submit">← 返回</button><h1>补充课程或教师</h1><p class="lede">提交后进入管理员审核队列，通过后才会出现在课程目录中。</p><form id="catalog-request-form"><label>申请类型<select name="kind" id="request-kind"><option value="course">补充课程（可同时补充教师）</option><option value="teacher">仅补充教师</option></select></label><div class="two"><label>课号<input name="courseCode" placeholder="选填"></label><label>课程名称<input name="courseName"></label></div><div class="two"><label>课程类别<select name="category"><option value="">未确定</option><option value="major">专业课</option><option value="pe">体育课</option><option value="general">公共选修</option></select></label><label>院系<input name="department"></label></div><label>教师姓名<input name="teacherName"></label><label>补充说明（选填）<textarea name="note" placeholder="例如你在哪个学期上过这门课"></textarea></label><fieldset class="attached-review"><legend>随附评价（选填）</legend><p class="form-note">若问卷中已有内容会自动带入；目录对象获批后，评价进入待审核队列。</p><div class="two"><label>总体推荐度<select name="reviewOverall"><option value="">不随附评价</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label><label>学期<input name="reviewTerm" placeholder="2025 秋"></label></div><label>补充说明<textarea name="reviewComment"></textarea></label></fieldset><input class="trap" name="website"><div id="request-turnstile"></div><p id="request-turnstile-status" class="form-note"></p><button id="request-submit" class="primary">提交补充申请</button><p id="request-msg"></p></form></section>
+<section id="catalog-request" class="page hidden narrow"><button class="back" data-go="submit">← 返回</button><h1>补充课程或教师</h1><p class="lede">提交后进入管理员审核队列，通过后才会出现在课程目录中。</p><form id="catalog-request-form"><label>申请类型<select name="kind" id="request-kind"><option value="course">补充课程（可同时补充教师）</option><option value="teacher">仅补充教师</option></select></label><div class="two"><label>课号<input name="courseCode"></label><label>课程名称<input name="courseName"></label></div><div class="two"><label>评价模板<select name="category"><option value="general">普通课程</option><option value="sports">体育课程</option></select></label><label>院系<input name="department"></label></div><label>来源教师名<input name="teacherSourceLabel"></label><label>补充说明（选填）<textarea name="note" placeholder="例如你在哪个学期上过这门课"></textarea></label><fieldset class="attached-review"><legend>随附评价（选填）</legend><p class="form-note">若问卷中已有内容会自动带入；目录对象获批后，评价进入待审核队列。</p><div class="two"><label>总体推荐度<select name="reviewOverall"><option value="">不随附评价</option>${[5, 4, 3, 2, 1].map((x) => `<option>${x}</option>`).join("")}</select></label><label>学期<input name="reviewTerm" placeholder="2025 秋"></label></div><label>补充说明<textarea name="reviewComment"></textarea></label></fieldset><input class="trap" name="website"><div id="request-turnstile"></div><p id="request-turnstile-status" class="form-note"></p><button id="request-submit" class="primary">提交补充申请</button><p id="request-msg"></p></form></section>
 <section id="admin" class="page hidden"><h1>管理后台</h1><div id="login" class="narrow"><form id="login-form"><label>管理员口令<input type="password" name="password" required></label><button class="primary">登录</button></form></div><div id="dashboard" class="hidden"><div class="tabs"><button data-tab="reviews">评价</button><button data-tab="courses">课程</button><button data-tab="teachers">教师</button><button data-tab="import">导入</button><button data-tab="legacy">历史评价</button></div><div id="admin-content"></div></div></section></main><footer id="footer"></footer>`;
 $<HTMLButtonElement>("#wizard-submit").disabled = true;
 $<HTMLButtonElement>("#request-submit").disabled = true;
@@ -164,8 +164,9 @@ $("#landing-search").onsubmit = (e) => {
   load();
 };
 async function load() {
+  const teacherFilter = document.querySelector("#teacher-filter") as HTMLSelectElement | null;
   const d = await api(
-    `/api/courses?q=${encodeURIComponent($("#q").value)}&category=${$("#category").value}&department=${encodeURIComponent($("#department").value)}&teacherId=${$("#teacher-filter").value}&page=${page}`,
+    `/api/courses?q=${encodeURIComponent($("#q").value)}&category=${$("#category").value}&department=${encodeURIComponent($("#department").value)}&teacherId=${teacherFilter?.value ?? ""}&page=${page}`,
   );
   courses = d.items;
   pages = d.pages || 1;
@@ -267,23 +268,21 @@ async function teacherDetail(id: number) {
 const metric = (n: string, v: unknown) =>
   `<div><dt>${esc(n)}</dt><dd>${esc(v || "未提及")}</dd></div>`;
 const reviewMetrics = (r: any) =>
-  r.category === "general"
-    ? metric("内容吸引力", r.interest && r.interest + "/5") +
-      metric("实用与收获", r.practicality && r.practicality + "/5") +
-      metric("时间投入", r.workload_score && r.workload_score + "/5") +
-      metric("考核公平", r.fairness && r.fairness + "/5") +
-      metric("课堂组织", r.organization && r.organization + "/5")
-    : metric("点名", r.attendance) +
+  r.category === "sports"
+    ? metric("点名", r.attendance) +
       metric(
         "给分",
         r.grading_score ? `${r.grading_score}/5 ${r.grading}` : r.grading,
       ) +
-      metric("是否捞人", r.rescue) +
       metric("强度", r.workload) +
-      metric("考核", r.assessment) +
-      metric("课堂质量", r.teaching) +
-      metric("清晰度", r.clarity && r.clarity + "/5") +
-      metric("知识收获", r.knowledge && r.knowledge + "/5");
+      metric("考核方式", r.assessment)
+    : metric("讲解清晰度", r.clarity && r.clarity + "/5") +
+      metric("知识收获", r.knowledge && r.knowledge + "/5") +
+      metric("时间投入", r.workload_score && r.workload_score + "/5") +
+      metric("考核公平", r.fairness && r.fairness + "/5") +
+      metric("考核方式", r.assessment) +
+      metric("课堂体验", r.teaching) +
+      "";
 const legacyReviewSection = (rows: any[] = [], showCourse = false) =>
   rows.length
     ? `<section class="legacy-section"><h2>历史文字资料</h2><p class="lede">由腾讯表格历史资料迁移，经管理员审核后展示；不包含推算评分，也不计入课程或教师评分。</p><div class="reviews">${rows.map((r) => `<article class="review legacy-review"><div class="legacy-mark">历史</div><div><b>${esc(showCourse ? r.course_name : r.teacher_name || "教师资料")} ${r.term ? `· ${esc(r.term)}` : ""}</b><p>${esc(r.comment)}</p><small>${esc(r.source_label)}</small></div></article>`).join("")}</div></section>`
@@ -428,7 +427,7 @@ async function reviewsAdmin(status = "pending", q = "", reviewPage = 1) {
         (
           r: any,
         ) => `<article class="queue"><b>${esc(r.course_name)} · ${esc(r.teacher_name || "未指定教师")} · ${esc(r.overall)}/5</b><p>${esc(r.term)} · ${esc(r.comment || r.teaching || "无补充内容")}</p><small>${esc(r.status)} ${r.moderator_note ? "· " + esc(r.moderator_note) : ""}</small>
-        <details><summary>编辑评价内容</summary><form data-edit-form="${r.id}"><label>补充说明<textarea name="comment">${esc(r.comment)}</textarea></label><label>课堂质量<textarea name="teaching">${esc(r.teaching)}</textarea></label><div class="two"><label>点名<input name="attendance" value="${esc(r.attendance)}"></label><label>给分<input name="grading" value="${esc(r.grading)}"></label></div><div class="two"><label>强度<input name="workload" value="${esc(r.workload)}"></label><label>是否捞人<input name="rescue" value="${esc(r.rescue)}"></label></div><label>考核方式<input name="assessment" value="${esc(r.assessment)}"></label>${r.category === "general" ? `<div class="two">${adminScore("interest", "内容吸引力", r.interest)}${adminScore("practicality", "实用与收获", r.practicality)}${adminScore("workloadScore", "时间投入", r.workload_score)}${adminScore("fairness", "考核公平", r.fairness)}</div>${adminScore("organization", "课堂组织", r.organization)}` : ""}<label>修改说明<input name="note" required></label><button class="primary">保存修改</button></form></details>
+        <details><summary>编辑评价内容</summary><form data-edit-form="${r.id}"><label>补充说明<textarea name="comment">${esc(r.comment)}</textarea></label><label>课堂体验<textarea name="teaching">${esc(r.teaching)}</textarea></label><div class="two"><label>点名<input name="attendance" value="${esc(r.attendance)}"></label><label>给分<input name="grading" value="${esc(r.grading)}"></label></div><label>强度<input name="workload" value="${esc(r.workload)}"></label><label>考核方式<input name="assessment" value="${esc(r.assessment)}"></label>${r.category === "general" ? `<div class="two">${adminScore("workloadScore", "时间投入", r.workload_score)}${adminScore("fairness", "考核公平", r.fairness)}</div>` : ""}<label>修改说明<input name="note" required></label><button class="primary">保存修改</button></form></details>
         <button data-events="${r.id}">审核时间线</button><div id="events-${r.id}" class="timeline"></div>
         ${r.status === "pending" ? `<div><button data-review="${r.id}" data-status="approved">通过</button><button class="danger" data-review="${r.id}" data-status="rejected">驳回</button></div>` : ""}</article>`,
       )
@@ -487,16 +486,18 @@ async function reviewsAdmin(status = "pending", q = "", reviewPage = 1) {
   );
 }
 async function coursesAdmin() {
-  const [cs, ts] = await Promise.all([
+  const [cs, ts, baseline] = await Promise.all([
     api("/api/admin/courses"),
     api("/api/admin/teachers"),
+    api("/api/admin/catalog-baseline/status"),
   ]);
   $("#admin-content").innerHTML =
-    `<form id="course-form"><h3>新增/编辑课程</h3><input type="hidden" name="id"><div class="two"><label>课号<input name="code"></label><label>课程名<input name="name" required></label></div><div class="two"><label>类别<select name="category"><option value="major">专业课</option><option value="pe">体育课</option><option value="general">公共选修</option></select></label><label>院系<input name="department"></label></div><label>简介<textarea name="description"></textarea></label><fieldset><legend>任课教师</legend>${ts.map((t: Teacher) => `<label><input type="checkbox" name="teacherIds" value="${t.id}">${esc(t.name)}</label>`).join("")}</fieldset><button class="primary">保存</button></form>${cs.map((c: any) => `<article class="queue"><b>${esc(c.name)}</b><p>${esc(c.teachers)}</p><button data-edit-course="${c.id}">编辑</button><button class="danger" data-delete-course="${c.id}">删除</button></article>`).join("")}`;
+    `<form id="course-form" class="${baseline.published ? "hidden" : ""}"><h3>${baseline.published ? "编辑课程" : "新增/编辑课程"}</h3><input type="hidden" name="id"><div class="two"><label>课号<input name="code" required></label><label>课程名<input name="name" required></label></div><div class="two"><label>评价模板<select name="category"><option value="general">普通课程</option><option value="sports">体育课</option></select></label><label>院系<input name="department"></label></div><label>简介<textarea name="description"></textarea></label><fieldset><legend>任课教师</legend>${ts.map((t: Teacher) => `<label><input type="checkbox" name="teacherIds" value="${t.id}" ${baseline.published ? "disabled" : ""}>${esc(t.name)}</label>`).join("")}</fieldset><button class="primary">保存</button></form>${cs.map((c: any) => `<article class="queue"><b>${esc(c.name)}</b><p>${esc(c.teachers)}</p><button data-edit-course="${c.id}">编辑</button><button class="danger" data-delete-course="${c.id}">删除</button></article>`).join("")}`;
   const f = $<HTMLFormElement>("#course-form");
   document.querySelectorAll<HTMLElement>("[data-edit-course]").forEach(
     (b) =>
       (b.onclick = () => {
+        f.classList.remove("hidden");
         const c = cs.find((x: any) => x.id === Number(b.dataset.editCourse));
         for (const [k, v] of Object.entries(c))
           if (f.elements.namedItem(k))
@@ -504,6 +505,7 @@ async function coursesAdmin() {
               v ?? "",
             );
         const ids = String(c.teacher_ids || "").split(",");
+        (f.elements.namedItem("code") as HTMLInputElement).readOnly = true;
         f.querySelectorAll<HTMLInputElement>("[name=teacherIds]").forEach(
           (x) => (x.checked = ids.includes(x.value)),
         );
@@ -513,7 +515,11 @@ async function coursesAdmin() {
     e.preventDefault();
     const fd = new FormData(f),
       obj: any = Object.fromEntries(fd);
-    obj.teacherIds = fd.getAll("teacherIds");
+    obj.teacherIds = baseline.published
+      ? String(cs.find((course: any) => course.id === Number(obj.id))?.teacher_ids || "")
+          .split(",")
+          .filter(Boolean)
+      : fd.getAll("teacherIds");
     await api("/api/admin/courses", {
       method: "POST",
       body: JSON.stringify(obj),
@@ -588,13 +594,17 @@ async function offeringsAdmin() {
   );
 }
 async function teachersAdmin() {
-  const ts = await api("/api/admin/teachers");
+  const [ts, baseline] = await Promise.all([
+    api("/api/admin/teachers"),
+    api("/api/admin/catalog-baseline/status"),
+  ]);
   $("#admin-content").innerHTML =
-    `<form id="teacher-form"><h3>新增/编辑教师</h3><input type="hidden" name="id"><div class="two"><label>姓名<input name="name" required></label><label>职称<input name="title"></label></div><label>院系<input name="department"></label><label>简介<textarea name="bio"></textarea></label><button class="primary">保存</button></form>${ts.map((t: Teacher) => `<article class="queue"><b>${esc(t.name)}</b><p>${esc(t.title)} · ${esc(t.department)}</p><button data-edit-teacher="${t.id}">编辑</button><button class="danger" data-delete-teacher="${t.id}">删除</button></article>`).join("")}`;
+    `<form id="teacher-form" class="${baseline.published ? "hidden" : ""}"><h3>${baseline.published ? "编辑教师" : "新增/编辑教师"}</h3><input type="hidden" name="id"><label>来源教师名<input name="sourceTeacherLabel" required></label><div class="two"><label>显示名<input name="name" required></label><label>职称<input name="title"></label></div><label>院系<input name="department"></label><label>简介<textarea name="bio"></textarea></label><button class="primary">保存</button></form>${ts.map((t: Teacher) => `<article class="queue"><b>${esc(t.name)}</b><p>${esc(t.source_teacher_label)} · ${esc(t.title)} · ${esc(t.department || "院系未标注")}</p><button data-edit-teacher="${t.id}">编辑</button><button class="danger" data-delete-teacher="${t.id}">删除</button></article>`).join("")}`;
   const f = $<HTMLFormElement>("#teacher-form");
   document.querySelectorAll<HTMLElement>("[data-edit-teacher]").forEach(
     (b) =>
       (b.onclick = () => {
+        f.classList.remove("hidden");
         const t = ts.find(
           (x: Teacher) => x.id === Number(b.dataset.editTeacher),
         );
@@ -603,6 +613,11 @@ async function teachersAdmin() {
             (f.elements.namedItem(k) as HTMLInputElement).value = String(
               v ?? "",
             );
+        const sourceInput = f.elements.namedItem(
+          "sourceTeacherLabel",
+        ) as HTMLInputElement;
+        sourceInput.value = t.source_teacher_label;
+        sourceInput.readOnly = true;
       }),
   );
   f.onsubmit = async (e) => {
@@ -657,64 +672,96 @@ function csv(text: string) {
     Object.fromEntries(h.map((k, i) => [k, (x[i] || "").trim()])),
   );
 }
-function importerLegacy() {
-  $("#admin-content").innerHTML =
-    `<h3>金山表格 CSV 导入</h3><p>支持逗号、引号和单元格换行。</p><select id="import-type"><option value="courses">课程：code,name,category,department,credits,description</option><option value="teachers">教师：name,department,title,bio</option><option value="relations">任课关系：course_code,course_name,teacher_name,teacher_department</option></select><label class="drop">选择 CSV<input id="csv" type="file" accept=".csv"></label><p id="import-msg"></p>`;
-  $("#csv").onchange = async (e) => {
-    const f = (e.target as HTMLInputElement).files?.[0];
-    if (!f) return;
-    const rows = csv(await f.text()),
-      d = await api("/api/admin/import", {
-        method: "POST",
-        body: JSON.stringify({ type: $("#import-type").value, rows }),
-      });
-    $("#import-msg").textContent = `成功导入 ${d.count} 行`;
-    load();
-    loadTeachers();
-  };
+interface BaselineChunk { start: number; end: number; records: number }
+async function baselineFileChunks(file: File): Promise<BaselineChunk[]> {
+  if (!file.size) throw Error("批准 JSONL 不能为空");
+  const chunks: BaselineChunk[] = [];
+  const reader = file.stream().getReader();
+  let offset = 0, start = 0, records = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const byte of value) {
+      offset += 1;
+      if (byte !== 10) continue;
+      records += 1;
+      const bytes = offset - start;
+      if (bytes > 750_000) throw Error("批准包存在超过 750KB 的单块记录");
+      if (records >= 100 || bytes >= 600_000) {
+        chunks.push({ start, end: offset, records });
+        start = offset;
+        records = 0;
+      }
+    }
+  }
+  if (start !== file.size) {
+    if (records === 0) throw Error("批准 JSONL 必须以换行结束");
+    const bytes = file.size - start;
+    if (bytes > 750_000) throw Error("批准包存在超过 750KB 的单块记录");
+    chunks.push({ start, end: file.size, records });
+  }
+  return chunks;
+}
+async function browserSha256(value: string) {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function baselinePreview(batchId: string, type = "courses", page = 1) {
+  const data = await api(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(batchId)}/preview?type=${type}&page=${page}&pageSize=50`);
+  const identity = (item: any) => type === "courses" ? item.courseCode : type === "teachers" ? item.sourceTeacherLabel : `${item.courseCode} / ${item.sourceTeacherLabel}`;
+  const detail = (item: any) => type === "courses" ? `${item.currentName} / ${item.category}` : type === "teachers" ? item.normalizedTeacherLabel : `${item.provenance?.length ?? 0} 条 provenance`;
+  $("#baseline-preview").innerHTML = `<div class="toolbar"><label>预览类型<select id="baseline-preview-type"><option value="courses" ${type === "courses" ? "selected" : ""}>课程</option><option value="teachers" ${type === "teachers" ? "selected" : ""}>教师</option><option value="relations" ${type === "relations" ? "selected" : ""}>任课关系</option></select></label><span>共 ${data.total} 条</span></div><div class="table-scroll"><table><thead><tr><th>身份</th><th>内容</th></tr></thead><tbody>${data.items.map((item: any) => `<tr><td><code>${esc(identity(item))}</code></td><td>${esc(detail(item))}</td></tr>`).join("")}</tbody></table></div><div class="pager"><button id="baseline-prev" ${page <= 1 ? "disabled" : ""}>上一页</button><span>${page} / ${Math.max(1, Math.ceil(data.total / 50))}</span><button id="baseline-next" ${page * 50 >= data.total ? "disabled" : ""}>下一页</button></div>`;
+  $("#baseline-preview-type").onchange = () => { void baselinePreview(batchId, $("#baseline-preview-type").value, 1) };
+  $("#baseline-prev").onclick = () => { void baselinePreview(batchId, type, page - 1) };
+  $("#baseline-next").onclick = () => { void baselinePreview(batchId, type, page + 1) };
 }
 function importer() {
   $("#admin-content").innerHTML =
-    `<h3>CSV 批量导入</h3><p>选择文件后先执行服务端校验，确认预览无误后才会写入数据库。</p><label>数据类型<select id="import-type"><option value="courses">课程：code,name,category,department,credits,description</option><option value="teachers">教师：name,department,title,bio</option><option value="relations">任课关系：course_code,course_name,teacher_name,teacher_department</option><option value="offerings">开课班：course_code,course_name,teacher_name,teacher_department,term,section,campus,schedule,status</option></select></label><label class="drop">选择 CSV<input id="csv" type="file" accept=".csv"></label><div id="import-preview"></div><button id="import-commit" class="primary hidden">确认导入</button><p id="import-msg"></p>`;
-  let pendingRows: Record<string, string>[] = [],
-    pendingType = "";
-  $("#csv").onchange = async (event: Event) => {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    if (file.size > 900_000) {
-      $("#import-msg").textContent = "文件过大，请拆分后导入";
-      return;
-    }
-    pendingRows = csv(await file.text());
-    pendingType = $("#import-type").value;
-    const preview = await api("/api/admin/import/preview", {
-      method: "POST",
-      body: JSON.stringify({ type: pendingType, rows: pendingRows }),
-    });
-    $("#import-preview").innerHTML =
-      `<p>总行数：${preview.total}；新增：${preview.newCount}；跳过：${preview.skipCount}；错误：${preview.errors.length}</p>` +
-      (preview.errors.length
-        ? `<div class="table-scroll"><table><thead><tr><th>行</th><th>字段</th><th>问题</th></tr></thead><tbody>${preview.errors.map((item: any) => `<tr><td>${esc(item.row)}</td><td>${esc(item.field)}</td><td>${esc(item.message)}</td></tr>`).join("")}</tbody></table></div>`
-        : `<div class="table-scroll"><table><thead><tr><th>行</th><th>状态</th><th>规范化数据</th></tr></thead><tbody>${preview.preview.map((row: any, index: number) => `<tr><td>${index + 2}</td><td>${row.exists ? "已存在，将跳过" : "新增"}</td><td><code>${esc(JSON.stringify(row))}</code></td></tr>`).join("")}</tbody></table></div>`);
-    $("#import-commit").classList.toggle("hidden", !preview.ok);
-    $("#import-msg").textContent = preview.ok
-      ? "校验通过，可以确认导入"
-      : "请修复表格中的错误后重新选择文件";
-  };
-  $("#import-commit").onclick = async () => {
-    $("#import-commit").setAttribute("disabled", "disabled");
+    `<h3>目录基线批准包</h3><div class="two"><label class="drop">批准 manifest<input id="baseline-manifest" type="file" accept=".json,application/json"></label><label class="drop">批准 JSONL<input id="baseline-jsonl" type="file" accept=".jsonl,application/x-ndjson"></label></div><button id="baseline-stage" class="primary">上传并校验</button><progress id="baseline-progress" class="hidden" value="0" max="1"></progress><p id="import-msg"></p><div id="baseline-preview"></div><button id="baseline-publish" class="danger hidden">发布目录基线</button>`;
+  let activeBatch = "";
+  $("#baseline-stage").onclick = async () => {
+    const manifestFile = $<HTMLInputElement>("#baseline-manifest").files?.[0], artifactFile = $<HTMLInputElement>("#baseline-jsonl").files?.[0];
+    if (!manifestFile || !artifactFile) { $("#import-msg").textContent = "请选择 manifest 与 JSONL"; return }
+    const button = $<HTMLButtonElement>("#baseline-stage"), progress = $<HTMLProgressElement>("#baseline-progress");
+    button.disabled = true;
     try {
-      const result = await api("/api/admin/import", {
+      const manifest = JSON.parse(await manifestFile.text());
+      if (manifest.artifact?.bytes !== artifactFile.size) throw Error("JSONL 字节数与 manifest 不一致");
+      const chunks = await baselineFileChunks(artifactFile);
+      activeBatch = `baseline-${String(manifest.contentSha256).slice(0, 24)}`;
+      const status = await api("/api/admin/catalog-baseline/uploads", {
         method: "POST",
-        body: JSON.stringify({ type: pendingType, rows: pendingRows }),
+        body: JSON.stringify({ batchId: activeBatch, manifest, chunkCount: chunks.length }),
       });
-      $("#import-msg").textContent = `新增 ${result.count} 行；跳过 ${result.skippedCount} 行`;
-      $("#import-commit").classList.add("hidden");
+      progress.max = chunks.length;
+      progress.value = chunks.length - status.missingChunks.length;
+      progress.classList.remove("hidden");
+      for (const index of status.missingChunks as number[]) {
+        const descriptor = chunks[index], content = await artifactFile.slice(descriptor.start, descriptor.end).text();
+        await api(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(activeBatch)}/chunks/${index}`, { method: "PUT", body: JSON.stringify({ chunkId: `chunk-${index}`, records: descriptor.records, bytes: descriptor.end - descriptor.start, sha256: await browserSha256(content), content }) });
+        progress.value += 1;
+        $("#import-msg").textContent = `已上传 ${progress.value} / ${chunks.length} 块`;
+      }
+      await api(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(activeBatch)}/finalize`, { method: "POST", body: "{}" });
+      $("#import-msg").textContent = "整包校验通过";
+      $("#baseline-publish").classList.remove("hidden");
+      await baselinePreview(activeBatch);
+    } catch (error) {
+      $("#import-msg").textContent = error instanceof Error ? error.message : "上传失败";
+    } finally {
+      button.disabled = false;
+    }
+  };
+  $("#baseline-publish").onclick = async () => {
+    if (!activeBatch || !confirm("确认发布唯一一次目录基线？")) return;
+    const button = $<HTMLButtonElement>("#baseline-publish");
+    button.disabled = true;
+    try {
+      await api(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(activeBatch)}/publish`, { method: "POST", body: "{}" });
+      $("#import-msg").textContent = "目录基线已发布，入口已永久关闭";
+      button.classList.add("hidden");
       load();
       loadTeachers();
-    } finally {
-      $("#import-commit").removeAttribute("disabled");
-    }
+    } finally { button.disabled = false }
   };
 }
 async function legacyImportsAdmin(batchPage = 1, status = "") {
@@ -1081,8 +1128,10 @@ $("#wizard-prev").onclick = () => goToStep(wizardStep - 1);
 renderWizard();
 $("#request-kind").onchange = () => {
   const courseOnly = $<HTMLSelectElement>("#request-kind").value === "course";
+  $<HTMLInputElement>("[name=courseCode]").required = courseOnly;
   $<HTMLInputElement>("[name=courseName]").required = courseOnly;
-  $<HTMLInputElement>("[name=teacherName]").required = !courseOnly;
+  $<HTMLSelectElement>("[name=category]").required = courseOnly;
+  $<HTMLInputElement>("[name=teacherSourceLabel]").required = !courseOnly;
   $(".attached-review").classList.toggle("hidden", !courseOnly);
   if (!courseOnly) {
     for (const name of ["reviewOverall", "reviewTerm", "reviewComment"])

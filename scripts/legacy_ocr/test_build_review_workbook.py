@@ -52,10 +52,11 @@ class BuildReviewWorkbookTests(unittest.TestCase):
         self.assertIn("周三(3-4节)", offerings[0]["schedule"])
 
     def test_categories_and_import_constraints_match_api(self):
-        self.assertEqual(course_category({"course_name": "大学体育", "kclb": "公共课"}), "pe")
-        self.assertEqual(course_category({"course_name": "大学英语", "kclb": "2024公共课"}), "general")
-        self.assertEqual(course_category({"course_name": "编译原理", "kclb": "专业必修课"}), "major")
-        courses = [{"code": "C1", "name": "课程", "category": "major", "department": "学院"}]
+        self.assertEqual(course_category({"course_name": "大学体育", "kclb": "体育必修课"}), "sports")
+        self.assertEqual(course_category({"course_name": "大学英语", "kclb": "2024公共选修课"}), "general")
+        self.assertEqual(course_category({"course_name": "编译原理", "kclb": "专业必修课"}), "general")
+        self.assertEqual(course_category({"course_name": "大学体育", "kclb": "公共课"}), "general")
+        courses = [{"code": "C1", "name": "课程", "category": "general", "department": "学院"}]
         teachers = [{"name": "教师", "department": "学院"}]
         relations = [{"course_code": "C1", "course_name": "课程", "teacher_name": "教师", "teacher_department": "学院"}]
         offerings = [{**relations[0], "term": "2026-2027学年第一学期", "section": "01", "campus": "校区", "schedule": "周一", "status": "active"}]

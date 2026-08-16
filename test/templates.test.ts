@@ -2,39 +2,25 @@ import { describe, expect, it } from "vitest";
 import { reviewFieldsMarkup, teacherCourseRowMarkup } from "../src/templates";
 
 describe("reviewFieldsMarkup", () => {
-  it("keeps all five public-elective dimensions optional", () => {
+  it("renders the compact general template without retired specialized fields", () => {
     const markup = reviewFieldsMarkup("general");
 
     for (const name of [
-      "interest",
-      "practicality",
-      "workloadScore",
-      "fairness",
-      "organization",
-    ]) {
-      expect(markup).toContain(`name="${name}"`);
-    }
-    expect(markup).not.toContain("required");
-  });
-
-  it("preserves the optional major-course fields", () => {
-    const markup = reviewFieldsMarkup("major");
-
-    for (const name of [
-      "attendance",
-      "grading",
-      "rescue",
-      "teaching",
       "clarity",
       "knowledge",
+      "workloadScore",
+      "fairness",
+      "assessment",
+      "teaching",
     ]) {
       expect(markup).toContain(`name="${name}"`);
     }
-    expect(markup).not.toContain("required");
+    for (const retired of ["interest", "practicality", "organization", "rescue"])
+      expect(markup).not.toContain(`name="${retired}"`);
   });
 
   it("preserves the optional physical-education fields", () => {
-    const markup = reviewFieldsMarkup("pe");
+    const markup = reviewFieldsMarkup("sports");
 
     for (const name of [
       "attendance",
