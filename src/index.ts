@@ -2082,13 +2082,34 @@ app.post("/api/admin/catalog-baseline/uploads", async (c) => {
   if (contentLength > 100_000) return fail(c, "manifest 请求过大", 413);
   try { return c.json(await createBaselineUpload(c.env.DB, await readBoundedJson(c.req.raw, 100_000))) } catch (error) { return baselineImportFailure(c, error) }
 });
-app.get("/api/admin/catalog-baseline/status", async (c) =>
-  c.json({
-    published: !!(await c.env.DB.prepare(
-      "SELECT 1 FROM catalog_baseline_marker WHERE singleton=1",
-    ).first()),
-  }),
-);
+const readCatalogMarker = (db: D1Database) => db.prepare(
+    `SELECT batch_id,approved_schema_version,approved_manifest_content_sha256,artifact_sha256,
+      courses,teachers,relations FROM catalog_baseline_marker WHERE singleton=1`,
+  ).first();
+
+app.get("/api/admin/catalog-baseline/status", async (c) => {
+  const marker = await readCatalogMarker(c.env.DB);
+  return c.json({ published: !!marker, marker: marker || null });
+});
+
+app.get("/api/admin/historical-review-status", async (c) => {
+  const marker = await readCatalogMarker(c.env.DB);
+  const total = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM public_historical_reviews",
+  ).first<{ count: number }>();
+  const byCourse = await c.env.DB.prepare(
+    "SELECT COUNT(DISTINCT course_id) AS count FROM public_historical_reviews",
+  ).first<{ count: number }>();
+  const byTeacher = await c.env.DB.prepare(
+    "SELECT COUNT(DISTINCT teacher_id) AS count FROM public_historical_reviews",
+  ).first<{ count: number }>();
+  return c.json({
+    marker: marker || null,
+    historicalReviews: Number(total?.count || 0),
+    coursesWithHistoricalReviews: Number(byCourse?.count || 0),
+    teachersWithHistoricalReviews: Number(byTeacher?.count || 0),
+  });
+});
 app.get("/api/admin/catalog-baseline/uploads/:batchId", async (c) => {
   try { return c.json(await baselineUploadStatus(c.env.DB, c.req.param("batchId"))) } catch (error) { return baselineImportFailure(c, error) }
 });
