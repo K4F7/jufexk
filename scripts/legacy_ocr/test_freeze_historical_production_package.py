@@ -27,7 +27,7 @@ def refresh_manifest(source: Path, artifact_name: str) -> str:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     rows = [
         json.loads(line)
-        for line in (source / artifact_name).read_text(encoding="utf-8").splitlines()
+        for line in (source / artifact_name).read_text(encoding="utf-8").split("\n")
         if line.strip()
     ]
     manifest["files"][artifact_name] = {
@@ -163,6 +163,65 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
                     expected_catalog_content_sha256="catalog-hash",
                 )
 
+    def test_source_manifest_authority_hash_is_enforced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, catalog_manifest, _ = self.fixture(root)
+            with self.assertRaisesRegex(FreezeError, "#24 approved authority"):
+                _freeze(
+                    source,
+                    catalog_manifest,
+                    root / "out",
+                    expected_manifest_sha256="0" * 64,
+                    expected_catalog_content_sha256="catalog-hash",
+                )
+
+    def test_catalog_manifest_authority_hash_is_enforced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, catalog_manifest, manifest_sha256 = self.fixture(root)
+            catalog_manifest.write_text(
+                canonical_json({"contentSha256": "catalog-hash", "changed": True}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(FreezeError, "catalog manifest SHA-256 mismatch"):
+                _freeze(
+                    source,
+                    catalog_manifest,
+                    root / "out",
+                    expected_manifest_sha256=manifest_sha256,
+                    expected_catalog_content_sha256="catalog-hash",
+                )
+
+    def test_catalog_content_authority_hash_is_enforced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, catalog_manifest, manifest_sha256 = self.fixture(root)
+            with self.assertRaisesRegex(FreezeError, "catalog content SHA-256 mismatch"):
+                _freeze(
+                    source,
+                    catalog_manifest,
+                    root / "out",
+                    expected_manifest_sha256=manifest_sha256,
+                    expected_catalog_content_sha256="unexpected",
+                )
+
+    def test_importable_catalog_relation_is_enforced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, catalog_manifest, _ = self.fixture(root)
+            path = source / "catalog-relations.jsonl"
+            write_jsonl(path, [])
+            manifest_sha256 = refresh_manifest(source, path.name)
+            with self.assertRaisesRegex(FreezeError, "catalog relation"):
+                _freeze(
+                    source,
+                    catalog_manifest,
+                    root / "out",
+                    expected_manifest_sha256=manifest_sha256,
+                    expected_catalog_content_sha256="catalog-hash",
+                )
+
     def test_unresolved_schema_is_enforced(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -263,6 +322,34 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
             list(signature(freeze).parameters),
             ["source_root", "catalog_manifest_path", "output_root"],
         )
+
+    def test_jsonl_reader_preserves_unicode_line_separators_inside_comments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, catalog_manifest, _ = self.fixture(root)
+            path = source / "approved-legacy-reviews.jsonl"
+            rows = [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").split("\n")
+                if line
+            ]
+            rows[0]["comment"] = "before\u2028after"
+            write_jsonl(path, rows)
+            manifest_sha256 = refresh_manifest(source, path.name)
+            output = root / "out"
+            _freeze(
+                source,
+                catalog_manifest,
+                output,
+                expected_manifest_sha256=manifest_sha256,
+                expected_catalog_content_sha256="catalog-hash",
+            )
+            first = json.loads(
+                (output / "importable-legacy-reviews.jsonl")
+                .read_text(encoding="utf-8")
+                .split("\n")[0]
+            )
+            self.assertEqual(first["comment"], "before\u2028after")
 
     def test_existing_output_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:

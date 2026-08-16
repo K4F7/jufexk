@@ -100,7 +100,10 @@ def canonical_json(value: Any) -> str:
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    lines = path.read_text(encoding="utf-8").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    for line_number, line in enumerate(lines, 1):
         if not line.strip():
             raise FreezeError(f"{path.name}:{line_number} contains a blank line")
         value = json.loads(line)
@@ -315,7 +318,7 @@ def _freeze(
         raise FreezeError("missing source manifest.json")
     source_manifest_sha256 = sha256_file(manifest_path)
     if source_manifest_sha256 != expected_manifest_sha256:
-        raise FreezeError("source manifest SHA-256 is not the #88 approved authority")
+        raise FreezeError("source manifest SHA-256 is not the #24 approved authority")
     source_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if source_manifest.get("contract_version") != SOURCE_CONTRACT:
         raise FreezeError("unexpected source contract")
