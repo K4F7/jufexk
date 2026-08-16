@@ -150,6 +150,29 @@ describe("approved historical review tracer import", () => {
       );
       expect(wrongRelation.status).toBe(422);
 
+      const rejectedBatchId = `${reviewId}-rejected-batch`;
+      const rejectedBatch = await SELF.fetch(
+        `${origin}/api/admin/historical-review-imports`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            manifest,
+            records: [
+              record(rejectedBatchId, courseCode, teacherLabel),
+              record(`${rejectedBatchId}-unknown`, courseCode, unrelatedLabel),
+            ],
+          }),
+        },
+      );
+      expect(rejectedBatch.status).toBe(422);
+      const rejectedBatchStored = await env.DB.prepare(
+        "SELECT COUNT(*) count FROM public_historical_reviews WHERE id IN (?,?)",
+      )
+        .bind(rejectedBatchId, `${rejectedBatchId}-unknown`)
+        .first<{ count: number }>();
+      expect(rejectedBatchStored?.count).toBe(0);
+
       const first = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
         method: "POST",
         headers,
