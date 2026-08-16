@@ -45,7 +45,10 @@
 - 筛选条件和页码保存在 URL；进入详情再返回时恢复完整目录状态。
 - 分页与状态采用冻结的 **精简页脚 A**（上一页 / 页码 / 下一页 · 共 N 门），见 `CatalogResultsStates`。
 - **整页集成（视觉冻结）**：Shell C · 搜索 C · 筛选 D · 结果表 B · 状态 A 在 `/courses` 串联；模块外间距可微调，不得暗中改已冻结模块内部。
-- **收藏 / 本专业（意向冻结 · Issue #63）**：交互语言取 **A + C Tag**（筛选下 Toggle · 可移除 Tag 清单 · 行内星标 · 表固定四列 B）。**不**做无筛选七列 / 有筛选四列的条件密度。账号、持久化与生产组件另开 frontend；当前仅 DEV Prototype。
+- **收藏 / 本专业（Prototype 决策记录 · Issue #73，承接 #63）**：三个状态分开记录，不得混淆——
+  - **Prototype 已交付（可丢弃）**：A/B/C 仅 DEV，`?module=catalog-followup&variant=A|B|C` 挂在真实 `/courses`；收藏为内存演示，「本专业」为 stub（≈ `category=major`），不写真实数据；变体 URL 可复制，切换变体保留目录查询状态。
+  - **用户选择状态**：#63 反馈意向为 **A + C Tag**（筛选下 Toggle · 可移除 Tag 清单 · 行内星标 · 表固定四列 B），**不**做无筛选七列 / 有筛选四列的条件密度；用户尚未确认进入生产，未获得明确选择前不创建生产实现任务。
+  - **生产未实现**：不在当前 MVP；用户确认后另建 frontend 与 backend 实现 Issue，账号、持久化与目录查询契约必须分开标记。
 - **后续意向（未采用）**：无筛选时「高密度七列粗浏览」与条件密度切换在 #63 比较后未胜出；生产继续统一四列 B，除非单独重开。
 
 ### 教师目录
@@ -187,7 +190,7 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 | 课程详情摘要 | 意向冻结（页级可砍） | **B — 左身份 / 右评分**（若保留该页） | 评价必须绑定课程+任课教师（见 CONTEXT）；课程单独详情对选课决策价值有限，用户倾向本页可不做。若保留/重开，摘要结构取 B；**不**做生产重写 | 原型：`src/prototype/CourseDetailSummaryVariants.tsx` B · Issue #60 |
 | 学生投稿条目与历史文字资料 | 视觉冻结 | **A 结构 + B 维度胶囊**：紧凑左评分/右正文 + `Separator`；维度用 soft Chip（白胶囊高亮）；历史独立区 + 「历史」Chip + 空态「暂无历史资料」 | 用户确认 A 为主体，并吸收 B 的维度 soft Chip | 生产：`ReviewCard.tsx` · `LegacyReviews.tsx` · 原型：`CourseDetailReviewsVariants.tsx` A+B · Issue #61 |
 | 教师详情与任课课程表 | 视觉冻结 | **课程详情语言迁移**：摘要 B（左身份/右评分）· 任课表课程域折叠 · 投稿/历史对齐模块 10（投稿身份行=课程名） | foundations 规定不单开变体；与详情冻结语言一致、字段保持课程域 | 生产：`TeacherDetailPage.tsx` · `TeacherCourseTable.tsx` · Issue #62 |
-| 目录后续：收藏与条件密度 | 视觉冻结（意向） | **A + C Tag**：筛选下「仅收藏 / 本专业」Toggle · 可移除 Tag 清单（取 C）· 行内星标（ToggleButton render prop）· 表固定四列 B；**不**采用条件七列/四列切换 | 用户确认 A 结构安全可用，并吸收 C 的 Tag 栏；星标选中态已优化。账号/持久化与生产实现另开 | DEV：`?module=catalog-followup&variant=A` · `src/prototype/CatalogFollowupVariants.tsx` · Issue #63 |
+| 目录后续：收藏与条件密度 | Prototype 已交付 · 意向冻结（尚未做生产选择） | 意向 **A + C Tag**：筛选下「仅收藏 / 本专业」Toggle · 可移除 Tag 清单（取 C）· 行内星标（ToggleButton render prop）· 表固定四列 B；**不**采用条件七列/四列切换 | #63 反馈：A 结构安全可用，吸收 C 的 Tag 栏；星标选中态已优化。生产未实现、不在 MVP；用户确认后另建 frontend/backend Issue，账号、持久化、目录查询契约分开标记 | DEV：`?module=catalog-followup&variant=A|B|C` · `src/prototype/CatalogFollowupVariants.tsx` · Issue #73（决策记录，承接 #63） |
 
 ### 首轮顺序
 
@@ -202,7 +205,7 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 9. ~~课程详情摘要~~ → **B 意向冻结；页级可砍，不进生产**（Issue #60）
 10. ~~学生投稿条目与历史文字资料~~ → **A + B 维度胶囊 视觉冻结**（Issue #61）
 11. ~~教师详情与任课课程表~~ → **课程语言迁移 视觉冻结**（Issue #62）
-12. ~~目录后续：收藏入口 + 条件密度~~ → **A + C Tag 意向冻结**（Issue #63）；生产需账号/存储，另开 frontend
+12. ~~目录后续：收藏入口 + 条件密度~~ → **A + C Tag 意向冻结**（Issue #63；决策记录 #73）；生产未实现、不在 MVP，用户确认后另开 frontend/backend
 
 ## Prototype 选择后的处理
 
