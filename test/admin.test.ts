@@ -639,20 +639,21 @@ describe("admin sessions and catalog", () => {
     const pending = await (await SELF.fetch(`${origin}/api/admin/legacy-reviews?batchId=${batch.batchId}`, { headers: { Cookie: auth.cookie } })).json<{ items: Array<{ id: number }> }>();
     expect(pending.items).toHaveLength(1);
     const id = pending.items[0].id;
-    const hidden = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ legacyReviews: unknown[] }>();
-    expect(hidden.legacyReviews).toEqual([]);
+    const hidden = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ reviews: Array<{ comment: string }> }>();
+    expect(hidden.reviews.map((item) => item.comment)).not.toContain("经审核的历史文字");
     const decisions = await Promise.all(["核对截图", "并发重复"].map((note) => SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}`, {
       method: "PATCH", headers: adminHeaders(auth), body: JSON.stringify({ status: "approved", note }),
     }).then((response) => response.status)));
     expect(decisions.sort()).toEqual([200, 409]);
-    const detail = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ legacyReviews: Array<Record<string, unknown>> }>();
-    expect(detail.legacyReviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", source_label: "腾讯表格历史资料" }));
-    expect(JSON.stringify(detail.legacyReviews)).not.toContain("raw_ocr_text");
-    expect(JSON.stringify(detail.legacyReviews)).not.toContain("ocr_tokens_json");
-    expect(JSON.stringify(detail.legacyReviews)).not.toContain("moderator_note");
-    expect(JSON.stringify(detail.legacyReviews)).not.toContain("overall");
-    const teacherDetail = await (await SELF.fetch(`${origin}/api/teachers/1`)).json<{ legacyReviews: Array<Record<string, unknown>> }>();
-    expect(teacherDetail.legacyReviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", course_name: "测试课程" }));
+    const detail = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ reviews: Array<Record<string, unknown>> }>();
+    expect(detail.reviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", teacher_name: "测试教师" }));
+    expect(JSON.stringify(detail.reviews)).not.toContain("source_label");
+    expect(JSON.stringify(detail.reviews)).not.toContain("raw_ocr_text");
+    expect(JSON.stringify(detail.reviews)).not.toContain("ocr_tokens_json");
+    expect(JSON.stringify(detail.reviews)).not.toContain("moderator_note");
+    expect(JSON.stringify(detail.reviews)).not.toContain("overall");
+    const teacherDetail = await (await SELF.fetch(`${origin}/api/teachers/1`)).json<{ reviews: Array<Record<string, unknown>> }>();
+    expect(teacherDetail.reviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", course_name: "测试课程" }));
     const afterCatalog = await (await SELF.fetch(`${origin}/api/courses`)).json<{ items: Array<{ id: number; review_count: number; rating: number }> }>();
     expect(afterCatalog.items.find((item) => item.id === 1)).toMatchObject({ review_count: beforeCourse.review_count, rating: beforeCourse.rating });
     const events = await (await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}/events`, { headers: { Cookie: auth.cookie } })).json<Array<Record<string, unknown>>>();
@@ -679,8 +680,8 @@ describe("admin sessions and catalog", () => {
     const id = Number(inserted.meta.last_row_id);
     expect((await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}`, { method: "PATCH", headers: adminHeaders(auth), body: JSON.stringify({ status: "rejected" }) })).status).toBe(400);
     expect((await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}`, { method: "PATCH", headers: adminHeaders(auth), body: JSON.stringify({ status: "rejected", note: "无法确认来源" }) })).status).toBe(200);
-    const detail = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ legacyReviews: Array<{ comment: string }> }>();
-    expect(detail.legacyReviews.map((item) => item.comment)).not.toContain("不公开的文字");
+    const detail = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ reviews: Array<{ comment: string }> }>();
+    expect(detail.reviews.map((item) => item.comment)).not.toContain("不公开的文字");
     await env.DB.prepare("DELETE FROM legacy_reviews WHERE id=?").bind(id).run();
     await env.DB.prepare("DELETE FROM legacy_import_batches WHERE id='legacy_reject_test'").run();
   });

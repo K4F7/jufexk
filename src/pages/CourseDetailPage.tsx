@@ -3,13 +3,21 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
+import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
-import type { Course, PublicReview, Review, Teacher } from "../lib/types";
+import type {
+  Course,
+  PublicReview,
+  Review,
+  Teacher,
+} from "../lib/types";
 
 type Detail = {
   course: Course & { teachers: Teacher[] };
   reviews: PublicReview[];
+  reviewCount: number;
+  nextReviewCursor: string | null;
 };
 
 /** DEV-only: live course-detail-summary A/B/C compare. */
@@ -118,13 +126,20 @@ export function CourseDetailPage() {
   const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
+  const reviewFeed = usePublicReviewPagination("courses", id);
 
   useEffect(() => {
     let cancelled = false;
+    setData(null);
+    setError("");
+    reviewFeed.reset([], null);
     (async () => {
       try {
         const d = await api<Detail>(`/api/courses/${id}`);
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          setData(d);
+          reviewFeed.reset(d.reviews, d.nextReviewCursor);
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       }
@@ -132,7 +147,7 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, reviewFeed.reset]);
 
   if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
   if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
@@ -203,7 +218,15 @@ export function CourseDetailPage() {
         </Suspense>
       ) : (
         <>
-          <PublicReviews rows={data.reviews ?? []} identity="teacher" />
+          <PublicReviews
+            rows={reviewFeed.reviews}
+            identity="teacher"
+            total={data.reviewCount}
+            hasMore={Boolean(reviewFeed.nextCursor)}
+            isLoadingMore={reviewFeed.isLoadingMore}
+            loadMoreError={reviewFeed.loadMoreError}
+            onLoadMore={reviewFeed.loadMore}
+          />
         </>
       )}
     </section>

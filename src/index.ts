@@ -174,20 +174,113 @@ const publicReviewBinding = `
              AND public_offering.course_id=r.course_id
          )
        )`;
-const getPublicReviewStats = async (
+type PublicReviewCursor = { source: number; key: string };
+const publicReviewPageSize = (c: any) =>
+  Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
+const decodePublicReviewCursor = (value: string | undefined): PublicReviewCursor | null => {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(atob(value)) as PublicReviewCursor;
+    return Number.isInteger(parsed.source) && typeof parsed.key === "string"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+};
+const encodePublicReviewCursor = (cursor: PublicReviewCursor) =>
+  btoa(JSON.stringify(cursor));
+const getPublicTextReviewCount = async (
   db: D1Database,
   subject: "course_id" | "teacher_id",
   id: number | null,
-) =>
-  db
+) => {
+  const live = await db
     .prepare(
-      `SELECT COUNT(*) ratingCount,
-         COALESCE(SUM(CASE WHEN trim(COALESCE(r.comment,''))<>'' THEN 1 ELSE 0 END),0) noteCount
+      `SELECT COUNT(*) count
        FROM reviews r
-       WHERE r.${subject}=? AND r.status='approved'${publicReviewBinding}`,
+       WHERE r.${subject}=? AND r.status='approved'
+         AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}`,
     )
     .bind(id)
-    .first<{ ratingCount: number; noteCount: number }>();
+    .first<{ count: number }>();
+  const historical = await db
+    .prepare(`SELECT COUNT(*) count FROM public_historical_reviews WHERE ${subject}=?`)
+    .bind(id)
+    .first<{ count: number }>();
+  const legacy = await db
+    .prepare(
+      `SELECT COUNT(*) count
+       FROM legacy_reviews lr
+       JOIN courses c ON c.id=lr.course_id
+       JOIN teachers t ON t.id=lr.teacher_id
+       WHERE lr.${subject}=? AND lr.status='approved'
+         AND trim(COALESCE(lr.comment,''))<>''`,
+    )
+    .bind(id)
+    .first<{ count: number }>();
+  return (live?.count || 0) + (historical?.count || 0) + (legacy?.count || 0);
+};
+const getPublicReviewPage = async (
+  db: D1Database,
+  subject: "course_id" | "teacher_id",
+  id: number | null,
+  size: number,
+  cursor: PublicReviewCursor | null,
+) => {
+  const cursorSource = cursor?.source ?? -1;
+  const cursorKey = cursor?.key ?? "";
+  const { results } = await db
+    .prepare(
+      `SELECT source_order,sort_key,id,course_id,teacher_id,comment,
+         course_name,course_code,teacher_name
+       FROM (
+         SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
+           phr.course_id,phr.teacher_id,phr.comment,
+           c.name course_name,c.code course_code,t.name teacher_name
+         FROM public_historical_reviews phr
+         JOIN courses c ON c.id=phr.course_id
+         JOIN teachers t ON t.id=phr.teacher_id
+         WHERE phr.${subject}=?
+         UNION ALL
+         SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
+           lr.course_id,lr.teacher_id,lr.comment,
+           c.name course_name,c.code course_code,t.name teacher_name
+         FROM legacy_reviews lr
+         JOIN courses c ON c.id=lr.course_id
+         JOIN teachers t ON t.id=lr.teacher_id
+         WHERE lr.${subject}=? AND lr.status='approved'
+           AND trim(COALESCE(lr.comment,''))<>''
+         UNION ALL
+         SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
+           r.course_id,r.teacher_id,r.comment,
+           c.name course_name,c.code course_code,t.name teacher_name
+         FROM reviews r
+         JOIN courses c ON c.id=r.course_id
+         JOIN teachers t ON t.id=r.teacher_id
+         WHERE r.${subject}=? AND r.status='approved'
+           AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
+       ) public_reviews
+       WHERE source_order>? OR (source_order=? AND sort_key>?)
+       ORDER BY source_order,sort_key
+       LIMIT ?`,
+    )
+    .bind(id, id, id, cursorSource, cursorSource, cursorKey, size + 1)
+    .all();
+  const typedResults = results as Array<
+    Record<string, unknown> & { source_order: number; sort_key: string }
+  >;
+  const hasMore = typedResults.length > size;
+  const page = typedResults.slice(0, size);
+  const last = page.at(-1);
+  return {
+    items: page.map(({ source_order: _source, sort_key: _key, ...review }) => review),
+    nextCursor:
+      hasMore && last
+        ? encodePublicReviewCursor({ source: last.source_order, key: last.sort_key })
+        : null,
+  };
+};
 const csrfOk = (c: any, expected: string) => {
   const header = c.req.header("X-CSRF-Token"),
     cookie = getCookie(c, "jufexk_csrf");
@@ -328,7 +421,8 @@ app.get("/api/teachers/:id", async (c) => {
     .bind(id)
     .first();
   if (!teacher) return fail(c, "教师不存在", 404);
-  const reviewStats = await getPublicReviewStats(c.env.DB, "teacher_id", id);
+  const reviewCount = await getPublicTextReviewCount(c.env.DB, "teacher_id", id);
+  const reviewPage = await getPublicReviewPage(c.env.DB, "teacher_id", id, 20, null);
   const courses = (
     await c.env.DB.prepare(
       `SELECT c.*,COUNT(r.id) review_count,ROUND(AVG(r.overall),1) rating
@@ -342,52 +436,29 @@ app.get("/api/teachers/:id", async (c) => {
       .bind(id, id)
       .all()
   ).results;
-  const reviews = (
-    await c.env.DB.prepare(
-      `SELECT r.id,r.course_id,r.teacher_id,r.offering_id,r.category,
-        r.attendance,r.grading,r.grading_score,r.workload,r.rescue,
-        r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
-        r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
-        r.comment,NULLIF(r.term,'') term,NULLIF(r.created_at,'') created_at,
-        NULLIF(r.reviewed_at,'') publishedAt,
-        c.name course_name,c.code course_code
-       FROM reviews r
-       LEFT JOIN courses c ON c.id=r.course_id
-       WHERE r.teacher_id=? AND r.status='approved'
-         AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
-       ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
-    )
-      .bind(id)
-      .all()
-  ).results;
-  const historicalReviews = (
-    await c.env.DB.prepare(
-      `SELECT 'historical:' || phr.id id,phr.course_id,phr.teacher_id,
-        phr.comment,c.name course_name,c.code course_code
-       FROM public_historical_reviews phr JOIN courses c ON c.id=phr.course_id
-       WHERE phr.teacher_id=? ORDER BY phr.id LIMIT 100`,
-    )
-      .bind(id)
-      .all()
-  ).results;
-  const legacyReviews = (
-    await c.env.DB.prepare(
-      `SELECT lr.id,lr.course_id,lr.teacher_id,lr.comment,lr.term,lr.source_label,lr.created_at,c.name course_name,c.code course_code
-       FROM legacy_reviews lr JOIN courses c ON c.id=lr.course_id
-       WHERE lr.teacher_id=? AND lr.status='approved'
-       ORDER BY lr.created_at DESC,lr.id DESC LIMIT 100`,
-    )
-      .bind(id)
-      .all()
-  ).results;
   return c.json({
     teacher,
     courses,
-    reviews: [...historicalReviews, ...reviews],
-    legacyReviews,
-    ratingCount: reviewStats?.ratingCount || 0,
-    noteCount: reviewStats?.noteCount || 0,
+    reviews: reviewPage.items,
+    reviewCount,
+    nextReviewCursor: reviewPage.nextCursor,
   });
+});
+app.get("/api/teachers/:id/reviews", async (c) => {
+  const id = integer(c.req.param("id"));
+  const teacher = await c.env.DB.prepare("SELECT id FROM teachers WHERE id=?").bind(id).first();
+  if (!teacher) return fail(c, "教师不存在", 404);
+  const rawCursor = c.req.query("cursor");
+  const cursor = decodePublicReviewCursor(rawCursor);
+  if (rawCursor && !cursor) return fail(c, "评价游标无效", 400);
+  const page = await getPublicReviewPage(
+    c.env.DB,
+    "teacher_id",
+    id,
+    publicReviewPageSize(c),
+    cursor,
+  );
+  return c.json(page);
 });
 app.get("/api/courses/options", async (c) => {
   const { page, size } = pageArgs(c);
@@ -420,46 +491,11 @@ app.get("/api/courses/:id", async (c) => {
     .bind(id)
     .first();
   if (!course) return fail(c, "课程不存在", 404);
-  const reviewStats = await getPublicReviewStats(c.env.DB, "course_id", id);
+  const reviewCount = await getPublicTextReviewCount(c.env.DB, "course_id", id);
+  const reviewPage = await getPublicReviewPage(c.env.DB, "course_id", id, 20, null);
   const teachers = (
     await c.env.DB.prepare(
       "SELECT t.* FROM teachers t JOIN course_teachers ct ON ct.teacher_id=t.id WHERE ct.course_id=? ORDER BY t.name",
-    )
-      .bind(id)
-      .all()
-  ).results;
-  const reviews = (
-    await c.env.DB.prepare(
-      `SELECT r.id,r.course_id,r.teacher_id,r.offering_id,r.category,
-        r.attendance,r.grading,r.grading_score,r.workload,
-        r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
-        r.workload_score,r.fairness,
-        r.comment,NULLIF(r.term,'') term,NULLIF(r.created_at,'') created_at,
-        NULLIF(r.reviewed_at,'') publishedAt,t.name teacher_name
-       FROM reviews r LEFT JOIN teachers t ON t.id=r.teacher_id
-       WHERE r.course_id=? AND r.status='approved'
-         AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
-       ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
-    )
-      .bind(id)
-      .all()
-  ).results;
-  const historicalReviews = (
-    await c.env.DB.prepare(
-      `SELECT 'historical:' || phr.id id,phr.course_id,phr.teacher_id,
-        phr.comment,t.name teacher_name
-       FROM public_historical_reviews phr JOIN teachers t ON t.id=phr.teacher_id
-       WHERE phr.course_id=? ORDER BY phr.id LIMIT 100`,
-    )
-      .bind(id)
-      .all()
-  ).results;
-  const legacyReviews = (
-    await c.env.DB.prepare(
-      `SELECT lr.id,lr.course_id,lr.teacher_id,lr.comment,lr.term,lr.source_label,lr.created_at,t.name teacher_name
-       FROM legacy_reviews lr LEFT JOIN teachers t ON t.id=lr.teacher_id
-       WHERE lr.course_id=? AND lr.status='approved'
-       ORDER BY lr.created_at DESC,lr.id DESC LIMIT 100`,
     )
       .bind(id)
       .all()
@@ -473,11 +509,26 @@ app.get("/api/courses/:id", async (c) => {
   ).results;
   return c.json({
     course: { ...course, teachers, nameVariants },
-    reviews: [...historicalReviews, ...reviews],
-    legacyReviews,
-    ratingCount: reviewStats?.ratingCount || 0,
-    noteCount: reviewStats?.noteCount || 0,
+    reviews: reviewPage.items,
+    reviewCount,
+    nextReviewCursor: reviewPage.nextCursor,
   });
+});
+app.get("/api/courses/:id/reviews", async (c) => {
+  const id = integer(c.req.param("id"));
+  const course = await c.env.DB.prepare("SELECT id FROM courses WHERE id=?").bind(id).first();
+  if (!course) return fail(c, "课程不存在", 404);
+  const rawCursor = c.req.query("cursor");
+  const cursor = decodePublicReviewCursor(rawCursor);
+  if (rawCursor && !cursor) return fail(c, "评价游标无效", 400);
+  const page = await getPublicReviewPage(
+    c.env.DB,
+    "course_id",
+    id,
+    publicReviewPageSize(c),
+    cursor,
+  );
+  return c.json(page);
 });
 
 const turnstileMode = (
@@ -839,9 +890,9 @@ app.post("/api/admin/historical-review-imports", async (c) => {
       };
     };
     record?: Record<string, unknown>;
+    records?: Record<string, unknown>[];
   }>();
   const manifest = body.manifest;
-  const record = body.record;
   if (
     manifest?.contractVersion !== HISTORICAL_FREEZE_CONTRACT ||
     manifest.status !== "package_ready" ||
@@ -871,67 +922,105 @@ app.post("/api/admin/historical-review-imports", async (c) => {
     "source_row",
     "worksheet",
   ]);
-  if (
-    !record ||
-    Object.keys(record).length !== requiredFields.size ||
-    Object.keys(record).some((field) => !requiredFields.has(field)) ||
-    record.schema_version !== HISTORICAL_RECORD_SCHEMA
-  )
-    return fail(c, "历史评价记录不符合批准包固定 schema", 422);
+  const records = body.records ?? (body.record ? [body.record] : []);
+  if (!records.length || records.length > 50)
+    return fail(c, "历史评价批次必须包含 1 至 50 条记录", 422);
+  if (body.record && body.records) return fail(c, "历史评价批次契约不明确", 422);
 
-  const reviewId = clean(record.review_id, 200);
-  const courseCode = clean(record.catalog_course_code, 100);
-  const teacherLabel = clean(record.catalog_teacher_label, 200);
-  const comment = clean(record.comment, 4000);
-  if (!reviewId || !courseCode || !teacherLabel || !comment)
-    return fail(c, "历史评价记录缺少稳定身份、目录身份或正文", 422);
-
-  const identity = await c.env.DB.prepare(
-    `SELECT c.id course_id,t.id teacher_id,
-       EXISTS(
-         SELECT 1 FROM course_teachers ct
-         WHERE ct.course_id=c.id AND ct.teacher_id=t.id
-       ) relation_exists
-     FROM courses c CROSS JOIN teachers t
-     WHERE c.code=? AND t.source_teacher_label=?`,
-  )
-    .bind(courseCode, teacherLabel)
-    .first<{ course_id: number; teacher_id: number; relation_exists: number }>();
-  if (!identity || !identity.relation_exists)
-    return fail(c, "历史评价引用的课程、教师或任课关系不存在", 422);
-
-  const existing = await c.env.DB.prepare(
-    `SELECT course_id,teacher_id,comment FROM public_historical_reviews WHERE id=?`,
-  )
-    .bind(reviewId)
-    .first<{ course_id: number; teacher_id: number; comment: string }>();
-  if (existing) {
+  const seen = new Set<string>();
+  const pending: Array<{
+    reviewId: string;
+    courseId: number;
+    teacherId: number;
+    comment: string;
+  }> = [];
+  let existingCount = 0;
+  for (const record of records) {
     if (
-      existing.course_id !== identity.course_id ||
-      existing.teacher_id !== identity.teacher_id ||
-      existing.comment !== comment
+      !record ||
+      Object.keys(record).length !== requiredFields.size ||
+      Object.keys(record).some((field) => !requiredFields.has(field)) ||
+      record.schema_version !== HISTORICAL_RECORD_SCHEMA
     )
-      return fail(c, "稳定评价身份已绑定到不同内容", 409);
-    return c.json({ id: `historical:${reviewId}`, created: false });
+      return fail(c, "历史评价记录不符合批准包固定 schema", 422);
+
+    const reviewId = clean(record.review_id, 200);
+    const courseCode = clean(record.catalog_course_code, 100);
+    const teacherLabel = clean(record.catalog_teacher_label, 200);
+    const comment = clean(record.comment, 4000);
+    if (!reviewId || !courseCode || !teacherLabel || !comment)
+      return fail(c, "历史评价记录缺少稳定身份、目录身份或正文", 422);
+    if (seen.has(reviewId)) return fail(c, "历史评价批次包含重复稳定身份", 422);
+    seen.add(reviewId);
+
+    const identity = await c.env.DB.prepare(
+      `SELECT c.id course_id,t.id teacher_id,
+         EXISTS(
+           SELECT 1 FROM course_teachers ct
+           WHERE ct.course_id=c.id AND ct.teacher_id=t.id
+         ) relation_exists
+       FROM courses c CROSS JOIN teachers t
+       WHERE c.code=? AND t.source_teacher_label=?`,
+    )
+      .bind(courseCode, teacherLabel)
+      .first<{ course_id: number; teacher_id: number; relation_exists: number }>();
+    if (!identity || !identity.relation_exists)
+      return fail(c, "历史评价引用的课程、教师或任课关系不存在", 422);
+
+    const existing = await c.env.DB.prepare(
+      `SELECT course_id,teacher_id,comment FROM public_historical_reviews WHERE id=?`,
+    )
+      .bind(reviewId)
+      .first<{ course_id: number; teacher_id: number; comment: string }>();
+    if (existing) {
+      if (
+        existing.course_id !== identity.course_id ||
+        existing.teacher_id !== identity.teacher_id ||
+        existing.comment !== comment
+      )
+        return fail(c, "稳定评价身份已绑定到不同内容", 409);
+      existingCount += 1;
+      continue;
+    }
+    pending.push({
+      reviewId,
+      courseId: identity.course_id,
+      teacherId: identity.teacher_id,
+      comment,
+    });
   }
 
-  await c.env.DB.prepare(
-    `INSERT INTO public_historical_reviews(
-       id,course_id,teacher_id,comment,package_contract,
-       approved_package_manifest_sha256,approved_catalog_content_sha256
-     ) VALUES(?,?,?,?,?,?,?)`,
-  )
-    .bind(
-      reviewId,
-      identity.course_id,
-      identity.teacher_id,
-      comment,
-      HISTORICAL_FREEZE_CONTRACT,
-      APPROVED_HISTORICAL_MANIFEST_SHA256,
-      APPROVED_CATALOG_CONTENT_SHA256,
-    )
-    .run();
-  return c.json({ id: `historical:${reviewId}`, created: true }, 201);
+  if (pending.length) {
+    await c.env.DB.batch(
+      pending.map(({ reviewId, courseId, teacherId, comment }) =>
+        c.env.DB.prepare(
+          `INSERT INTO public_historical_reviews(
+             id,course_id,teacher_id,comment,package_contract,
+             approved_package_manifest_sha256,approved_catalog_content_sha256
+           ) VALUES(?,?,?,?,?,?,?)`,
+        ).bind(
+          reviewId,
+          courseId,
+          teacherId,
+          comment,
+          HISTORICAL_FREEZE_CONTRACT,
+          APPROVED_HISTORICAL_MANIFEST_SHA256,
+          APPROVED_CATALOG_CONTENT_SHA256,
+        ),
+      ),
+    );
+  }
+  if (body.record) {
+    const reviewId = clean(body.record.review_id, 200);
+    return c.json(
+      { id: `historical:${reviewId}`, created: pending.length === 1 },
+      pending.length ? 201 : 200,
+    );
+  }
+  return c.json(
+    { total: records.length, created: pending.length, existing: existingCount },
+    pending.length ? 201 : 200,
+  );
 });
 app.post("/api/admin/logout", async (c) => {
   await c.env.DB.prepare(

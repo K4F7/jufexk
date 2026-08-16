@@ -23,8 +23,14 @@ import {
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
+import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
-import type { Course, PublicReview, Review, Teacher } from "../lib/types";
+import type {
+  Course,
+  PublicReview,
+  Review,
+  Teacher,
+} from "../lib/types";
 
 /** DEV-only: 任课评价文字流 (module 12 / #71 承接 #68). */
 const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
@@ -48,6 +54,8 @@ type Detail = {
   teacher: Teacher;
   courses: Course[];
   reviews?: PublicReview[];
+  reviewCount: number;
+  nextReviewCursor: string | null;
 };
 
 function TeacherSummary({
@@ -105,13 +113,20 @@ export function TeacherDetailPage() {
   const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
+  const reviewFeed = usePublicReviewPagination("teachers", id);
 
   useEffect(() => {
     let cancelled = false;
+    setData(null);
+    setError("");
+    reviewFeed.reset([], null);
     (async () => {
       try {
         const d = await api<Detail>(`/api/teachers/${id}`);
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          setData(d);
+          reviewFeed.reset(d.reviews ?? [], d.nextReviewCursor);
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       }
@@ -119,14 +134,14 @@ export function TeacherDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, reviewFeed.reset]);
 
   if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
   if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
 
   const t = data.teacher;
   const courses = data.courses ?? [];
-  const reviews = data.reviews ?? [];
+  const reviews = reviewFeed.reviews;
   const courseCount = t.course_count ?? courses.length;
 
   /** Restore catalog filters; drop prototype module/variant if present. */
@@ -176,7 +191,15 @@ export function TeacherDetailPage() {
           />
         </Suspense>
       ) : (
-        <PublicReviews rows={reviews} identity="course" />
+        <PublicReviews
+          rows={reviews}
+          identity="course"
+          total={data.reviewCount}
+          hasMore={Boolean(reviewFeed.nextCursor)}
+          isLoadingMore={reviewFeed.isLoadingMore}
+          loadMoreError={reviewFeed.loadMoreError}
+          onLoadMore={reviewFeed.loadMore}
+        />
       )}
     </section>
   );

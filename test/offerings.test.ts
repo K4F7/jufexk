@@ -55,7 +55,7 @@ describe("offerings", () => {
     expect(body.reviews[0]).not.toHaveProperty("status");
   });
 
-  it("returns the unified general dimensions without retired fields", async () => {
+  it("returns only the anonymous text projection on public details", async () => {
     const course = await env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES('GE001','General elective','general','Center')",
     ).run();
@@ -77,14 +77,13 @@ describe("offerings", () => {
     const body = await response.json<{
       reviews: Array<Record<string, unknown>>;
     }>();
-    expect(body.reviews[0]).toMatchObject({
-      clarity: 5,
-      knowledge: 4,
-      workload_score: 2,
-      fairness: 5,
-      assessment: "闭卷考试",
-      teaching: "讲解清楚",
-    });
+    expect(body.reviews[0]).toMatchObject({ comment: "维度投影测试" });
+    expect(body.reviews[0]).not.toHaveProperty("clarity");
+    expect(body.reviews[0]).not.toHaveProperty("knowledge");
+    expect(body.reviews[0]).not.toHaveProperty("workload_score");
+    expect(body.reviews[0]).not.toHaveProperty("fairness");
+    expect(body.reviews[0]).not.toHaveProperty("assessment");
+    expect(body.reviews[0]).not.toHaveProperty("teaching");
     expect(body.reviews[0]).not.toHaveProperty("interest");
     expect(body.reviews[0]).not.toHaveProperty("practicality");
     expect(body.reviews[0]).not.toHaveProperty("organization");
