@@ -33,7 +33,8 @@
     "db:local": "wrangler d1 migrations apply jufexk --local",
     "db:seed-preview": "wrangler d1 execute jufexk --local --file=scripts/prototype-local-seed.sql",
     "db:export-remote": "mkdir -p .local-data && wrangler d1 export jufexk --remote --output=.local-data/remote-export.sql -y",
-    "db:import-remote-local": "python3 scripts/import-remote-export-local.py"
+    "db:import-remote-local": "python3 scripts/import-remote-export-local.py",
+    "historical-import:production": "tsx scripts/historical-import/publish-production.ts"
   },
   "dependencies": {
     "@heroui/react": "^3.2.4",
