@@ -8,15 +8,15 @@ describe("public course-teacher review projection", () => {
     const code = `PROJECTION-${Date.now()}`;
     const teacherName = `投影教师-${Date.now()}`;
     const teacher = await env.DB.prepare(
-      "INSERT INTO teachers(name,department) VALUES(?,?)",
+      "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
     )
-      .bind(teacherName, "测试学院")
+      .bind(teacherName, teacherName, "测试学院")
       .run();
     const teacherId = Number(teacher.meta.last_row_id);
     const course = await env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
     )
-      .bind(code, `投影课程-${code}`, "major", "测试学院")
+      .bind(code, `投影课程-${code}`, "general", "测试学院")
       .run();
     const courseId = Number(course.meta.last_row_id);
     await env.DB.prepare(
@@ -41,7 +41,7 @@ describe("public course-teacher review projection", () => {
         .bind(
           courseId,
           teacherId,
-          "major",
+          "general",
           4,
           comment,
           term,
@@ -85,7 +85,7 @@ describe("public course-teacher review projection", () => {
         0.99,
         courseId,
         teacherId,
-        "major",
+        "general",
         "已审核历史资料",
         "approved",
         "2024 秋",
@@ -104,7 +104,7 @@ describe("public course-teacher review projection", () => {
         0.99,
         courseId,
         teacherId,
-        "major",
+        "general",
         "待审核历史资料",
         "pending",
       ),

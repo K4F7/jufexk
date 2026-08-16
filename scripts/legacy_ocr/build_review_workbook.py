@@ -12,7 +12,10 @@ from typing import Any
 import pandas as pd
 
 
-COURSE_FIELDS = ["code", "name", "category", "department", "credits", "description"]
+COURSE_FIELDS = [
+    "code", "name", "category", "source_category_text",
+    "department", "credits", "description",
+]
 TEACHER_FIELDS = ["name", "department", "title", "bio"]
 RELATION_FIELDS = ["course_code", "course_name", "teacher_name", "teacher_department"]
 OFFERING_FIELDS = [
@@ -144,12 +147,10 @@ def unique_rows(rows: list[dict[str, str]], fields: list[str]) -> list[dict[str,
 
 
 def course_category(row: dict[str, str]) -> str:
-    text = f"{row.get('course_name', '')} {row.get('kclb', '')}"
+    text = row.get("kclb", "").strip()
     if "体育" in text:
-        return "pe"
-    if "公共课" in text or "通识" in text:
-        return "general"
-    return "major"
+        return "sports"
+    return "general"
 
 
 def write_import_csv(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None:
@@ -176,7 +177,7 @@ def validate_import_samples(
     if len(offering_keys) != len(offerings):
         raise ValueError("duplicate course/term/section in offering import sample")
     for row in courses:
-        if not row["name"] or row["category"] not in {"major", "pe", "general"}:
+        if not row["name"] or row["category"] not in {"general", "sports"}:
             raise ValueError(f"invalid course row: {row}")
         if len(row["code"]) > 40 or len(row["name"]) > 120 or len(row["department"]) > 80:
             raise ValueError(f"course field exceeds API limit: {row}")
@@ -367,7 +368,7 @@ def main() -> int:
             row.setdefault("review_status", "待人工核对")
 
     course_import = unique_rows([
-        {"code": row["course_code"], "name": row["course_name"], "category": course_category(row), "department": row.get("cddw", ""), "credits": row.get("xf", ""), "description": ""}
+        {"code": row["course_code"], "name": row["course_name"], "category": course_category(row), "source_category_text": row.get("kclb", ""), "department": row.get("cddw", ""), "credits": row.get("xf", ""), "description": ""}
         for row in raw_catalog
     ], COURSE_FIELDS)
     teacher_import = unique_rows([

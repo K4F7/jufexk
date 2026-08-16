@@ -1,5 +1,15 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import {
+  BaselineImportError,
+  baselineUploadStatus,
+  createBaselineUpload,
+  finalizeBaselineUpload,
+  previewBaselineUpload,
+  publishBaselineUpload,
+  putBaselineChunk,
+  readBoundedJson,
+} from "./catalog-baseline-import";
 
 type Bindings = {
   DB: D1Database;
@@ -26,18 +36,17 @@ type StashedReview = {
   teaching: string;
   clarity: number | null;
   knowledge: number | null;
-  interest: number | null;
-  practicality: number | null;
   workloadScore: number | null;
   fairness: number | null;
-  organization: number | null;
   overall: number;
   comment: string;
   term: string;
 };
 const app = new Hono<{ Bindings: Bindings; Variables: Vars }>();
+type AppContext = Context<{ Bindings: Bindings; Variables: Vars }>;
 const clean = (v: unknown, n = 500) =>
   typeof v === "string" ? v.trim().slice(0, n) : "";
+const nullableClean = (v: unknown, n = 500) => clean(v, n) || null;
 const integer = (v: unknown) => {
   if (typeof v === "number") return Number.isSafeInteger(v) ? v : null;
   if (typeof v !== "string" || !/^-?(?:0|[1-9]\d*)$/.test(v)) return null;
@@ -62,11 +71,8 @@ const parseStashedReview = (json: string): StashedReview | null => {
     "gradingScore",
     "clarity",
     "knowledge",
-    "interest",
-    "practicality",
     "workloadScore",
     "fairness",
-    "organization",
   ] as const;
   const scores = Object.fromEntries(
     scoreFields.map((field) => [field, rating(object[field])]),
@@ -90,11 +96,8 @@ const parseStashedReview = (json: string): StashedReview | null => {
     teaching: clean(object.teaching, 600),
     clarity: scores.clarity,
     knowledge: scores.knowledge,
-    interest: scores.interest,
-    practicality: scores.practicality,
     workloadScore: scores.workloadScore,
     fairness: scores.fairness,
-    organization: scores.organization,
     overall,
     comment: clean(object.comment, 1200),
     term: clean(object.term, 30),
@@ -230,7 +233,9 @@ app.get("/api/courses", async (c) => {
     cat = clean(c.req.query("category"), 20),
     department = clean(c.req.query("department"), 80),
     teacherId = integer(c.req.query("teacherId"));
-  const where = `(?='' OR c.category=?) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ?)`;
+  if (cat && cat !== "sports")
+    return fail(c, "公开筛选仅支持 sports");
+  const where = `(?='' OR c.category=?) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?))`;
   const args = [
     cat,
     cat,
@@ -238,6 +243,7 @@ app.get("/api/courses", async (c) => {
     department,
     teacherId,
     teacherId,
+    q,
     q,
     q,
     q,
@@ -408,9 +414,9 @@ app.get("/api/courses/:id", async (c) => {
   const reviews = (
     await c.env.DB.prepare(
       `SELECT r.id,r.course_id,r.teacher_id,r.offering_id,r.category,
-        r.attendance,r.grading,r.grading_score,r.workload,r.rescue,
+        r.attendance,r.grading,r.grading_score,r.workload,
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
-        r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
+        r.workload_score,r.fairness,
         r.comment,NULLIF(r.term,'') term,NULLIF(r.created_at,'') created_at,
         NULLIF(r.reviewed_at,'') publishedAt,t.name teacher_name
        FROM reviews r LEFT JOIN teachers t ON t.id=r.teacher_id
@@ -431,8 +437,15 @@ app.get("/api/courses/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
+  const nameVariants = (
+    await c.env.DB.prepare(
+      "SELECT name,created_at FROM course_name_variants WHERE course_id=? ORDER BY name",
+    )
+      .bind(id)
+      .all()
+  ).results;
   return c.json({
-    course: { ...course, teachers },
+    course: { ...course, teachers, nameVariants },
     reviews,
     legacyReviews,
     ratingCount: reviewStats?.ratingCount || 0,
@@ -551,22 +564,16 @@ app.post("/api/reviews", async (c) => {
   const clarity = rating(b.clarity),
     knowledge = rating(b.knowledge),
     gradingScore = rating(b.gradingScore),
-    interest = rating(b.interest),
-    practicality = rating(b.practicality),
     workloadScore = rating(b.workloadScore),
-    fairness = rating(b.fairness),
-    organization = rating(b.organization);
+    fairness = rating(b.fairness);
   const provided = (value: unknown) =>
     value !== undefined && value !== null && value !== "";
   if (
     (provided(b.clarity) && !clarity) ||
     (provided(b.knowledge) && !knowledge) ||
     (provided(b.gradingScore) && !gradingScore) ||
-    (provided(b.interest) && !interest) ||
-    (provided(b.practicality) && !practicality) ||
     (provided(b.workloadScore) && !workloadScore) ||
-    (provided(b.fairness) && !fairness) ||
-    (provided(b.organization) && !organization)
+    (provided(b.fairness) && !fairness)
   )
     return fail(c, "评分必须在 1 到 5 之间");
   if (!(await takeRateLimit(c.env.DB, `review-submit:${ipHash}`, 3600, 5)))
@@ -598,16 +605,16 @@ app.post("/api/reviews", async (c) => {
         clean(b.grading, 120),
         gradingScore,
         clean(b.workload, 120),
-        clean(b.rescue, 120),
+        "",
         clean(b.assessment, 200),
         clean(b.teaching, 600),
         clarity,
         knowledge,
-        interest,
-        practicality,
+        null,
+        null,
         workloadScore,
         fairness,
-        organization,
+        null,
         overall,
         clean(b.comment, 1200),
         term,
@@ -632,7 +639,7 @@ app.post("/api/catalog-requests", async (c) => {
     courseCode = clean(b.courseCode, 40),
     courseName = clean(b.courseName, 200),
     category = clean(b.category, 20),
-    teacherName = clean(b.teacherName, 80),
+    teacherSourceLabel = clean(b.teacherSourceLabel, 120),
     department = clean(b.department, 80),
     ip = c.req.header("CF-Connecting-IP") || "unknown",
     ipHash = await keyedDigest(ip, c.env.IP_HASH_SECRET);
@@ -640,17 +647,14 @@ app.post("/api/catalog-requests", async (c) => {
     return fail(c, "人机验证失败，请重试", 403);
   if (!["course", "teacher"].includes(kind))
     return fail(c, "申请类型必须是 course 或 teacher");
-  if (!courseName && !teacherName)
-    return fail(c, "请至少填写课程名称或教师姓名");
-  if (kind === "course" && !courseName) return fail(c, "请填写课程名称");
-  if (kind === "teacher" && !teacherName) return fail(c, "请填写教师姓名");
-  if (
-    kind === "teacher" &&
-    (courseCode || courseName || category || b.review != null)
-  )
+  if (kind === "teacher" && (courseCode || courseName || category || b.review != null))
     return fail(c, "教师申请不得携带课程字段或随附评价");
-  if (category && !["major", "pe", "general"].includes(category))
-    return fail(c, "课程类别必须为 major、pe 或 general");
+  if (kind === "course" && (!courseCode || !courseName))
+    return fail(c, "请填写课号和课程名称");
+  if (!teacherSourceLabel) return fail(c, "请填写来源教师名");
+  if (kind === "course" && !category) return fail(c, "请选择评价模板类型");
+  if (category && !["general", "sports"].includes(category))
+    return fail(c, "评价模板类型必须为 general 或 sports");
   const rawReview = b.review;
   if (
     rawReview !== undefined &&
@@ -659,7 +663,7 @@ app.post("/api/catalog-requests", async (c) => {
   )
     return fail(c, "随附评价格式无效");
   const review = rawReview as Record<string, unknown> | null;
-  if (review && (!courseName || !teacherName))
+  if (review && (!courseCode || !courseName || !teacherSourceLabel))
     return fail(c, "随附评价必须同时填写课程和教师，以便绑定任课关系");
   const overall = review ? rating(review.overall) : null;
   if (review && !overall) return fail(c, "随附评价必须包含 1 到 5 的总体评分");
@@ -668,11 +672,8 @@ app.post("/api/catalog-requests", async (c) => {
         clarity: rating(review.clarity),
         knowledge: rating(review.knowledge),
         gradingScore: rating(review.gradingScore),
-        interest: rating(review.interest),
-        practicality: rating(review.practicality),
         workloadScore: rating(review.workloadScore),
         fairness: rating(review.fairness),
-        organization: rating(review.organization),
       }
     : null;
   if (
@@ -681,11 +682,8 @@ app.post("/api/catalog-requests", async (c) => {
       clarity: review.clarity,
       knowledge: review.knowledge,
       gradingScore: review.gradingScore,
-      interest: review.interest,
-      practicality: review.practicality,
       workloadScore: review.workloadScore,
       fairness: review.fairness,
-      organization: review.organization,
     }).some(
       ([field, value]) =>
         value !== undefined && value !== null && value !== "" &&
@@ -704,11 +702,8 @@ app.post("/api/catalog-requests", async (c) => {
         teaching: clean(review.teaching, 600),
         clarity: reviewScores?.clarity || null,
         knowledge: reviewScores?.knowledge || null,
-        interest: reviewScores?.interest || null,
-        practicality: reviewScores?.practicality || null,
         workloadScore: reviewScores?.workloadScore || null,
         fairness: reviewScores?.fairness || null,
-        organization: reviewScores?.organization || null,
         overall: overall as number,
         comment: clean(review.comment, 1200),
         term: clean(review.term, 30),
@@ -717,15 +712,16 @@ app.post("/api/catalog-requests", async (c) => {
   if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
   const result = await c.env.DB.prepare(
-    `INSERT INTO catalog_requests(kind,course_code,course_name,category,teacher_name,department,note,pending_review_json,submitter_hash)
-     VALUES(?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO catalog_requests(kind,course_code,course_name,category,teacher_name,teacher_source_label,department,note,pending_review_json,submitter_hash)
+     VALUES(?,?,?,?,?,?,?,?,?,?)`,
   )
     .bind(
       kind,
       courseCode,
       courseName,
       category,
-      teacherName,
+      teacherSourceLabel,
+      teacherSourceLabel,
       department,
       clean(b.note, 500),
       stashedReview ? JSON.stringify(stashedReview) : "",
@@ -904,7 +900,7 @@ app.get("/api/admin/catalog-requests", async (c) => {
     .first<{ n: number }>();
   const results = (
     await c.env.DB.prepare(
-      `SELECT id,kind,course_code,course_name,category,teacher_name,department,note,status,moderator_note,
+      `SELECT id,kind,course_code,course_name,category,teacher_name,teacher_source_label,department,note,status,moderator_note,
               created_course_id,created_teacher_id,created_review_id,created_at,reviewed_at,
               pending_review_json<>'' AS has_review
        FROM catalog_requests WHERE (?='all' OR status=?) ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -960,40 +956,44 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
   const statements: D1PreparedStatement[] = [];
   const createsCourse = request.kind === "course";
   const createsReview = createsCourse && Boolean(request.pending_review_json);
-  if (createsReview && (!request.course_name || !request.teacher_name))
+  if (createsReview && (!request.course_code || !request.course_name || !request.teacher_source_label))
     return fail(c, "暂存评价无法绑定课程与任课教师", 409);
-  if (request.teacher_name)
+  if (request.teacher_source_label)
     statements.push(
       c.env.DB.prepare(
-        `INSERT OR IGNORE INTO teachers(name,department)
-         SELECT ?,? WHERE EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
-      ).bind(request.teacher_name, request.department, id),
+        `INSERT OR IGNORE INTO teachers(source_teacher_label,name,department)
+         SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
+      ).bind(
+        request.teacher_source_label,
+        request.teacher_name || request.teacher_source_label,
+        nullableClean(request.department, 80),
+        id,
+      ),
     );
-  if (createsCourse && request.course_name)
+  if (createsCourse && request.course_code && request.course_name)
     statements.push(
       c.env.DB.prepare(
-        `INSERT OR IGNORE INTO courses(code,name,category,department)
-         SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
+        `INSERT INTO courses(code,name,category,department)
+         SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')
+         ON CONFLICT(code) DO UPDATE SET name=excluded.name`,
       ).bind(
         request.course_code,
         request.course_name,
-        request.category || "major",
+        request.category,
         request.department,
         id,
       ),
     );
-  if (createsCourse && request.course_name && request.teacher_name)
+  if (createsCourse && request.course_code && request.teacher_source_label)
     statements.push(
       c.env.DB.prepare(
         `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id)
          SELECT c.id,t.id FROM courses c,teachers t
-         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?
+         WHERE c.code=? AND t.source_teacher_label=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
         request.course_code,
-        request.course_name,
-        request.teacher_name,
-        request.department,
+        request.teacher_source_label,
         id,
       ),
     );
@@ -1004,13 +1004,13 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       c.env.DB.prepare(
         `INSERT INTO reviews(
            course_id,teacher_id,category,attendance,grading,grading_score,
-           workload,rescue,assessment,teaching,clarity,knowledge,interest,
-           practicality,workload_score,fairness,organization,overall,comment,
+           workload,rescue,assessment,teaching,clarity,knowledge,
+           workload_score,fairness,overall,comment,
            term,submitter_hash
          )
-         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
          FROM courses c,teachers t
-         WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?
+         WHERE c.code=? AND t.source_teacher_label=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
         stashed.attendance || "",
@@ -1022,19 +1022,14 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
         stashed.teaching || "",
         stashed.clarity ?? null,
         stashed.knowledge ?? null,
-        stashed.interest ?? null,
-        stashed.practicality ?? null,
         stashed.workloadScore ?? null,
         stashed.fairness ?? null,
-        stashed.organization ?? null,
         stashed.overall,
         stashed.comment || "",
         stashed.term || "",
         request.submitter_hash,
         request.course_code,
-        request.course_name,
-        request.teacher_name,
-        request.department,
+        request.teacher_source_label,
         id,
       ),
     );
@@ -1043,17 +1038,15 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
   statements.push(
     c.env.DB.prepare(
       `UPDATE catalog_requests SET status='approved',moderator_note=?,reviewed_at=CURRENT_TIMESTAMP,
-         created_course_id=CASE WHEN ?='course' THEN (SELECT id FROM courses WHERE code=? AND name=?) ELSE NULL END,
-         created_teacher_id=(SELECT id FROM teachers WHERE name=? AND department=?),
+         created_course_id=CASE WHEN ?='course' THEN (SELECT id FROM courses WHERE code=?) ELSE NULL END,
+         created_teacher_id=(SELECT id FROM teachers WHERE source_teacher_label=?),
          created_review_id=${createsReview ? "last_insert_rowid()" : "NULL"}
        WHERE id=? AND status='pending'`,
     ).bind(
       note,
       request.kind,
       request.course_code,
-      request.course_name,
-      request.teacher_name,
-      request.department,
+      request.teacher_source_label,
       id,
     ),
   );
@@ -1144,11 +1137,11 @@ app.patch("/api/admin/reviews/:id/content", async (c) => {
     .first();
   if (!current) return fail(c, "评价不存在", 404);
   const scoreFields = [
-    ["interest", "interest"],
-    ["practicality", "practicality"],
+    ["clarity", "clarity"],
+    ["knowledge", "knowledge"],
+    ["gradingScore", "grading_score"],
     ["workloadScore", "workload_score"],
     ["fairness", "fairness"],
-    ["organization", "organization"],
   ] as const;
   const rawScores = scoreFields.map(([field]) => b[field]);
   const scores = rawScores.map((value) => (value === undefined ? null : rating(value)));
@@ -1167,7 +1160,6 @@ app.patch("/api/admin/reviews/:id/content", async (c) => {
     ["attendance", "attendance", 120],
     ["grading", "grading", 120],
     ["workload", "workload", 120],
-    ["rescue", "rescue", 120],
     ["assessment", "assessment", 200],
   ] as const;
   for (const [field, column, max] of textFields) {
@@ -1182,9 +1174,11 @@ app.patch("/api/admin/reviews/:id/content", async (c) => {
       values.push(scores[index]);
     }
   });
-  const update = c.env.DB.prepare(
-    `UPDATE reviews SET ${updates.length ? updates.join(",") : "id=id"} WHERE id=?`,
-  ).bind(...values, id);
+  updates.push("rescue=''", "interest=NULL", "practicality=NULL", "organization=NULL");
+  const update = c.env.DB.prepare(`UPDATE reviews SET ${updates.join(",")} WHERE id=?`).bind(
+    ...values,
+    id,
+  );
   const event = c.env.DB.prepare(
     `INSERT INTO review_moderation_events(review_id,action,note)
      SELECT ?,'edited',? WHERE EXISTS(SELECT 1 FROM reviews WHERE id=?)`,
@@ -1480,8 +1474,8 @@ app.post("/api/admin/courses", async (c) => {
     department = clean(b.department, 80),
     description = clean(b.description, 500),
     teacherIdsProvided = Object.hasOwn(b, "teacherIds");
-  if (!name || !["major", "pe", "general"].includes(category))
-    return fail(c, "课程名称和类别无效");
+  if (!code || !name || !["general", "sports"].includes(category))
+    return fail(c, "课号、课程名称和类别无效");
   let id = integer(b.id);
   const existing = id
     ? await c.env.DB.prepare("SELECT * FROM courses WHERE id=?")
@@ -1489,6 +1483,13 @@ app.post("/api/admin/courses", async (c) => {
         .first<Record<string, any>>()
     : null;
   if (id && !existing) return fail(c, "课程不存在", 404);
+  const baselinePublished = !!(await c.env.DB.prepare(
+    "SELECT 1 FROM catalog_baseline_marker WHERE singleton=1",
+  ).first());
+  if (baselinePublished && !id)
+    return fail(c, "基线发布后新增课程必须通过目录补充申请", 409);
+  if (existing && existing.code !== code)
+    return fail(c, "课号是稳定身份，创建后不可修改", 409);
   let teacherIds: number[] | undefined;
   if (teacherIdsProvided) {
     if (!Array.isArray(b.teacherIds)) return fail(c, "任课教师列表无效");
@@ -1537,6 +1538,12 @@ app.post("/api/admin/courses", async (c) => {
         .all<{ teacher_id: number }>()
     ).results.map((row) => row.teacher_id);
     if (teacherIdsProvided) {
+      if (
+        baselinePublished &&
+        JSON.stringify([...teacherIds!].sort((left, right) => left - right)) !==
+          JSON.stringify([...currentRelations].sort((left, right) => left - right))
+      )
+        return fail(c, "基线发布后新增任课关系必须通过目录补充申请", 409);
       const removed = currentRelations.filter(
         (teacherId) => !teacherIds!.includes(teacherId),
       );
@@ -1632,33 +1639,55 @@ app.get("/api/admin/teachers", async (c) =>
 );
 app.post("/api/admin/teachers", async (c) => {
   const b = await c.req.json<Record<string, unknown>>(),
-    name = clean(b.name, 120);
-  if (!name) return fail(c, "教师姓名不能为空");
-  const id = integer(b.id);
-  if (id)
+    sourceTeacherLabel = clean(b.sourceTeacherLabel, 120),
+    name = clean(b.name, 120) || sourceTeacherLabel,
+    department = nullableClean(b.department, 80);
+  const existingId = integer(b.id);
+  if (
+    !existingId &&
+    (await c.env.DB.prepare(
+      "SELECT 1 FROM catalog_baseline_marker WHERE singleton=1",
+    ).first())
+  )
+    return fail(c, "基线发布后新增教师必须通过目录补充申请", 409);
+  let id = existingId;
+  if (existingId) {
+    const existing = await c.env.DB.prepare(
+      "SELECT source_teacher_label FROM teachers WHERE id=?",
+    )
+      .bind(existingId)
+      .first<{ source_teacher_label: string }>();
+    if (!existing) return fail(c, "教师不存在", 404);
+    if (sourceTeacherLabel && sourceTeacherLabel !== existing.source_teacher_label)
+      return fail(c, "来源教师名是稳定身份，创建后不可修改", 409);
+    if (!name) return fail(c, "教师显示名不能为空");
     await c.env.DB.prepare(
       "UPDATE teachers SET name=?,department=?,title=?,bio=? WHERE id=?",
     )
       .bind(
         name,
-        clean(b.department, 80),
+        department,
         clean(b.title, 80),
         clean(b.bio, 1000),
-        id,
+        existingId,
       )
       .run();
-  else
-    await c.env.DB.prepare(
-      "INSERT INTO teachers(name,department,title,bio) VALUES(?,?,?,?)",
+  } else {
+    if (!sourceTeacherLabel || !name) return fail(c, "来源教师名不能为空");
+    const result = await c.env.DB.prepare(
+      "INSERT INTO teachers(source_teacher_label,name,department,title,bio) VALUES(?,?,?,?,?)",
     )
       .bind(
+        sourceTeacherLabel,
         name,
-        clean(b.department, 80),
+        department,
         clean(b.title, 80),
         clean(b.bio, 1000),
       )
       .run();
-  return c.json({ ok: true });
+    id = Number(result.meta.last_row_id);
+  }
+  return c.json({ ok: true, id });
 });
 app.delete("/api/admin/teachers/:id", async (c) => {
   const id = integer(c.req.param("id"));
@@ -1695,6 +1724,12 @@ app.delete("/api/admin/teachers/:id", async (c) => {
   return c.json({ ok: true });
 });
 app.put("/api/admin/courses/:id/teachers", async (c) => {
+  if (
+    await c.env.DB.prepare(
+      "SELECT 1 FROM catalog_baseline_marker WHERE singleton=1",
+    ).first()
+  )
+    return fail(c, "基线发布后变更任课关系必须通过目录补充申请", 409);
   const courseId = integer(c.req.param("id")),
     b = await c.req.json<{ teacherIds?: unknown[] }>(),
     rawIds = b.teacherIds || [];
@@ -1760,412 +1795,53 @@ app.put("/api/admin/courses/:id/teachers", async (c) => {
   ]);
   return c.json({ ok: true });
 });
-type ImportIssue = {
-  row: number;
-  field: string;
-  code: string;
-  message: string;
+app.post("/api/admin/import/preview", (c) =>
+  fail(c, "旧式可合并/跳过导入入口已永久禁用；基线后新增请使用目录补充申请", 409),
+);
+app.post("/api/admin/import", (c) =>
+  fail(c, "旧式可合并/跳过导入入口已永久禁用；基线后新增请使用目录补充申请", 409),
+);
+
+const baselineImportFailure = (c: AppContext, error: unknown) => {
+  if (error instanceof BaselineImportError) return fail(c, error.message, error.status);
+  console.error(JSON.stringify({ message: "catalog baseline import failed", error: error instanceof Error ? error.message : String(error) }));
+  return fail(c, "目录基线操作失败", 500);
 };
-async function validateImport(
-  c: any,
-  type: string,
-  input: Record<string, unknown>[],
-) {
-  const errors: ImportIssue[] = [],
-    warnings: ImportIssue[] = [],
-    rows: Record<string, unknown>[] = [],
-    seenKeys = new Set<string>(),
-    seenTeacherDepartments = new Map<string, Set<string>>(),
-    seenOfferingFields = new Map<string, string>();
-  const issue = (index: number, field: string, code: string, message: string) =>
-    errors.push({ row: index + 2, field, code, message });
-  const warn = (index: number, field: string, code: string, message: string) =>
-    warnings.push({ row: index + 2, field, code, message });
-  const addRow = (row: Record<string, unknown>, index: number) => {
-    Object.defineProperty(row, "__inputIndex", { value: index });
-    rows.push(row);
-  };
-  for (let index = 0; index < input.length; index++) {
-    const source = input[index];
-    if (!source || typeof source !== "object" || Array.isArray(source)) {
-      issue(index, "row", "invalid_row", "该行不是有效对象");
-      continue;
-    }
-    if (type === "courses") {
-      const row = {
-        code: clean(source.code, 40),
-        name: clean(source.name, 120),
-        category: clean(source.category, 20) || "major",
-        department: clean(source.department, 80),
-        credits:
-          source.credits === "" || source.credits == null
-            ? null
-            : Number(source.credits),
-        description: clean(source.description, 500),
-      };
-      if (!row.name) issue(index, "name", "required", "课程名称不能为空");
-      if (!["major", "pe", "general"].includes(row.category))
-        issue(
-          index,
-          "category",
-          "invalid_enum",
-          "课程类别必须是 major、pe 或 general",
-        );
-      if (
-        row.credits !== null &&
-        (!Number.isFinite(row.credits) || row.credits < 0)
-      )
-        issue(index, "credits", "invalid_number", "学分必须是非负数字");
-      const identityKey = JSON.stringify(["course", row.code, row.name]);
-      const existing = row.name
-        ? await c.env.DB.prepare(
-            "SELECT 1 FROM courses WHERE code=? AND name=? LIMIT 1",
-          )
-            .bind(row.code, row.name)
-            .first()
-        : null;
-      const exists = Boolean(existing) || seenKeys.has(identityKey);
-      if (row.name) seenKeys.add(identityKey);
-      addRow({ ...row, exists }, index);
-    } else if (type === "teachers") {
-      const row = {
-        name: clean(source.name, 120),
-        department: clean(source.department, 80),
-        title: clean(source.title, 80),
-        bio: clean(source.bio, 1000),
-      };
-      if (!row.name) issue(index, "name", "required", "教师姓名不能为空");
-      const identityKey = JSON.stringify([
-        "teacher",
-        row.name,
-        row.department,
-      ]);
-      const existing = row.name
-        ? await c.env.DB.prepare(
-            "SELECT 1 FROM teachers WHERE name=? AND department=? LIMIT 1",
-          )
-            .bind(row.name, row.department)
-            .first()
-        : null;
-      const sameNameTeacher = row.name
-        ? await c.env.DB.prepare(
-            "SELECT department FROM teachers WHERE name=? AND department<>? LIMIT 1",
-          )
-            .bind(row.name, row.department)
-            .first()
-        : null;
-      const earlierDepartments = seenTeacherDepartments.get(row.name);
-      const earlierDepartment = earlierDepartments
-        ? [...earlierDepartments].find(
-            (department) => department !== row.department,
-          )
-        : undefined;
-      if (sameNameTeacher || earlierDepartment !== undefined)
-        warn(
-          index,
-          "department",
-          "same_name_different_department",
-          `已有同名教师属于“${clean(sameNameTeacher?.department, 80) || earlierDepartment || "未填写院系"}”，请确认是否确需新建`,
-        );
-      if (row.name) {
-        const departments = earlierDepartments || new Set<string>();
-        departments.add(row.department);
-        seenTeacherDepartments.set(row.name, departments);
-      }
-      const exists = Boolean(existing) || seenKeys.has(identityKey);
-      if (row.name) seenKeys.add(identityKey);
-      addRow({ ...row, exists }, index);
-    } else if (type === "relations" || type === "offerings") {
-      let courseId: number | null = null;
-      let teacherId: number | null = null;
-      const row = {
-        course_code: clean(source.course_code, 40),
-        course_name: clean(source.course_name, 120),
-        teacher_name: clean(source.teacher_name, 120),
-        teacher_department: clean(source.teacher_department, 80),
-        term: clean(source.term, 30),
-        section: clean(source.section, 80),
-        campus: clean(source.campus, 80),
-        schedule: clean(source.schedule, 160),
-        status: clean(source.status, 20) || "active",
-      };
-      if (!row.course_name)
-        issue(index, "course_name", "required", "课程名称不能为空");
-      if (!row.teacher_name)
-        issue(index, "teacher_name", "required", "教师姓名不能为空");
-      if (type === "offerings" && !row.section)
-        issue(index, "section", "required", "开课班次不能为空");
-      if (type === "offerings" && !row.term)
-        issue(index, "term", "term_required", "开课班学期不能为空");
-      if (type === "offerings" && !["active", "archived"].includes(row.status))
-        issue(index, "status", "invalid_enum", "状态必须是 active 或 archived");
-      if (row.course_name) {
-        const course = await c.env.DB.prepare(
-          "SELECT id FROM courses WHERE code=? AND name=? LIMIT 1",
-        )
-          .bind(row.course_code, row.course_name)
-          .first();
-        courseId = Number(course?.id) || null;
-        if (!courseId)
-          issue(
-            index,
-            "course_name",
-            "course_not_found",
-            "找不到匹配课程，请先导入课程",
-          );
-      }
-      if (row.teacher_name) {
-        const teacher = await c.env.DB.prepare(
-          "SELECT id FROM teachers WHERE name=? AND department=? LIMIT 1",
-        )
-          .bind(row.teacher_name, row.teacher_department)
-          .first();
-        teacherId = Number(teacher?.id) || null;
-        if (!teacherId)
-          issue(
-            index,
-            "teacher_name",
-            "teacher_not_found",
-            "找不到匹配教师，请先导入教师",
-          );
-      }
-      if (type === "offerings" && courseId && teacherId) {
-        const relation = await c.env.DB.prepare(
-          "SELECT 1 FROM course_teachers WHERE course_id=? AND teacher_id=? LIMIT 1",
-        )
-          .bind(courseId, teacherId)
-          .first();
-        if (!relation)
-          issue(
-            index,
-            "teacher_name",
-            "teacher_not_related",
-            "教师不在课程已有任课关系中",
-          );
-      }
-      let existing = null;
-      const identityKey =
-        type === "relations"
-          ? JSON.stringify(["relation", courseId, teacherId])
-          : JSON.stringify(["offering", courseId, row.term, row.section]);
-      if (type === "offerings" && courseId && row.term && row.section) {
-        const fields = JSON.stringify([row.campus, row.schedule, row.status]);
-        const previous = seenOfferingFields.get(identityKey);
-        if (previous !== undefined && previous !== fields)
-          issue(
-            index,
-            "row",
-            "conflicting_offering",
-            "同一课程、学期和班号的校区、时间或状态不一致",
-          );
-        else if (previous === undefined)
-          seenOfferingFields.set(identityKey, fields);
-      }
-      if (courseId && teacherId && type === "relations") {
-        existing = await c.env.DB.prepare(
-          "SELECT 1 FROM course_teachers WHERE course_id=? AND teacher_id=? LIMIT 1",
-        )
-          .bind(courseId, teacherId)
-          .first();
-      } else if (courseId && type === "offerings") {
-        existing = await c.env.DB.prepare(
-          "SELECT 1 FROM offerings WHERE course_id=? AND term=? AND section=? LIMIT 1",
-        )
-          .bind(courseId, row.term, row.section)
-          .first();
-      }
-      const exists =
-        type === "offerings"
-          ? Boolean(existing)
-          : Boolean(existing) || seenKeys.has(identityKey);
-      if (courseId && teacherId && (type === "relations" || row.section))
-        seenKeys.add(identityKey);
-      const normalized = { ...row, exists };
-      Object.defineProperties(normalized, {
-        __courseId: { value: courseId },
-        __teacherId: { value: teacherId },
-      });
-      addRow(normalized, index);
-    }
-  }
-  return { rows, errors, warnings };
-}
-app.post("/api/admin/import/preview", async (c) => {
+app.post("/api/admin/catalog-baseline/uploads", async (c) => {
   const contentLength = Number(c.req.header("Content-Length") || 0);
-  if (contentLength > 1_000_000) return fail(c, "导入文件过大", 413);
-  const body = await c.req.json<{
-    rows?: Record<string, unknown>[];
-    type?: string;
-  }>();
-  const type = clean(body.type, 20),
-    input = Array.isArray(body.rows) ? body.rows : [];
-  if (!input.length) return fail(c, "没有可预览的数据");
-  if (input.length > 500) return fail(c, "单次最多导入 500 行");
-  if (!["courses", "teachers", "relations", "offerings"].includes(type))
-    return fail(c, "未知导入类型");
-  const validation = await validateImport(c, type, input);
-  const invalidIndexes = new Set(validation.errors.map((issue) => issue.row - 2));
-  const validRows = validation.rows.filter(
-    (row) => !invalidIndexes.has(Number(row.__inputIndex)),
-  );
-  const validCount = validRows.length;
-  const offeringKey = (row: Record<string, unknown>) =>
-    JSON.stringify([row.course_code, row.course_name, row.term, row.section]);
-  const skipCount =
-    type === "offerings"
-      ? new Set(
-          validRows
-            .filter((row) => row.exists === true)
-            .map((row) => offeringKey(row)),
-        ).size
-      : validRows.filter((row) => row.exists === true).length;
-  const newCount =
-    type === "offerings"
-      ? new Set(
-          validRows
-            .filter((row) => row.exists !== true)
-            .map((row) => offeringKey(row)),
-        ).size
-      : validCount - skipCount;
-  return c.json({
-    ok: validation.errors.length === 0,
-    type,
-    total: input.length,
-    validCount,
-    newCount,
-    skipCount,
-    errors: validation.errors,
-    warnings: validation.warnings,
-    preview: validation.rows.slice(0, 50),
-  });
+  if (contentLength > 100_000) return fail(c, "manifest 请求过大", 413);
+  try { return c.json(await createBaselineUpload(c.env.DB, await readBoundedJson(c.req.raw, 100_000))) } catch (error) { return baselineImportFailure(c, error) }
 });
-app.post("/api/admin/import", async (c) => {
+app.get("/api/admin/catalog-baseline/status", async (c) =>
+  c.json({
+    published: !!(await c.env.DB.prepare(
+      "SELECT 1 FROM catalog_baseline_marker WHERE singleton=1",
+    ).first()),
+  }),
+);
+app.get("/api/admin/catalog-baseline/uploads/:batchId", async (c) => {
+  try { return c.json(await baselineUploadStatus(c.env.DB, c.req.param("batchId"))) } catch (error) { return baselineImportFailure(c, error) }
+});
+app.put("/api/admin/catalog-baseline/uploads/:batchId/chunks/:chunkIndex", async (c) => {
   const contentLength = Number(c.req.header("Content-Length") || 0);
-  if (contentLength > 1_000_000) return fail(c, "导入文件过大", 413);
-  const b = await c.req.json<{
-      rows?: Record<string, unknown>[];
-      type?: string;
-      confirmWarnings?: boolean;
-    }>(),
-    input = Array.isArray(b.rows) ? b.rows : [],
-    type = clean(b.type, 20),
-    rows = input;
-  if (rows.length > 500) return fail(c, "单次最多导入 500 行");
-  if (!["courses", "teachers", "relations", "offerings"].includes(type))
-    return fail(c, "未知导入类型");
-  if (!rows.length) return fail(c, "没有可导入的数据");
-  const validation = await validateImport(c, type, rows);
-  if (validation.errors.length)
-    return c.json(
-      { error: "导入数据校验失败", errors: validation.errors },
-      422,
-    );
-  if (validation.warnings.length && b.confirmWarnings !== true)
-    return c.json(
-      {
-        error: "导入数据包含需要管理员确认的警告",
-        warnings: validation.warnings,
-      },
-      409,
-    );
-  const normalizedRows = validation.rows.filter((row) => row.exists !== true);
-  let actualOfferingCount: number | null = null;
-  if (normalizedRows.length === 0) {
-    // Every valid row already exists; a no-op import is still successful.
-  } else if (type === "teachers")
-    await c.env.DB.batch(
-      normalizedRows.map((x) =>
-        c.env.DB.prepare(
-          `INSERT OR IGNORE INTO teachers(name,department,title,bio) VALUES(?,?,?,?)`,
-        ).bind(
-          clean(x.name, 120),
-          clean(x.department, 80),
-          clean(x.title, 80),
-          clean(x.bio, 1000),
-        ),
-      ),
-    );
-  else if (type === "relations") {
-    for (let offset = 0; offset < normalizedRows.length; offset += 25) {
-      const statements = normalizedRows.slice(offset, offset + 25).map((x) => {
-        const courseCode = clean(x.course_code, 40),
-          courseName = clean(x.course_name, 120),
-          teacherName = clean(x.teacher_name, 120),
-          teacherDepartment = clean(x.teacher_department, 80);
-        return c.env.DB.prepare(
-          `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id) SELECT c.id,t.id FROM courses c,teachers t WHERE c.code=? AND c.name=? AND t.name=? AND t.department=?`,
-        ).bind(courseCode, courseName, teacherName, teacherDepartment);
-      });
-      await c.env.DB.batch(statements);
-    }
-  } else if (type === "offerings") {
-    const results = await c.env.DB.batch(
-      normalizedRows.flatMap((x) => {
-        const courseId = Number(x.__courseId);
-        const teacherId = Number(x.__teacherId);
-        return [
-          c.env.DB.prepare(
-            `INSERT OR IGNORE INTO offerings(course_id,term,section,campus,schedule,status)
-             VALUES(?,?,?,?,?,?)`,
-          ).bind(
-            courseId,
-            x.term,
-            x.section,
-            x.campus,
-            x.schedule,
-            x.status,
-          ),
-          c.env.DB.prepare(
-            `INSERT OR IGNORE INTO offering_teachers(offering_id,teacher_id)
-             SELECT id,? FROM offerings
-             WHERE course_id=? AND term=? AND section=?`,
-          ).bind(teacherId, courseId, x.term, x.section),
-        ];
-      }),
-    );
-    actualOfferingCount = results.reduce(
-      (total, result, index) =>
-        index % 2 === 0 ? total + (result.meta.changes || 0) : total,
-      0,
-    );
-  } else
-    await c.env.DB.batch(
-      normalizedRows.map((x) =>
-        c.env.DB.prepare(
-          `INSERT OR IGNORE INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?)`,
-        ).bind(
-          clean(x.code, 40),
-          clean(x.name, 120),
-          clean(x.category, 20) || "major",
-          clean(x.department, 80),
-          x.credits == null ? null : Number(x.credits),
-          clean(x.description, 500),
-        ),
-      ),
-    );
-  const offeringKey = (row: Record<string, unknown>) =>
-    JSON.stringify([row.course_code, row.course_name, row.term, row.section]);
-  const count =
-    type === "offerings"
-      ? actualOfferingCount || 0
-      : normalizedRows.length;
-  const skippedCount =
-    type === "offerings"
-      ? new Set(validation.rows.map((row) => offeringKey(row))).size - count
-      : rows.length - normalizedRows.length;
-  return c.json({
-    ok: true,
-    count,
-    skippedCount,
-    warnings: validation.warnings,
-  });
+  if (contentLength > 1_000_000) return fail(c, "分块请求过大", 413);
+  try { return c.json(await putBaselineChunk(c.env.DB, c.req.param("batchId"), Number(c.req.param("chunkIndex")), await readBoundedJson(c.req.raw, 1_000_000))) } catch (error) { return baselineImportFailure(c, error) }
+});
+app.post("/api/admin/catalog-baseline/uploads/:batchId/finalize", async (c) => {
+  try { return c.json(await finalizeBaselineUpload(c.env.DB, c.req.param("batchId"))) } catch (error) { return baselineImportFailure(c, error) }
+});
+app.get("/api/admin/catalog-baseline/uploads/:batchId/preview", async (c) => {
+  try { return c.json(await previewBaselineUpload(c.env.DB, c.req.param("batchId"), clean(c.req.query("type"), 20), integer(c.req.query("page")) ?? 1, integer(c.req.query("pageSize")) ?? 50)) } catch (error) { return baselineImportFailure(c, error) }
+});
+app.post("/api/admin/catalog-baseline/uploads/:batchId/publish", async (c) => {
+  try { return c.json({ ok: true, marker: await publishBaselineUpload(c.env.DB, c.req.param("batchId")) }) } catch (error) { return baselineImportFailure(c, error) }
 });
 
 type LegacyApprovedRow = {
   course_id: number;
   teacher_id: number;
   offering_id: number | null;
-  category: "major" | "pe" | "general";
+  category: "general" | "sports";
   comment: string;
   term: string;
   source_file: string;
@@ -2226,8 +1902,8 @@ async function validateLegacyApproved(
       (!offeringId || offeringId < 1)
     )
       add(rowNumber, "offering_id", "开课班 ID 无效");
-    if (!(["major", "pe", "general"] as string[]).includes(category))
-      add(rowNumber, "category", "类别必须为 major、pe 或 general");
+    if (!(["general", "sports"] as string[]).includes(category))
+      add(rowNumber, "category", "评价模板类型必须为 general 或 sports");
     if (!comment) add(rowNumber, "comment", "文字评价不能为空");
     if (!sourceFile) add(rowNumber, "source_file", "来源截图不能为空");
     if (!sourceRow) add(rowNumber, "source_row", "来源行不能为空");
@@ -2403,9 +2079,15 @@ app.get("/api/admin/legacy-imports", async (c) => {
 });
 
 app.post("/api/admin/legacy-imports/preview", async (c) => {
+  if (!(await c.env.DB.prepare(
+    "SELECT 1 FROM catalog_baseline_marker WHERE singleton=1",
+  ).first()))
+    return fail(c, "目录基线尚未发布，历史评价映射入口已锁定", 409);
   if (Number(c.req.header("Content-Length") || 0) > 2_000_000)
     return fail(c, "批准数据过大", 413);
-  const body = await c.req.json<{ rows?: Record<string, unknown>[] }>();
+  const body = await readBoundedJson(c.req.raw, 2_000_000) as {
+    rows?: Record<string, unknown>[];
+  };
   const input = Array.isArray(body.rows) ? body.rows : [];
   if (!input.length || input.length > 40)
     return fail(c, "每批必须包含 1–40 条记录");
@@ -2418,13 +2100,17 @@ app.post("/api/admin/legacy-imports/preview", async (c) => {
 });
 
 app.post("/api/admin/legacy-imports", async (c) => {
+  if (!(await c.env.DB.prepare(
+    "SELECT 1 FROM catalog_baseline_marker WHERE singleton=1",
+  ).first()))
+    return fail(c, "目录基线尚未发布，历史评价映射入口已锁定", 409);
   if (Number(c.req.header("Content-Length") || 0) > 2_000_000)
     return fail(c, "批准数据过大", 413);
-  const body = await c.req.json<{
+  const body = await readBoundedJson(c.req.raw, 2_000_000) as {
     rows?: Record<string, unknown>[];
     manifest?: Record<string, unknown>;
     idempotencyKey?: string;
-  }>();
+  };
   const input = Array.isArray(body.rows) ? body.rows : [];
   if (!input.length || input.length > 40)
     return fail(c, "每批必须包含 1–40 条记录");

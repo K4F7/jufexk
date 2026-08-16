@@ -9,16 +9,16 @@ beforeAll(async () => {
   // a course and teacher at id 1 that the suites bind reviews and offerings to.
   await env.DB.batch([
     env.DB.prepare(
-      "INSERT INTO teachers(id,name,department,title) VALUES(1,'测试教师','测试学院','讲师')",
+      "INSERT INTO teachers(id,source_teacher_label,name,department,title) VALUES(1,'测试教师','测试教师','测试学院','讲师')",
     ),
     env.DB.prepare(
-      "INSERT INTO courses(id,code,name,category,department,credits) VALUES(1,'TEST101','测试课程','major','测试学院',3)",
+      "INSERT INTO courses(id,code,name,category,department,credits) VALUES(1,'TEST101','测试课程','general','测试学院',3)",
     ),
     env.DB.prepare(
-      "INSERT INTO courses(id,code,name,category,department,credits) VALUES(2,'TEST102','测试体育课','pe','测试学院',1)",
+      "INSERT INTO courses(id,code,name,category,department,credits) VALUES(2,'TEST102','测试体育课','sports','测试学院',1)",
     ),
     env.DB.prepare(
-      "INSERT INTO courses(id,code,name,category,department,credits) VALUES(3,'TEST103','测试公共选修','general','测试学院',2)",
+      "INSERT INTO courses(id,code,name,category,department,credits) VALUES(3,'TEST103','测试选修课','general','测试学院',2)",
     ),
     // Course 2 is deliberately left unbound: suites use it to assert that a
     // teacher without a relation to the course is rejected.

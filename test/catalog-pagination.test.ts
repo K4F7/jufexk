@@ -8,26 +8,26 @@ const courseSearch = "分页契约课程";
 beforeAll(async () => {
   await env.DB.batch([
     env.DB.prepare(
-      "INSERT INTO teachers(name,department,title) VALUES(?,?,?)",
-    ).bind(`${teacherSearch}甲`, "分页学院", "讲师"),
+      "INSERT INTO teachers(source_teacher_label,name,department,title) VALUES(?,?,?,?)",
+    ).bind(`${teacherSearch}甲`, `${teacherSearch}甲`, "分页学院", "讲师"),
     env.DB.prepare(
-      "INSERT INTO teachers(name,department,title) VALUES(?,?,?)",
-    ).bind(`${teacherSearch}乙`, "分页学院", "副教授"),
+      "INSERT INTO teachers(source_teacher_label,name,department,title) VALUES(?,?,?,?)",
+    ).bind(`${teacherSearch}乙`, `${teacherSearch}乙`, "分页学院", "副教授"),
     env.DB.prepare(
-      "INSERT INTO teachers(name,department,title) VALUES(?,?,?)",
-    ).bind(`${teacherSearch}丙`, "分页学院", "教授"),
+      "INSERT INTO teachers(source_teacher_label,name,department,title) VALUES(?,?,?,?)",
+    ).bind(`${teacherSearch}丙`, `${teacherSearch}丙`, "分页学院", "教授"),
   ]);
 
   await env.DB.batch([
     env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
-    ).bind("PAGE001", `${courseSearch}甲`, "major", "分页学院"),
+    ).bind("PAGE001", `${courseSearch}甲`, "general", "分页学院"),
     env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
-    ).bind("PAGE002", `${courseSearch}乙`, "major", "分页学院"),
+    ).bind("PAGE002", `${courseSearch}乙`, "general", "分页学院"),
     env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
-    ).bind("PAGE003", "不匹配课程", "major", "分页学院"),
+    ).bind("PAGE003", "不匹配课程", "general", "分页学院"),
   ]);
 });
 

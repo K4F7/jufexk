@@ -41,7 +41,7 @@ describe("offerings", () => {
   it("never exposes submitter or moderation metadata publicly", async () => {
     await env.DB.prepare(
       `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,term,submitter_hash,status,moderator_note,reviewed_at)
-       VALUES(1,1,1,'major',5,'public review','2026','private-ip-hash','approved','private note',CURRENT_TIMESTAMP)`,
+       VALUES(1,1,1,'general',5,'public review','2026','private-ip-hash','approved','private note',CURRENT_TIMESTAMP)`,
     ).run();
     const response = await SELF.fetch("https://example.com/api/courses/1");
     expect(response.status).toBe(200);
@@ -55,7 +55,7 @@ describe("offerings", () => {
     expect(body.reviews[0]).not.toHaveProperty("status");
   });
 
-  it("returns the dedicated public-elective dimensions", async () => {
+  it("returns the unified general dimensions without retired fields", async () => {
     const course = await env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES('GE001','General elective','general','Center')",
     ).run();
@@ -66,8 +66,8 @@ describe("offerings", () => {
       .bind(courseId)
       .run();
     await env.DB.prepare(
-      `INSERT INTO reviews(course_id,teacher_id,category,overall,interest,practicality,workload_score,fairness,organization,comment,status,submitter_hash)
-       VALUES(?,1,'general',4,5,4,2,5,4,'general dimensions','approved','private')`,
+      `INSERT INTO reviews(course_id,teacher_id,category,overall,clarity,knowledge,workload_score,fairness,assessment,teaching,comment,status,submitter_hash)
+       VALUES(?,1,'general',4,5,4,2,5,'闭卷考试','讲解清楚','维度投影测试','approved','private')`,
     )
       .bind(courseId)
       .run();
@@ -78,12 +78,17 @@ describe("offerings", () => {
       reviews: Array<Record<string, unknown>>;
     }>();
     expect(body.reviews[0]).toMatchObject({
-      interest: 5,
-      practicality: 4,
+      clarity: 5,
+      knowledge: 4,
       workload_score: 2,
       fairness: 5,
-      organization: 4,
+      assessment: "闭卷考试",
+      teaching: "讲解清楚",
     });
+    expect(body.reviews[0]).not.toHaveProperty("interest");
+    expect(body.reviews[0]).not.toHaveProperty("practicality");
+    expect(body.reviews[0]).not.toHaveProperty("organization");
+    expect(body.reviews[0]).not.toHaveProperty("rescue");
     await env.DB.prepare("DELETE FROM reviews WHERE course_id=?")
       .bind(courseId)
       .run();

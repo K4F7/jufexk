@@ -8,10 +8,10 @@ from approval import APPROVED_FIELDS, REVIEW_FIELDS, finalize
 
 
 class ApprovalTests(unittest.TestCase):
-    def fixture(self, root: Path, **changes):
+    def fixture(self, root: Path, *, category="general", **changes):
         reference = root / "reference.json"
         reference.write_text(json.dumps({
-            "courses": [{"id": 1, "name": "课程", "category": "major"}],
+            "courses": [{"id": 1, "name": "课程", "category": category}],
             "teachers": [{"id": 2, "name": "教师"}],
             "course_teachers": [{"course_id": 1, "teacher_id": 2}],
             "offerings": [], "offering_teachers": [],
@@ -31,7 +31,7 @@ class ApprovalTests(unittest.TestCase):
             self.assertEqual(finalize(queue, reference, approved, errors, payload), 0)
             with approved.open(encoding="utf-8-sig", newline="") as handle: row = next(csv.DictReader(handle))
             self.assertEqual(row["source_type"], "legacy_ocr")
-            self.assertEqual(row["category"], "major")
+            self.assertEqual(row["category"], "general")
             self.assertEqual(row["review_note"], "人工核对截图")
             self.assertEqual(row["duplicate_action"], "")
             self.assertNotIn("overall", APPROVED_FIELDS)
@@ -83,6 +83,20 @@ class ApprovalTests(unittest.TestCase):
                 2,
             )
             self.assertIn("学期与开课班不一致", errors.read_text(encoding="utf-8-sig"))
+
+    def test_accepts_each_new_category_and_rejects_old_reference_values(self):
+        for category in ("general", "sports"):
+            with self.subTest(category=category), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory); queue, reference = self.fixture(root, category=category)
+                approved = root / "approved.csv"; errors = root / "errors.csv"
+                self.assertEqual(finalize(queue, reference, approved, errors, root / "payload"), 0)
+                with approved.open(encoding="utf-8-sig", newline="") as handle:
+                    self.assertEqual(next(csv.DictReader(handle))["category"], category)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); queue, reference = self.fixture(root, category="required")
+            approved = root / "approved.csv"; errors = root / "errors.csv"
+            self.assertEqual(finalize(queue, reference, approved, errors, root / "payload"), 2)
+            self.assertIn("general 或 sports", errors.read_text(encoding="utf-8-sig"))
 
 
 if __name__ == "__main__": unittest.main()

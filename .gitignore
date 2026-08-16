@@ -1,6 +1,9 @@
 node_modules/
 dist/
+.prototype-dist/
+prototypes/**/.dist-prototype/
 .wrangler/
+.playwright-cli/
 .dev.vars
 worker-configuration.d.ts
 *.zip
@@ -10,8 +13,15 @@ __pycache__/
 scripts/legacy_ocr/output/
 scripts/legacy_ocr/input/
 scripts/legacy_ocr/reference.json
+scripts/legacy_evidence/input/
+scripts/legacy_evidence/output/
+scripts/legacy_evidence/runs/
+scripts/legacy_evidence/tmp/
+scripts/legacy_evidence/approvals/
 copy.xlsx
 handoff/
-
 # Local D1 dumps / preview data (never commit)
 .local-data/
+scripts/catalog-baseline/captures/
+test-results/
+output/playwright/
