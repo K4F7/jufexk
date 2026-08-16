@@ -655,7 +655,7 @@ describe("admin sessions and catalog", () => {
     const teacherDetail = await (await SELF.fetch(`${origin}/api/teachers/1`)).json<{ reviews: Array<Record<string, unknown>> }>();
     expect(teacherDetail.reviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", course_name: "测试课程" }));
     const afterCatalog = await (await SELF.fetch(`${origin}/api/courses`)).json<{ items: Array<{ id: number; review_count: number; rating: number }> }>();
-    expect(afterCatalog.items.find((item) => item.id === 1)).toMatchObject({ review_count: beforeCourse.review_count, rating: beforeCourse.rating });
+    expect(afterCatalog.items.find((item) => item.id === 1)).toMatchObject({ review_count: beforeCourse.review_count + 1, rating: beforeCourse.rating });
     const events = await (await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}/events`, { headers: { Cookie: auth.cookie } })).json<Array<Record<string, unknown>>>();
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual(expect.objectContaining({ action: "approved" }));

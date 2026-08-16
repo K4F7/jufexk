@@ -17,6 +17,74 @@ async function mockApi(page: Page) {
       return route.fulfill({
         json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
       });
+    if (url.pathname === "/api/courses") {
+      const searched = url.searchParams.has("q") && url.searchParams.get("q") !== "";
+      const items = [
+        {
+          id: 8,
+          code: "GEN0108",
+          name: "中国传统文化导论",
+          category: "general",
+          department: "人文学院",
+          teachers: "测试教师",
+          teacher_refs: "9:测试教师",
+          review_count: 21,
+          rating: 4.6,
+        },
+        {
+          id: 10,
+          code: "EMPTY",
+          name: "暂无文字评价课程",
+          category: "general",
+          department: "测试学院",
+          teachers: null,
+          teacher_refs: null,
+          review_count: 0,
+          rating: null,
+        },
+      ];
+      return route.fulfill({
+        json: {
+          items: searched ? [items[1], items[0]] : items,
+          page: 1,
+          pageSize: 20,
+          total: 2,
+          pages: 1,
+        },
+      });
+    }
+    if (url.pathname === "/api/teachers") {
+      const searched = url.searchParams.has("q") && url.searchParams.get("q") !== "";
+      const items = [
+        {
+          id: 9,
+          name: "测试教师",
+          department: "人文学院",
+          title: "讲师",
+          review_count: 21,
+          rating: 4.6,
+          course_count: 1,
+        },
+        {
+          id: 11,
+          name: "零评价教师",
+          department: "测试学院",
+          title: "讲师",
+          review_count: 0,
+          rating: null,
+          course_count: 0,
+        },
+      ];
+      return route.fulfill({
+        json: {
+          items: searched ? [items[1], items[0]] : items,
+          page: 1,
+          pageSize: 20,
+          total: 2,
+          pages: 1,
+        },
+      });
+    }
     if (url.pathname === "/api/courses/8")
       return route.fulfill({
         json: {
@@ -69,6 +137,16 @@ async function mockApi(page: Page) {
           nextReviewCursor: "next-page",
         },
       });
+    if (url.pathname === "/api/teachers/11")
+      return route.fulfill({
+        json: {
+          teacher: { id: 11, name: "零评价教师", department: "测试学院", title: "讲师" },
+          courses: [],
+          reviews: [],
+          reviewCount: 0,
+          nextReviewCursor: null,
+        },
+      });
     if (url.pathname === "/api/teachers/9/reviews")
       return route.fulfill({ json: { items: reviews.slice(20), nextCursor: null } });
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
@@ -103,4 +181,27 @@ test("empty and mobile states remain accessible without overflow", async ({ page
     scrollWidth: document.documentElement.scrollWidth,
   }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
+});
+
+test("course and teacher catalogs preserve default and search result order", async ({ page }) => {
+  await page.goto("/courses");
+  await expect(page.getByRole("row").nth(1)).toContainText("中国传统文化导论");
+  await expect(page.getByRole("row").nth(1)).toContainText("21 投");
+  await expect(page.getByRole("link", { name: "暂无文字评价课程" })).toBeVisible();
+
+  await page.goto("/courses?q=暂无");
+  await expect(page.getByRole("row").nth(1)).toContainText("暂无文字评价课程");
+  await page.getByRole("link", { name: "暂无文字评价课程" }).click();
+  await expect(page).toHaveURL(/\/courses\/10/);
+  await expect(page.getByRole("status")).toHaveText("暂无评价");
+
+  await page.goto("/teachers");
+  await expect(page.getByRole("row").nth(1)).toContainText("测试教师");
+  await expect(page.getByRole("row").nth(1)).toContainText("21 投");
+
+  await page.goto("/teachers?q=零评价");
+  await expect(page.getByRole("row").nth(1)).toContainText("零评价教师");
+  await page.getByRole("link", { name: "零评价教师" }).click();
+  await expect(page).toHaveURL(/\/teachers\/11/);
+  await expect(page.getByText("暂无评价", { exact: true })).toBeVisible();
 });
