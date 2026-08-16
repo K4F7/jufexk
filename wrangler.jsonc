@@ -22,6 +22,8 @@
   "vars": {
     "SITE_NAME": "江财选课参考",
     "UNIVERSITY_NAME": "江西财经大学",
+    "HISTORICAL_IMPORT_ARTIFACT_SHA256": "778345ca9e437f3706abf93ca7840d6999089b5772d618395ca05fbeb2982ea4",
+    "HISTORICAL_IMPORT_MANIFEST_SHA256": "96035445669d14f19dd469bf51161236f0a1010507c53f20e7f925fae0d82adf",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
   },
   "observability": { "enabled": true, "head_sampling_rate": 1 },

@@ -28,20 +28,44 @@ async function adminHeaders() {
 }
 
 const manifest = {
-  contractVersion: "legacy-historical-production-freeze-v1",
+  contractVersion: "legacy-historical-production-freeze-v2",
+  contentSha256: "1b4ca0728d9883c0d9267cc0ede033bbeebcb0fb3a3cdff333816c36e414a421",
   status: "package_ready",
-  counts: { importable: 941 },
+  counts: { importable: 522, catalogRelationUnavailable: 419 },
   schemas: {
     "importable-legacy-reviews.jsonl": "legacy-approved-review-v1",
+  },
+  files: {
+    "importable-legacy-reviews.jsonl": { rows: 522, sha256: "" },
   },
   lineage: {
     approvedPackageContract: "legacy-historical-approved-package-v1",
     approvedPackageManifestSha256:
       "edcf142cbd0380e734da0cde1923ee976ea9e25ab48147d0b78e218a64bb51af",
     approvedCatalogContentSha256:
-      "33efc25c965510f7e87aeefc8b14a3ab5ec7c0df81d3485688d4630a4179bf1f",
+      "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588",
   },
 };
+
+async function importPackage(
+  records: Array<Record<string, unknown>>,
+  manifestOverride: Record<string, unknown> = {},
+) {
+  const artifact = `${records.map((value) => JSON.stringify(value)).join("\n")}\n`;
+  const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(artifact)))]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  const packageManifest = {
+    ...manifest,
+    ...manifestOverride,
+    files: { "importable-legacy-reviews.jsonl": { rows: records.length, sha256 } },
+  };
+  return {
+    manifest: JSON.stringify(packageManifest),
+    artifact,
+    offset: 0,
+  };
+}
 
 function record(reviewId: string, courseCode: string, teacherLabel: string) {
   return {
@@ -68,7 +92,6 @@ describe("approved historical review tracer import", () => {
     const teacherLabel = `历史教师-${suffix}`;
     const unrelatedLabel = `非任课教师-${suffix}`;
     const reviewId = `approved-review-${suffix}`;
-    const batchReviewIds = [`${reviewId}-batch-1`, `${reviewId}-batch-2`];
     const courseResult = await env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
     )
@@ -94,75 +117,103 @@ describe("approved historical review tracer import", () => {
       .run();
 
     try {
+      const records = Array.from({ length: 522 }, (_, index) =>
+        record(index ? `${reviewId}-${index}` : reviewId, courseCode, teacherLabel),
+      );
+      const approvedPackage = await importPackage(records);
       const unauthorized = await SELF.fetch(
         `${origin}/api/admin/historical-review-imports`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", Origin: origin },
-          body: JSON.stringify({ manifest, record: record(reviewId, courseCode, teacherLabel) }),
+          body: JSON.stringify(approvedPackage),
         },
       );
       expect(unauthorized.status).toBe(401);
 
       const headers = await adminHeaders();
+      const legacyContract = await SELF.fetch(
+        `${origin}/api/admin/historical-review-imports`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            await importPackage(records, {
+              contractVersion: "legacy-historical-production-freeze-v1",
+            }),
+          ),
+        },
+      );
+      expect(legacyContract.status).toBe(422);
+
       const badManifest = await SELF.fetch(
         `${origin}/api/admin/historical-review-imports`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            manifest: {
-              ...manifest,
-              lineage: { ...manifest.lineage, approvedPackageManifestSha256: "0".repeat(64) },
-            },
-            record: record(reviewId, courseCode, teacherLabel),
-          }),
+          body: JSON.stringify(
+            await importPackage(records, {
+              lineage: {
+                ...manifest.lineage,
+                approvedPackageManifestSha256: "0".repeat(64),
+              },
+            }),
+          ),
         },
       );
       expect(badManifest.status).toBe(422);
 
-      const aiReadyOnly = await SELF.fetch(
+      const missingLineage = await SELF.fetch(
+        `${origin}/api/admin/historical-review-imports`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(await importPackage(records, { lineage: undefined })),
+        },
+      );
+      expect(missingLineage.status).toBe(422);
+
+      const tamperedArtifact = await SELF.fetch(
         `${origin}/api/admin/historical-review-imports`,
         {
           method: "POST",
           headers,
           body: JSON.stringify({
-            manifest,
-            record: {
-              ...record(reviewId, courseCode, teacherLabel),
-              qualification: "ai_ready",
-            },
+            ...approvedPackage,
+            artifact: approvedPackage.artifact.replace(
+              "这是一条贯通课程与教师详情页的匿名评价。",
+              "被篡改的评价。",
+            ),
           }),
         },
       );
-      expect(aiReadyOnly.status).toBe(422);
+      expect(tamperedArtifact.status).toBe(422);
 
+      const wrongRelationPackage = await importPackage([
+        record(reviewId, courseCode, unrelatedLabel),
+        ...records.slice(1),
+      ]);
       const wrongRelation = await SELF.fetch(
         `${origin}/api/admin/historical-review-imports`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            manifest,
-            record: record(reviewId, courseCode, unrelatedLabel),
-          }),
+          body: JSON.stringify(wrongRelationPackage),
         },
       );
       expect(wrongRelation.status).toBe(422);
 
       const rejectedBatchId = `${reviewId}-rejected-batch`;
+      const rejectedRows = [...records];
+      rejectedRows[0] = record(rejectedBatchId, courseCode, teacherLabel);
+      rejectedRows[1] = record(`${rejectedBatchId}-unknown`, courseCode, unrelatedLabel);
+      const rejectedPackage = await importPackage(rejectedRows);
       const rejectedBatch = await SELF.fetch(
         `${origin}/api/admin/historical-review-imports`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            manifest,
-            records: [
-              record(rejectedBatchId, courseCode, teacherLabel),
-              record(`${rejectedBatchId}-unknown`, courseCode, unrelatedLabel),
-            ],
-          }),
+          body: JSON.stringify(rejectedPackage),
         },
       );
       expect(rejectedBatch.status).toBe(422);
@@ -173,53 +224,61 @@ describe("approved historical review tracer import", () => {
         .first<{ count: number }>();
       expect(rejectedBatchStored?.count).toBe(0);
 
-      const first = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ manifest, record: record(reviewId, courseCode, teacherLabel) }),
-      });
-      expect(first.status).toBe(201);
-      expect(await first.json()).toEqual({ id: `historical:${reviewId}`, created: true });
+      const concurrent = await Promise.all([
+        SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(approvedPackage),
+        }),
+        SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(approvedPackage),
+        }),
+      ]);
+      expect(concurrent.map((response) => response.status).sort()).toEqual([200, 201]);
+      const concurrentBodies = await Promise.all(
+        concurrent.map((response) =>
+          response.json<{ created: number; existing: number }>(),
+        ),
+      );
+      expect(
+        concurrentBodies.reduce(
+          (totals, body) => ({
+            created: totals.created + body.created,
+            existing: totals.existing + body.existing,
+          }),
+          { created: 0, existing: 0 },
+        ),
+      ).toEqual({ created: 50, existing: 50 });
 
       const repeated = await SELF.fetch(
         `${origin}/api/admin/historical-review-imports`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({ manifest, record: record(reviewId, courseCode, teacherLabel) }),
+          body: JSON.stringify(approvedPackage),
         },
       );
       expect(repeated.status).toBe(200);
       expect(await repeated.json()).toEqual({
-        id: `historical:${reviewId}`,
-        created: false,
+        offset: 0,
+        total: 50,
+        created: 0,
+        existing: 50,
       });
 
-      const batch = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          manifest,
-          records: batchReviewIds.map((id) => record(id, courseCode, teacherLabel)),
-        }),
-      });
-      expect(batch.status).toBe(201);
-      expect(await batch.json()).toEqual({ total: 2, created: 2, existing: 0 });
-
+      const excludedRows = [...records];
+      excludedRows[0] = {
+        ...record(`${reviewId}-excluded`, courseCode, teacherLabel),
+        exclusion_reason: "blank",
+      };
       const excludedPartition = await SELF.fetch(
         `${origin}/api/admin/historical-review-imports`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            manifest,
-            records: [
-              {
-                ...record(`${reviewId}-excluded`, courseCode, teacherLabel),
-                exclusion_reason: "blank",
-              },
-            ],
-          }),
+          body: JSON.stringify(await importPackage(excludedRows)),
         },
       );
       expect(excludedPartition.status).toBe(422);
@@ -280,5 +339,5 @@ describe("approved historical review tracer import", () => {
         env.DB.prepare("DELETE FROM teachers WHERE id IN (?,?)").bind(teacherId, unrelatedId),
       ]);
     }
-  });
+  }, 30000);
 });
