@@ -174,6 +174,25 @@ const publicReviewBinding = `
              AND public_offering.course_id=r.course_id
          )
        )`;
+const publicTextReviewCounts = `
+  SELECT course_id,teacher_id,COUNT(*) review_count
+  FROM (
+    SELECT r.course_id,r.teacher_id
+    FROM reviews r
+    WHERE r.status='approved'
+      AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
+    UNION ALL
+    SELECT phr.course_id,phr.teacher_id
+    FROM public_historical_reviews phr
+    UNION ALL
+    SELECT lr.course_id,lr.teacher_id
+    FROM legacy_reviews lr
+    JOIN courses legacy_course ON legacy_course.id=lr.course_id
+    JOIN teachers legacy_teacher ON legacy_teacher.id=lr.teacher_id
+    WHERE lr.status='approved'
+      AND trim(COALESCE(lr.comment,''))<>''
+  ) visible_text_reviews
+  GROUP BY course_id,teacher_id`;
 type PublicReviewCursor = { source: number; key: string };
 const publicReviewPageSize = (c: any) =>
   Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
@@ -195,31 +214,15 @@ const getPublicTextReviewCount = async (
   subject: "course_id" | "teacher_id",
   id: number | null,
 ) => {
-  const live = await db
+  const result = await db
     .prepare(
-      `SELECT COUNT(*) count
-       FROM reviews r
-       WHERE r.${subject}=? AND r.status='approved'
-         AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}`,
+      `SELECT COALESCE(SUM(review_count),0) count
+       FROM (${publicTextReviewCounts})
+       WHERE ${subject}=?`,
     )
     .bind(id)
     .first<{ count: number }>();
-  const historical = await db
-    .prepare(`SELECT COUNT(*) count FROM public_historical_reviews WHERE ${subject}=?`)
-    .bind(id)
-    .first<{ count: number }>();
-  const legacy = await db
-    .prepare(
-      `SELECT COUNT(*) count
-       FROM legacy_reviews lr
-       JOIN courses c ON c.id=lr.course_id
-       JOIN teachers t ON t.id=lr.teacher_id
-       WHERE lr.${subject}=? AND lr.status='approved'
-         AND trim(COALESCE(lr.comment,''))<>''`,
-    )
-    .bind(id)
-    .first<{ count: number }>();
-  return (live?.count || 0) + (historical?.count || 0) + (legacy?.count || 0);
+  return result?.count || 0;
 };
 const getPublicReviewPage = async (
   db: D1Database,
@@ -329,13 +332,15 @@ app.get("/api/config", async (c) =>
 );
 app.get("/api/courses", async (c) => {
   const { page, size } = pageArgs(c),
-    q = `%${clean(c.req.query("q"), 80)}%`,
+    search = clean(c.req.query("q"), 80),
+    q = `%${search}%`,
+    prefix = `${search}%`,
     cat = clean(c.req.query("category"), 20),
     department = clean(c.req.query("department"), 80),
     teacherId = integer(c.req.query("teacherId"));
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
-  const where = `(?='' OR c.category=?) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?))`;
+  const where = `(?='' OR c.category=?) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?))`;
   const args = [
     cat,
     cat,
@@ -347,6 +352,20 @@ app.get("/api/courses", async (c) => {
     q,
     q,
     q,
+    q,
+  ];
+  const searchRankArgs = [
+    search,
+    search,
+    search,
+    prefix,
+    prefix,
+    search,
+    prefix,
+    search,
+    search,
+    prefix,
+    prefix,
   ];
   const total = await c.env.DB.prepare(
     `SELECT COUNT(DISTINCT c.id) n FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id WHERE ${where}`,
@@ -357,18 +376,30 @@ app.get("/api/courses", async (c) => {
     `SELECT c.*,
        GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
        GROUP_CONCAT(DISTINCT t.name) teachers,
-       COUNT(DISTINCT r.id) review_count,
-       ROUND(AVG(r.overall),1) rating
+       COALESCE(course_review_counts.review_count,0) review_count,
+       (SELECT ROUND(AVG(r.overall),1) FROM reviews r
+        WHERE r.course_id=c.id AND r.status='approved'${publicReviewBinding}) rating
      FROM courses c
      LEFT JOIN course_teachers ct ON ct.course_id=c.id
      LEFT JOIN teachers t ON t.id=ct.teacher_id
-     LEFT JOIN reviews r ON r.course_id=c.id AND r.status='approved'${publicReviewBinding}
+     LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM (${publicTextReviewCounts}) GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id
      WHERE ${where}
      GROUP BY c.id
-     ORDER BY review_count DESC,c.name
+     ORDER BY CASE
+       WHEN ?='' THEN 0
+       WHEN c.name=? OR c.code=? THEN 0
+       WHEN c.name LIKE ? OR c.code LIKE ? THEN 1
+       WHEN c.department=? THEN 2
+       WHEN c.department LIKE ? THEN 3
+       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name=?)
+         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name=?) THEN 4
+       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name LIKE ?)
+         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name LIKE ?) THEN 5
+       ELSE 6
+     END,review_count DESC,c.name,c.code,c.id
      LIMIT ? OFFSET ?`,
   )
-    .bind(...args, size, (page - 1) * size)
+    .bind(...args, ...searchRankArgs, size, (page - 1) * size)
     .all();
   return c.json({
     items: results,
@@ -380,7 +411,9 @@ app.get("/api/courses", async (c) => {
 });
 app.get("/api/teachers", async (c) => {
   const { page, size } = pageArgs(c);
-  const q = `%${clean(c.req.query("q"), 80)}%`;
+  const search = clean(c.req.query("q"), 80);
+  const q = `%${search}%`;
+  const prefix = `${search}%`;
   const where = "t.name LIKE ? OR t.department LIKE ?";
   const args = [q, q];
   const total = await c.env.DB.prepare(
@@ -391,14 +424,22 @@ app.get("/api/teachers", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT t.*,
        (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct WHERE ct.teacher_id=t.id) course_count,
-       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) review_count,
+       COALESCE(teacher_review_counts.review_count,0) review_count,
        (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
      FROM teachers t
+     LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM (${publicTextReviewCounts}) GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
      WHERE ${where}
-     ORDER BY t.name,t.department,t.id
+     ORDER BY CASE
+       WHEN ?='' THEN 0
+       WHEN t.name=? THEN 0
+       WHEN t.name LIKE ? THEN 1
+       WHEN t.department=? THEN 2
+       WHEN t.department LIKE ? THEN 3
+       ELSE 4
+     END,review_count DESC,t.name,t.department,t.id
      LIMIT ? OFFSET ?`,
   )
-    .bind(...args, size, (page - 1) * size)
+    .bind(...args, search, search, prefix, search, prefix, size, (page - 1) * size)
     .all();
   const totalCount = total?.n || 0;
   return c.json({
@@ -425,12 +466,12 @@ app.get("/api/teachers/:id", async (c) => {
   const reviewPage = await getPublicReviewPage(c.env.DB, "teacher_id", id, 20, null);
   const courses = (
     await c.env.DB.prepare(
-      `SELECT c.*,COUNT(r.id) review_count,ROUND(AVG(r.overall),1) rating
+      `SELECT c.*,COALESCE(visible_counts.review_count,0) review_count,
+         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${publicReviewBinding}) rating
        FROM course_teachers ct
        JOIN courses c ON c.id=ct.course_id
-       LEFT JOIN reviews r ON r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${publicReviewBinding}
+       LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=c.id AND visible_counts.teacher_id=ct.teacher_id
        WHERE ct.teacher_id=?
-       GROUP BY c.id
        ORDER BY review_count DESC,c.name,c.id`,
     )
       .bind(id, id)
@@ -495,7 +536,12 @@ app.get("/api/courses/:id", async (c) => {
   const reviewPage = await getPublicReviewPage(c.env.DB, "course_id", id, 20, null);
   const teachers = (
     await c.env.DB.prepare(
-      "SELECT t.* FROM teachers t JOIN course_teachers ct ON ct.teacher_id=t.id WHERE ct.course_id=? ORDER BY t.name",
+      `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count
+       FROM teachers t
+       JOIN course_teachers ct ON ct.teacher_id=t.id
+       LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=ct.course_id AND visible_counts.teacher_id=t.id
+       WHERE ct.course_id=?
+       ORDER BY review_count DESC,t.name,t.id`,
     )
       .bind(id)
       .all()
