@@ -42,6 +42,13 @@ type StashedReview = {
   comment: string;
   term: string;
 };
+const HISTORICAL_FREEZE_CONTRACT = "legacy-historical-production-freeze-v1";
+const HISTORICAL_SOURCE_CONTRACT = "legacy-historical-approved-package-v1";
+const HISTORICAL_RECORD_SCHEMA = "legacy-approved-review-v1";
+const APPROVED_HISTORICAL_MANIFEST_SHA256 =
+  "edcf142cbd0380e734da0cde1923ee976ea9e25ab48147d0b78e218a64bb51af";
+const APPROVED_CATALOG_CONTENT_SHA256 =
+  "33efc25c965510f7e87aeefc8b14a3ab5ec7c0df81d3485688d4630a4179bf1f";
 const app = new Hono<{ Bindings: Bindings; Variables: Vars }>();
 type AppContext = Context<{ Bindings: Bindings; Variables: Vars }>;
 const clean = (v: unknown, n = 500) =>
@@ -353,6 +360,16 @@ app.get("/api/teachers/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
+  const historicalReviews = (
+    await c.env.DB.prepare(
+      `SELECT 'historical:' || phr.id id,phr.course_id,phr.teacher_id,
+        phr.comment,c.name course_name,c.code course_code
+       FROM public_historical_reviews phr JOIN courses c ON c.id=phr.course_id
+       WHERE phr.teacher_id=? ORDER BY phr.id LIMIT 100`,
+    )
+      .bind(id)
+      .all()
+  ).results;
   const legacyReviews = (
     await c.env.DB.prepare(
       `SELECT lr.id,lr.course_id,lr.teacher_id,lr.comment,lr.term,lr.source_label,lr.created_at,c.name course_name,c.code course_code
@@ -366,7 +383,7 @@ app.get("/api/teachers/:id", async (c) => {
   return c.json({
     teacher,
     courses,
-    reviews,
+    reviews: [...historicalReviews, ...reviews],
     legacyReviews,
     ratingCount: reviewStats?.ratingCount || 0,
     noteCount: reviewStats?.noteCount || 0,
@@ -427,6 +444,16 @@ app.get("/api/courses/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
+  const historicalReviews = (
+    await c.env.DB.prepare(
+      `SELECT 'historical:' || phr.id id,phr.course_id,phr.teacher_id,
+        phr.comment,t.name teacher_name
+       FROM public_historical_reviews phr JOIN teachers t ON t.id=phr.teacher_id
+       WHERE phr.course_id=? ORDER BY phr.id LIMIT 100`,
+    )
+      .bind(id)
+      .all()
+  ).results;
   const legacyReviews = (
     await c.env.DB.prepare(
       `SELECT lr.id,lr.course_id,lr.teacher_id,lr.comment,lr.term,lr.source_label,lr.created_at,t.name teacher_name
@@ -446,7 +473,7 @@ app.get("/api/courses/:id", async (c) => {
   ).results;
   return c.json({
     course: { ...course, teachers, nameVariants },
-    reviews,
+    reviews: [...historicalReviews, ...reviews],
     legacyReviews,
     ratingCount: reviewStats?.ratingCount || 0,
     noteCount: reviewStats?.noteCount || 0,
@@ -798,6 +825,114 @@ app.use("/api/admin/*", async (c, next) => {
 app.get("/api/admin/session", (c) =>
   c.json({ ok: true, csrfToken: c.get("adminCsrf") }),
 );
+app.post("/api/admin/historical-review-imports", async (c) => {
+  const body = await c.req.json<{
+    manifest?: {
+      contractVersion?: unknown;
+      status?: unknown;
+      counts?: { importable?: unknown };
+      schemas?: Record<string, unknown>;
+      lineage?: {
+        approvedCatalogContentSha256?: unknown;
+        approvedPackageManifestSha256?: unknown;
+        approvedPackageContract?: unknown;
+      };
+    };
+    record?: Record<string, unknown>;
+  }>();
+  const manifest = body.manifest;
+  const record = body.record;
+  if (
+    manifest?.contractVersion !== HISTORICAL_FREEZE_CONTRACT ||
+    manifest.status !== "package_ready" ||
+    manifest.counts?.importable !== 941 ||
+    manifest.schemas?.["importable-legacy-reviews.jsonl"] !==
+      HISTORICAL_RECORD_SCHEMA ||
+    manifest.lineage?.approvedPackageContract !== HISTORICAL_SOURCE_CONTRACT ||
+    manifest.lineage.approvedPackageManifestSha256 !==
+      APPROVED_HISTORICAL_MANIFEST_SHA256 ||
+    manifest.lineage.approvedCatalogContentSha256 !==
+      APPROVED_CATALOG_CONTENT_SHA256
+  )
+    return fail(c, "历史评价批准包身份或内容哈希不匹配", 422);
+
+  const requiredFields = new Set([
+    "catalog_course_code",
+    "catalog_teacher_label",
+    "category",
+    "comment",
+    "decision_basis",
+    "duplicate_group",
+    "proposed_teacher_label",
+    "review_id",
+    "schema_version",
+    "source_column",
+    "source_evaluation_id",
+    "source_row",
+    "worksheet",
+  ]);
+  if (
+    !record ||
+    Object.keys(record).length !== requiredFields.size ||
+    Object.keys(record).some((field) => !requiredFields.has(field)) ||
+    record.schema_version !== HISTORICAL_RECORD_SCHEMA
+  )
+    return fail(c, "历史评价记录不符合批准包固定 schema", 422);
+
+  const reviewId = clean(record.review_id, 200);
+  const courseCode = clean(record.catalog_course_code, 100);
+  const teacherLabel = clean(record.catalog_teacher_label, 200);
+  const comment = clean(record.comment, 4000);
+  if (!reviewId || !courseCode || !teacherLabel || !comment)
+    return fail(c, "历史评价记录缺少稳定身份、目录身份或正文", 422);
+
+  const identity = await c.env.DB.prepare(
+    `SELECT c.id course_id,t.id teacher_id,
+       EXISTS(
+         SELECT 1 FROM course_teachers ct
+         WHERE ct.course_id=c.id AND ct.teacher_id=t.id
+       ) relation_exists
+     FROM courses c CROSS JOIN teachers t
+     WHERE c.code=? AND t.source_teacher_label=?`,
+  )
+    .bind(courseCode, teacherLabel)
+    .first<{ course_id: number; teacher_id: number; relation_exists: number }>();
+  if (!identity || !identity.relation_exists)
+    return fail(c, "历史评价引用的课程、教师或任课关系不存在", 422);
+
+  const existing = await c.env.DB.prepare(
+    `SELECT course_id,teacher_id,comment FROM public_historical_reviews WHERE id=?`,
+  )
+    .bind(reviewId)
+    .first<{ course_id: number; teacher_id: number; comment: string }>();
+  if (existing) {
+    if (
+      existing.course_id !== identity.course_id ||
+      existing.teacher_id !== identity.teacher_id ||
+      existing.comment !== comment
+    )
+      return fail(c, "稳定评价身份已绑定到不同内容", 409);
+    return c.json({ id: `historical:${reviewId}`, created: false });
+  }
+
+  await c.env.DB.prepare(
+    `INSERT INTO public_historical_reviews(
+       id,course_id,teacher_id,comment,package_contract,
+       approved_package_manifest_sha256,approved_catalog_content_sha256
+     ) VALUES(?,?,?,?,?,?,?)`,
+  )
+    .bind(
+      reviewId,
+      identity.course_id,
+      identity.teacher_id,
+      comment,
+      HISTORICAL_FREEZE_CONTRACT,
+      APPROVED_HISTORICAL_MANIFEST_SHA256,
+      APPROVED_CATALOG_CONTENT_SHA256,
+    )
+    .run();
+  return c.json({ id: `historical:${reviewId}`, created: true }, 201);
+});
 app.post("/api/admin/logout", async (c) => {
   await c.env.DB.prepare(
     "UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=?",
