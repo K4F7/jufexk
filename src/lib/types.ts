@@ -85,6 +85,11 @@ export type PublicReview = {
   teacher_name?: string;
 };
 
+export type PublicReviewPage = {
+  items: PublicReview[];
+  nextCursor: string | null;
+};
+
 export type LegacyReview = {
   id?: number;
   course_name?: string;

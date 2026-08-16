@@ -27,6 +27,7 @@ jobs:
           cache: pnpm
       - uses: astral-sh/setup-uv@v6
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run check
       - name: List pending D1 migrations
         run: pnpm exec wrangler d1 migrations list jufexk --remote

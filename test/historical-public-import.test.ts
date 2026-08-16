@@ -68,6 +68,7 @@ describe("approved historical review tracer import", () => {
     const teacherLabel = `历史教师-${suffix}`;
     const unrelatedLabel = `非任课教师-${suffix}`;
     const reviewId = `approved-review-${suffix}`;
+    const batchReviewIds = [`${reviewId}-batch-1`, `${reviewId}-batch-2`];
     const courseResult = await env.DB.prepare(
       "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
     )
@@ -171,6 +172,35 @@ describe("approved historical review tracer import", () => {
         created: false,
       });
 
+      const batch = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          manifest,
+          records: batchReviewIds.map((id) => record(id, courseCode, teacherLabel)),
+        }),
+      });
+      expect(batch.status).toBe(201);
+      expect(await batch.json()).toEqual({ total: 2, created: 2, existing: 0 });
+
+      const excludedPartition = await SELF.fetch(
+        `${origin}/api/admin/historical-review-imports`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            manifest,
+            records: [
+              {
+                ...record(`${reviewId}-excluded`, courseCode, teacherLabel),
+                exclusion_reason: "blank",
+              },
+            ],
+          }),
+        },
+      );
+      expect(excludedPartition.status).toBe(422);
+
       const stored = await env.DB.prepare(
         "SELECT COUNT(*) count FROM public_historical_reviews WHERE id=?",
       )
@@ -191,6 +221,8 @@ describe("approved historical review tracer import", () => {
         course_id: courseId,
         teacher_id: teacherId,
         comment: "这是一条贯通课程与教师详情页的匿名评价。",
+        course_name: `历史课程-${suffix}`,
+        course_code: courseCode,
         teacher_name: teacherLabel,
       });
       expect(teacherReview).toEqual({
@@ -200,6 +232,7 @@ describe("approved historical review tracer import", () => {
         comment: "这是一条贯通课程与教师详情页的匿名评价。",
         course_name: `历史课程-${suffix}`,
         course_code: courseCode,
+        teacher_name: teacherLabel,
       });
       for (const projected of [courseReview, teacherReview]) {
         const json = JSON.stringify(projected);
@@ -218,7 +251,7 @@ describe("approved historical review tracer import", () => {
       }
     } finally {
       await env.DB.batch([
-        env.DB.prepare("DELETE FROM public_historical_reviews WHERE id=?").bind(reviewId),
+        env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(courseId),
         env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(courseId),
         env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId),
         env.DB.prepare("DELETE FROM teachers WHERE id IN (?,?)").bind(teacherId, unrelatedId),

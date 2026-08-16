@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const origin = "https://example.com";
 
 describe("public course-teacher review projection", () => {
-  it("shares rating and written-note semantics across course and teacher details", async () => {
+  it("shares a stable, bounded anonymous text feed across course and teacher details", async () => {
     const code = `PROJECTION-${Date.now()}`;
     const teacherName = `投影教师-${Date.now()}`;
     const teacher = await env.DB.prepare(
@@ -109,6 +109,27 @@ describe("public course-teacher review projection", () => {
         "pending",
       ),
     ]);
+    const historicalIds = Array.from({ length: 23 }, (_, index) =>
+      `${code}-historical-${String(index + 1).padStart(2, "0")}`,
+    );
+    await env.DB.batch(
+      historicalIds.map((reviewId, index) =>
+        env.DB.prepare(
+          `INSERT INTO public_historical_reviews(
+             id,course_id,teacher_id,comment,package_contract,
+             approved_package_manifest_sha256,approved_catalog_content_sha256
+           ) VALUES(?,?,?,?,?,?,?)`,
+        ).bind(
+          reviewId,
+          courseId,
+          teacherId,
+          `冻结匿名评价 ${index + 1}`,
+          "legacy-historical-production-freeze-v1",
+          "a".repeat(64),
+          "b".repeat(64),
+        ),
+      ),
+    );
 
     try {
       const courseResponse = await SELF.fetch(
@@ -120,26 +141,22 @@ describe("public course-teacher review projection", () => {
       expect(courseResponse.status).toBe(200);
       expect(teacherResponse.status).toBe(200);
       const courseBody = await courseResponse.json<{
-        ratingCount: number;
-        noteCount: number;
+        reviewCount: number;
+        nextReviewCursor: string | null;
         reviews: Array<Record<string, unknown>>;
       }>();
       const teacherBody = await teacherResponse.json<{
-        ratingCount: number;
-        noteCount: number;
+        reviewCount: number;
+        nextReviewCursor: string | null;
         reviews: Array<Record<string, unknown>>;
       }>();
 
-      expect(courseBody.ratingCount).toBe(4);
-      expect(courseBody.noteCount).toBe(2);
-      expect(teacherBody.ratingCount).toBe(courseBody.ratingCount);
-      expect(teacherBody.noteCount).toBe(courseBody.noteCount);
-      expect(courseBody.reviews).toHaveLength(2);
-      expect(teacherBody.reviews).toHaveLength(2);
-      expect(courseBody.reviews.map((review) => review.comment)).toEqual([
-        "较旧的补充说明",
-        "较新的补充说明",
-      ]);
+      expect(courseBody.reviewCount).toBe(26);
+      expect(teacherBody.reviewCount).toBe(courseBody.reviewCount);
+      expect(courseBody.reviews).toHaveLength(20);
+      expect(teacherBody.reviews).toEqual(courseBody.reviews);
+      expect(courseBody.nextReviewCursor).toBeTruthy();
+      expect(teacherBody.nextReviewCursor).toBe(courseBody.nextReviewCursor);
       expect(courseBody.reviews[0]).toMatchObject({
         teacher_id: teacherId,
         teacher_name: teacherName,
@@ -149,14 +166,49 @@ describe("public course-teacher review projection", () => {
         course_name: `投影课程-${code}`,
         course_code: code,
       });
-      const publicJson = JSON.stringify({ courseBody, teacherBody });
+      const [courseNext, teacherNext, courseRefresh] = await Promise.all([
+        SELF.fetch(
+          `${origin}/api/courses/${courseId}/reviews?cursor=${encodeURIComponent(courseBody.nextReviewCursor!)}`,
+        ).then((response) => response.json<{ items: Array<Record<string, unknown>> }>()),
+        SELF.fetch(
+          `${origin}/api/teachers/${teacherId}/reviews?cursor=${encodeURIComponent(teacherBody.nextReviewCursor!)}`,
+        ).then((response) => response.json<{ items: Array<Record<string, unknown>> }>()),
+        SELF.fetch(`${origin}/api/courses/${courseId}`).then((response) =>
+          response.json<{ reviews: Array<Record<string, unknown>> }>(),
+        ),
+      ]);
+      expect(courseNext.items).toHaveLength(6);
+      expect(teacherNext.items).toEqual(courseNext.items);
+      expect(courseRefresh.reviews).toEqual(courseBody.reviews);
+      const allIds = [...courseBody.reviews, ...courseNext.items].map((review) => review.id);
+      expect(new Set(allIds).size).toBe(26);
+      expect(allIds).toEqual([
+        ...historicalIds.map((reviewId) => `historical:${reviewId}`),
+        expect.stringMatching(/^legacy:/),
+        expect.stringMatching(/^review:/),
+        expect.stringMatching(/^review:/),
+      ]);
+      const publicJson = JSON.stringify({
+        courseReviews: courseBody.reviews,
+        teacherReviews: teacherBody.reviews,
+        courseNext,
+        teacherNext,
+      });
       expect(publicJson).not.toContain("private-");
       expect(publicJson).not.toContain("private moderation note");
       expect(publicJson).not.toContain("private OCR");
+      expect(publicJson).not.toContain("投影测试历史资料");
+      expect(publicJson).not.toContain("2026 春");
+      expect(publicJson).not.toContain("created_at");
+      expect(publicJson).not.toContain("publishedAt");
+      expect(publicJson).not.toContain("overall");
       expect(publicJson).not.toContain("待审核补充说明");
       expect(publicJson).not.toContain("被驳回补充说明");
     } finally {
       await env.DB.batch([
+        env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(
+          courseId,
+        ),
         env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=?").bind(
           batchId,
         ),

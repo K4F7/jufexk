@@ -1,13 +1,24 @@
-import { Separator } from "@heroui/react";
+import { Button, Separator, Spinner } from "@heroui/react";
+import { Link } from "react-router-dom";
 import type { PublicReview } from "../lib/types";
 import { EmptyBox } from "./EmptyBox";
 
 export function PublicReviews({
   rows,
   identity,
+  total,
+  hasMore,
+  isLoadingMore,
+  loadMoreError,
+  onLoadMore,
 }: {
   rows: PublicReview[];
   identity: "teacher" | "course";
+  total: number;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMoreError: string;
+  onLoadMore: () => void;
 }) {
   return (
     <section className="mb-2" aria-labelledby={`${identity}-reviews-heading`}>
@@ -18,27 +29,58 @@ export function PublicReviews({
         >
           评价
         </h2>
-        {rows.length ? (
-          <span className="text-[13px] text-muted">{rows.length} 条</span>
+        {total ? (
+          <span className="text-[13px] text-muted">{total} 条</span>
         ) : null}
       </div>
       {rows.length ? (
-        <div role="list" aria-label="评价列表">
+        <div role="list" aria-label="评价列表" aria-busy={isLoadingMore}>
           {rows.map((review, index) => {
-            const counterpart =
-              identity === "course" ? review.course_name : review.teacher_name;
+            const counterpart = identity === "course" ? review.course_name : review.teacher_name;
+            const href =
+              identity === "course"
+                ? `/courses/${review.course_id}`
+                : `/teachers/${review.teacher_id}`;
             return (
               <div key={review.id} role="listitem">
                 {index > 0 ? <Separator /> : null}
                 <article className="py-4">
-                  <p className="m-0 text-sm font-semibold">
-                    {counterpart || (identity === "course" ? "课程未标注" : "教师未标注")}
+                  <p className="m-0 min-w-0 text-sm font-semibold">
+                    <Link className="break-words underline underline-offset-4" to={href}>
+                      {counterpart ||
+                        (identity === "course" ? "课程未标注" : "教师未标注")}
+                      {identity === "course" && review.course_code
+                        ? `（${review.course_code}）`
+                        : null}
+                    </Link>
                   </p>
-                  <p className="mb-0 mt-1.5 text-sm leading-relaxed">{review.comment}</p>
+                  <p className="mb-0 mt-1.5 break-words text-sm leading-relaxed">
+                    {review.comment}
+                  </p>
                 </article>
               </div>
             );
           })}
+          {hasMore ? (
+            <div className="flex justify-center border-t border-border pt-4">
+              <Button variant="secondary" isPending={isLoadingMore} onPress={onLoadMore}>
+                {({ isPending }) => (
+                  <>
+                    {isPending ? <Spinner color="current" size="sm" /> : null}
+                    {isPending ? "加载中…" : "继续加载"}
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : null}
+          {loadMoreError ? (
+            <p className="mb-0 mt-3 text-center text-sm text-danger" role="alert">
+              {loadMoreError}
+            </p>
+          ) : null}
+          <span className="sr-only" aria-live="polite">
+            {isLoadingMore ? "正在加载更多评价" : `已显示 ${rows.length} 条评价`}
+          </span>
         </div>
       ) : (
         <EmptyBox>暂无评价</EmptyBox>
