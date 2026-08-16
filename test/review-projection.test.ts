@@ -123,13 +123,11 @@ describe("public course-teacher review projection", () => {
         ratingCount: number;
         noteCount: number;
         reviews: Array<Record<string, unknown>>;
-        legacyReviews: Array<Record<string, unknown>>;
       }>();
       const teacherBody = await teacherResponse.json<{
         ratingCount: number;
         noteCount: number;
         reviews: Array<Record<string, unknown>>;
-        legacyReviews: Array<Record<string, unknown>>;
       }>();
 
       expect(courseBody.ratingCount).toBe(4);
@@ -145,21 +143,12 @@ describe("public course-teacher review projection", () => {
       expect(courseBody.reviews[0]).toMatchObject({
         teacher_id: teacherId,
         teacher_name: teacherName,
-        term: null,
-        publishedAt: null,
       });
       expect(teacherBody.reviews[0]).toMatchObject({
         course_id: courseId,
         course_name: `投影课程-${code}`,
         course_code: code,
-        term: null,
-        publishedAt: null,
       });
-      expect(courseBody.legacyReviews).toHaveLength(1);
-      expect(courseBody.legacyReviews[0]).toMatchObject({
-        comment: "已审核历史资料",
-      });
-      expect(teacherBody.legacyReviews).toHaveLength(1);
       const publicJson = JSON.stringify({ courseBody, teacherBody });
       expect(publicJson).not.toContain("private-");
       expect(publicJson).not.toContain("private moderation note");

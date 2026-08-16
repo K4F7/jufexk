@@ -2,16 +2,14 @@ import { Button, Chip } from "@heroui/react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { EmptyBox } from "../components/EmptyBox";
-import { LegacyReviews } from "../components/LegacyReviews";
-import { ReviewCard } from "../components/ReviewCard";
+import { PublicReviews } from "../components/PublicReviews";
 import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
-import type { Course, LegacyReview, Review, Teacher } from "../lib/types";
+import type { Course, PublicReview, Review, Teacher } from "../lib/types";
 
 type Detail = {
   course: Course & { teachers: Teacher[] };
-  reviews: Review[];
-  legacyReviews?: LegacyReview[];
+  reviews: PublicReview[];
 };
 
 /** DEV-only: live course-detail-summary A/B/C compare. */
@@ -164,7 +162,7 @@ export function CourseDetailPage() {
             variant={summaryVariant}
             model={{
               course: c,
-              reviews: data.reviews ?? [],
+              reviews: (data.reviews ?? []) as unknown as Review[],
               backSearch: location.search,
               onBack: goBack,
             }}
@@ -184,7 +182,7 @@ export function CourseDetailPage() {
             model={{
               counterpartMode: "teacher",
               hostLabel: c.name,
-              liveReviews: data.reviews ?? [],
+              liveReviews: (data.reviews ?? []) as unknown as Review[],
               liveRatingCount: data.reviews?.length ?? 0,
             }}
           />
@@ -197,44 +195,15 @@ export function CourseDetailPage() {
             key={reviewsVariant}
             variant={reviewsVariant}
             model={{
-              reviews: data.reviews ?? [],
-              legacyReviews: data.legacyReviews ?? [],
+              reviews: (data.reviews ?? []) as unknown as Review[],
+              legacyReviews: [],
               courseName: c.name,
             }}
           />
         </Suspense>
       ) : (
         <>
-          <section
-            className="mb-2"
-            aria-labelledby="course-submissions-heading"
-          >
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-              <h2
-                id="course-submissions-heading"
-                className="m-0 text-[17px] font-bold leading-snug"
-              >
-                学生投稿
-              </h2>
-              {data.reviews?.length ? (
-                <span className="text-[13px] text-muted">
-                  {data.reviews.length} 条
-                </span>
-              ) : null}
-            </div>
-            {data.reviews?.length ? (
-              <div role="list" aria-label="学生投稿列表">
-                {data.reviews.map((r, i) => (
-                  <div key={r.id} role="listitem">
-                    <ReviewCard review={r} showSeparator={i > 0} />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyBox>暂无投稿</EmptyBox>
-            )}
-          </section>
-          <LegacyReviews rows={data.legacyReviews} />
+          <PublicReviews rows={data.reviews ?? []} identity="teacher" />
         </>
       )}
     </section>

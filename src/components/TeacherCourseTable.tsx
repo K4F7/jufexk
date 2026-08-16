@@ -1,14 +1,14 @@
 /**
  * Courses taught by a teacher — dense fold aligned with CourseResultTable B.
  * Course-domain columns (not teacher-catalog isomorphic):
- *   课程 (name + category Chip · code) · 院系 · 评分/投稿
+ *   课程 (name + category Chip · code) · 院系
  * Whole row + course name → course detail; real links (keyboard / new-tab safe).
  * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
  */
 import { Chip, Link, Table } from "@heroui/react";
 import type { ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { categoryLabel, scoreText } from "../lib/labels";
+import { categoryLabel } from "../lib/labels";
 import type { Course } from "../lib/types";
 
 export type TeacherCourseTableProps = {
@@ -71,11 +71,10 @@ export function TeacherCourseTable({
   return (
     <Table className={className ? `dense-table ${className}` : "dense-table"}>
       <Table.ScrollContainer>
-        <Table.Content aria-label="任课课程" className="min-w-[560px]">
+        <Table.Content aria-label="任课课程" className="min-w-[440px]">
           <Table.Header>
             <Table.Column isRowHeader>课程</Table.Column>
             <Table.Column>院系</Table.Column>
-            <Table.Column>评分 / 投稿</Table.Column>
           </Table.Header>
           <Table.Body
             items={items}
@@ -117,16 +116,6 @@ export function TeacherCourseTable({
                   <span className="text-[13px] text-muted">
                     {course.department || "—"}
                   </span>
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-baseline gap-1.5 whitespace-nowrap tabular">
-                    <span className="font-semibold text-accent">
-                      {scoreText(course.rating)}
-                    </span>
-                    <span className="text-[12px] text-muted">
-                      · {course.review_count ?? 0} 投
-                    </span>
-                  </div>
                 </Table.Cell>
               </Table.Row>
             )}

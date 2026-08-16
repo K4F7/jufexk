@@ -75,6 +75,16 @@ export type Review = {
   moderator_note?: string;
 };
 
+export type PublicReview = {
+  id: string | number;
+  comment: string;
+  course_id: number;
+  teacher_id: number;
+  course_name?: string;
+  course_code?: string;
+  teacher_name?: string;
+};
+
 export type LegacyReview = {
   id?: number;
   course_name?: string;
