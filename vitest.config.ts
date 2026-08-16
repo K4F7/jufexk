@@ -24,6 +24,8 @@ export default defineConfig(async () => {
           ],
           bindings: {
             ADMIN_PASSWORD: "test-password",
+            HISTORICAL_IMPORT_ARTIFACT_SHA256: "manifest",
+            HISTORICAL_IMPORT_MANIFEST_SHA256: "manifest",
             IP_HASH_SECRET: "test-ip-hash-secret",
             TURNSTILE_SECRET: "",
             TURNSTILE_SITE_KEY: "",

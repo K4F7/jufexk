@@ -5,7 +5,12 @@ import unittest
 from inspect import signature
 from pathlib import Path
 
-from freeze_historical_production_package import FreezeError, _freeze, freeze
+from freeze_historical_production_package import (
+    SOURCE_APPROVED_CATALOG_MANIFEST_SHA256,
+    FreezeError,
+    _freeze,
+    freeze,
+)
 
 
 def canonical_json(value):
@@ -38,6 +43,29 @@ def refresh_manifest(source: Path, artifact_name: str) -> str:
     return hashlib.sha256(manifest_path.read_bytes()).hexdigest()
 
 
+def refresh_catalog_manifest(catalog_manifest: Path) -> None:
+    artifact_path = catalog_manifest.parent / "catalog-baseline.jsonl"
+    rows = [
+        json.loads(line)
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+    ]
+    counts = {
+        "courses": sum(row["recordType"] == "course" for row in rows),
+        "teachers": sum(row["recordType"] == "teacher" for row in rows),
+        "relations": sum(row["recordType"] == "relation" for row in rows),
+        "totalRecords": len(rows),
+    }
+    manifest = json.loads(catalog_manifest.read_text(encoding="utf-8"))
+    manifest["counts"] = counts
+    manifest["artifact"] = {
+        "path": "catalog-baseline.jsonl",
+        "records": len(rows),
+        "bytes": artifact_path.stat().st_size,
+        "sha256": hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
+    }
+    catalog_manifest.write_text(canonical_json(manifest), encoding="utf-8")
+
+
 class FreezeHistoricalProductionPackageTests(unittest.TestCase):
     def fixture(self, root: Path, *, blank_comment: bool = False):
         source = root / "source"
@@ -47,8 +75,8 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
                 "schema_version": "legacy-approved-review-v1",
                 "review_id": f"review-{index}",
                 "source_evaluation_id": f"evaluation-{index}",
-                "catalog_course_code": "C1",
-                "catalog_teacher_label": "Teacher",
+                "catalog_course_code": "C1" if index < 522 else "C2",
+                "catalog_teacher_label": "Teacher" if index < 522 else "Teacher2",
                 "category": "general",
                 "comment": "" if blank_comment and index == 0 else "Useful review",
                 "decision_basis": "existing_catalog_relation",
@@ -99,23 +127,74 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
             "approved-legacy-reviews.jsonl": approved,
             "unresolved-legacy-reviews.jsonl": unresolved,
             "excluded-legacy-reviews.jsonl": excluded,
-            "catalog-courses.jsonl": [{"courseCode": "C1"}],
-            "catalog-teachers.jsonl": [{"sourceTeacherLabel": "Teacher"}],
-            "catalog-relations.jsonl": [{
-                "courseCode": "C1", "sourceTeacherLabel": "Teacher"
-            }],
+            "catalog-courses.jsonl": [{"courseCode": "C1"}, {"courseCode": "C2"}],
+            "catalog-teachers.jsonl": [
+                {"sourceTeacherLabel": "Teacher"},
+                {"sourceTeacherLabel": "Teacher2"},
+            ],
+            "catalog-relations.jsonl": [
+                {"courseCode": "C1", "sourceTeacherLabel": "Teacher"},
+                {"courseCode": "C2", "sourceTeacherLabel": "Teacher2"},
+            ],
         }
         files = {
             name: write_jsonl(source / name, rows) for name, rows in inputs.items()
         }
         catalog_manifest = root / "catalog-manifest.json"
+        catalog_records = [
+            {
+                "schemaVersion": "catalog-baseline-approved-record/v1",
+                "recordType": "course",
+                "value": {"courseCode": "C1"},
+            },
+            {
+                "schemaVersion": "catalog-baseline-approved-record/v1",
+                "recordType": "course",
+                "value": {"courseCode": "C2"},
+            },
+            {
+                "schemaVersion": "catalog-baseline-approved-record/v1",
+                "recordType": "teacher",
+                "value": {"sourceTeacherLabel": "Teacher"},
+            },
+            {
+                "schemaVersion": "catalog-baseline-approved-record/v1",
+                "recordType": "teacher",
+                "value": {"sourceTeacherLabel": "Teacher2"},
+            },
+            {
+                "schemaVersion": "catalog-baseline-approved-record/v1",
+                "recordType": "relation",
+                "value": {"courseCode": "C1", "sourceTeacherLabel": "Teacher"},
+            },
+        ]
+        catalog_artifact = root / "catalog-baseline.jsonl"
+        write_jsonl(catalog_artifact, catalog_records)
         catalog_manifest.write_text(
-            canonical_json({"contentSha256": "catalog-hash"}), encoding="utf-8"
+            canonical_json(
+                {
+                    "schemaVersion": "catalog-baseline-approved-manifest/v1",
+                    "status": "package_ready",
+                    "counts": {
+                        "courses": 2,
+                        "teachers": 2,
+                        "relations": 1,
+                        "totalRecords": 5,
+                    },
+                    "artifact": {
+                        "path": "catalog-baseline.jsonl",
+                        "records": 5,
+                        "bytes": catalog_artifact.stat().st_size,
+                        "sha256": hashlib.sha256(catalog_artifact.read_bytes()).hexdigest(),
+                    },
+                    "contentSha256": "catalog-hash",
+                }
+            ),
+            encoding="utf-8",
         )
-        catalog_manifest_sha256 = hashlib.sha256(catalog_manifest.read_bytes()).hexdigest()
         manifest = {
             "contract_version": "legacy-historical-approved-package-v1",
-            "approved_catalog_manifest_sha256": catalog_manifest_sha256,
+            "approved_catalog_manifest_sha256": SOURCE_APPROVED_CATALOG_MANIFEST_SHA256,
             "closure": {
                 "all_api_ready_source_rows_terminal": True,
                 "production_write_performed": False,
@@ -180,6 +259,9 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source, catalog_manifest, manifest_sha256 = self.fixture(root)
+            catalog_manifest_sha256 = hashlib.sha256(
+                catalog_manifest.read_bytes()
+            ).hexdigest()
             catalog_manifest.write_text(
                 canonical_json({"contentSha256": "catalog-hash", "changed": True}),
                 encoding="utf-8",
@@ -191,19 +273,59 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
                     root / "out",
                     expected_manifest_sha256=manifest_sha256,
                     expected_catalog_content_sha256="catalog-hash",
+                    expected_catalog_manifest_sha256=catalog_manifest_sha256,
                 )
 
     def test_catalog_content_authority_hash_is_enforced(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source, catalog_manifest, manifest_sha256 = self.fixture(root)
-            with self.assertRaisesRegex(FreezeError, "catalog content SHA-256 mismatch"):
+            with self.assertRaisesRegex(FreezeError, "contract or content SHA-256 mismatch"):
                 _freeze(
                     source,
                     catalog_manifest,
                     root / "out",
                     expected_manifest_sha256=manifest_sha256,
                     expected_catalog_content_sha256="unexpected",
+                )
+
+    def test_catalog_artifact_hash_is_enforced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, catalog_manifest, manifest_sha256 = self.fixture(root)
+            with (root / "catalog-baseline.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write("{}\n")
+            with self.assertRaisesRegex(FreezeError, "artifact hash, size, or record"):
+                _freeze(
+                    source,
+                    catalog_manifest,
+                    root / "out",
+                    expected_manifest_sha256=manifest_sha256,
+                    expected_catalog_content_sha256="catalog-hash",
+                )
+
+    def test_v2_relation_split_is_fixed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, catalog_manifest, manifest_sha256 = self.fixture(root)
+            artifact_path = root / "catalog-baseline.jsonl"
+            rows = [json.loads(line) for line in artifact_path.read_text(encoding="utf-8").splitlines()]
+            rows.append(
+                {
+                    "schemaVersion": "catalog-baseline-approved-record/v1",
+                    "recordType": "relation",
+                    "value": {"courseCode": "C2", "sourceTeacherLabel": "Teacher2"},
+                }
+            )
+            write_jsonl(artifact_path, rows)
+            refresh_catalog_manifest(catalog_manifest)
+            with self.assertRaisesRegex(FreezeError, "relation split"):
+                _freeze(
+                    source,
+                    catalog_manifest,
+                    root / "out",
+                    expected_manifest_sha256=manifest_sha256,
+                    expected_catalog_content_sha256="catalog-hash",
                 )
 
     def test_importable_catalog_relation_is_enforced(self):
@@ -315,7 +437,7 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
             report = (output / "ACCEPTANCE.md").read_text(encoding="utf-8")
             self.assertEqual(result["counts"]["blank"], 1)
             self.assertEqual(result["counts"]["evidenceConflict"], 1)
-            self.assertIn("941 + 430 + 1 + 1 + 6", report)
+            self.assertIn("522 + 419 + 430 + 1 + 1 + 6", report)
 
     def test_public_freeze_does_not_allow_authority_overrides(self):
         self.assertEqual(
@@ -384,12 +506,17 @@ class FreezeHistoricalProductionPackageTests(unittest.TestCase):
             second_files = {path.name: path.read_bytes() for path in second.iterdir()}
             self.assertEqual(first_files, second_files)
             self.assertEqual(
-                json.loads(first_files["manifest.json"])["counts"]["importable"], 941
+                json.loads(first_files["manifest.json"])["counts"]["importable"], 522
             )
             manifest = json.loads(first_files["manifest.json"])
+            self.assertEqual(manifest["counts"]["catalogRelationUnavailable"], 419)
             self.assertEqual(
                 manifest["schemas"]["catalog-identity-unresolved.jsonl"],
                 "legacy-approved-unresolved-review-v1",
+            )
+            self.assertEqual(
+                manifest["schemas"]["catalog-relation-unavailable.jsonl"],
+                "legacy-approved-review-v1",
             )
             self.assertEqual(manifest["lineage"]["issue44"]["needsReviewRows"], 23)
 

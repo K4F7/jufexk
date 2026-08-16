@@ -3,18 +3,35 @@ import { describe, expect, it } from "vitest";
 
 const origin = "https://example.com";
 const manifest = {
-  contractVersion: "legacy-historical-production-freeze-v1",
+  contractVersion: "legacy-historical-production-freeze-v2",
+  contentSha256: "1b4ca0728d9883c0d9267cc0ede033bbeebcb0fb3a3cdff333816c36e414a421",
   status: "package_ready",
-  counts: { importable: 941 },
+  counts: { importable: 522, catalogRelationUnavailable: 419 },
   schemas: { "importable-legacy-reviews.jsonl": "legacy-approved-review-v1" },
+  files: { "importable-legacy-reviews.jsonl": { rows: 522, sha256: "" } },
   lineage: {
     approvedPackageContract: "legacy-historical-approved-package-v1",
     approvedPackageManifestSha256:
       "edcf142cbd0380e734da0cde1923ee976ea9e25ab48147d0b78e218a64bb51af",
     approvedCatalogContentSha256:
-      "33efc25c965510f7e87aeefc8b14a3ab5ec7c0df81d3485688d4630a4179bf1f",
+      "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588",
   },
 } as const;
+
+async function importPackage(records: Array<Record<string, unknown>>) {
+  const artifact = `${records.map((value) => JSON.stringify(value)).join("\n")}\n`;
+  const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(artifact)))]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  const packageManifest = {
+    ...manifest,
+    files: { "importable-legacy-reviews.jsonl": { rows: records.length, sha256 } },
+  };
+  return {
+    manifest: JSON.stringify(packageManifest),
+    artifact,
+  };
+}
 
 async function adminHeaders() {
   const response = await SELF.fetch(`${origin}/api/admin/login`, {
@@ -54,7 +71,7 @@ function record(id: string, courseCode: string, teacherLabel: string, index: num
 }
 
 describe("frozen historical package local D1 drill", () => {
-  it("imports 941 rows with atomic recovery, idempotency, projection, and pagination", async () => {
+  it("imports 522 rows with atomic recovery, idempotency, projection, and pagination", async () => {
     const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const courseCode = `DRILL-${suffix}`;
     const teacherLabel = `演练教师-${suffix}`;
@@ -74,49 +91,55 @@ describe("frozen historical package local D1 drill", () => {
       env.DB.prepare("SELECT COUNT(*) count FROM teachers"),
       env.DB.prepare("SELECT COUNT(*) count FROM course_teachers"),
     ]);
-    const rows = Array.from({ length: 941 }, (_, index) =>
+    const rows = Array.from({ length: 522 }, (_, index) =>
       record(`drill-${suffix}-${String(index + 1).padStart(4, "0")}`, courseCode, teacherLabel, index),
     );
     const headers = await adminHeaders();
-    const batches = Array.from({ length: Math.ceil(rows.length / 50) }, (_, index) =>
-      rows.slice(index * 50, index * 50 + 50),
-    );
-    for (let index = 0; index < 5; index += 1) {
+    const approvedPackage = await importPackage(rows);
+    const failed = [...rows];
+    failed[267] = { ...failed[267], catalog_teacher_label: `不存在-${suffix}` };
+    const failedPackage = await importPackage(failed);
+    for (let offset = 0; offset < 250; offset += 50) {
       const response = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
-        method: "POST", headers, body: JSON.stringify({ manifest, records: batches[index] }),
+        method: "POST", headers, body: JSON.stringify({ ...failedPackage, offset }),
       });
       expect(response.status).toBe(201);
     }
-    const failed = [...batches[5]];
-    failed[17] = { ...failed[17], catalog_teacher_label: `不存在-${suffix}` };
     const interrupted = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
-      method: "POST", headers, body: JSON.stringify({ manifest, records: failed }),
+      method: "POST", headers, body: JSON.stringify({ ...failedPackage, offset: 250 }),
     });
     expect(interrupted.status).toBe(422);
     const afterFailure = await env.DB.prepare("SELECT COUNT(*) count FROM public_historical_reviews WHERE course_id=?")
       .bind(courseId).first<{ count: number }>();
     expect(afterFailure?.count).toBe(250);
 
-    for (let index = 5; index < batches.length; index += 1) {
-      const response = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
-        method: "POST", headers, body: JSON.stringify({ manifest, records: batches[index] }),
+    let recoveredCreated = 0;
+    let recoveredExisting = 0;
+    for (let offset = 0; offset < rows.length; offset += 50) {
+      const recovered = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
+        method: "POST", headers, body: JSON.stringify({ ...approvedPackage, offset }),
       });
-      expect(response.status).toBe(201);
-      expect((await response.json<{ created: number }>()).created).toBe(batches[index].length);
+      const result = await recovered.json<{ created: number; existing: number }>();
+      recoveredCreated += result.created;
+      recoveredExisting += result.existing;
     }
+    expect({ created: recoveredCreated, existing: recoveredExisting }).toEqual({
+      created: 272,
+      existing: 250,
+    });
     const firstCount = await env.DB.prepare("SELECT COUNT(*) count FROM public_historical_reviews WHERE course_id=?")
       .bind(courseId).first<{ count: number }>();
-    expect(firstCount?.count).toBe(941);
+    expect(firstCount?.count).toBe(522);
 
-    for (const batch of batches) {
-      const response = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
-        method: "POST", headers, body: JSON.stringify({ manifest, records: batch }),
+    let replayExisting = 0;
+    for (let offset = 0; offset < rows.length; offset += 50) {
+      const replay = await SELF.fetch(`${origin}/api/admin/historical-review-imports`, {
+        method: "POST", headers, body: JSON.stringify({ ...approvedPackage, offset }),
       });
-      expect(response.status).toBe(200);
-      const body = await response.json<{ created: number; existing: number }>();
-      expect(body.created).toBe(0);
-      expect(body.existing).toBe(batch.length);
+      expect(replay.status).toBe(200);
+      replayExisting += (await replay.json<{ existing: number }>()).existing;
     }
+    expect(replayExisting).toBe(522);
     const after = await env.DB.batch([
       env.DB.prepare("SELECT COUNT(*) count FROM courses"),
       env.DB.prepare("SELECT COUNT(*) count FROM teachers"),
@@ -127,8 +150,8 @@ describe("frozen historical package local D1 drill", () => {
     expect(after.slice(0, 3).map((result) => Number(result.results[0].count))).toEqual(
       before.slice(0, 3).map((result) => Number(result.results[0].count)),
     );
-    expect(Number(after[3].results[0].count)).toBe(941);
-    expect(Number(after[4].results[0].count)).toBe(941);
+    expect(Number(after[3].results[0].count)).toBe(522);
+    expect(Number(after[4].results[0].count)).toBe(522);
 
     const [courseResponse, teacherResponse] = await Promise.all([
       SELF.fetch(`${origin}/api/courses/${courseId}`),
@@ -136,8 +159,8 @@ describe("frozen historical package local D1 drill", () => {
     ]);
     const course = await courseResponse.json<{ reviewCount: number; reviews: Array<Record<string, unknown>> }>();
     const teacher = await teacherResponse.json<{ reviewCount: number; reviews: Array<Record<string, unknown>> }>();
-    expect(course.reviewCount).toBe(941);
-    expect(teacher.reviewCount).toBe(941);
+    expect(course.reviewCount).toBe(522);
+    expect(teacher.reviewCount).toBe(522);
     expect(course.reviews[0]).toEqual(teacher.reviews[0]);
     for (const value of [course.reviews[0], teacher.reviews[0]]) {
       const serialized = JSON.stringify(value);
@@ -155,7 +178,7 @@ describe("frozen historical package local D1 drill", () => {
       page.items.forEach((item) => seen.add(item.id));
       cursor = page.nextCursor;
     } while (cursor);
-    expect(seen.size).toBe(941);
+    expect(seen.size).toBe(522);
     expect(seen).toEqual(new Set(rows.map((row) => `historical:${row.review_id}`)));
     } finally {
       await env.DB.batch([

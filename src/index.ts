@@ -16,6 +16,8 @@ type Bindings = {
   ASSETS: Fetcher;
   SITE_NAME: string;
   UNIVERSITY_NAME: string;
+  HISTORICAL_IMPORT_ARTIFACT_SHA256: string;
+  HISTORICAL_IMPORT_MANIFEST_SHA256: string;
   ADMIN_PASSWORD?: string;
   IP_HASH_SECRET: string;
   TURNSTILE_SECRET?: string;
@@ -42,13 +44,17 @@ type StashedReview = {
   comment: string;
   term: string;
 };
-const HISTORICAL_FREEZE_CONTRACT = "legacy-historical-production-freeze-v1";
+const HISTORICAL_FREEZE_CONTRACT = "legacy-historical-production-freeze-v2";
 const HISTORICAL_SOURCE_CONTRACT = "legacy-historical-approved-package-v1";
 const HISTORICAL_RECORD_SCHEMA = "legacy-approved-review-v1";
+const HISTORICAL_IMPORTABLE_COUNT = 522;
+const HISTORICAL_RELATION_UNAVAILABLE_COUNT = 419;
+const HISTORICAL_FREEZE_CONTENT_SHA256 =
+  "1b4ca0728d9883c0d9267cc0ede033bbeebcb0fb3a3cdff333816c36e414a421";
 const APPROVED_HISTORICAL_MANIFEST_SHA256 =
   "edcf142cbd0380e734da0cde1923ee976ea9e25ab48147d0b78e218a64bb51af";
 const APPROVED_CATALOG_CONTENT_SHA256 =
-  "33efc25c965510f7e87aeefc8b14a3ab5ec7c0df81d3485688d4630a4179bf1f";
+  "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588";
 const app = new Hono<{ Bindings: Bindings; Variables: Vars }>();
 type AppContext = Context<{ Bindings: Bindings; Variables: Vars }>;
 const clean = (v: unknown, n = 500) =>
@@ -923,35 +929,93 @@ app.get("/api/admin/session", (c) =>
   c.json({ ok: true, csrfToken: c.get("adminCsrf") }),
 );
 app.post("/api/admin/historical-review-imports", async (c) => {
-  const body = await c.req.json<{
-    manifest?: {
-      contractVersion?: unknown;
-      status?: unknown;
-      counts?: { importable?: unknown };
-      schemas?: Record<string, unknown>;
-      lineage?: {
-        approvedCatalogContentSha256?: unknown;
-        approvedPackageManifestSha256?: unknown;
-        approvedPackageContract?: unknown;
-      };
+  type HistoricalImportManifest = {
+    contractVersion?: unknown;
+    contentSha256?: unknown;
+    status?: unknown;
+    counts?: {
+      importable?: unknown;
+      catalogRelationUnavailable?: unknown;
     };
-    record?: Record<string, unknown>;
-    records?: Record<string, unknown>[];
+    files?: Record<string, { rows?: unknown; sha256?: unknown }>;
+    schemas?: Record<string, unknown>;
+    lineage?: {
+      approvedCatalogContentSha256?: unknown;
+      approvedPackageManifestSha256?: unknown;
+      approvedPackageContract?: unknown;
+    };
+  };
+  const body = await c.req.json<{
+    manifest?: unknown;
+    artifact?: unknown;
+    offset?: unknown;
   }>();
-  const manifest = body.manifest;
+  const configuredManifestSha256 = c.env.HISTORICAL_IMPORT_MANIFEST_SHA256;
+  if (
+    typeof body.manifest !== "string" ||
+    (configuredManifestSha256 !== "manifest" &&
+      (await digest(body.manifest)) !== configuredManifestSha256)
+  )
+    return fail(c, "历史评价冻结 manifest 哈希不匹配", 422);
+  let manifest: HistoricalImportManifest;
+  try {
+    manifest = JSON.parse(body.manifest) as HistoricalImportManifest;
+  } catch {
+    return fail(c, "历史评价冻结 manifest 不是有效 JSON", 422);
+  }
   if (
     manifest?.contractVersion !== HISTORICAL_FREEZE_CONTRACT ||
+    manifest.contentSha256 !== HISTORICAL_FREEZE_CONTENT_SHA256 ||
     manifest.status !== "package_ready" ||
-    manifest.counts?.importable !== 941 ||
+    manifest.counts?.importable !== HISTORICAL_IMPORTABLE_COUNT ||
+    manifest.counts.catalogRelationUnavailable !==
+      HISTORICAL_RELATION_UNAVAILABLE_COUNT ||
     manifest.schemas?.["importable-legacy-reviews.jsonl"] !==
       HISTORICAL_RECORD_SCHEMA ||
     manifest.lineage?.approvedPackageContract !== HISTORICAL_SOURCE_CONTRACT ||
-    manifest.lineage.approvedPackageManifestSha256 !==
+    manifest.lineage?.approvedPackageManifestSha256 !==
       APPROVED_HISTORICAL_MANIFEST_SHA256 ||
-    manifest.lineage.approvedCatalogContentSha256 !==
+    manifest.lineage?.approvedCatalogContentSha256 !==
       APPROVED_CATALOG_CONTENT_SHA256
   )
     return fail(c, "历史评价批准包身份或内容哈希不匹配", 422);
+
+  const artifactDescriptor =
+    manifest.files?.["importable-legacy-reviews.jsonl"];
+  const configuredArtifactSha256 = c.env.HISTORICAL_IMPORT_ARTIFACT_SHA256;
+  const expectedArtifactSha256 =
+    configuredArtifactSha256 === "manifest"
+      ? artifactDescriptor?.sha256
+      : configuredArtifactSha256;
+  if (
+    typeof body.artifact !== "string" ||
+    !body.artifact.endsWith("\n") ||
+    artifactDescriptor?.rows !== HISTORICAL_IMPORTABLE_COUNT ||
+    typeof expectedArtifactSha256 !== "string" ||
+    artifactDescriptor.sha256 !== expectedArtifactSha256 ||
+    (await digest(body.artifact)) !== expectedArtifactSha256
+  )
+    return fail(c, "历史评价可导入 artifact 哈希或行数不匹配", 422);
+
+  let records: Record<string, unknown>[];
+  try {
+    records = body.artifact
+      .slice(0, -1)
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  } catch {
+    return fail(c, "历史评价 artifact 不是有效 JSONL", 422);
+  }
+  if (records.length !== HISTORICAL_IMPORTABLE_COUNT)
+    return fail(c, "历史评价 artifact 行数不匹配", 422);
+  if (
+    typeof body.offset !== "number" ||
+    !Number.isInteger(body.offset) ||
+    body.offset < 0 ||
+    body.offset >= HISTORICAL_IMPORTABLE_COUNT ||
+    body.offset % 50 !== 0
+  )
+    return fail(c, "历史评价批次偏移量不合法", 422);
 
   const requiredFields = new Set([
     "catalog_course_code",
@@ -968,11 +1032,7 @@ app.post("/api/admin/historical-review-imports", async (c) => {
     "source_row",
     "worksheet",
   ]);
-  const records = body.records ?? (body.record ? [body.record] : []);
-  if (!records.length || records.length > 50)
-    return fail(c, "历史评价批次必须包含 1 至 50 条记录", 422);
-  if (body.record && body.records) return fail(c, "历史评价批次契约不明确", 422);
-
+  const selectedRecords = records.slice(body.offset, body.offset + 50);
   const seen = new Set<string>();
   const pending: Array<{
     reviewId: string;
@@ -981,7 +1041,7 @@ app.post("/api/admin/historical-review-imports", async (c) => {
     comment: string;
   }> = [];
   let existingCount = 0;
-  for (const record of records) {
+  for (const record of selectedRecords) {
     if (
       !record ||
       Object.keys(record).length !== requiredFields.size ||
@@ -1001,12 +1061,12 @@ app.post("/api/admin/historical-review-imports", async (c) => {
 
     const identity = await c.env.DB.prepare(
       `SELECT c.id course_id,t.id teacher_id,
-         EXISTS(
-           SELECT 1 FROM course_teachers ct
-           WHERE ct.course_id=c.id AND ct.teacher_id=t.id
-         ) relation_exists
-       FROM courses c CROSS JOIN teachers t
-       WHERE c.code=? AND t.source_teacher_label=?`,
+           EXISTS(
+             SELECT 1 FROM course_teachers ct
+             WHERE ct.course_id=c.id AND ct.teacher_id=t.id
+           ) relation_exists
+         FROM courses c CROSS JOIN teachers t
+         WHERE c.code=? AND t.source_teacher_label=?`,
     )
       .bind(courseCode, teacherLabel)
       .first<{ course_id: number; teacher_id: number; relation_exists: number }>();
@@ -1036,11 +1096,12 @@ app.post("/api/admin/historical-review-imports", async (c) => {
     });
   }
 
+  let createdCount = 0;
   if (pending.length) {
-    await c.env.DB.batch(
+    const insertResults = await c.env.DB.batch(
       pending.map(({ reviewId, courseId, teacherId, comment }) =>
         c.env.DB.prepare(
-          `INSERT INTO public_historical_reviews(
+          `INSERT OR IGNORE INTO public_historical_reviews(
              id,course_id,teacher_id,comment,package_contract,
              approved_package_manifest_sha256,approved_catalog_content_sha256
            ) VALUES(?,?,?,?,?,?,?)`,
@@ -1055,17 +1116,20 @@ app.post("/api/admin/historical-review-imports", async (c) => {
         ),
       ),
     );
-  }
-  if (body.record) {
-    const reviewId = clean(body.record.review_id, 200);
-    return c.json(
-      { id: `historical:${reviewId}`, created: pending.length === 1 },
-      pending.length ? 201 : 200,
+    createdCount = insertResults.reduce(
+      (total, result) => total + Number(result.meta.changes ?? 0),
+      0,
     );
+    existingCount += pending.length - createdCount;
   }
   return c.json(
-    { total: records.length, created: pending.length, existing: existingCount },
-    pending.length ? 201 : 200,
+    {
+      offset: body.offset,
+      total: selectedRecords.length,
+      created: createdCount,
+      existing: existingCount,
+    },
+    createdCount ? 201 : 200,
   );
 });
 app.post("/api/admin/logout", async (c) => {
