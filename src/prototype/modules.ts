@@ -36,7 +36,7 @@ export type PrototypeModuleDef = {
  * course-detail-summary: B 意向冻结、页级可砍（issue #60 / module 9）。
  * course-detail-reviews: A+B chips 视觉冻结（issue #61 / module 10）— 已被 #68/#71 领域改版重开。
  * teacher-detail: 课程详情语言迁移，不单开 A/B/C（issue #62 / module 11）。
- * catalog-followup: 收藏 / 本专业入口（issue #63）— A+C Tag 意向冻结。
+ * catalog-followup: 收藏 / 本专业入口（issue #63；决策记录 #73）— A+C Tag 意向冻结，生产未实现。
  * teaching-reviews-feed: 任课评价文字流视觉确认（issue #71 承接 #68 / module 12）— 探索中。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
@@ -327,7 +327,7 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     livePath: "/courses",
     winner: "A + C Tag",
     notes:
-      "Issue #63 · 用户确认 A：扩展位 Toggle + 固定四列 B，吸收 C 的 Tag 可移除清单；不采用条件密度。行内星标用 ToggleButton render prop。无账号/持久化；生产实现另开。",
+      "Issue #63 · 决策记录 #73 · 用户意向 A：扩展位 Toggle + 固定四列 B，吸收 C 的 Tag 可移除清单；不采用条件密度。行内星标用 ToggleButton render prop。无账号/持久化；生产未实现、不在 MVP，用户确认后另开 frontend/backend。",
     variants: [
       {
         key: "A",
