@@ -3,11 +3,10 @@ import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { parseProductionImportArguments } from "./production-arguments";
 
 const exec = promisify(execFile);
-const expectedRoot = resolve("D:/19016/Documents/Workload/jufexk-production-inputs/frozen-historical-production-v2");
-const root = resolve(process.argv[2] || expectedRoot);
-const apply = process.argv.includes("--apply");
+const { apply, root } = parseProductionImportArguments(process.argv.slice(2));
 const baseUrl = (process.env.JUFEXK_BASE_URL || "https://xk.sein.moe").replace(/\/$/, "");
 const password = process.env.JUFEXK_ADMIN_PASSWORD;
 const backupPath = resolve(process.env.JUFEXK_BACKUP_PATH || `.local-data/historical-import-${new Date().toISOString().replace(/[:.]/g, "-")}.sql`);
@@ -22,7 +21,6 @@ const target = { worker: "jufexk", d1: "jufexk", databaseId: "7bd119f3-b8a2-4c9d
 const operator = process.env.JUFEXK_OPERATOR || "unspecified";
 
 if (!password) throw new Error("缺少 JUFEXK_ADMIN_PASSWORD");
-if (root !== expectedRoot) throw new Error(`冻结包必须使用固定绝对路径: ${expectedRoot}`);
 const manifestText = await readFile(resolve(root, "manifest.json"), "utf8");
 const manifest = JSON.parse(manifestText);
 const artifact = await readFile(resolve(root, "importable-legacy-reviews.jsonl"));
