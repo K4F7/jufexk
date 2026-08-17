@@ -1,6 +1,13 @@
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
+  applyRelationAdditions,
+  CatalogRelationAdditionError,
+  parseOfficialRelationPackage,
+  parseRelationPairs,
+  previewRelationAdditions,
+} from "./catalog-relation-additions";
+import {
   BaselineImportError,
   baselineUploadStatus,
   createBaselineUpload,
@@ -11,6 +18,10 @@ import {
   readBoundedJson,
 } from "./catalog-baseline-import";
 import { normalizeReviewTemplateKind } from "./lib/review-template-kind";
+import {
+  HistoricalBatchImportError,
+  importIssue111HistoricalBatch,
+} from "./historical-batch-imports";
 import {
   canOrdinaryUserWrite,
   resolveOrdinaryUser,
@@ -31,6 +42,9 @@ type Bindings = {
   UNIVERSITY_NAME: string;
   HISTORICAL_IMPORT_ARTIFACT_SHA256: string;
   HISTORICAL_IMPORT_MANIFEST_SHA256: string;
+  ISSUE111_RELATION_MANIFEST_SHA256?: string;
+  ISSUE111_IMPORT_ARTIFACT_SHA256?: string;
+  ISSUE111_IMPORT_MANIFEST_SHA256?: string;
   ADMIN_PASSWORD?: string | { get(): Promise<string> };
   IP_HASH_SECRET: string | { get(): Promise<string> };
   TURNSTILE_SECRET?: string | { get(): Promise<string> };
@@ -980,6 +994,108 @@ app.use("/api/admin/*", async (c, next) => {
 app.get("/api/admin/session", (c) =>
   c.json({ ok: true, csrfToken: c.get("adminCsrf") }),
 );
+const relationAdditionFailure = (c: AppContext, error: unknown) => {
+  if (error instanceof CatalogRelationAdditionError)
+    return fail(c, error.message, error.status);
+  throw error;
+};
+const historicalBatchFailure = (c: AppContext, error: unknown) => {
+  if (error instanceof HistoricalBatchImportError)
+    return fail(c, error.message, error.status);
+  throw error;
+};
+const readOfficialRelationPackage = async (c: AppContext) => {
+  const body = await c.req.json<{
+    manifest?: unknown;
+    artifact?: unknown;
+    pairs?: unknown;
+  }>();
+  if (body.pairs != null)
+    throw new CatalogRelationAdditionError(
+      "官方任课关系入口只接受候选包，pairs 请走 /api/admin/import/relations",
+    );
+  if (typeof body.manifest === "string" && typeof body.artifact === "string")
+    return parseOfficialRelationPackage(
+      body.manifest,
+      body.artifact,
+      c.env.ISSUE111_RELATION_MANIFEST_SHA256 || "manifest",
+    );
+  throw new CatalogRelationAdditionError("缺少任课关系补充包");
+};
+const readRedundantRelationPairs = async (c: AppContext) => {
+  const body = await c.req.json<{
+    manifest?: unknown;
+    artifact?: unknown;
+    pairs?: unknown;
+  }>();
+  if (Array.isArray(body.pairs)) return parseRelationPairs(body.pairs);
+  if (typeof body.manifest === "string" && typeof body.artifact === "string")
+    return parseOfficialRelationPackage(
+      body.manifest,
+      body.artifact,
+      c.env.ISSUE111_RELATION_MANIFEST_SHA256 || "manifest",
+    );
+  throw new CatalogRelationAdditionError("缺少任课关系补充包或 pairs 列表");
+};
+app.post("/api/admin/catalog-relation-additions/preview", async (c) => {
+  try {
+    return c.json(
+      await previewRelationAdditions(
+        c.env.DB,
+        await readOfficialRelationPackage(c),
+      ),
+    );
+  } catch (error) {
+    return relationAdditionFailure(c, error);
+  }
+});
+app.post("/api/admin/catalog-relation-additions", async (c) => {
+  try {
+    const result = await applyRelationAdditions(
+      c.env.DB,
+      await readOfficialRelationPackage(c),
+    );
+    return c.json(result, result.created ? 201 : 200);
+  } catch (error) {
+    return relationAdditionFailure(c, error);
+  }
+});
+app.post("/api/admin/import/relations/preview", async (c) => {
+  try {
+    return c.json(
+      await previewRelationAdditions(
+        c.env.DB,
+        await readRedundantRelationPairs(c),
+      ),
+    );
+  } catch (error) {
+    return relationAdditionFailure(c, error);
+  }
+});
+app.post("/api/admin/import/relations", async (c) => {
+  try {
+    const result = await applyRelationAdditions(
+      c.env.DB,
+      await readRedundantRelationPairs(c),
+    );
+    return c.json(result, result.created ? 201 : 200);
+  } catch (error) {
+    return relationAdditionFailure(c, error);
+  }
+});
+app.post("/api/admin/historical-review-batch-imports", async (c) => {
+  try {
+    const result = await importIssue111HistoricalBatch(
+      c.env.DB,
+      await c.req.json(),
+      c.env.ISSUE111_IMPORT_MANIFEST_SHA256 || "manifest",
+      c.env.ISSUE111_IMPORT_ARTIFACT_SHA256 || "manifest",
+    );
+    return c.json(result, result.created ? 201 : 200);
+  } catch (error) {
+    return historicalBatchFailure(c, error);
+  }
+});
 app.post("/api/admin/historical-review-imports", async (c) => {
   type HistoricalImportManifest = {
     contractVersion?: unknown;
@@ -2219,8 +2335,19 @@ app.get("/api/admin/historical-review-status", async (c) => {
   const byTeacher = await c.env.DB.prepare(
     "SELECT COUNT(DISTINCT teacher_id) AS count FROM public_historical_reviews",
   ).first<{ count: number }>();
+  const catalog = await c.env.DB.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM courses) courses,
+       (SELECT COUNT(*) FROM teachers) teachers,
+       (SELECT COUNT(*) FROM course_teachers) relations`,
+  ).first<{ courses: number; teachers: number; relations: number }>();
   return c.json({
     marker: marker || null,
+    catalog: {
+      courses: Number(catalog?.courses || 0),
+      teachers: Number(catalog?.teachers || 0),
+      relations: Number(catalog?.relations || 0),
+    },
     historicalReviews: Number(total?.count || 0),
     coursesWithHistoricalReviews: Number(byCourse?.count || 0),
     teachersWithHistoricalReviews: Number(byTeacher?.count || 0),
