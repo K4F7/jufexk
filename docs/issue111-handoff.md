@@ -50,11 +50,13 @@
 
 ## 必须按这个顺序做
 
-1. **只补任课关系。** 课程和教师身份已在 v2。禁止 `POST /api/catalog-requests`（那会新建课程/教师身份）。禁止猜映射。
+生产命令与冗余入口见 [historical-production-import.md](./historical-production-import.md) 的 Issue 111 节。#159 只提供工具，不在未获维护窗口授权时写生产。
+
+1. **只补任课关系。** 课程和教师身份已在 v2。禁止 `POST /api/catalog-requests`（那会新建课程/教师身份）。禁止猜映射。官方入口：`POST /api/admin/catalog-relation-additions`；冗余入口：`POST /api/admin/import/relations`。
 2. **预检。** 再读 `VERIFY.json`，确认 61 对仍全部是「课在、师在、关系不在」。任一失败立刻停。
-3. **维护窗口写入 61 条 `course_teachers`。** 只新增，不改课、不改师、不删旧关系。写入前后课程/教师计数不变。
-4. **新冻结包。** 官方关系进入目录之后，才能用这 164 条生成独立冻结包。不要复用 `frozen-historical-production-v2` 的 522 条 artifact，也不要把 241/14 条混进去。
-5. **导入 164 条历史评价。** 另一次维护窗口；幂等复核目标是本批 `existing=164`（或与当时生产已有 522 并存的合计，按当时线上实数核，不得覆盖 522）。
+3. **维护窗口写入 61 条 `course_teachers`。** 只新增，不改课、不改师、不删旧关系。写入前后课程/教师计数不变。命令：`pnpm run catalog-relations:production`；加 `--via-pairs` 走冗余入口。
+4. **新冻结包。** 官方关系进入目录之后，才能用这 164 条生成独立冻结包。不要复用 `frozen-historical-production-v2` 的 522 条 artifact，也不要把 241/14 条混进去。命令：`freeze_issue111_historical_package.py`。
+5. **导入 164 条历史评价。** 另一次维护窗口；只打 `/api/admin/historical-review-batch-imports`。幂等复核目标是本批 `existing=164`（或与当时生产已有 522 并存的合计，按当时线上实数核，不得覆盖 522）。命令：`pnpm run historical-import:issue111`。
 6. **公开验收。** 只展示匿名文字评价；不写来源、作者、评分。
 
 ## 禁止
