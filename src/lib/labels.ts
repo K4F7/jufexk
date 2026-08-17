@@ -1,13 +1,14 @@
+import { normalizeReviewTemplateKind } from "./review-template-kind";
+
 export const categoryLabels: Record<string, string> = {
-  major: "专业课",
-  pe: "体育课",
-  sports: "体育课", // remote catalog enum (post 0011)
-  general: "公共选修",
+  general: "普通课程",
+  sports: "体育课",
 };
 
 export function categoryLabel(value?: string | null) {
   if (!value) return "未确定";
-  return categoryLabels[value] || "其他";
+  const kind = normalizeReviewTemplateKind(value);
+  return categoryLabels[kind] || "其他";
 }
 
 export function scoreText(value?: number | null) {

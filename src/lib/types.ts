@@ -1,4 +1,4 @@
-export type CourseCategory = "major" | "pe" | "general" | "";
+export type CourseCategory = "general" | "sports" | "";
 
 export type Course = {
   id: number;
