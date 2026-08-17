@@ -24,6 +24,10 @@ import {
 } from "./historical-batch-imports";
 import { handleCampusAuthStatus } from "./campus-jwt";
 import {
+  handleDeleteOrdinaryUserAccount,
+  USER_ACCOUNT_PATH,
+} from "./ordinary-user-account";
+import {
   canOrdinaryUserWrite,
   handleCampusAuthCallback,
   handleOrdinaryUserLogout,
@@ -33,7 +37,6 @@ import {
 import {
   decoratePublicReviews,
   handleCreateEndorsement,
-  handleEndorsementViewer,
   handleWithdrawEndorsement,
 } from "./review-endorsements";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
@@ -658,9 +661,9 @@ app.get("/api/courses/:id/reviews", async (c) => {
   return c.json(page);
 });
 
-app.get("/api/endorsements/viewer", handleEndorsementViewer);
 app.get("/api/user/session", handleOrdinaryUserSession);
 app.post("/api/user/logout", handleOrdinaryUserLogout);
+app.delete(USER_ACCOUNT_PATH, handleDeleteOrdinaryUserAccount);
 app.get("/api/auth/campus", handleCampusAuthStatus);
 app.post("/api/auth/callback", handleCampusAuthCallback);
 app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);

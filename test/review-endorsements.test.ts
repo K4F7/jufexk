@@ -29,7 +29,7 @@ async function userHeaders(userId: string) {
 
 async function viewerSession(userId: string) {
   const auth = await userHeaders(userId);
-  const response = await SELF.fetch(`${origin}/api/endorsements/viewer`, {
+  const response = await SELF.fetch(`${origin}/api/user/session`, {
     headers: auth,
   });
   expect(response.status).toBe(200);
@@ -201,7 +201,7 @@ describe("review endorsement API", () => {
     expect(session.authenticated).toBe(true);
     expect(session.loginPath).toBe("/login");
     expect(session.logoutPath).toBe("/logout");
-    const viewer = await SELF.fetch(`${origin}/api/endorsements/viewer`, {
+    const viewer = await SELF.fetch(`${origin}/api/user/session`, {
       headers: session.auth,
     });
     expect(

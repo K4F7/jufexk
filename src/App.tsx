@@ -1,11 +1,14 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
+import { AccountPage } from "./pages/AccountPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
 import { LoginPage } from "./pages/LoginPage";
+import { LogoutPage } from "./pages/LogoutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
@@ -108,28 +111,32 @@ export function App() {
 
   return (
     <BrowserRouter>
-      <AppShell config={config}>
-        <Routes>
-          <Route path="/" element={<Navigate to="/courses" replace />} />
-          <Route path="/courses" element={<CoursesPage />} />
-          <Route path="/courses/:id" element={<CourseDetailPage />} />
-          <Route path="/teachers" element={<TeachersPage />} />
-          <Route path="/teachers/:id" element={<TeacherDetailPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          {PrototypeGalleryPage ? (
-            <Route
-              path="/prototype"
-              element={
-                <Suspense fallback={<p className="text-sm text-muted">加载 Prototype…</p>}>
-                  <PrototypeGalleryPage />
-                </Suspense>
-              }
-            />
-          ) : null}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-        {import.meta.env.DEV ? <DevPrototypeMount /> : null}
-      </AppShell>
+      <ViewerProvider>
+        <AppShell config={config}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/courses" replace />} />
+            <Route path="/courses" element={<CoursesPage />} />
+            <Route path="/courses/:id" element={<CourseDetailPage />} />
+            <Route path="/teachers" element={<TeachersPage />} />
+            <Route path="/teachers/:id" element={<TeacherDetailPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/logout" element={<LogoutPage />} />
+            <Route path="/account" element={<AccountPage />} />
+            {PrototypeGalleryPage ? (
+              <Route
+                path="/prototype"
+                element={
+                  <Suspense fallback={<p className="text-sm text-muted">加载 Prototype…</p>}>
+                    <PrototypeGalleryPage />
+                  </Suspense>
+                }
+              />
+            ) : null}
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+          {import.meta.env.DEV ? <DevPrototypeMount /> : null}
+        </AppShell>
+      </ViewerProvider>
     </BrowserRouter>
   );
 }

@@ -29,7 +29,7 @@ async function mockApi(page: Page) {
           callbackPath: "/api/auth/callback",
         },
       });
-    if (url.pathname === "/api/endorsements/viewer")
+    if (url.pathname === "/api/user/session")
       return route.fulfill({
         json: {
           authenticated: false,

@@ -2,6 +2,7 @@ import { buttonVariants, Link } from "@heroui/react";
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
 import type { SiteConfig } from "../lib/types";
+import { AccountNavControl } from "./AccountNavControl";
 import { ThemeToggle } from "./ThemeToggle";
 
 const links = [
@@ -98,6 +99,7 @@ function DefaultShell({
             <span className="hidden text-xs text-muted sm:inline">
               {universityName}
             </span>
+            <AccountNavControl />
             <ThemeToggle />
           </div>
         </div>

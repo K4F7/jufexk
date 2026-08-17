@@ -94,7 +94,7 @@ const guestSession = (): OrdinaryUserSession => ({
   logoutPath: LOGOUT_PATH,
 });
 
-const originOk = (c: Context) => {
+export const originOk = (c: Context) => {
   const origin = c.req.header("Origin");
   return origin === new URL(c.req.url).origin;
 };
@@ -231,7 +231,17 @@ export function canOrdinaryUserWrite(user: OrdinaryUser) {
 export async function ordinaryUserSessionPayload(
   c: Context,
 ): Promise<OrdinaryUserSession> {
-  const user = await resolveOrdinaryUser(c);
+  let user = await resolveOrdinaryUser(c);
+  // Recovery window: re-authenticating while pending_deletion restores the
+  // account. The deletion copy promises this; banned/deleted stay rejected.
+  if (user?.status === "pending_deletion") {
+    await c.env.DB.prepare(
+      "UPDATE users SET status='active', deletion_requested_at=NULL WHERE id=? AND status='pending_deletion'",
+    )
+      .bind(user.id)
+      .run();
+    user = { ...user, status: "active" };
+  }
   if (!user || !canOrdinaryUserWrite(user)) return guestSession();
   return {
     authenticated: true,
@@ -282,7 +292,14 @@ export async function handleCampusAuthCallback(c: Context) {
   const fail = () => c.redirect(`${LOGIN_PATH}?error=campus`, 303);
   if (!token) return fail();
   const mapped = await mapCampusJwtToken(c.env, token);
-  if (!mapped || !canOrdinaryUserWrite(mapped.user)) return fail();
+  // pending_deletion users may pass so the session probe can restore their
+  // account inside the recovery window; banned/deleted stay rejected.
+  if (
+    !mapped ||
+    mapped.user.status === "banned" ||
+    mapped.user.status === "deleted"
+  )
+    return fail();
   issueCampusJwtCookie(
     c,
     token,
