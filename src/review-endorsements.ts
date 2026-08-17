@@ -1,10 +1,8 @@
 import type { Context } from "hono";
 import {
-  LOGIN_PATH,
-  LOGOUT_PATH,
   canOrdinaryUserWrite,
-  issueOrdinaryUserCsrf,
   ordinaryUserCsrfOk,
+  ordinaryUserSessionPayload,
   resolveOrdinaryUser,
 } from "./ordinary-user-session";
 
@@ -25,11 +23,6 @@ const digest = async (value: string) =>
       await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
     ),
   ]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-
-const token = () =>
-  [...crypto.getRandomValues(new Uint8Array(32))]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 
@@ -190,21 +183,7 @@ export async function decoratePublicReviews(
 }
 
 export async function handleEndorsementViewer(c: Context) {
-  const user = await resolveOrdinaryUser(c);
-  if (!user || !canOrdinaryUserWrite(user)) {
-    return c.json({
-      authenticated: false,
-      loginPath: LOGIN_PATH,
-      logoutPath: LOGOUT_PATH,
-    });
-  }
-  const csrfToken = issueOrdinaryUserCsrf(c, token());
-  return c.json({
-    authenticated: true,
-    csrfToken,
-    loginPath: LOGIN_PATH,
-    logoutPath: LOGOUT_PATH,
-  });
+  return c.json(await ordinaryUserSessionPayload(c));
 }
 
 async function mutateEndorsement(

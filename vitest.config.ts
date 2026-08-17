@@ -31,6 +31,11 @@ export default defineConfig(async () => {
             ISSUE111_IMPORT_MANIFEST_SHA256: "manifest",
             IP_HASH_SECRET: "test-ip-hash-secret",
             ORDINARY_USER_TEST_AUTH_SECRET: "test-ordinary-user-auth",
+            CAMPUS_JWT_SECRET: "test-campus-jwt-secret",
+            CAMPUS_JWT_AUD: "jufexk",
+            CAMPUS_JWT_AES_KEY:
+              "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+            CAMPUS_IDENTITY_SECRET: "test-campus-identity",
             TURNSTILE_SECRET: "",
             TURNSTILE_SITE_KEY: "",
           },

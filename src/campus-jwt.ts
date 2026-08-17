@@ -109,7 +109,62 @@ export type CampusJwtClaims = {
   exp: number;
   aud?: string;
   enc?: string;
+  iv?: string;
+  tag?: string;
 };
+
+const fromStandardBase64 = (value: string) => {
+  try {
+    const binary = atob(value);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  } catch {
+    return null;
+  }
+};
+
+const hexToBytes = (value: string) => {
+  const hex = value.trim();
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return null;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+};
+
+export async function decryptAuthBridgeAesSubject(
+  claims: CampusJwtClaims,
+  aesKeyHex: string,
+): Promise<string | null> {
+  if (claims.enc !== "aes" || !claims.iv || !claims.tag || !aesKeyHex) return null;
+  const keyBytes = hexToBytes(aesKeyHex);
+  if (!keyBytes || ![16, 24, 32].includes(keyBytes.length)) return null;
+  const iv = fromStandardBase64(claims.iv);
+  const ciphertext = fromStandardBase64(claims.sub);
+  const tag = fromStandardBase64(claims.tag);
+  if (!iv || !ciphertext || !tag || tag.length !== 16) return null;
+  const combined = new Uint8Array(ciphertext.length + tag.length);
+  combined.set(ciphertext);
+  combined.set(tag, ciphertext.length);
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyBytes,
+      "AES-GCM",
+      false,
+      ["decrypt"],
+    );
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      combined,
+    );
+    const campusHandle = new TextDecoder().decode(plain).trim();
+    return /^[A-Za-z0-9_-]{4,32}$/.test(campusHandle) ? campusHandle : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function verifyCampusJwtHs256(
   token: string,
@@ -145,13 +200,18 @@ export async function verifyCampusJwtHs256(
   if (!timingSafeEqual(expected, rawSignature)) return null;
   const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
   const exp = typeof payload.exp === "number" ? payload.exp : NaN;
+  const nbf = typeof payload.nbf === "number" ? payload.nbf : null;
   if (!sub || !Number.isFinite(exp) || exp * 1000 <= Date.now()) return null;
+  if (nbf !== null && (!Number.isFinite(nbf) || nbf * 1000 > Date.now()))
+    return null;
   if (audience && payload.aud !== audience) return null;
   return {
     sub,
     exp,
     aud: typeof payload.aud === "string" ? payload.aud : undefined,
     enc: typeof payload.enc === "string" ? payload.enc : undefined,
+    iv: typeof payload.iv === "string" ? payload.iv : undefined,
+    tag: typeof payload.tag === "string" ? payload.tag : undefined,
   };
 }
 

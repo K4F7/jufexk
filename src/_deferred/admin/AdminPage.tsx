@@ -76,6 +76,9 @@ export function AdminPage() {
     return (
       <section className="mx-auto max-w-[480px]">
         <h1 className="mb-4 text-2xl font-bold">管理后台</h1>
+        <p className="mb-4 text-sm text-muted">
+          使用管理员口令登录。校园 JWT 只用于普通用户投稿或认可，不能进入此后台。
+        </p>
         <form
           onSubmit={onLogin}
           className="grid gap-3.5 rounded border border-border bg-surface p-5"

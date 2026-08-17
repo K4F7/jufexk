@@ -28,6 +28,8 @@ import {
 } from "./campus-jwt";
 import {
   canOrdinaryUserWrite,
+  handleOrdinaryUserLogout,
+  handleOrdinaryUserSession,
   resolveOrdinaryUser,
 } from "./ordinary-user-session";
 import {
@@ -54,6 +56,10 @@ type Bindings = {
   TURNSTILE_SECRET?: string | { get(): Promise<string> };
   TURNSTILE_SITE_KEY?: string;
   ORDINARY_USER_TEST_AUTH_SECRET?: string;
+  CAMPUS_JWT_SECRET?: string | { get(): Promise<string> };
+  CAMPUS_JWT_AUD?: string;
+  CAMPUS_JWT_AES_KEY?: string | { get(): Promise<string> };
+  CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
 };
 type Vars = {
   adminSession?: string;
@@ -652,6 +658,8 @@ app.get("/api/courses/:id/reviews", async (c) => {
 });
 
 app.get("/api/endorsements/viewer", handleEndorsementViewer);
+app.get("/api/user/session", handleOrdinaryUserSession);
+app.post("/api/user/logout", handleOrdinaryUserLogout);
 app.get("/api/auth/campus", handleCampusAuthStatus);
 app.post("/api/auth/callback", handleCampusAuthCallback);
 app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
@@ -936,6 +944,7 @@ app.post("/api/catalog-requests", async (c) => {
   });
 });
 
+// Admin password sessions are separate from ordinary-user campus JWT.
 app.post("/api/admin/login", async (c) => {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
   const ipHash = await keyedDigest(
@@ -976,7 +985,7 @@ app.post("/api/admin/login", async (c) => {
     path: "/",
     maxAge: 86400,
   });
-  return c.json({ ok: true, csrfToken: csrf });
+  return c.json({ ok: true, kind: "admin", csrfToken: csrf });
 });
 app.use("/api/admin/*", async (c, next) => {
   const raw = getCookie(c, "jufexk_admin");
@@ -998,7 +1007,7 @@ app.use("/api/admin/*", async (c, next) => {
   await next();
 });
 app.get("/api/admin/session", (c) =>
-  c.json({ ok: true, csrfToken: c.get("adminCsrf") }),
+  c.json({ ok: true, kind: "admin", csrfToken: c.get("adminCsrf") }),
 );
 const relationAdditionFailure = (c: AppContext, error: unknown) => {
   if (error instanceof CatalogRelationAdditionError)
