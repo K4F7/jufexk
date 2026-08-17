@@ -1,5 +1,9 @@
 # 选课志（jufexk）
 
+<p align="center">
+  <img src="public/icon-512.png" width="128" height="128" alt="江财选课参考">
+</p>
+
 [![Deploy](https://github.com/K4F7/jufexk/actions/workflows/deploy.yml/badge.svg)](https://github.com/K4F7/jufexk/actions/workflows/deploy.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
