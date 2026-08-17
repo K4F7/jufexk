@@ -6,7 +6,7 @@
 
 ```powershell
 $env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
-$env:JUFEXK_ADMIN_PASSWORD = '...'
+$env:JUFEXK_ADMIN_PASSWORD = '...' # 或 $env:ADMIN_PASSWORD
 $env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\historical-production-v2-<UTC_TIMESTAMP>.sql'
 pnpm run historical-import:production -- 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-production-v2'
 ```
@@ -15,7 +15,7 @@ pnpm run historical-import:production -- 'D:\19016\Documents\Workload\jufexk-pro
 
 ```powershell
 $env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
-$env:JUFEXK_ADMIN_PASSWORD = '...'
+$env:JUFEXK_ADMIN_PASSWORD = '...' # 或 $env:ADMIN_PASSWORD
 $env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\historical-production-v2-<UTC_TIMESTAMP>.sql'
 pnpm run historical-import:production -- 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-production-v2' --apply |
   Set-Content -Encoding utf8 'D:\19016\Documents\Workload\jufexk-production-inputs\audit\historical-production-v2.json'

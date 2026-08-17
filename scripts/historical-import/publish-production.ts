@@ -3,12 +3,13 @@ import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { resolveAdminPassword } from "../secrets/inventory";
 import { parseProductionImportArguments } from "./production-arguments";
 
 const exec = promisify(execFile);
 const { apply, root } = parseProductionImportArguments(process.argv.slice(2));
 const baseUrl = (process.env.JUFEXK_BASE_URL || "https://xk.sein.moe").replace(/\/$/, "");
-const password = process.env.JUFEXK_ADMIN_PASSWORD;
+const password = resolveAdminPassword(process.env);
 const backupPath = resolve(process.env.JUFEXK_BACKUP_PATH || `.local-data/historical-import-${new Date().toISOString().replace(/[:.]/g, "-")}.sql`);
 const expectedCatalog = "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588";
 const expectedCatalogArtifact = "aab562b8ff5cbe8159128769749616f6285fa0b8a9fab9bb6a49d6e70e72504a";
@@ -20,7 +21,6 @@ const expectedCatalogCounts = { courses: 3740, teachers: 1951, relations: 11482 
 const target = { worker: "jufexk", d1: "jufexk", databaseId: "7bd119f3-b8a2-4c9d-9e70-2809396ee26c", environment: process.env.JUFEXK_ENVIRONMENT || "production" };
 const operator = process.env.JUFEXK_OPERATOR || "unspecified";
 
-if (!password) throw new Error("缺少 JUFEXK_ADMIN_PASSWORD");
 const manifestText = await readFile(resolve(root, "manifest.json"), "utf8");
 const manifest = JSON.parse(manifestText);
 const artifact = await readFile(resolve(root, "importable-legacy-reviews.jsonl"));
