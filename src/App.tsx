@@ -5,6 +5,7 @@ import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
+import { LoginPage } from "./pages/LoginPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
 
@@ -113,6 +114,7 @@ export function App() {
           <Route path="/courses/:id" element={<CourseDetailPage />} />
           <Route path="/teachers" element={<TeachersPage />} />
           <Route path="/teachers/:id" element={<TeacherDetailPage />} />
+          <Route path="/login" element={<LoginPage />} />
           {PrototypeGalleryPage ? (
             <Route
               path="/prototype"
