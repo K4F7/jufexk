@@ -95,9 +95,9 @@ test("endorse then withdraw: optimistic count, pending disabled, server confirm"
   await demo
     .getByRole("button", { name: "认可这条评价，当前 3 人认可" })
     .click();
-  // 建立中：pending 禁用，避免重复激活
+  // 建立中：pending 禁用，避免重复激活；可访问名含动作 + 状态 + 计数
   await expect(
-    demo.getByRole("button", { name: "正在建立认可" }),
+    demo.getByRole("button", { name: "正在建立认可，当前 4 人认可" }),
   ).toBeDisabled();
   // stub 确认后：selected + 计数 4
   const endorsed = demo.getByRole("button", {
@@ -107,9 +107,9 @@ test("endorse then withdraw: optimistic count, pending disabled, server confirm"
   await expect(endorsed).toHaveAttribute("aria-pressed", "true");
 
   await endorsed.click();
-  // 撤回中：pending 禁用
+  // 撤回中：pending 禁用；可访问名含动作 + 状态 + 计数
   await expect(
-    demo.getByRole("button", { name: "正在撤回认可" }),
+    demo.getByRole("button", { name: "正在撤回认可，当前 3 人认可" }),
   ).toBeDisabled();
   // 恢复服务器确认状态
   await expect(
@@ -147,7 +147,9 @@ test("slow network keeps pending and blocks repeat activation", async ({
   await creating
     .getByRole("button", { name: "认可这条评价，当前 1 人认可" })
     .click();
-  const pendingCreate = creating.getByRole("button", { name: "正在建立认可" });
+  const pendingCreate = creating.getByRole("button", {
+    name: "正在建立认可，当前 2 人认可",
+  });
   await expect(pendingCreate).toBeDisabled();
   // stub 永不返回：状态明确停在建立中
   await page.waitForTimeout(1000);
@@ -162,7 +164,7 @@ test("slow network keeps pending and blocks repeat activation", async ({
     })
     .click();
   const pendingWithdraw = withdrawing.getByRole("button", {
-    name: "正在撤回认可",
+    name: "正在撤回认可，当前 3 人认可",
   });
   await expect(pendingWithdraw).toBeDisabled();
   await page.waitForTimeout(1000);

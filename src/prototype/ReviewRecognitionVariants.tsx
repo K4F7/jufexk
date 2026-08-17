@@ -14,6 +14,11 @@
  * B — footer 左置：认可 Button（含计数）居左，发布时间以 · 跟随
  * C — 动作与计数分离：Button 只含「认可」动作，计数为独立 muted 文本
  *
+ * 控件用标准 Button（issue 明确要求）而非 ToggleButton：isPending 在
+ * ToggleButton 上无官方对应；selected 状态经 aria-pressed 暴露。
+ * 条目结构沿用 #71 文字流（身份 · 学期 · 总体评分 / 正文 / footer），
+ * 认可控件只加入 footer，不改条目其余部分。
+ *
  * Mounted via CourseDetailPage when ?module=review-recognition&variant=A|B|C (DEV only).
  */
 import { Button, Separator, Spinner } from "@heroui/react";
@@ -45,6 +50,8 @@ type DemoEntry = {
   teacherId: number | null;
   teacherName: string;
   term: string | null;
+  /** 总体评分（#66 展示契约，1-5，0.5 步进）；null 表示该评价无评分 */
+  score: number | null;
   publishedAt: string | null;
   note: string;
   initialCount: number;
@@ -94,6 +101,7 @@ const DEMO_ENTRIES: DemoEntry[] = [
     teacherId: 1,
     teacherName: "林晓雯",
     term: "2024-2025-2",
+    score: 4.6,
     publishedAt: "2025-06-18T10:20:00Z",
     note: "（演示 · 零计数）例题扎实，作业量适中。这条评价还没有人认可：按钮不显示计数，也不带任何负面视觉。",
     initialCount: 0,
@@ -105,6 +113,7 @@ const DEMO_ENTRIES: DemoEntry[] = [
     teacherId: 2,
     teacherName: "陈启明",
     term: "2024-2025-1",
+    score: 4,
     publishedAt: "2025-01-09T08:00:00Z",
     note: "（演示 · 非零计数）节奏偏快，建议提前预习。点「认可」后计数乐观 +1，stub 约 0.7 秒后确认；再点一次撤回。",
     initialCount: 3,
@@ -116,6 +125,7 @@ const DEMO_ENTRIES: DemoEntry[] = [
     teacherId: 3,
     teacherName: "王若舟",
     term: "2023-2024-2",
+    score: 5,
     publishedAt: "2024-07-02T14:30:00Z",
     note: "（演示 · 已认可）课堂案例多、板书清晰。我已认可这条评价：按钮呈按下态；再点一次进入撤回中，stub 确认后恢复未认可。",
     initialCount: 5,
@@ -127,6 +137,7 @@ const DEMO_ENTRIES: DemoEntry[] = [
     teacherId: 4,
     teacherName: "赵敏",
     term: "2022-2023-1",
+    score: 3,
     publishedAt: "2023-01-15T09:00:00Z",
     note: "（演示 · 大计数）三位数认可用于检查 footer 对齐与折行；计数原样显示，不引入缩写或封顶。",
     initialCount: 128,
@@ -138,6 +149,7 @@ const DEMO_ENTRIES: DemoEntry[] = [
     teacherId: 7,
     teacherName: "何清",
     term: "2022-2023-1",
+    score: 4,
     publishedAt: "2023-02-20T09:00:00Z",
     note: "（演示 · 失败恢复）这条的 stub 建立总是失败：点「认可」先乐观 +1，随后恢复服务器确认的计数并给出错误提示。",
     initialCount: 2,
@@ -149,6 +161,7 @@ const DEMO_ENTRIES: DemoEntry[] = [
     teacherId: 6,
     teacherName: "周慧",
     term: "2024-2025-1",
+    score: 4.5,
     publishedAt: "2025-03-20T11:00:00Z",
     note: "（演示 · 慢网络建立中）这条的 stub 永不返回：点「认可」后一直停在建立中，按钮保持禁用，无法重复激活。",
     initialCount: 1,
@@ -160,6 +173,7 @@ const DEMO_ENTRIES: DemoEntry[] = [
     teacherId: 8,
     teacherName: "吴桐",
     term: "2024-2025-1",
+    score: null,
     publishedAt: "2025-04-02T09:30:00Z",
     note: "（演示 · 慢网络撤回中）我已认可且 stub 永不返回：点「已认可」后一直停在撤回中。",
     initialCount: 4,
@@ -178,16 +192,29 @@ function formatPublishedAt(iso: string | null): string {
   return `${y}-${m}-${day}`;
 }
 
+/** 与 #71 文字流一致：整数不带小数点，半分保留一位。 */
+function formatScore(score: number | null): string | null {
+  if (score === null || score === undefined || Number.isNaN(Number(score))) {
+    return null;
+  }
+  const n = Number(score);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
 function buttonText(state: RecognitionState): string {
   if (state.pending === "create") return "认可中…";
   if (state.pending === "withdraw") return "撤回中…";
   return state.endorsed ? "已认可" : "认可";
 }
 
-/** 动作 + 状态 + 计数全部进入可访问名；可见文本保持「认可」术语。 */
+/** 动作 + 状态 + 计数全部进入可访问名（含 pending）；可见文本保持「认可」术语。 */
 function buttonAriaLabel(state: RecognitionState): string {
-  if (state.pending === "create") return "正在建立认可";
-  if (state.pending === "withdraw") return "正在撤回认可";
+  if (state.pending === "create") {
+    return `正在建立认可，当前 ${state.count} 人认可`;
+  }
+  if (state.pending === "withdraw") {
+    return `正在撤回认可，当前 ${state.count} 人认可`;
+  }
   if (state.endorsed) {
     return `已认可，按下可撤回我的认可，当前 ${state.count} 人认可`;
   }
@@ -406,7 +433,13 @@ function RecognitionEntry({
   onPress: () => void;
 }) {
   const term = entry.term || "学期未标注";
-  const ariaParts = ["任课评价", entry.teacherName, term];
+  const scoreLabel = formatScore(entry.score);
+  const ariaParts = [
+    "任课评价",
+    entry.teacherName,
+    term,
+    scoreLabel ? `总体评分 ${scoreLabel}` : null,
+  ].filter(Boolean);
 
   return (
     <article className="py-4" aria-label={ariaParts.join(" · ")}>
@@ -427,6 +460,17 @@ function RecognitionEntry({
           ·
         </span>
         <span className="text-muted">{term}</span>
+        {scoreLabel ? (
+          <>
+            <span className="text-muted" aria-hidden>
+              ·
+            </span>
+            <span className="tabular font-semibold text-accent">
+              {scoreLabel}
+              <span className="text-xs font-normal text-muted">/5</span>
+            </span>
+          </>
+        ) : null}
       </div>
       <p className="my-2 text-sm leading-relaxed text-foreground">
         {entry.note}
@@ -466,7 +510,8 @@ function PrototypeBanner({
       <div className="mt-1.5 text-[11px] text-muted">
         内存 stub（约 0.7s 确认 / 建立失败回滚 / 慢网络永不返回）·
         不调用生产接口 · 零计数不显示数字（无负面视觉）· 无 dislike /
-        负向状态 / 按认可排序 · 历史评价与纯评分不显示认可控件
+        负向状态 / 按认可排序 · 历史评价与纯评分不带认可控件（数据规则，
+        统一匿名流不标注来源，此处不作演示）
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="text-muted">身份</span>
