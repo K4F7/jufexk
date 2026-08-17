@@ -207,7 +207,7 @@ export function CourseResultTable({
                   {course.review_count > 0 ? (
                     <span className="whitespace-nowrap tabular text-[13px]">
                       <span className="font-semibold">{course.review_count}</span>
-                      <span className="ms-1 text-[12px] text-muted">投</span>
+                      <span className="text-[12px] text-muted">{" "}投</span>
                     </span>
                   ) : (
                     <span className="text-[13px] text-muted">暂无</span>
