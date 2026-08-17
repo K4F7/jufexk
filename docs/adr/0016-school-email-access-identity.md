@@ -31,8 +31,9 @@ Worker 必须独立验签 JWT，并把认证方主体映射到站内稳定、不
 ## 会话、注销与封禁
 
 - 普通用户 CSRF cookie 为 24 小时，`SameSite=Lax`。校园 JWT cookie 若将来由开放的 callback 写入，必须 `HttpOnly`、`Secure`、`SameSite=Lax`。站点不把管理员 `admin_sessions` 复用于普通用户。
-- 注销走 `POST /api/user/logout`，清除普通用户 cookie；前端 `/logout` 只是引导页。前端以 `/api/user/session` 为 viewer-state 来源，收到写接口 `401` 后清除本地状态。
+- 注销走 `POST /api/user/logout`，清除普通用户 cookie；前端 `/logout` 只是引导页。前端以 `/api/user/session` 为 viewer-state 来源，收到写接口 `401` 后清除本地状态。可写用户注销仍要 CSRF；`pending_deletion` 等不可写用户仍可注销。
 - JWT 认证通过后仍查询普通用户状态。`banned`、`pending_deletion` 和 `deleted` 一律拒绝写入。
+- `GET /api/user/session` 对 `pending_deletion` 且凭证仍能解析到该普通用户时返回 `authenticated: false`、`accountStatus: "pending_deletion"`、`restoreUntil`（`pending_deletion_at + 30` 天的 ISO-8601）和 CSRF；不因探测 session 而恢复账号。游客、`banned`、`deleted` 保持游客形状，不增加 `accountStatus`。
 
 ## 评价、认可与幂等身份
 
@@ -44,6 +45,16 @@ Worker 必须独立验签 JWT，并把认证方主体映射到站内稳定、不
 
 - 历史评价永久保持 `user_id = NULL`，不能被后来注册的普通用户认领。
 - 普通用户身份上线前的匿名任课评价和 `submitter_hash` 不自动关联账号。
+
+## 滥用、保留与账号删除
+
+- `active` 普通用户可在同源与 CSRF 下 `POST /api/user/deletion`，请求体 `confirm` 必须为 `DELETE`。成功后立刻进入 `pending_deletion`，写入 `pending_deletion_at`，停止全部写入，并删除该 `user_id` 下全部认可。已是 `pending_deletion` 或不可写时不得重入、不得改写 `pending_deletion_at`。
+- 恢复期 session 形状见上一节。响应与公开接口不得出现 `user_id`、认证身份或学号。
+- `POST /api/user/deletion/restore` 仅当解析到的普通用户当前为 `pending_deletion`，且必须同源与 CSRF。成功后回到 `active` 并清空 `pending_deletion_at`，不重建认可。对 `active` / `banned` / `deleted` / 游客返回冲突或未登录，不改状态。
+- 文案恢复期为 30 天，`restoreUntil` 只供前端说明。本版不 finalize：不加到期清理任务，不删除认证身份，不把账号标为 `deleted`。过了 30 天仍可恢复。`deleted` 只用于写拒绝测试或未来 finalize。
+- 本版只处理已有 `user_id` 的表：普通用户、认证身份、认可。不给任课评价加作者列，因此已批准任课评价继续按现有 `submitter_hash` 匿名留存；删除前自删正文与匿名化待作者列。
+- 本版不提供合并 API，也不按邮箱或学号猜测合并。多个认证主体默认是不同普通用户。将来若出现第二身份信号，合并只遵循这些冲突规则：存续普通用户（只保留一个 `users.id`，被合并方的认证身份迁到存续用户）；认证身份迁移与认可折叠必须在同一事务完成；两边对同一评价都有认可时折叠为一条；同一任课关系上已有两条任课评价时，不得自动丢弃或拼接。
+- 封禁摘要、删号后再注册对抗与永久封禁专用流程另议。管理员 cookie 不能调用普通用户删除或恢复。
 
 ## 实施门槛
 
@@ -81,3 +92,5 @@ Secrets Store：
 - **把 AuthBridge 密文 `sub` 或学号直接作为业务主键**：密文随 IV 变化，学号也会变更或需要合并，否决。
 - **把管理员 session 复用为普通用户**：破坏匿名边界与权限分离，否决。
 - **公开只读也强制校园 JWT**：大多数用户只是游客，否决。
+- **30 天后自动 finalize / 清掉认证身份**：登录仍是占位，本版不能悄悄删除身份；`restoreUntil` 只作文案，否决。
+- **本版提供账号合并 API**：第一版校园 JWT 没有邮箱声明，不能把两个学号当成同一个人；合并只先记下冲突规则，否决。

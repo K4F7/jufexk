@@ -406,7 +406,7 @@ describe("ordinary user session boundary", () => {
     }
   });
 
-  it("restores a pending_deletion account via the live callback, but not banned", async () => {
+  it("lets pending_deletion complete callback without restoring, and rejects banned", async () => {
     const restore = enableCampusJwt();
     try {
       const token = await campusToken({ sub: "campus-recovery-sub" });
@@ -424,12 +424,15 @@ describe("ordinary user session boundary", () => {
         .bind(subject)
         .first<{ user_id: string }>();
       expect(account?.user_id).toBeTruthy();
-      const setStatus = (status: string) =>
-        env.DB.prepare("UPDATE users SET status=? WHERE id=?")
-          .bind(status, account?.user_id)
+      const setStatus = (status: string, pendingDeletionAt: string | null = null) =>
+        env.DB.prepare(
+          "UPDATE users SET status=?, pending_deletion_at=? WHERE id=?",
+        )
+          .bind(status, pendingDeletionAt, account?.user_id)
           .run();
 
-      await setStatus("pending_deletion");
+      const requestedAt = new Date(Date.now() - 3600_000).toISOString();
+      await setStatus("pending_deletion", requestedAt);
       const recovered = await SELF.fetch(`${origin}/api/auth/callback`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -442,13 +445,26 @@ describe("ordinary user session boundary", () => {
       const session = await SELF.fetch(`${origin}/api/user/session`, {
         headers: { Cookie: cookie },
       });
-      expect(await session.json()).toMatchObject({ authenticated: true });
-      const restored = await env.DB.prepare(
+      const sessionBody = await session.json<{
+        authenticated: boolean;
+        accountStatus?: string;
+        csrfToken?: string;
+        restoreUntil?: string;
+      }>();
+      expect(sessionBody).toMatchObject({
+        authenticated: false,
+        accountStatus: "pending_deletion",
+      });
+      expect(sessionBody.csrfToken).toBeTruthy();
+      expect(Date.parse(sessionBody.restoreUntil || "")).toBe(
+        Date.parse(requestedAt) + 30 * 24 * 60 * 60 * 1000,
+      );
+      const stillPending = await env.DB.prepare(
         "SELECT status FROM users WHERE id=?",
       )
         .bind(account?.user_id)
         .first<{ status: string }>();
-      expect(restored?.status).toBe("active");
+      expect(stillPending?.status).toBe("pending_deletion");
 
       await setStatus("banned");
       const banned = await SELF.fetch(`${origin}/api/auth/callback`, {

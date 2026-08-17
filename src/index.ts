@@ -24,8 +24,10 @@ import {
 } from "./historical-batch-imports";
 import { handleCampusAuthStatus } from "./campus-jwt";
 import {
-  handleDeleteOrdinaryUserAccount,
-  USER_ACCOUNT_PATH,
+  handleRequestOrdinaryUserDeletion,
+  handleRestoreOrdinaryUserDeletion,
+  USER_DELETION_PATH,
+  USER_DELETION_RESTORE_PATH,
 } from "./ordinary-user-account";
 import {
   canOrdinaryUserWrite,
@@ -663,7 +665,8 @@ app.get("/api/courses/:id/reviews", async (c) => {
 
 app.get("/api/user/session", handleOrdinaryUserSession);
 app.post("/api/user/logout", handleOrdinaryUserLogout);
-app.delete(USER_ACCOUNT_PATH, handleDeleteOrdinaryUserAccount);
+app.post(USER_DELETION_PATH, handleRequestOrdinaryUserDeletion);
+app.post(USER_DELETION_RESTORE_PATH, handleRestoreOrdinaryUserDeletion);
 app.get("/api/auth/campus", handleCampusAuthStatus);
 app.post("/api/auth/callback", handleCampusAuthCallback);
 app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);

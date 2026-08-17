@@ -52,7 +52,8 @@ async function lookupIdentityUser(
 ) {
   return db
     .prepare(
-      `SELECT users.id, users.status
+      `SELECT users.id, users.status,
+              COALESCE(users.pending_deletion_at, users.deletion_requested_at) AS pending_deletion_at
        FROM auth_identities
        JOIN users ON users.id = auth_identities.user_id
        WHERE auth_identities.provider=? AND auth_identities.issuer=? AND auth_identities.subject=?`,
