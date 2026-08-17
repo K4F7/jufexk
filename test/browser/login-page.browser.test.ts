@@ -101,6 +101,9 @@ test("external or looping from values fall back to the catalog", async ({
 
   await page.goto("/login?from=/login");
   await expect(back).toHaveAttribute("href", "/courses");
+
+  await page.goto("/login?from=/login/");
+  await expect(back).toHaveAttribute("href", "/courses");
 });
 
 test("guest recognition prompt reaches login and returns to the source page", async ({

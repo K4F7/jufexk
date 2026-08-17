@@ -19,7 +19,8 @@ function backTargetFrom(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
     return DEFAULT_BACK_TARGET;
   }
-  if (raw.split(/[?#]/, 1)[0] === "/login") return DEFAULT_BACK_TARGET;
+  const path = raw.split(/[?#]/, 1)[0].replace(/\/+$/, "");
+  if (path === "/login") return DEFAULT_BACK_TARGET;
   return raw;
 }
 
