@@ -46,33 +46,10 @@ export async function campusIdentitySubject(
   return hmacHex(`campus-sub:${claims.sub}`, secrets.identitySecret);
 }
 
-export async function resolveOrCreateIdentityUser(
+async function lookupIdentityUser(
   db: D1Database,
   input: { provider: string; issuer: string; subject: string },
-): Promise<OrdinaryUser | null> {
-  const existing = await db
-    .prepare(
-      `SELECT users.id, users.status
-       FROM auth_identities
-       JOIN users ON users.id = auth_identities.user_id
-       WHERE auth_identities.provider=? AND auth_identities.issuer=? AND auth_identities.subject=?`,
-    )
-    .bind(input.provider, input.issuer, input.subject)
-    .first<OrdinaryUser>();
-  if (existing) return existing;
-
-  const userId = newUserId();
-  await db
-    .prepare("INSERT INTO users(id,status) VALUES(?,?)")
-    .bind(userId, "active")
-    .run();
-  await db
-    .prepare(
-      `INSERT OR IGNORE INTO auth_identities(provider,issuer,subject,user_id)
-       VALUES(?,?,?,?)`,
-    )
-    .bind(input.provider, input.issuer, input.subject, userId)
-    .run();
+) {
   return db
     .prepare(
       `SELECT users.id, users.status
@@ -82,4 +59,32 @@ export async function resolveOrCreateIdentityUser(
     )
     .bind(input.provider, input.issuer, input.subject)
     .first<OrdinaryUser>();
+}
+
+export async function resolveOrCreateIdentityUser(
+  db: D1Database,
+  input: { provider: string; issuer: string; subject: string },
+): Promise<OrdinaryUser | null> {
+  const existing = await lookupIdentityUser(db, input);
+  if (existing) return existing;
+
+  const userId = newUserId();
+  // Occupy the identity slot first. A lost race must not insert an orphan
+  // users row; the winner's user_id is filled only after the slot is taken.
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO auth_identities(provider,issuer,subject,user_id)
+         VALUES(?,?,?,?)`,
+      )
+      .bind(input.provider, input.issuer, input.subject, userId),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO users(id,status)
+         SELECT user_id, 'active' FROM auth_identities
+         WHERE provider=? AND issuer=? AND subject=?`,
+      )
+      .bind(input.provider, input.issuer, input.subject),
+  ]);
+  return lookupIdentityUser(db, input);
 }

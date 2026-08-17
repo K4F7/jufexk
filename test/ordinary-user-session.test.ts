@@ -89,7 +89,9 @@ async function campusSubject(token: string) {
 
 function assertNoIdentityLeak(value: unknown) {
   const raw = JSON.stringify(value);
-  expect(raw).not.toMatch(/campus-stable-sub|20230001|test-campus-jwt-secret/);
+  expect(raw).not.toMatch(
+    /campus-stable-sub|campus-concurrent-sub|20230001|test-campus-jwt-secret/,
+  );
   expect(raw).not.toMatch(/"id":"[0-9a-f]{32}"/);
 }
 
@@ -189,6 +191,42 @@ describe("ordinary user session boundary", () => {
       .first<{ count: number; users: number }>();
     expect(row?.count).toBe(1);
     expect(row?.users).toBe(1);
+  });
+
+  it("creates only one identity and user when the same campus subject logs in concurrently", async () => {
+    const token = await campusToken({ sub: "campus-concurrent-sub" });
+    const before = await env.DB.prepare("SELECT COUNT(*) count FROM users").first<{
+      count: number;
+    }>();
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        SELF.fetch(`${origin}/api/user/session`, {
+          headers: { Cookie: `${CAMPUS_JWT_COOKIE}=${token}` },
+        }),
+      ),
+    );
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    const bodies = await Promise.all(
+      responses.map((response) =>
+        response.json<{ authenticated: boolean }>(),
+      ),
+    );
+    expect(bodies.every((body) => body.authenticated)).toBe(true);
+    for (const body of bodies) assertNoIdentityLeak(body);
+
+    const subject = await campusSubject(token);
+    const identity = await env.DB.prepare(
+      "SELECT COUNT(*) count, COUNT(DISTINCT user_id) users FROM auth_identities WHERE subject=?",
+    )
+      .bind(subject)
+      .first<{ count: number; users: number }>();
+    expect(identity?.count).toBe(1);
+    expect(identity?.users).toBe(1);
+
+    const after = await env.DB.prepare("SELECT COUNT(*) count FROM users").first<{
+      count: number;
+    }>();
+    expect((after?.count || 0) - (before?.count || 0)).toBe(1);
   });
 
   it("rejects bad signatures, wrong aud, encrypted tokens without decrypt, and ecc", async () => {

@@ -4,6 +4,7 @@ import {
   ORDINARY_USER_CSRF_COOKIE,
   ORDINARY_USER_ID_HEADER,
   ORDINARY_USER_MAC_HEADER,
+  hmacHex,
   ordinaryUserTestHeaders,
 } from "../src/ordinary-user-session";
 
@@ -193,6 +194,38 @@ describe("review endorsement API", () => {
       },
     );
     expect(adminWrite.status).toBe(401);
+  });
+
+  it("rejects endorsement writes with 403 when the account is pending_deletion or deleted", async () => {
+    const reviewId = await insertReview({ comment: "不可写账号认可补充说明" });
+    for (const status of ["pending_deletion", "deleted"] as const) {
+      const session = await viewerSession(`user-unwritable-${status}`);
+      const stableUserId = await hmacHex(
+        `ordinary-test-user:${session.userId}`,
+        testAuthSecret,
+      );
+      await env.DB.prepare("UPDATE users SET status=? WHERE id=?")
+        .bind(status, stableUserId)
+        .run();
+
+      for (const mutate of [putEndorsement, deleteEndorsement]) {
+        const response = await mutate(reviewId, session);
+        expect(response.status).toBe(403);
+        const body = await response.json();
+        expect(body).toMatchObject({ error: "当前账号无法认可评价" });
+        const raw = JSON.stringify(body);
+        expect(raw).not.toMatch(/"user_id"|user-unwritable-|20230001/);
+        expect(raw).not.toContain(stableUserId);
+      }
+    }
+
+    const catalog = await SELF.fetch(`${origin}/api/courses`);
+    expect(catalog.status).toBe(200);
+    expect(JSON.stringify(await catalog.json())).not.toMatch(/"user_id"/);
+
+    const publicReviews = await SELF.fetch(`${origin}/api/courses/1`);
+    expect(publicReviews.status).toBe(200);
+    expect(JSON.stringify(await publicReviews.json())).not.toMatch(/"user_id"/);
   });
 
   it("creates, repeats, withdraws and repeats withdraw with authoritative counts", async () => {
