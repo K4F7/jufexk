@@ -130,4 +130,120 @@ describe("review template kind API contract", () => {
     });
     expect(categoryLabel(courseBody.course.category)).toBe("普通课程");
   });
+
+  it("hides umbrella 体育1/体育2 and surfaces skill PE courses as sports", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(18101,'击剑教师','击剑教师')",
+      ),
+      env.DB.prepare(
+        `INSERT INTO courses(id,code,name,category) VALUES
+          (18101,'1005000641','体育1','sports'),
+          (18102,'1005000651','体育2','sports'),
+          (18106,'1005000661','体育3','sports'),
+          (18107,'1005000671','体育4','sports'),
+          (18108,'1005000681','体育Ⅰ（留）','sports'),
+          (18103,'1005002272','网球','general'),
+          (18104,'1005002536','击剑专项理论与实践1','general'),
+          (18105,'1004001943','会计学','general')`,
+      ),
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(18101,18101),(18102,18101),(18103,18101),(18104,18101),(18105,18101),(18106,18101),(18107,18101),(18108,18101)",
+      ),
+    ]);
+
+    const hiddenNames = ["体育1", "体育2", "体育3", "体育4", "体育Ⅰ（留）"];
+    for (const name of hiddenNames) {
+      const hidden = await SELF.fetch(
+        `${origin}/api/courses?q=${encodeURIComponent(name)}`,
+      );
+      const hiddenBody = await hidden.json<{ items: Array<{ name: string }> }>();
+      expect(hidden.status).toBe(200);
+      expect(hiddenBody.items.map((item) => item.name)).not.toContain(name);
+    }
+
+    const listed = await SELF.fetch(
+      `${origin}/api/courses?q=${encodeURIComponent("网球")}`,
+    );
+    const listedBody = await listed.json<{
+      items: Array<{ name: string; category: string }>;
+    }>();
+    expect(listed.status).toBe(200);
+    expect(
+      listedBody.items.find((item) => item.name === "网球")?.category,
+    ).toBe("sports");
+
+    const sports = await SELF.fetch(`${origin}/api/courses?category=sports`);
+    const sportsBody = await sports.json<{
+      items: Array<{ name: string; category: string }>;
+    }>();
+    expect(sports.status).toBe(200);
+    const sportsNames = sportsBody.items.map((item) => item.name);
+    expect(sportsNames).toContain("网球");
+    expect(sportsNames).toContain("击剑专项理论与实践1");
+    expect(sportsNames).toContain("测试体育课");
+    for (const name of hiddenNames) expect(sportsNames).not.toContain(name);
+    expect(sportsNames).not.toContain("会计学");
+    expect(
+      sportsBody.items.every((item) => item.category === "sports"),
+    ).toBe(true);
+
+    const options = await SELF.fetch(
+      `${origin}/api/courses/options?q=${encodeURIComponent("体育")}`,
+    );
+    const optionsBody = await options.json<{ items: Array<{ name: string }> }>();
+    expect(options.status).toBe(200);
+    for (const name of hiddenNames)
+      expect(optionsBody.items.map((item) => item.name)).not.toContain(name);
+
+    const tennis = await SELF.fetch(`${origin}/api/courses/18103`);
+    const tennisBody = await tennis.json<{
+      course: { name: string; category: string };
+    }>();
+    expect(tennis.status).toBe(200);
+    expect(tennisBody.course).toMatchObject({
+      name: "网球",
+      category: "sports",
+    });
+    expect(categoryLabel(tennisBody.course.category)).toBe("体育课");
+
+    const stored = await env.DB.prepare(
+      "SELECT category FROM courses WHERE id=18103",
+    ).first<{ category: string }>();
+    expect(stored?.category).toBe("general");
+
+    const admin = await SELF.fetch(`${origin}/api/admin/courses`, {
+      headers: await login(),
+    });
+    const adminBody = await admin.json<
+      Array<{ id: number; name: string; category: string }>
+    >();
+    expect(admin.status).toBe(200);
+    expect(adminBody.find((course) => course.id === 18103)).toMatchObject({
+      name: "网球",
+      category: "general",
+    });
+
+    const teacher = await SELF.fetch(`${origin}/api/teachers/18101`);
+    const teacherBody = await teacher.json<{
+      teacher: { course_count: number };
+      courses: Array<{ name: string; category: string }>;
+    }>();
+    expect(teacher.status).toBe(200);
+    expect(teacherBody.courses.map((course) => course.name)).toEqual([
+      "会计学",
+      "击剑专项理论与实践1",
+      "网球",
+    ]);
+    expect(teacherBody.teacher.course_count).toBe(3);
+    expect(
+      Object.fromEntries(
+        teacherBody.courses.map((course) => [course.name, course.category]),
+      ),
+    ).toMatchObject({
+      网球: "sports",
+      击剑专项理论与实践1: "sports",
+      会计学: "general",
+    });
+  });
 });

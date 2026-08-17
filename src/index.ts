@@ -17,7 +17,11 @@ import {
   putBaselineChunk,
   readBoundedJson,
 } from "./catalog-baseline-import";
-import { normalizeReviewTemplateKind } from "./lib/review-template-kind";
+import {
+  publicCourseCategory,
+  publicCourseVisibleSql,
+  publicSportsMatchSql,
+} from "./lib/public-course-presentation";
 import {
   HistoricalBatchImportError,
   importIssue111HistoricalBatch,
@@ -199,9 +203,18 @@ const token = () =>
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 const fail = (c: any, error: string, status = 400) => c.json({ error }, status);
-const withPublicCourseCategory = <T extends { category?: unknown }>(row: T) => ({
+const withPublicCourseCategory = <
+  T extends { category?: unknown; name?: unknown; course_name?: unknown },
+>(
+  row: T,
+) => ({
   ...row,
-  category: normalizeReviewTemplateKind(
+  category: publicCourseCategory(
+    typeof row.name === "string"
+      ? row.name
+      : typeof row.course_name === "string"
+        ? row.course_name
+        : "",
     typeof row.category === "string" ? row.category : "",
   ),
 });
@@ -421,9 +434,8 @@ app.get("/api/courses", async (c) => {
     teacherId = integer(c.req.query("teacherId"));
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
-  const where = `(?='' OR c.category=?) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?))`;
+  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?))`;
   const args = [
-    cat,
     cat,
     department,
     department,
@@ -504,7 +516,7 @@ app.get("/api/teachers", async (c) => {
     .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
     `SELECT t.*,
-       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct WHERE ct.teacher_id=t.id) course_count,
+       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
        COALESCE(teacher_review_counts.review_count,0) review_count,
        (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
      FROM teachers t
@@ -535,7 +547,7 @@ app.get("/api/teachers/:id", async (c) => {
   const id = integer(c.req.param("id"));
   const teacher = await c.env.DB.prepare(
     `SELECT t.*,
-       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct WHERE ct.teacher_id=t.id) course_count,
+       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
        (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) review_count,
        (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
      FROM teachers t WHERE t.id=?`,
@@ -552,7 +564,7 @@ app.get("/api/teachers/:id", async (c) => {
        FROM course_teachers ct
        JOIN courses c ON c.id=ct.course_id
        LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=c.id AND visible_counts.teacher_id=ct.teacher_id
-       WHERE ct.teacher_id=?
+       WHERE ct.teacher_id=? AND ${publicCourseVisibleSql("c")}
        ORDER BY review_count DESC,c.name,c.id`,
     )
       .bind(id, id)
@@ -586,7 +598,7 @@ app.get("/api/courses/options", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const q = `%${search}%`;
-  const where = `(?='' OR c.name LIKE ? OR c.code LIKE ? OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (search_t.name LIKE ? OR search_t.department LIKE ?)))`;
+  const where = `${publicCourseVisibleSql("c")} AND (?='' OR c.name LIKE ? OR c.code LIKE ? OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (search_t.name LIKE ? OR search_t.department LIKE ?)))`;
   const args = [search, q, q, q, q];
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM courses c WHERE ${where}`,
