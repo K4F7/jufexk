@@ -1,18 +1,15 @@
 /**
- * Teacher detail — adapted from frozen course-detail language (no separate A/B/C).
+ * Teacher detail — single-page vertical IA (frozen, module 11).
  *
- * Layout (single-page vertical):
- * 1. Compact summary B: left identity (name / title / dept / bio) · right score Surface
- * 2. Courses taught — TeacherCourseTable (course-domain dense fold)
- * 3. Related student submissions — ReviewCard identity=course (module 10 freeze)
- * 4. Historical materials — LegacyReviews showCourse (module 10 freeze)
+ * 1. 摘要 B: left identity (name / title / dept / course count / bio) · right rating Surface
+ * 2. 任课课程 — TeacherCourseTable (course-domain dense fold, per-relation rating)
+ * 3. 评价 — PublicReviews unified text stream (identity=course)
  *
  * DEV-only: ?module=teaching-reviews-feed replaces section 3 with #71 prototype.
  *
  * Back restores teacher-catalog URL state (drops prototype params if any).
  * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
  */
-import { Button } from "@heroui/react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   useLocation,
@@ -20,6 +17,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
@@ -61,48 +59,49 @@ type Detail = {
 function TeacherSummary({
   teacher,
   courseCount,
+  reviewCount,
   onBack,
 }: {
   teacher: Teacher;
   courseCount: number;
+  reviewCount: number;
   onBack: () => void;
 }) {
   return (
-    <header className="mb-4" aria-label="教师摘要">
-      <Button variant="ghost" size="sm" className="mb-1 px-0" onPress={onBack}>
-        ← 返回教师目录
-      </Button>
-      <div className="mt-1 border-b border-border pb-4">
-        <div className="min-w-0">
-          <h1 className="mb-2 mt-0 text-[26px] font-bold leading-tight tracking-tight">
-            {teacher.name}
-          </h1>
-          <dl className="m-0 grid gap-1.5 text-sm">
-            <div className="flex flex-wrap gap-x-2">
-              <dt className="shrink-0 text-muted">职称</dt>
-              <dd className="m-0 text-foreground">
-                {teacher.title || "职称未标注"}
-              </dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2">
-              <dt className="shrink-0 text-muted">院系</dt>
-              <dd className="m-0 text-foreground">
-                {teacher.department || "院系未标注"}
-              </dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2">
-              <dt className="shrink-0 text-muted">任课课程</dt>
-              <dd className="m-0 tabular text-foreground">{courseCount} 门</dd>
-            </div>
-          </dl>
-          {teacher.bio ? (
-            <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
-              {teacher.bio}
-            </p>
-          ) : null}
+    <DetailSummary
+      backLabel="返回教师目录"
+      onBack={onBack}
+      rating={teacher.rating}
+      reviewCount={reviewCount}
+      ariaLabel="教师摘要"
+    >
+      <h1 className="mb-2 mt-0 text-[26px] font-bold leading-tight tracking-tight">
+        {teacher.name}
+      </h1>
+      <dl className="m-0 grid gap-1.5 text-sm">
+        <div className="flex flex-wrap gap-x-2">
+          <dt className="shrink-0 text-muted">职称</dt>
+          <dd className="m-0 text-foreground">
+            {teacher.title || "职称未标注"}
+          </dd>
         </div>
-      </div>
-    </header>
+        <div className="flex flex-wrap gap-x-2">
+          <dt className="shrink-0 text-muted">院系</dt>
+          <dd className="m-0 text-foreground">
+            {teacher.department || "院系未标注"}
+          </dd>
+        </div>
+        <div className="flex flex-wrap gap-x-2">
+          <dt className="shrink-0 text-muted">任课课程</dt>
+          <dd className="m-0 tabular text-foreground">{courseCount} 门</dd>
+        </div>
+      </dl>
+      {teacher.bio ? (
+        <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
+          {teacher.bio}
+        </p>
+      ) : null}
+    </DetailSummary>
   );
 }
 
@@ -157,8 +156,13 @@ export function TeacherDetailPage() {
     Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
 
   return (
-    <section>
-      <TeacherSummary teacher={t} courseCount={courseCount} onBack={goBack} />
+    <section className="mx-auto w-full max-w-[880px]">
+      <TeacherSummary
+        teacher={t}
+        courseCount={courseCount}
+        reviewCount={data.reviewCount}
+        onBack={goBack}
+      />
 
       <section className="mb-6" aria-labelledby="teacher-courses-heading">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">

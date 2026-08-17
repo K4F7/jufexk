@@ -18,7 +18,7 @@
  * B — Card 条目栈：每条投稿一张 Card；维度用 soft Chip；历史 secondary Surface + Alert 说明
  * C — 维度优先 + 归档区：维度网格在前、评分作 accent Chip；历史为更弱的归档列表（Alert + 纯文字）
  *
- * 胜出（视觉冻结）：**A 结构 + B 维度 soft Chip** → 生产 ReviewCard / LegacyReviews。
+ * 胜出（视觉冻结）：**A 结构 + B 维度 soft Chip**；生产后经 #68/#90 改为 PublicReviews 统一匿名文字流，ReviewCard / LegacyReviews 于 #115 移除。
  * 本文件保留完整 A/B/C 对照；VariantA 维度已改为 soft Chip 以贴近冻结组合。
  *
  * Mounted via CourseDetailPage when ?module=course-detail-reviews&variant=A|B|C (DEV only).

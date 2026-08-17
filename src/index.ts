@@ -534,7 +534,11 @@ app.get("/api/courses/options", async (c) => {
 });
 app.get("/api/courses/:id", async (c) => {
   const id = integer(c.req.param("id"));
-  const course = await c.env.DB.prepare("SELECT * FROM courses WHERE id=?")
+  const course = await c.env.DB.prepare(
+    `SELECT c.*,
+       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.status='approved'${publicReviewBinding}) rating
+     FROM courses c WHERE c.id=?`,
+  )
     .bind(id)
     .first();
   if (!course) return fail(c, "课程不存在", 404);
@@ -542,15 +546,16 @@ app.get("/api/courses/:id", async (c) => {
   const reviewPage = await getPublicReviewPage(c.env.DB, "course_id", id, 20, null);
   const teachers = (
     await c.env.DB.prepare(
-      `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count
+      `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count,
+         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=ct.course_id AND r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
        FROM teachers t
        JOIN course_teachers ct ON ct.teacher_id=t.id
        LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=ct.course_id AND visible_counts.teacher_id=t.id
        WHERE ct.course_id=?
        ORDER BY review_count DESC,t.name,t.id`,
     )
-      .bind(id)
-      .all()
+    .bind(id)
+    .all()
   ).results;
   const nameVariants = (
     await c.env.DB.prepare(

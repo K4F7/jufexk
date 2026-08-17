@@ -8,11 +8,11 @@
  * Intent (not implemented): unfiltered high-density scan could use a
  * seven-column layout (prototype A); production ships B only this batch.
  */
-import { Chip, Link, Table } from "@heroui/react";
-import type { ReactNode } from "react";
-import { Link as RouterLink } from "react-router-dom";
-import { categoryLabel, scoreText } from "../lib/labels";
+import { Chip, Table } from "@heroui/react";
+import { categoryLabel } from "../lib/labels";
 import type { Course } from "../lib/types";
+import { RatingCell } from "./RatingCell";
+import { RouterAriaLink } from "./RouterAriaLink";
 
 export type CourseResultTableProps = {
   items: Course[];
@@ -50,50 +50,6 @@ function parseTeachers(course: Course): TeacherRef[] {
     .map((name) => ({ id: null, name }));
 }
 
-function mergeStopPropagation(
-  onClick?: (e: React.MouseEvent) => void,
-): (e: React.MouseEvent) => void {
-  return (e) => {
-    e.stopPropagation();
-    onClick?.(e);
-  };
-}
-
-function RouterAriaLink({
-  to,
-  href,
-  className,
-  children,
-}: {
-  to: string;
-  href: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className={className}
-      render={(domProps) => (
-        <RouterLink
-          {...(domProps as object)}
-          to={to}
-          className={
-            typeof domProps.className === "string"
-              ? domProps.className
-              : undefined
-          }
-          onClick={mergeStopPropagation(
-            (domProps as { onClick?: (ev: React.MouseEvent) => void }).onClick,
-          )}
-        />
-      )}
-    >
-      {children}
-    </Link>
-  );
-}
-
 function TeacherLinks({ course }: { course: Course }) {
   const teachers = parseTeachers(course);
   if (teachers.length === 0) {
@@ -107,7 +63,6 @@ function TeacherLinks({ course }: { course: Course }) {
           <RouterAriaLink
             key={`${t.id}-${t.name}`}
             to={`/teachers/${t.id}`}
-            href={`/teachers/${t.id}`}
             className="text-sm"
           >
             {t.name}
@@ -158,7 +113,6 @@ export function CourseResultTable({
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                       <RouterAriaLink
                         to={`/courses/${course.id}${search}`}
-                        href={`/courses/${course.id}${search}`}
                         className="font-semibold no-underline"
                       >
                         {course.name}
@@ -183,14 +137,10 @@ export function CourseResultTable({
                   </span>
                 </Table.Cell>
                 <Table.Cell>
-                  <div className="flex items-baseline gap-1.5 whitespace-nowrap tabular">
-                    <span className="font-semibold text-accent">
-                      {scoreText(course.rating)}
-                    </span>
-                    <span className="text-[12px] text-muted">
-                      · {course.review_count} 投
-                    </span>
-                  </div>
+                  <RatingCell
+                    rating={course.rating}
+                    reviewCount={course.review_count}
+                  />
                 </Table.Cell>
               </Table.Row>
             )}

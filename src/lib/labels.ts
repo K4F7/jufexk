@@ -7,7 +7,7 @@ export const categoryLabels: Record<string, string> = {
 
 export function categoryLabel(value?: string | null) {
   if (!value) return "未确定";
-  return categoryLabels[value] || value;
+  return categoryLabels[value] || "其他";
 }
 
 export function scoreText(value?: number | null) {

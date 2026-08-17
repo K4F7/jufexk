@@ -1,61 +1,34 @@
 /**
- * Teacher catalog result table — adapted from course-table B (dense fold).
- *
- * Four columns (teacher domain, not course isomorphic):
- *   教师 (name + title) · 院系 · 评分/投稿 · 课程数
- * Whole row → teacher detail; name is a real link.
+ * Teachers of a course — dense fold aligned with TeacherCourseTable.
+ * Columns: 教师 (name + title) · 院系 · 评分/投稿 (per course-teacher relation).
+ * Whole row + teacher name → teacher detail; real links (keyboard / new-tab safe).
+ * Issue #115 · docs/ui/foundations.md §详情体验.
  */
 import { Table } from "@heroui/react";
-import type { ReactNode } from "react";
 import type { Teacher } from "../lib/types";
 import { RatingCell } from "./RatingCell";
 import { RouterAriaLink } from "./RouterAriaLink";
 
-export type TeacherResultTableProps = {
+export type CourseTeacherTableProps = {
   items: Teacher[];
-  /** Preserved catalog query string, e.g. location.search including `?` */
-  search: string;
   className?: string;
 };
 
-function TeacherNameLink({
-  teacher,
-  search,
-  children,
-  className,
-}: {
-  teacher: Teacher;
-  search: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <RouterAriaLink to={`/teachers/${teacher.id}${search}`} className={className}>
-      {children}
-    </RouterAriaLink>
-  );
-}
-
-export function TeacherResultTable({
-  items,
-  search,
-  className,
-}: TeacherResultTableProps) {
+export function CourseTeacherTable({ items, className }: CourseTeacherTableProps) {
   return (
     <Table className={className ? `dense-table ${className}` : "dense-table"}>
       <Table.ScrollContainer>
-        <Table.Content aria-label="教师资料" className="min-w-[640px]">
+        <Table.Content aria-label="任课教师" className="min-w-[440px]">
           <Table.Header>
             <Table.Column isRowHeader>教师</Table.Column>
             <Table.Column>院系</Table.Column>
             <Table.Column>评分 / 投稿</Table.Column>
-            <Table.Column>课程数</Table.Column>
           </Table.Header>
           <Table.Body
             items={items}
             renderEmptyState={() => (
               <div className="py-8 text-center text-muted" role="status">
-                暂无教师资料
+                教师待补充
               </div>
             )}
           >
@@ -63,18 +36,17 @@ export function TeacherResultTable({
               <Table.Row
                 id={String(teacher.id)}
                 key={teacher.id}
-                href={`/teachers/${teacher.id}${search}`}
+                href={`/teachers/${teacher.id}`}
                 className="cursor-pointer"
               >
                 <Table.Cell>
                   <div className="flex min-w-0 flex-col gap-0.5">
-                    <TeacherNameLink
-                      teacher={teacher}
-                      search={search}
+                    <RouterAriaLink
+                      to={`/teachers/${teacher.id}`}
                       className="font-semibold no-underline"
                     >
                       {teacher.name}
-                    </TeacherNameLink>
+                    </RouterAriaLink>
                     <span className="text-[12px] text-muted">
                       {teacher.title || "职称待补充"}
                     </span>
@@ -90,11 +62,6 @@ export function TeacherResultTable({
                     rating={teacher.rating}
                     reviewCount={teacher.review_count}
                   />
-                </Table.Cell>
-                <Table.Cell>
-                  <span className="tabular font-semibold text-accent">
-                    {teacher.course_count ?? 0}
-                  </span>
                 </Table.Cell>
               </Table.Row>
             )}

@@ -5,11 +5,12 @@
  * Whole row + course name → course detail; real links (keyboard / new-tab safe).
  * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
  */
-import { Chip, Link, Table } from "@heroui/react";
+import { Chip, Table } from "@heroui/react";
 import type { ReactNode } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import { categoryLabel } from "../lib/labels";
 import type { Course } from "../lib/types";
+import { RatingCell } from "./RatingCell";
+import { RouterAriaLink } from "./RouterAriaLink";
 
 export type TeacherCourseTableProps = {
   items: Course[];
@@ -17,15 +18,6 @@ export type TeacherCourseTableProps = {
   search?: string;
   className?: string;
 };
-
-function mergeStopPropagation(
-  onClick?: (e: React.MouseEvent) => void,
-): (e: React.MouseEvent) => void {
-  return (e) => {
-    e.stopPropagation();
-    onClick?.(e);
-  };
-}
 
 function CourseNameLink({
   course,
@@ -38,28 +30,10 @@ function CourseNameLink({
   children: ReactNode;
   className?: string;
 }) {
-  const to = `/courses/${course.id}${search}`;
   return (
-    <Link
-      href={to}
-      className={className}
-      render={(domProps) => (
-        <RouterLink
-          {...(domProps as object)}
-          to={to}
-          className={
-            typeof domProps.className === "string"
-              ? domProps.className
-              : undefined
-          }
-          onClick={mergeStopPropagation(
-            (domProps as { onClick?: (ev: React.MouseEvent) => void }).onClick,
-          )}
-        />
-      )}
-    >
+    <RouterAriaLink to={`/courses/${course.id}${search}`} className={className}>
       {children}
-    </Link>
+    </RouterAriaLink>
   );
 }
 
@@ -75,6 +49,7 @@ export function TeacherCourseTable({
           <Table.Header>
             <Table.Column isRowHeader>课程</Table.Column>
             <Table.Column>院系</Table.Column>
+            <Table.Column>评分 / 投稿</Table.Column>
           </Table.Header>
           <Table.Body
             items={items}
@@ -116,6 +91,12 @@ export function TeacherCourseTable({
                   <span className="text-[13px] text-muted">
                     {course.department || "—"}
                   </span>
+                </Table.Cell>
+                <Table.Cell>
+                  <RatingCell
+                    rating={course.rating}
+                    reviewCount={course.review_count}
+                  />
                 </Table.Cell>
               </Table.Row>
             )}

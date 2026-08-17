@@ -1,7 +1,7 @@
 import { Button, Separator, Spinner } from "@heroui/react";
-import { Link } from "react-router-dom";
 import type { PublicReview } from "../lib/types";
 import { EmptyBox } from "./EmptyBox";
+import { RouterAriaLink } from "./RouterAriaLink";
 
 export function PublicReviews({
   rows,
@@ -46,13 +46,13 @@ export function PublicReviews({
                 {index > 0 ? <Separator /> : null}
                 <article className="py-4">
                   <p className="m-0 min-w-0 text-sm font-semibold">
-                    <Link className="break-words underline underline-offset-4" to={href}>
+                    <RouterAriaLink className="break-words" to={href}>
                       {counterpart ||
                         (identity === "course" ? "课程未标注" : "教师未标注")}
                       {identity === "course" && review.course_code
                         ? `（${review.course_code}）`
                         : null}
-                    </Link>
+                    </RouterAriaLink>
                   </p>
                   <p className="mb-0 mt-1.5 break-words text-sm leading-relaxed">
                     {review.comment}
