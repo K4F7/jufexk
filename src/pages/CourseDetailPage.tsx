@@ -208,6 +208,60 @@ export function CourseDetailPage() {
         />
       )}
 
+      {/* 评价流先于任课教师表：教师名单可能很长，评价不能被埋在其后。 */}
+      <div className="mb-6">
+        {comparingRecognition &&
+        recognitionVariant &&
+        ReviewRecognitionPrototypeLazy ? (
+          <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
+            <ReviewRecognitionPrototypeLazy
+              key={recognitionVariant}
+              variant={recognitionVariant}
+              model={{ hostLabel: c.name }}
+            />
+          </Suspense>
+        ) : comparingTeachingFeed &&
+          teachingFeedVariant &&
+          TeachingReviewsFeedPrototypeLazy ? (
+          <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
+            <TeachingReviewsFeedPrototypeLazy
+              key={teachingFeedVariant}
+              variant={teachingFeedVariant}
+              model={{
+                counterpartMode: "teacher",
+                hostLabel: c.name,
+                liveReviews: (data.reviews ?? []) as unknown as Review[],
+                liveRatingCount: data.reviews?.length ?? 0,
+              }}
+            />
+          </Suspense>
+        ) : comparingReviews &&
+          reviewsVariant &&
+          CourseDetailReviewsPrototypeLazy ? (
+          <Suspense fallback={<EmptyBox role="status">加载投稿原型…</EmptyBox>}>
+            <CourseDetailReviewsPrototypeLazy
+              key={reviewsVariant}
+              variant={reviewsVariant}
+              model={{
+                reviews: (data.reviews ?? []) as unknown as Review[],
+                legacyReviews: [],
+                courseName: c.name,
+              }}
+            />
+          </Suspense>
+        ) : (
+          <PublicReviews
+            rows={reviewFeed.reviews}
+            identity="teacher"
+            total={data.reviewCount}
+            hasMore={Boolean(reviewFeed.nextCursor)}
+            isLoadingMore={reviewFeed.isLoadingMore}
+            loadMoreError={reviewFeed.loadMoreError}
+            onLoadMore={reviewFeed.loadMore}
+          />
+        )}
+      </div>
+
       <section className="mb-6" aria-labelledby="course-teachers-heading">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
           <h2
@@ -224,59 +278,6 @@ export function CourseDetailPage() {
         </div>
         <CourseTeacherTable items={c.teachers ?? []} />
       </section>
-
-      {comparingRecognition &&
-      recognitionVariant &&
-      ReviewRecognitionPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
-          <ReviewRecognitionPrototypeLazy
-            key={recognitionVariant}
-            variant={recognitionVariant}
-            model={{ hostLabel: c.name }}
-          />
-        </Suspense>
-      ) : comparingTeachingFeed &&
-        teachingFeedVariant &&
-        TeachingReviewsFeedPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
-          <TeachingReviewsFeedPrototypeLazy
-            key={teachingFeedVariant}
-            variant={teachingFeedVariant}
-            model={{
-              counterpartMode: "teacher",
-              hostLabel: c.name,
-              liveReviews: (data.reviews ?? []) as unknown as Review[],
-              liveRatingCount: data.reviews?.length ?? 0,
-            }}
-          />
-        </Suspense>
-      ) : comparingReviews &&
-        reviewsVariant &&
-        CourseDetailReviewsPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载投稿原型…</EmptyBox>}>
-          <CourseDetailReviewsPrototypeLazy
-            key={reviewsVariant}
-            variant={reviewsVariant}
-            model={{
-              reviews: (data.reviews ?? []) as unknown as Review[],
-              legacyReviews: [],
-              courseName: c.name,
-            }}
-          />
-        </Suspense>
-      ) : (
-        <>
-          <PublicReviews
-            rows={reviewFeed.reviews}
-            identity="teacher"
-            total={data.reviewCount}
-            hasMore={Boolean(reviewFeed.nextCursor)}
-            isLoadingMore={reviewFeed.isLoadingMore}
-            loadMoreError={reviewFeed.loadMoreError}
-            onLoadMore={reviewFeed.loadMore}
-          />
-        </>
-      )}
     </section>
   );
 }
