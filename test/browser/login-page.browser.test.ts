@@ -50,12 +50,14 @@ async function mockApi(page: Page) {
             name: "中国传统文化导论",
             category: "general",
             department: "人文学院",
-            teachers: [{ id: 9, name: "测试教师" }],
+            teachers: [{ id: 9, name: "测试教师", review_count: 1 }],
           },
-          reviews: [ENDORSABLE_REVIEW],
           reviewCount: 1,
-          nextReviewCursor: null,
         },
+      });
+    if (url.pathname === "/api/courses/8/reviews")
+      return route.fulfill({
+        json: { items: [ENDORSABLE_REVIEW], nextCursor: null },
       });
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
@@ -109,7 +111,7 @@ test("external or looping from values fall back to the catalog", async ({
 test("guest recognition prompt reaches login and returns to the source page", async ({
   page,
 }) => {
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await page
     .getByRole("button", { name: "认可这条评价，还没有人认可" })
     .click();
@@ -117,11 +119,11 @@ test("guest recognition prompt reaches login and returns to the source page", as
   const loginLink = page.getByRole("link", { name: "使用普通用户登录" });
   await expect(loginLink).toBeVisible();
   await loginLink.click();
-  await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8$/);
+  await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8%3Fteacher%3D9$/);
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
 
   await page.getByRole("link", { name: "返回继续浏览" }).click();
-  await expect(page).toHaveURL(/\/courses\/8$/);
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(
     page.getByRole("button", { name: "认可这条评价，还没有人认可" }),
   ).toBeVisible();

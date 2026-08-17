@@ -639,19 +639,19 @@ describe("admin sessions and catalog", () => {
     const pending = await (await SELF.fetch(`${origin}/api/admin/legacy-reviews?batchId=${batch.batchId}`, { headers: { Cookie: auth.cookie } })).json<{ items: Array<{ id: number }> }>();
     expect(pending.items).toHaveLength(1);
     const id = pending.items[0].id;
-    const hidden = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ reviews: Array<{ comment: string }> }>();
-    expect(hidden.reviews.map((item) => item.comment)).not.toContain("经审核的历史文字");
+    const hidden = await (await SELF.fetch(`${origin}/api/courses/1/reviews?teacherId=1`)).json<{ items: Array<{ comment: string }> }>();
+    expect(hidden.items.map((item) => item.comment)).not.toContain("经审核的历史文字");
     const decisions = await Promise.all(["核对截图", "并发重复"].map((note) => SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}`, {
       method: "PATCH", headers: adminHeaders(auth), body: JSON.stringify({ status: "approved", note }),
     }).then((response) => response.status)));
     expect(decisions.sort()).toEqual([200, 409]);
-    const detail = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ reviews: Array<Record<string, unknown>> }>();
-    expect(detail.reviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", teacher_name: "测试教师" }));
-    expect(JSON.stringify(detail.reviews)).not.toContain("source_label");
-    expect(JSON.stringify(detail.reviews)).not.toContain("raw_ocr_text");
-    expect(JSON.stringify(detail.reviews)).not.toContain("ocr_tokens_json");
-    expect(JSON.stringify(detail.reviews)).not.toContain("moderator_note");
-    expect(JSON.stringify(detail.reviews)).not.toContain("overall");
+    const detail = await (await SELF.fetch(`${origin}/api/courses/1/reviews?teacherId=1`)).json<{ items: Array<Record<string, unknown>> }>();
+    expect(detail.items).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", teacher_name: "测试教师" }));
+    expect(JSON.stringify(detail.items)).not.toContain("source_label");
+    expect(JSON.stringify(detail.items)).not.toContain("raw_ocr_text");
+    expect(JSON.stringify(detail.items)).not.toContain("ocr_tokens_json");
+    expect(JSON.stringify(detail.items)).not.toContain("moderator_note");
+    expect(JSON.stringify(detail.items)).not.toContain("overall");
     const teacherDetail = await (await SELF.fetch(`${origin}/api/teachers/1`)).json<{ reviews: Array<Record<string, unknown>> }>();
     expect(teacherDetail.reviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", course_name: "测试课程" }));
     const afterCatalog = await (await SELF.fetch(`${origin}/api/courses`)).json<{ items: Array<{ id: number; review_count: number; rating: number }> }>();
@@ -680,8 +680,8 @@ describe("admin sessions and catalog", () => {
     const id = Number(inserted.meta.last_row_id);
     expect((await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}`, { method: "PATCH", headers: adminHeaders(auth), body: JSON.stringify({ status: "rejected" }) })).status).toBe(400);
     expect((await SELF.fetch(`${origin}/api/admin/legacy-reviews/${id}`, { method: "PATCH", headers: adminHeaders(auth), body: JSON.stringify({ status: "rejected", note: "无法确认来源" }) })).status).toBe(200);
-    const detail = await (await SELF.fetch(`${origin}/api/courses/1`)).json<{ reviews: Array<{ comment: string }> }>();
-    expect(detail.reviews.map((item) => item.comment)).not.toContain("不公开的文字");
+    const detail = await (await SELF.fetch(`${origin}/api/courses/1/reviews?teacherId=1`)).json<{ items: Array<{ comment: string }> }>();
+    expect(detail.items.map((item) => item.comment)).not.toContain("不公开的文字");
     await env.DB.prepare("DELETE FROM legacy_reviews WHERE id=?").bind(id).run();
     await env.DB.prepare("DELETE FROM legacy_import_batches WHERE id='legacy_reject_test'").run();
   });

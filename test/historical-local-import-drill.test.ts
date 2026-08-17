@@ -153,16 +153,18 @@ describe("frozen historical package local D1 drill", () => {
     expect(Number(after[3].results[0].count)).toBe(522);
     expect(Number(after[4].results[0].count)).toBe(522);
 
-    const [courseResponse, teacherResponse] = await Promise.all([
+    const [courseResponse, courseReviewsResponse, teacherResponse] = await Promise.all([
       SELF.fetch(`${origin}/api/courses/${courseId}`),
+      SELF.fetch(`${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`),
       SELF.fetch(`${origin}/api/teachers/${teacherId}`),
     ]);
-    const course = await courseResponse.json<{ reviewCount: number; reviews: Array<Record<string, unknown>> }>();
+    const course = await courseResponse.json<{ reviewCount: number }>();
+    const courseReviews = await courseReviewsResponse.json<{ items: Array<Record<string, unknown>> }>();
     const teacher = await teacherResponse.json<{ reviewCount: number; reviews: Array<Record<string, unknown>> }>();
     expect(course.reviewCount).toBe(522);
     expect(teacher.reviewCount).toBe(522);
-    expect(course.reviews[0]).toEqual(teacher.reviews[0]);
-    for (const value of [course.reviews[0], teacher.reviews[0]]) {
+    expect(courseReviews.items[0]).toEqual(teacher.reviews[0]);
+    for (const value of [courseReviews.items[0], teacher.reviews[0]]) {
       const serialized = JSON.stringify(value);
       expect(serialized).not.toMatch(/source_|worksheet|status|ocr|moderator|created|imported/);
     }
@@ -170,7 +172,7 @@ describe("frozen historical package local D1 drill", () => {
     const seen = new Set<string>();
     let cursor: string | null = null;
     do {
-      const query = new URLSearchParams({ pageSize: "50" });
+      const query = new URLSearchParams({ pageSize: "50", teacherId: String(teacherId) });
       if (cursor) query.set("cursor", cursor);
       const page = await SELF.fetch(`${origin}/api/courses/${courseId}/reviews?${query}`).then((response) =>
         response.json<{ items: Array<{ id: string }>; nextCursor: string | null }>(),

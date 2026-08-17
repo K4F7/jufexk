@@ -138,11 +138,14 @@ async function mockApi(page: Page, mock: MockState) {
           name: "中国传统文化导论",
           category: "general",
           department: "人文学院",
-          teachers: [{ id: 9, name: "测试教师" }],
+          teachers: [{ id: 9, name: "测试教师", review_count: 1 }],
         },
-        reviews: [ENDORSABLE_REVIEW],
         reviewCount: 1,
-        nextReviewCursor: null,
+      });
+    if (url.pathname === "/api/courses/8/reviews")
+      return fulfillJson(route, {
+        items: [ENDORSABLE_REVIEW],
+        nextCursor: null,
       });
     const endorsement = /\/api\/reviews\/([^/]+)\/endorsement$/.exec(
       url.pathname,
@@ -314,7 +317,7 @@ test("a 401 on a write clears the viewer state and shows the login guide", async
   page,
 }) => {
   await mockApi(page, state({ authenticated: true, endorsement401: true }));
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(page.getByRole("button", { name: "账号" })).toBeVisible();
 
   await page
@@ -336,7 +339,7 @@ test("session outage degrades to guest browsing without blocking pages", async (
   page,
 }) => {
   await mockApi(page, state({ sessionFails: true }));
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(
     page.getByRole("heading", { name: "中国传统文化导论" }),
   ).toBeVisible();
