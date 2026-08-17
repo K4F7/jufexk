@@ -38,7 +38,8 @@
 
 - 保留搜索、课程类别、院系、任课教师筛选和分页。
 - 搜索关键词匹配课程名、课号或教师名；首批不增加异步 Autocomplete。
-- 结果表视觉冻结为 **四列折叠（原型 B）**：课程（课名 + 类别 Chip · 课号次行）、教师、院系、评分/投稿合并；实现见 `src/components/CourseResultTable.tsx`。
+- 结果表视觉冻结为 **四列折叠（原型 B）**：课程（课名 + 类别 Chip · 课号次行）、教师、院系、投稿；实现见 `src/components/CourseResultTable.tsx`。
+- 课程界面不展示课程级评分（评分严格绑定 教师×课程，Issue #140）：结果表末列仅显示公开投稿数；教师列默认单行、内容超出一行时行内「展开/折叠」切换以保持行高一致；院系列单行不换行。
 - 默认按学生投稿数降序，再按课程名排序。
 - 教师姓名是真实链接，进入教师详情；行内其他区域进入课程详情；课程名亦为真实链接。
 - 整行导航不能牺牲课程名和教师名链接的键盘语义及新标签页能力。
@@ -60,10 +61,10 @@
 ## 详情体验
 
 - 领域约束：学生投稿绑定**课程 + 任课教师**（见 CONTEXT），不是「只评课」。课程维度的汇总评分只是任课关系上投稿的聚合，单独「只看课、不看老师」的决策价值有限。
-- **课程详情页**：保留为目录行导航落点。顶部摘要已按 Prototype **B（左身份 / 右评分）** 落地生产（Issue #115），并新增「任课教师」区块按任课关系拆分评分/投稿。
+- **课程详情页**：保留为目录行导航落点。顶部摘要沿用 Prototype **B** 的左身份 / 右 Surface 布局（Issue #115）；自 Issue #140 起右 Surface 仅显示公开评价数，不再展示课程级评分，评分由「任课教师」区块按任课关系拆分展示。
 - 课程详情和教师详情均采用单页纵向信息架构，不使用 Dashboard 式多张统计卡或不必要的 Tabs；内容容器收窄到约 880px 阅读宽度。
-- 课程顶部使用紧凑摘要区：左身份（类别 Chip、课程名、课号、院系），右评分 Surface（平均评分 + 公开文字评价数）；任课教师独立成表，按任课关系展示评分/投稿。
-- 总体评分使用醒目的数字，例如 `4.7 / 5`，并同时显示公开文字评价数；不以星阵、环形图或进度条为主。
+- 课程顶部使用紧凑摘要区：左身份（类别 Chip、课程名、课号、院系），右评价数 Surface（公开文字评价数，无课程级评分）；任课教师独立成表，按任课关系展示评分/投稿。
+- 教师详情的总体评分使用醒目的数字，例如 `4.7 / 5`，并同时显示公开文字评价数；不以星阵、环形图或进度条为主。课程界面不出现评分数字。
 - 学生投稿为统一匿名文字流（Issue #68/#90）：身份行为对方真实链接，正文紧随，`Separator` 分隔，分段加载；单条不展示评分与评价维度（历史评价无 overall，统一流保持现代/历史一致，见 CONTEXT §历史评价）。
 - 历史文字资料匿名并入统一文字流：不包含 overall，不参与评分与排序统计，不公开历史来源；评价流空态文案统一为「暂无评价」。
 - **教师详情（视觉冻结 · 模块 11）**：单页纵向，沿用课程详情冻结语言，**不单开 A/B/C**。
@@ -183,11 +184,11 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 | 公共 Shell 与顶部导航 | 视觉冻结 | **C — Button 导航**：左簇字标品牌（无「选」方标）· HeroUI `Button` size=`sm`、当前 `secondary` / 非当前 `ghost` · 右校名 + `ThemeToggle` · 顶栏 `min-h-14` + `bg-surface/95` sticky | 用户在官方 A/B/C 三版中确认 C；与主题开关同属 Button 圆角语系 | 生产：`src/components/AppShell.tsx` · 原型对照：`src/prototype/ShellNavVariants.tsx` C |
 | 目录标题与搜索 | 视觉冻结 | **C — 同行工具条**：左 `h1` 标题 + 门数（xs muted）；右 HeroUI `SearchField` `variant=secondary` 全宽；无独立 SectionHead | 用户在 A/B/C 三版中确认 C | 生产：`src/components/CatalogSearchHeader.tsx` · 原型对照：`src/prototype/CatalogSearchVariants.tsx` C |
 | 筛选工具 | 视觉冻结 | **D — A+C 组合**：院系 / 教师搜索 / 教师 Select / 清空 紧贴上方搜索；其下类别 `Button` secondary/ghost 快捷条；扩展位留给未来收藏，生产不展示不可用「即将」入口 | 用户倾向 A+C，确认 D 顺序（类别下移、次级筛选上贴搜索） | 生产：`src/components/CatalogFilters.tsx` · 原型对照：`src/prototype/CatalogFiltersVariants.tsx` D |
-| 课程结果表 | 视觉冻结 | **B — 课程优先折叠（高密度）**：四列；课名+类别 Chip 同行、课号次行；评分·投稿合并为 `评分 · N 投`；课程名与教师为真实 Link；整行进课程详情 | 用户确认 B 结构；压紧行高后采用；A 的七列适合无筛选粗浏览，作后续意向不写进本批生产 | 生产：`src/components/CourseResultTable.tsx` · 原型对照：`src/prototype/CourseTableVariants.tsx` B |
+| 课程结果表 | 视觉冻结 | **B — 课程优先折叠（高密度）**：四列；课名+类别 Chip 同行、课号次行；末列仅显示公开投稿数 `N 投`（#140 移除课程级评分）；教师列默认单行、溢出时行内展开/折叠；院系单行；课程名与教师为真实 Link；整行进课程详情 | 用户确认 B 结构；压紧行高后采用；A 的七列适合无筛选粗浏览，作后续意向不写进本批生产；#140 明确评分严格绑定 教师×课程、课程界面不出现评分 | 生产：`src/components/CourseResultTable.tsx` · 原型对照：`src/prototype/CourseTableVariants.tsx` B · Issue #140 |
 | 分页及加载、错误、空状态 | 视觉冻结 | **A — 精简页脚**：上一页/页码/下一页 + 共 N 门；首次 Spinner；刷新轻量行；错误虚线框+重试；空态分筛选/真空并提供清除 | 用户在 A/B/C 中确认 A | 生产：`src/components/CatalogResultsStates.tsx` · 原型对照：`src/prototype/CatalogStatesVariants.tsx` A |
 | 课程目录整页集成 | 视觉冻结 | **冻结栈串联**：Shell C · 搜索 C · 筛选 D · 结果表 B · 状态 A；`/courses` 生产路径 | 各子模块已用户确认；本步做整页对齐与文案/间距收口，无新结构变体 | 生产：`src/pages/CoursesPage.tsx` + 上述冻结组件 |
 | 教师目录适配 | 视觉冻结 | **课程语言迁移**：搜索 C · 状态 A · 四列折叠表（姓名+职称 / 院系 / 评分·投稿 / 课程数） | foundations 规定不单开变体；与课程目录视觉一致、字段保持教师域 | 生产：`src/pages/TeachersPage.tsx` · `TeacherResultTable.tsx` |
-| 课程详情摘要 | 视觉冻结 | **B — 左身份 / 右评分**：类别 Chip + 课程名 + 课号/院系 · 右评分 Surface；下接「任课教师」关系表 | 评价必须绑定课程+任课教师（见 CONTEXT）；#115 明确重开并落地生产，按任课关系拆分评分比课程聚合更实用 | 生产：`CourseDetailPage.tsx` · `DetailSummary.tsx` · `CourseTeacherTable.tsx` · 原型：`src/prototype/CourseDetailSummaryVariants.tsx` B · Issue #60 → #115 |
+| 课程详情摘要 | 视觉冻结 | **B — 左身份 / 右评价数**：类别 Chip + 课程名 + 课号/院系 · 右 Surface 仅显示公开评价数（#140 移除课程级评分数字）；下接「任课教师」关系表（评分按 教师×课程 展示） | 评价必须绑定课程+任课教师（见 CONTEXT）；#115 明确重开并落地生产，按任课关系拆分评分比课程聚合更实用；#140 进一步明确课程界面不出现评分 | 生产：`CourseDetailPage.tsx` · `DetailSummary.tsx` · `CourseTeacherTable.tsx` · 原型：`src/prototype/CourseDetailSummaryVariants.tsx` B · Issue #60 → #115 → #140 |
 | 学生投稿条目与历史文字资料 | 视觉冻结 | **统一匿名文字流**（#68/#90 取代 A+B 条目）：身份行=对方真实链接 + 正文 + `Separator` + 分段加载；单条不展示评分/维度，历史文字匿名并入同一流，空态「暂无评价」 | 历史评价无 overall（见 CONTEXT），统一文字流保证现代/历史一致；原 A 结构 + B 维度 soft Chip 保留于原型对照 | 生产：`PublicReviews.tsx` · 原型：`CourseDetailReviewsVariants.tsx` A+B · Issue #61 → #68/#90；`ReviewCard`/`LegacyReviews` 死代码于 #115 移除 |
 | 教师详情与任课课程表 | 视觉冻结 | **课程详情语言迁移**：摘要 B（左身份/右评分 Surface）· 任课表课程域折叠 · 投稿对齐模块 10 统一文字流（身份行=课程名） | foundations 规定不单开变体；与详情冻结语言一致、字段保持课程域 | 生产：`TeacherDetailPage.tsx` · `DetailSummary.tsx` · `TeacherCourseTable.tsx` · Issue #62 · 摘要评分 Surface 落地于 #115 |
 | 目录后续：收藏与条件密度 | Prototype 已交付 · 用户已选择（生产未实现） | **C — 条件密度 + Tag 清单**：无筛选七列粗扫 / 有筛选（含仅收藏、本专业）四列折叠 · 可移除 Tag 收藏清单 · 筛选下「仅收藏 / 本专业」Toggle · 行内星标（ToggleButton render prop） | 2026-08-17 用户在 DEV 原型比较 A/B/C 后选择 C，取代 #63 的「A + C Tag」意向。生产未实现、不在 MVP；确认进入生产后另建 frontend/backend Issue，账号、持久化、目录查询契约分开标记 | DEV：`?module=catalog-followup&variant=C` · `src/prototype/CatalogFollowupVariants.tsx` · Issue #73（决策记录，承接 #63） |

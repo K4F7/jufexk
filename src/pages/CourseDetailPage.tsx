@@ -100,7 +100,8 @@ function useReviewRecognitionPrototypeVariant(): "A" | "B" | "C" | null {
   }, [params]);
 }
 
-/** Production summary — frozen 摘要 B: left identity / right rating Surface. */
+/** Production summary — 摘要 B layout; course pages show no course-level
+ * rating (scores stay on the 教师×课程 rows below, Issue #140). */
 function ProductionSummary({
   course,
   reviewCount,
@@ -114,7 +115,6 @@ function ProductionSummary({
     <DetailSummary
       backLabel="返回课程目录"
       onBack={onBack}
-      rating={course.rating}
       reviewCount={reviewCount}
       ariaLabel="课程摘要"
     >
