@@ -28,11 +28,11 @@ async function mockApi(page: Page) {
             department: "人文学院",
             teachers: [{ id: 9, name: "测试教师" }],
           },
-          reviews: [],
           reviewCount: 0,
-          nextReviewCursor: null,
         },
       });
+    if (url.pathname === "/api/courses/8/reviews")
+      return route.fulfill({ json: { items: [], nextCursor: null } });
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }) => mockApi(page));
 test("initial states expose honest labels, counts and selected state", async ({
   page,
 }) => {
-  await page.goto("/courses/8?module=review-recognition&variant=A");
+  await page.goto("/courses/8?module=review-recognition&variant=A&teacher=9");
   const banner = page.getByRole("note");
   await expect(
     banner.getByText("A — footer 右置", { exact: true }),
@@ -89,7 +89,7 @@ test("initial states expose honest labels, counts and selected state", async ({
 test("endorse then withdraw: optimistic count, pending disabled, server confirm", async ({
   page,
 }) => {
-  await page.goto("/courses/8?module=review-recognition&variant=A");
+  await page.goto("/courses/8?module=review-recognition&variant=A&teacher=9");
   const demo = entry(page, "陈启明");
 
   await demo
@@ -120,7 +120,7 @@ test("endorse then withdraw: optimistic count, pending disabled, server confirm"
 test("failure rolls back to the server-confirmed count with an alert", async ({
   page,
 }) => {
-  await page.goto("/courses/8?module=review-recognition&variant=A");
+  await page.goto("/courses/8?module=review-recognition&variant=A&teacher=9");
   const demo = entry(page, "何清");
 
   await demo
@@ -140,7 +140,7 @@ test("failure rolls back to the server-confirmed count with an alert", async ({
 test("slow network keeps pending and blocks repeat activation", async ({
   page,
 }) => {
-  await page.goto("/courses/8?module=review-recognition&variant=A");
+  await page.goto("/courses/8?module=review-recognition&variant=A&teacher=9");
 
   // 慢网络建立中
   const creating = entry(page, "周慧");
@@ -174,7 +174,7 @@ test("slow network keeps pending and blocks repeat activation", async ({
 test("guest gets an honest login prompt and no state change", async ({
   page,
 }) => {
-  await page.goto("/courses/8?module=review-recognition&variant=A");
+  await page.goto("/courses/8?module=review-recognition&variant=A&teacher=9");
 
   await page.getByRole("button", { name: "未登录访客" }).click();
   const demo = entry(page, "林晓雯");
@@ -187,7 +187,7 @@ test("guest gets an honest login prompt and no state change", async ({
 });
 
 test("keyboard: Enter activates the standard Button", async ({ page }) => {
-  await page.goto("/courses/8?module=review-recognition&variant=A");
+  await page.goto("/courses/8?module=review-recognition&variant=A&teacher=9");
 
   const demo = entry(page, "林晓雯");
   await demo
@@ -204,7 +204,7 @@ test("keyboard: Enter activates the standard Button", async ({ page }) => {
 test("variants B and C place the control with their own count language", async ({
   page,
 }) => {
-  await page.goto("/courses/8?module=review-recognition&variant=B");
+  await page.goto("/courses/8?module=review-recognition&variant=B&teacher=9");
   await expect(
     page.getByRole("note").getByText("B — footer 左置", { exact: true }),
   ).toBeVisible();
@@ -214,7 +214,7 @@ test("variants B and C place the control with their own count language", async (
     }),
   ).toBeVisible();
 
-  await page.goto("/courses/8?module=review-recognition&variant=C");
+  await page.goto("/courses/8?module=review-recognition&variant=C&teacher=9");
   await expect(
     page.getByRole("note").getByText("C — 动作与计数分离", { exact: true }),
   ).toBeVisible();

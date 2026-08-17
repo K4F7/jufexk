@@ -104,15 +104,27 @@ async function mockApi(page: Page) {
             name: "中国传统文化导论",
             category: "general",
             department: "人文学院",
-            teachers: [{ id: 9, name: "测试教师" }],
+            teachers: [
+              { id: 9, name: "测试教师", review_count: 21, rating: 4.6 },
+            ],
           },
-          reviews: reviews.slice(0, 20),
           reviewCount: 21,
-          nextReviewCursor: "next-page",
         },
       });
-    if (url.pathname === "/api/courses/8/reviews")
-      return route.fulfill({ json: { items: reviews.slice(20), nextCursor: null } });
+    if (url.pathname === "/api/courses/8/reviews") {
+      if (url.searchParams.get("teacherId") !== "9")
+        return route.fulfill({
+          status: 400,
+          json: { error: "课程评价需先指定任课教师（teacherId）" },
+        });
+      if (url.searchParams.has("cursor"))
+        return route.fulfill({
+          json: { items: reviews.slice(20), nextCursor: null },
+        });
+      return route.fulfill({
+        json: { items: reviews.slice(0, 20), nextCursor: "next-page" },
+      });
+    }
     if (url.pathname === "/api/courses/10")
       return route.fulfill({
         json: {
@@ -124,9 +136,7 @@ async function mockApi(page: Page) {
             department: "测试学院",
             teachers: [],
           },
-          reviews: [],
           reviewCount: 0,
-          nextReviewCursor: null,
         },
       });
     if (url.pathname === "/api/teachers/9")
@@ -165,8 +175,22 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockApi(page));
 
-test("course and teacher details load the same bounded anonymous feed", async ({ page }) => {
+test("course detail gates reviews behind teacher selection", async ({ page }) => {
   await page.goto("/courses/8");
+  // 未选教师：评价流不出现，显示引导空态；摘要仍展示评价总数。
+  await expect(page.getByRole("listitem")).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: "选择上方一位任课教师" }),
+  ).toBeVisible();
+  await expect(page.getByText("21", { exact: true })).toBeVisible();
+
+  // 点击教师行选中该教师，加载 课程×教师 评价流。
+  await page
+    .getByRole("row", { name: /测试教师/ })
+    .getByRole("gridcell")
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
   await expect(page.getByRole("listitem")).toHaveCount(20);
   await page.getByRole("button", { name: "继续加载" }).click();
@@ -176,6 +200,16 @@ test("course and teacher details load the same bounded anonymous feed", async ({
   await expect(page.getByText("历史评价", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /认可/ })).toHaveCount(0);
 
+  // 再次点击已选教师行取消选择，回到引导空态。
+  await page
+    .getByRole("row", { name: /测试教师/ })
+    .getByRole("gridcell")
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8$/);
+  await expect(page.getByRole("listitem")).toHaveCount(0);
+
+  // 教师详情页保持原有统一文字流。
   await page.goto("/teachers/9");
   await expect(page.getByRole("listitem")).toHaveCount(20);
   await expect(page.getByRole("link", { name: "中国传统文化导论（GEN0108）" }).first()).toBeVisible();
@@ -185,7 +219,7 @@ test("empty and mobile states remain accessible without overflow", async ({ page
   await page.goto("/courses/10");
   await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
 
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(page.getByRole("listitem")).toHaveCount(20);
   const layout = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,

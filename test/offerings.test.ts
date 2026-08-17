@@ -43,16 +43,18 @@ describe("offerings", () => {
       `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,term,submitter_hash,status,moderator_note,reviewed_at)
        VALUES(1,1,1,'general',5,'public review','2026','private-ip-hash','approved','private note',CURRENT_TIMESTAMP)`,
     ).run();
-    const response = await SELF.fetch("https://example.com/api/courses/1");
+    const response = await SELF.fetch(
+      "https://example.com/api/courses/1/reviews?teacherId=1",
+    );
     expect(response.status).toBe(200);
     const raw = await response.text();
     expect(raw).toContain("public review");
     expect(raw).not.toContain("private-ip-hash");
     expect(raw).not.toContain("private note");
-    const body = JSON.parse(raw) as { reviews: Array<Record<string, unknown>> };
-    expect(body.reviews[0]).not.toHaveProperty("submitter_hash");
-    expect(body.reviews[0]).not.toHaveProperty("moderator_note");
-    expect(body.reviews[0]).not.toHaveProperty("status");
+    const body = JSON.parse(raw) as { items: Array<Record<string, unknown>> };
+    expect(body.items[0]).not.toHaveProperty("submitter_hash");
+    expect(body.items[0]).not.toHaveProperty("moderator_note");
+    expect(body.items[0]).not.toHaveProperty("status");
   });
 
   it("returns only the anonymous text projection on public details", async () => {
@@ -72,22 +74,22 @@ describe("offerings", () => {
       .bind(courseId)
       .run();
     const response = await SELF.fetch(
-      `https://example.com/api/courses/${courseId}`,
+      `https://example.com/api/courses/${courseId}/reviews?teacherId=1`,
     );
     const body = await response.json<{
-      reviews: Array<Record<string, unknown>>;
+      items: Array<Record<string, unknown>>;
     }>();
-    expect(body.reviews[0]).toMatchObject({ comment: "维度投影测试" });
-    expect(body.reviews[0]).not.toHaveProperty("clarity");
-    expect(body.reviews[0]).not.toHaveProperty("knowledge");
-    expect(body.reviews[0]).not.toHaveProperty("workload_score");
-    expect(body.reviews[0]).not.toHaveProperty("fairness");
-    expect(body.reviews[0]).not.toHaveProperty("assessment");
-    expect(body.reviews[0]).not.toHaveProperty("teaching");
-    expect(body.reviews[0]).not.toHaveProperty("interest");
-    expect(body.reviews[0]).not.toHaveProperty("practicality");
-    expect(body.reviews[0]).not.toHaveProperty("organization");
-    expect(body.reviews[0]).not.toHaveProperty("rescue");
+    expect(body.items[0]).toMatchObject({ comment: "维度投影测试" });
+    expect(body.items[0]).not.toHaveProperty("clarity");
+    expect(body.items[0]).not.toHaveProperty("knowledge");
+    expect(body.items[0]).not.toHaveProperty("workload_score");
+    expect(body.items[0]).not.toHaveProperty("fairness");
+    expect(body.items[0]).not.toHaveProperty("assessment");
+    expect(body.items[0]).not.toHaveProperty("teaching");
+    expect(body.items[0]).not.toHaveProperty("interest");
+    expect(body.items[0]).not.toHaveProperty("practicality");
+    expect(body.items[0]).not.toHaveProperty("organization");
+    expect(body.items[0]).not.toHaveProperty("rescue");
     await env.DB.prepare("DELETE FROM reviews WHERE course_id=?")
       .bind(courseId)
       .run();

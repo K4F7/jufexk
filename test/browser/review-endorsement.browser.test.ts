@@ -94,10 +94,26 @@ async function mockApi(page: Page, store: Store) {
     }
     if (url.pathname === "/api/courses/8") {
       return fulfillJson(route, {
-        course,
-        reviews: liveReviews(store, store.authenticated),
+        course: {
+          ...course,
+          teachers: [
+            { id: 9, name: "测试教师", review_count: 6, rating: 4.6 },
+          ],
+        },
         reviewCount: 6,
-        nextReviewCursor: null,
+      });
+    }
+    if (url.pathname === "/api/courses/8/reviews") {
+      if (url.searchParams.get("teacherId") !== "9") {
+        return fulfillJson(
+          route,
+          { error: "课程评价需先指定任课教师（teacherId）" },
+          400,
+        );
+      }
+      return fulfillJson(route, {
+        items: liveReviews(store, store.authenticated),
+        nextCursor: null,
       });
     }
     const endorsement = /\/api\/reviews\/([^/]+)\/endorsement$/.exec(url.pathname);
@@ -165,7 +181,7 @@ function userStore(): Store {
 
 test("guest sees counts, no selected state, and a real login link", async ({ page }) => {
   await mockApi(page, guestStore());
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(page.getByRole("button", { name: "认可这条评价，还没有人认可" })).toBeEnabled();
 
   const zero = entry(page, "零计数当前文字评价。").getByRole("button", {
@@ -191,11 +207,11 @@ test("guest sees counts, no selected state, and a real login link", async ({ pag
   const prompt = entry(page, "零计数当前文字评价。").getByRole("status");
   await expect(prompt.getByRole("link", { name: "使用普通用户登录" })).toHaveAttribute(
     "href",
-    "/login?from=%2Fcourses%2F8",
+    "/login?from=%2Fcourses%2F8%3Fteacher%3D9",
   );
   await expect(zero).toHaveAttribute("aria-pressed", "false");
   await prompt.getByRole("link", { name: "使用普通用户登录" }).click();
-  await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8$/);
+  await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8%3Fteacher%3D9$/);
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
 });
 
@@ -203,7 +219,7 @@ test("signed-in user can endorse and withdraw with pending and selected state", 
   page,
 }) => {
   await mockApi(page, userStore());
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(
     entry(page, "我已认可的当前文字评价。").getByRole("button", {
       name: "已认可，按下可撤回我的认可，当前 5 人认可",
@@ -235,7 +251,7 @@ test("signed-in user can endorse and withdraw with pending and selected state", 
 
 test("failure rolls back to the server-confirmed count", async ({ page }) => {
   await mockApi(page, userStore());
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(
     entry(page, "我已认可的当前文字评价。").getByRole("button", {
       name: "已认可，按下可撤回我的认可，当前 5 人认可",
@@ -255,7 +271,7 @@ test("failure rolls back to the server-confirmed count", async ({ page }) => {
 
 test("slow network keeps pending and blocks repeat activation", async ({ page }) => {
   await mockApi(page, userStore());
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(
     entry(page, "我已认可的当前文字评价。").getByRole("button", {
       name: "已认可，按下可撤回我的认可，当前 5 人认可",
@@ -277,7 +293,7 @@ test("slow network keeps pending and blocks repeat activation", async ({ page })
 
 test("keyboard Enter activates the standard Button", async ({ page }) => {
   await mockApi(page, userStore());
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(
     entry(page, "我已认可的当前文字评价。").getByRole("button", {
       name: "已认可，按下可撤回我的认可，当前 5 人认可",

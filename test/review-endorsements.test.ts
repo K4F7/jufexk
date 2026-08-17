@@ -350,16 +350,17 @@ describe("review endorsement API", () => {
     expect((await putEndorsement(reviewId, first)).status).toBe(200);
     expect((await putEndorsement(reviewId, second)).status).toBe(200);
 
-    const anonymous = await SELF.fetch(`${origin}/api/courses/1`);
+    const anonymous = await SELF.fetch(
+      `${origin}/api/courses/1/reviews?teacherId=1`,
+    );
     expect(anonymous.status).toBe(200);
     const anonymousBody = await anonymous.json<{
-      reviews: PublicReview[];
-      reviewCount: number;
+      items: PublicReview[];
     }>();
-    const anonymousReview = anonymousBody.reviews.find(
+    const anonymousReview = anonymousBody.items.find(
       (review) => review.id === `review:${reviewId}`,
     );
-    const anonymousHistorical = anonymousBody.reviews.find(
+    const anonymousHistorical = anonymousBody.items.find(
       (review) => review.id === `historical:${historicalId}`,
     );
     expect(anonymousReview).toMatchObject({
@@ -377,21 +378,24 @@ describe("review endorsement API", () => {
     expect(publicJson).not.toContain("submitter_hash");
     expect(publicJson).not.toMatch(/"user_id"/);
 
-    const authenticated = await SELF.fetch(`${origin}/api/courses/1`, {
-      headers: await userHeaders("user-endorse-public-a"),
-    });
+    const authenticated = await SELF.fetch(
+      `${origin}/api/courses/1/reviews?teacherId=1`,
+      {
+        headers: await userHeaders("user-endorse-public-a"),
+      },
+    );
     const authenticatedBody = await authenticated.json<{
-      reviews: PublicReview[];
+      items: PublicReview[];
     }>();
     expect(
-      authenticatedBody.reviews.find((review) => review.id === `review:${reviewId}`),
+      authenticatedBody.items.find((review) => review.id === `review:${reviewId}`),
     ).toMatchObject({
       endorsement_count: 2,
       endorsable: true,
       viewer_endorsed: true,
     });
     expect(
-      authenticatedBody.reviews.find(
+      authenticatedBody.items.find(
         (review) => review.id === `historical:${historicalId}`,
       ),
     ).toMatchObject({
@@ -407,7 +411,13 @@ describe("review endorsement API", () => {
       response.json<{
         course: { rating: number | null };
         reviewCount: number;
-        reviews: Array<{ id: string }>;
+      }>(),
+    );
+    const beforeReviews = await SELF.fetch(
+      `${origin}/api/courses/1/reviews?teacherId=1`,
+    ).then((response) =>
+      response.json<{
+        items: Array<{ id: string }>;
       }>(),
     );
     const [catalogBefore, teacherBefore, teacherCatalogBefore] = await Promise.all([
@@ -437,7 +447,13 @@ describe("review endorsement API", () => {
       response.json<{
         course: { rating: number | null };
         reviewCount: number;
-        reviews: Array<{ id: string }>;
+      }>(),
+    );
+    const afterReviews = await SELF.fetch(
+      `${origin}/api/courses/1/reviews?teacherId=1`,
+    ).then((response) =>
+      response.json<{
+        items: Array<{ id: string }>;
       }>(),
     );
     const [catalogAfter, teacherAfter, teacherCatalogAfter] = await Promise.all([
@@ -462,8 +478,8 @@ describe("review endorsement API", () => {
     ]);
     expect(after.reviewCount).toBe(before.reviewCount);
     expect(after.course.rating).toBe(before.course.rating);
-    expect(after.reviews.map((review) => review.id)).toEqual(
-      before.reviews.map((review) => review.id),
+    expect(afterReviews.items.map((review) => review.id)).toEqual(
+      beforeReviews.items.map((review) => review.id),
     );
     expect(teacherAfter.reviewCount).toBe(teacherBefore.reviewCount);
     expect(teacherAfter.teacher.rating).toBe(teacherBefore.teacher.rating);

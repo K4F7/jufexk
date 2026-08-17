@@ -5,6 +5,8 @@ import type { PublicReview, PublicReviewPage } from "../lib/types";
 export function usePublicReviewPagination(
   subject: "courses" | "teachers",
   id: string | undefined,
+  /** Extra query for scoped feeds, e.g. "teacherId=9" on course pages. */
+  extraQuery = "",
 ) {
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -22,8 +24,9 @@ export function usePublicReviewPagination(
     setIsLoadingMore(true);
     setLoadMoreError("");
     try {
+      const query = `${extraQuery ? `${extraQuery}&` : ""}cursor=${encodeURIComponent(nextCursor)}`;
       const page = await api<PublicReviewPage>(
-        `/api/${subject}/${id}/reviews?cursor=${encodeURIComponent(nextCursor)}`,
+        `/api/${subject}/${id}/reviews?${query}`,
       );
       setReviews((current) => [...current, ...page.items]);
       setNextCursor(page.nextCursor);
@@ -32,7 +35,7 @@ export function usePublicReviewPagination(
     } finally {
       setIsLoadingMore(false);
     }
-  }, [id, isLoadingMore, nextCursor, subject]);
+  }, [id, isLoadingMore, nextCursor, subject, extraQuery]);
 
   return {
     reviews,

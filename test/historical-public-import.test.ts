@@ -291,12 +291,12 @@ describe("approved historical review tracer import", () => {
       expect(stored?.count).toBe(1);
 
       const [courseResponse, teacherResponse] = await Promise.all([
-        SELF.fetch(`${origin}/api/courses/${courseId}`),
+        SELF.fetch(`${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`),
         SELF.fetch(`${origin}/api/teachers/${teacherId}`),
       ]);
-      const courseBody = await courseResponse.json<{ reviews: Array<Record<string, unknown>> }>();
+      const courseBody = await courseResponse.json<{ items: Array<Record<string, unknown>> }>();
       const teacherBody = await teacherResponse.json<{ reviews: Array<Record<string, unknown>> }>();
-      const courseReview = courseBody.reviews.find((item) => item.id === `historical:${reviewId}`);
+      const courseReview = courseBody.items.find((item) => item.id === `historical:${reviewId}`);
       const teacherReview = teacherBody.reviews.find((item) => item.id === `historical:${reviewId}`);
       expect(courseReview).toEqual({
         id: `historical:${reviewId}`,

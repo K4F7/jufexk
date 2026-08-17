@@ -316,9 +316,14 @@ const getPublicReviewPage = async (
   size: number,
   cursor: PublicReviewCursor | null,
   viewerUserId: string | null = null,
+  teacherId: number | null = null,
 ) => {
   const cursorSource = cursor?.source ?? -1;
   const cursorKey = cursor?.key ?? "";
+  /** 课程页评价按 课程×教师 作用域展示：选定教师时追加逐分支过滤。 */
+  const teacherFilter = (alias: string) =>
+    teacherId ? ` AND ${alias}.teacher_id=?` : "";
+  const teacherBinds = teacherId ? [teacherId] : [];
   const { results } = await db
     .prepare(
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,
@@ -331,7 +336,7 @@ const getPublicReviewPage = async (
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
          JOIN teachers t ON t.id=phr.teacher_id
-         WHERE phr.${subject}=?
+         WHERE phr.${subject}=?${teacherFilter("phr")}
          UNION ALL
          SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
            lr.course_id,lr.teacher_id,lr.comment,
@@ -341,7 +346,7 @@ const getPublicReviewPage = async (
          JOIN courses c ON c.id=lr.course_id
          JOIN teachers t ON t.id=lr.teacher_id
          WHERE lr.${subject}=? AND lr.status='approved'
-           AND trim(COALESCE(lr.comment,''))<>''
+           AND trim(COALESCE(lr.comment,''))<>''${teacherFilter("lr")}
          UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,
@@ -351,13 +356,24 @@ const getPublicReviewPage = async (
          JOIN courses c ON c.id=r.course_id
          JOIN teachers t ON t.id=r.teacher_id
          WHERE r.${subject}=? AND r.status='approved'
-           AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
+           AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}${teacherFilter("r")}
        ) public_reviews
        WHERE source_order>? OR (source_order=? AND sort_key>?)
        ORDER BY source_order,sort_key
        LIMIT ?`,
     )
-    .bind(id, id, id, cursorSource, cursorSource, cursorKey, size + 1)
+    .bind(
+      id,
+      ...teacherBinds,
+      id,
+      ...teacherBinds,
+      id,
+      ...teacherBinds,
+      cursorSource,
+      cursorSource,
+      cursorKey,
+      size + 1,
+    )
     .all();
   const typedResults = results as Array<
     Record<string, unknown> & { source_order: number; sort_key: string }
@@ -387,6 +403,7 @@ const getPublicReviewPageFor = async (
   id: number | null,
   size: number,
   cursor: PublicReviewCursor | null,
+  teacherId: number | null = null,
 ) =>
   getPublicReviewPage(
     c.env.DB,
@@ -395,6 +412,7 @@ const getPublicReviewPageFor = async (
     size,
     cursor,
     await publicReviewViewerId(c),
+    teacherId,
   );
 const csrfOk = (c: any, expected: string) => {
   const header = c.req.header("X-CSRF-Token"),
@@ -652,7 +670,6 @@ app.get("/api/courses/:id", async (c) => {
     .first();
   if (!course) return fail(c, "课程不存在", 404);
   const reviewCount = await getPublicTextReviewCount(c.env.DB, "course_id", id);
-  const reviewPage = await getPublicReviewPageFor(c, "course_id", id, 20, null);
   const teachers = (
     await c.env.DB.prepare(
       `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count,
@@ -679,17 +696,18 @@ app.get("/api/courses/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
+  // 课程详情不再直接返回评价流：评价按 课程×教师 作用域经 /reviews?teacherId= 获取。
   return c.json({
     course: { ...withPublicCourseCategory(course), teachers, nameVariants },
-    reviews: reviewPage.items,
     reviewCount,
-    nextReviewCursor: reviewPage.nextCursor,
   });
 });
 app.get("/api/courses/:id/reviews", async (c) => {
   const id = integer(c.req.param("id"));
   const course = await c.env.DB.prepare("SELECT id FROM courses WHERE id=?").bind(id).first();
   if (!course) return fail(c, "课程不存在", 404);
+  const teacherId = integer(c.req.query("teacherId"));
+  if (!teacherId) return fail(c, "课程评价需先指定任课教师（teacherId）", 400);
   const rawCursor = c.req.query("cursor");
   const cursor = decodePublicReviewCursor(rawCursor);
   if (rawCursor && !cursor) return fail(c, "评价游标无效", 400);
@@ -699,6 +717,7 @@ app.get("/api/courses/:id/reviews", async (c) => {
     id,
     publicReviewPageSize(c),
     cursor,
+    teacherId,
   );
   return c.json(page);
 });

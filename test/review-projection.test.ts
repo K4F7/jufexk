@@ -142,8 +142,6 @@ describe("public course-teacher review projection", () => {
       expect(teacherResponse.status).toBe(200);
       const courseBody = await courseResponse.json<{
         reviewCount: number;
-        nextReviewCursor: string | null;
-        reviews: Array<Record<string, unknown>>;
       }>();
       const teacherBody = await teacherResponse.json<{
         reviewCount: number;
@@ -151,13 +149,30 @@ describe("public course-teacher review projection", () => {
         reviews: Array<Record<string, unknown>>;
       }>();
 
+      // 课程详情只返回评价总数；评价流必须按 课程×教师 作用域获取。
       expect(courseBody.reviewCount).toBe(26);
+      expect(courseBody).not.toHaveProperty("reviews");
+      expect(courseBody).not.toHaveProperty("nextReviewCursor");
+      const unscoped = await SELF.fetch(
+        `${origin}/api/courses/${courseId}/reviews`,
+      );
+      expect(unscoped.status).toBe(400);
+
+      const courseReviewsResponse = await SELF.fetch(
+        `${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`,
+      );
+      expect(courseReviewsResponse.status).toBe(200);
+      const courseReviews = await courseReviewsResponse.json<{
+        items: Array<Record<string, unknown>>;
+        nextCursor: string | null;
+      }>();
+
       expect(teacherBody.reviewCount).toBe(courseBody.reviewCount);
-      expect(courseBody.reviews).toHaveLength(20);
-      expect(teacherBody.reviews).toEqual(courseBody.reviews);
-      expect(courseBody.nextReviewCursor).toBeTruthy();
-      expect(teacherBody.nextReviewCursor).toBe(courseBody.nextReviewCursor);
-      expect(courseBody.reviews[0]).toMatchObject({
+      expect(courseReviews.items).toHaveLength(20);
+      expect(teacherBody.reviews).toEqual(courseReviews.items);
+      expect(courseReviews.nextCursor).toBeTruthy();
+      expect(teacherBody.nextReviewCursor).toBe(courseReviews.nextCursor);
+      expect(courseReviews.items[0]).toMatchObject({
         teacher_id: teacherId,
         teacher_name: teacherName,
       });
@@ -168,19 +183,21 @@ describe("public course-teacher review projection", () => {
       });
       const [courseNext, teacherNext, courseRefresh] = await Promise.all([
         SELF.fetch(
-          `${origin}/api/courses/${courseId}/reviews?cursor=${encodeURIComponent(courseBody.nextReviewCursor!)}`,
+          `${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}&cursor=${encodeURIComponent(courseReviews.nextCursor!)}`,
         ).then((response) => response.json<{ items: Array<Record<string, unknown>> }>()),
         SELF.fetch(
           `${origin}/api/teachers/${teacherId}/reviews?cursor=${encodeURIComponent(teacherBody.nextReviewCursor!)}`,
         ).then((response) => response.json<{ items: Array<Record<string, unknown>> }>()),
-        SELF.fetch(`${origin}/api/courses/${courseId}`).then((response) =>
-          response.json<{ reviews: Array<Record<string, unknown>> }>(),
+        SELF.fetch(
+          `${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`,
+        ).then((response) =>
+          response.json<{ items: Array<Record<string, unknown>> }>(),
         ),
       ]);
       expect(courseNext.items).toHaveLength(6);
       expect(teacherNext.items).toEqual(courseNext.items);
-      expect(courseRefresh.reviews).toEqual(courseBody.reviews);
-      const allIds = [...courseBody.reviews, ...courseNext.items].map((review) => review.id);
+      expect(courseRefresh.items).toEqual(courseReviews.items);
+      const allIds = [...courseReviews.items, ...courseNext.items].map((review) => review.id);
       expect(new Set(allIds).size).toBe(26);
       expect(allIds).toEqual([
         ...historicalIds.map((reviewId) => `historical:${reviewId}`),
@@ -189,7 +206,7 @@ describe("public course-teacher review projection", () => {
         expect.stringMatching(/^review:/),
       ]);
       const publicJson = JSON.stringify({
-        courseReviews: courseBody.reviews,
+        courseReviews: courseReviews.items,
         teacherReviews: teacherBody.reviews,
         courseNext,
         teacherNext,

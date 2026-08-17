@@ -10,16 +10,14 @@ import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
 import type {
   Course,
-  PublicReview,
+  PublicReviewPage,
   Review,
   Teacher,
 } from "../lib/types";
 
 type Detail = {
   course: Course & { teachers: Teacher[] };
-  reviews: PublicReview[];
   reviewCount: number;
-  nextReviewCursor: string | null;
 };
 
 /** DEV-only: live course-detail-summary A/B/C compare. */
@@ -141,20 +139,27 @@ export function CourseDetailPage() {
   const recognitionVariant = useReviewRecognitionPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const reviewFeed = usePublicReviewPagination("courses", id);
+  const [reviewsError, setReviewsError] = useState("");
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+
+  /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师。 */
+  const selectedTeacherId = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get("teacher");
+    if (!raw || !/^-?(?:0|[1-9]\d*)$/.test(raw)) return null;
+    const n = Number(raw);
+    return Number.isSafeInteger(n) && n > 0 ? n : null;
+  }, [location.search]);
+  const teacherQuery = selectedTeacherId ? `teacherId=${selectedTeacherId}` : "";
+  const reviewFeed = usePublicReviewPagination("courses", id, teacherQuery);
 
   useEffect(() => {
     let cancelled = false;
     setData(null);
     setError("");
-    reviewFeed.reset([], null);
     (async () => {
       try {
         const d = await api<Detail>(`/api/courses/${id}`);
-        if (!cancelled) {
-          setData(d);
-          reviewFeed.reset(d.reviews, d.nextReviewCursor);
-        }
+        if (!cancelled) setData(d);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       }
@@ -162,17 +167,50 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, reviewFeed.reset]);
+  }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReviewsError("");
+    reviewFeed.reset([], null);
+    if (!selectedTeacherId) {
+      setReviewsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setReviewsLoading(true);
+    (async () => {
+      try {
+        const page = await api<PublicReviewPage>(
+          `/api/courses/${id}/reviews?${teacherQuery}`,
+        );
+        if (!cancelled) reviewFeed.reset(page.items, page.nextCursor);
+      } catch (e) {
+        if (!cancelled) setReviewsError((e as Error).message);
+      } finally {
+        if (!cancelled) setReviewsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, selectedTeacherId, teacherQuery, reviewFeed.reset]);
 
   if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
   if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
 
   const c = data.course;
-  /** Restore catalog filters; drop prototype module/variant so back lands on production catalog. */
+  const selectedTeacher = (c.teachers ?? []).find(
+    (teacher) => teacher.id === selectedTeacherId,
+  );
+  /** Restore catalog filters; drop prototype module/variant and the
+   * course-page teacher selection so back lands on the production catalog. */
   const goBack = () => {
     const sp = new URLSearchParams(location.search);
     sp.delete("module");
     sp.delete("variant");
+    sp.delete("teacher");
     const q = sp.toString();
     navigate(q ? `/courses?${q}` : "/courses");
   };
@@ -185,6 +223,65 @@ export function CourseDetailPage() {
   const comparingRecognition =
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
+  const reviewArea = (
+    <>
+      {comparingRecognition &&
+      recognitionVariant &&
+      ReviewRecognitionPrototypeLazy ? (
+        <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
+          <ReviewRecognitionPrototypeLazy
+            key={recognitionVariant}
+            variant={recognitionVariant}
+            model={{ hostLabel: c.name }}
+          />
+        </Suspense>
+      ) : comparingTeachingFeed &&
+        teachingFeedVariant &&
+        TeachingReviewsFeedPrototypeLazy ? (
+        <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
+          <TeachingReviewsFeedPrototypeLazy
+            key={teachingFeedVariant}
+            variant={teachingFeedVariant}
+            model={{
+              counterpartMode: "teacher",
+              hostLabel: c.name,
+              liveReviews: reviewFeed.reviews as unknown as Review[],
+              liveRatingCount: reviewFeed.reviews.length,
+            }}
+          />
+        </Suspense>
+      ) : comparingReviews &&
+        reviewsVariant &&
+        CourseDetailReviewsPrototypeLazy ? (
+        <Suspense fallback={<EmptyBox role="status">加载投稿原型…</EmptyBox>}>
+          <CourseDetailReviewsPrototypeLazy
+            key={reviewsVariant}
+            variant={reviewsVariant}
+            model={{
+              reviews: reviewFeed.reviews as unknown as Review[],
+              legacyReviews: [],
+              courseName: c.name,
+            }}
+          />
+        </Suspense>
+      ) : reviewsError && reviewFeed.reviews.length === 0 ? (
+        <EmptyBox role="alert">{reviewsError}</EmptyBox>
+      ) : reviewsLoading && reviewFeed.reviews.length === 0 ? (
+        <EmptyBox role="status">评价加载中…</EmptyBox>
+      ) : (
+        <PublicReviews
+          rows={reviewFeed.reviews}
+          identity="teacher"
+          total={selectedTeacher?.review_count ?? 0}
+          hasMore={Boolean(reviewFeed.nextCursor)}
+          isLoadingMore={reviewFeed.isLoadingMore}
+          loadMoreError={reviewFeed.loadMoreError}
+          onLoadMore={reviewFeed.loadMore}
+        />
+      )}
+    </>
+  );
+
   return (
     <section className="mx-auto w-full max-w-[880px]">
       {comparingSummary && summaryVariant && CourseDetailSummaryPrototypeLazy ? (
@@ -194,7 +291,7 @@ export function CourseDetailPage() {
             variant={summaryVariant}
             model={{
               course: c,
-              reviews: (data.reviews ?? []) as unknown as Review[],
+              reviews: reviewFeed.reviews as unknown as Review[],
               backSearch: location.search,
               onBack: goBack,
             }}
@@ -207,60 +304,6 @@ export function CourseDetailPage() {
           onBack={goBack}
         />
       )}
-
-      {/* 评价流先于任课教师表：教师名单可能很长，评价不能被埋在其后。 */}
-      <div className="mb-6">
-        {comparingRecognition &&
-        recognitionVariant &&
-        ReviewRecognitionPrototypeLazy ? (
-          <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
-            <ReviewRecognitionPrototypeLazy
-              key={recognitionVariant}
-              variant={recognitionVariant}
-              model={{ hostLabel: c.name }}
-            />
-          </Suspense>
-        ) : comparingTeachingFeed &&
-          teachingFeedVariant &&
-          TeachingReviewsFeedPrototypeLazy ? (
-          <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
-            <TeachingReviewsFeedPrototypeLazy
-              key={teachingFeedVariant}
-              variant={teachingFeedVariant}
-              model={{
-                counterpartMode: "teacher",
-                hostLabel: c.name,
-                liveReviews: (data.reviews ?? []) as unknown as Review[],
-                liveRatingCount: data.reviews?.length ?? 0,
-              }}
-            />
-          </Suspense>
-        ) : comparingReviews &&
-          reviewsVariant &&
-          CourseDetailReviewsPrototypeLazy ? (
-          <Suspense fallback={<EmptyBox role="status">加载投稿原型…</EmptyBox>}>
-            <CourseDetailReviewsPrototypeLazy
-              key={reviewsVariant}
-              variant={reviewsVariant}
-              model={{
-                reviews: (data.reviews ?? []) as unknown as Review[],
-                legacyReviews: [],
-                courseName: c.name,
-              }}
-            />
-          </Suspense>
-        ) : (
-          <PublicReviews
-            rows={reviewFeed.reviews}
-            identity="teacher"
-            total={data.reviewCount}
-            hasMore={Boolean(reviewFeed.nextCursor)}
-            isLoadingMore={reviewFeed.isLoadingMore}
-            loadMoreError={reviewFeed.loadMoreError}
-            onLoadMore={reviewFeed.loadMore}
-          />
-        )}
-      </div>
 
       <section className="mb-6" aria-labelledby="course-teachers-heading">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -276,8 +319,25 @@ export function CourseDetailPage() {
             </span>
           ) : null}
         </div>
-        <CourseTeacherTable items={c.teachers ?? []} />
+        <CourseTeacherTable
+          items={c.teachers ?? []}
+          courseId={c.id}
+          search={location.search}
+          selectedId={selectedTeacherId}
+        />
       </section>
+
+      {selectedTeacherId ? (
+        <div className="mb-6">{reviewArea}</div>
+      ) : data.reviewCount > 0 && c.teachers?.length ? (
+        <div className="mb-6">
+          <EmptyBox>选择上方一位任课教师，查看该课程 × 教师的评价</EmptyBox>
+        </div>
+      ) : (
+        <div className="mb-6">
+          <EmptyBox>暂无评价</EmptyBox>
+        </div>
+      )}
     </section>
   );
 }
