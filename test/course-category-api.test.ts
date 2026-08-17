@@ -313,4 +313,73 @@ describe("review template kind API contract", () => {
       会计学: "general",
     });
   });
+
+  it("publishes 瑜伽 and 武术 as visible PE names instead of 体育1", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(19401,'黄丽萍','黄丽萍'),(19402,'刘春来','刘春来')",
+      ),
+      env.DB.prepare(
+        "INSERT INTO courses(id,code,name,category) VALUES(19410,'PE19410','体育1','sports'),(19411,'PE19411','体育心理学','general')",
+      ),
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(19410,19401),(19410,19402),(19411,19402)",
+      ),
+    ]);
+
+    const sports = await SELF.fetch(`${origin}/api/courses?category=sports`);
+    const sportsBody = await sports.json<{
+      items: Array<{ id: number; name: string }>;
+    }>();
+    expect(sports.status).toBe(200);
+    const sportsNames = sportsBody.items.map((item) => item.name);
+    expect(sportsNames).toContain("瑜伽");
+    expect(sportsNames).toContain("武术");
+    expect(sportsNames).toContain("健美操");
+    expect(sportsNames).not.toContain("体育1");
+    expect(sportsNames).not.toContain("健身教练");
+
+    const yoga = await SELF.fetch(`${origin}/api/courses/800001`);
+    const yogaBody = await yoga.json<{
+      course: { name: string; category: string; teachers: Array<{ name: string }> };
+    }>();
+    expect(yoga.status).toBe(200);
+    expect(yogaBody.course.name).toBe("瑜伽");
+    expect(yogaBody.course.category).toBe("sports");
+    expect(yogaBody.course.teachers.map((teacher) => teacher.name)).toContain(
+      "黄丽萍",
+    );
+
+    const ping = await SELF.fetch(`${origin}/api/teachers/19401`);
+    const pingBody = await ping.json<{
+      teacher: { course_count: number };
+      courses: Array<{ name: string }>;
+    }>();
+    expect(ping.status).toBe(200);
+    expect(pingBody.courses.map((course) => course.name)).toContain("瑜伽");
+    expect(pingBody.teacher.course_count).toBe(1);
+
+    const wushu = await SELF.fetch(`${origin}/api/teachers/19402`);
+    const wushuBody = await wushu.json<{
+      teacher: { course_count: number };
+      courses: Array<{ name: string }>;
+    }>();
+    expect(wushu.status).toBe(200);
+    expect(wushuBody.courses.map((course) => course.name)).toEqual([
+      "体育心理学",
+      "武术",
+    ]);
+    expect(wushuBody.teacher.course_count).toBe(2);
+
+    const hidden = await SELF.fetch(
+      `${origin}/api/courses?q=${encodeURIComponent("体育1")}`,
+    );
+    const hiddenBody = await hidden.json<{ items: Array<{ name: string }> }>();
+    expect(hiddenBody.items.map((item) => item.name)).not.toContain("体育1");
+
+    const stored = await env.DB.prepare(
+      "SELECT name FROM courses WHERE id=19410",
+    ).first<{ name: string }>();
+    expect(stored?.name).toBe("体育1");
+  });
 });

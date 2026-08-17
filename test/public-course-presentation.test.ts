@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   isPublicSportsSkillName,
   isUmbrellaPeCourseName,
+  isVirtualPeSportId,
   publicCourseCategory,
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicPeSkillLabel,
   publicSportsMatchSql,
+  virtualPeSportForTeacherName,
 } from "../src/lib/public-course-presentation";
 
 describe("public PE course presentation", () => {
@@ -60,5 +62,14 @@ describe("public PE course presentation", () => {
     expect(publicSportsMatchSql("c")).toContain(publicCourseVisibleSql("c"));
     expect(publicCourseVisibleSql("c")).toContain("'体育1'");
     expect(publicSportsMatchSql("c")).toContain("'网球%'");
+  });
+
+  it("maps umbrella-only PE teachers onto visible sport names", () => {
+    expect(virtualPeSportForTeacherName("黄丽萍")?.label).toBe("瑜伽");
+    expect(virtualPeSportForTeacherName("刘春来")?.label).toBe("武术");
+    expect(isVirtualPeSportId(800001)).toBe(true);
+    expect(isVirtualPeSportId(18101)).toBe(false);
+    expect(publicCourseDisplayName("体育1")).toBe("体育1");
+    expect(isUmbrellaPeCourseName("体育1")).toBe(true);
   });
 });
