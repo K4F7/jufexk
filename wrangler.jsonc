@@ -28,6 +28,9 @@
     "ISSUE111_IMPORT_ARTIFACT_SHA256": "manifest",
     "ISSUE111_IMPORT_MANIFEST_SHA256": "manifest",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
+    "CAMPUS_JWT_AUD": "jufexk",
+    "CAMPUS_APP_ID": "jufexk",
+    "AUTHBRIDGE_BASE_URL": "https://mc.jxufe.edu.cn/authbridge",
   },
   "secrets_store_secrets": [
     {
@@ -44,6 +47,21 @@
       "binding": "TURNSTILE_SECRET",
       "store_id": "323163a091874b07aacdf5500bff903e",
       "secret_name": "TURNSTILE_SECRET",
+    },
+    {
+      "binding": "CAMPUS_JWT_SECRET",
+      "store_id": "323163a091874b07aacdf5500bff903e",
+      "secret_name": "CAMPUS_JWT_SECRET",
+    },
+    {
+      "binding": "CAMPUS_JWT_AES_KEY",
+      "store_id": "323163a091874b07aacdf5500bff903e",
+      "secret_name": "CAMPUS_JWT_AES_KEY",
+    },
+    {
+      "binding": "CAMPUS_IDENTITY_SECRET",
+      "store_id": "323163a091874b07aacdf5500bff903e",
+      "secret_name": "CAMPUS_IDENTITY_SECRET",
     },
   ],
   "observability": { "enabled": true, "head_sampling_rate": 1 },

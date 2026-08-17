@@ -15,6 +15,9 @@ describe("secret inventory", () => {
       "ADMIN_PASSWORD",
       "IP_HASH_SECRET",
       "TURNSTILE_SECRET",
+      "CAMPUS_JWT_SECRET",
+      "CAMPUS_JWT_AES_KEY",
+      "CAMPUS_IDENTITY_SECRET",
     ]);
     expect([...GITHUB_DEPLOY_SECRETS]).toEqual([
       "CLOUDFLARE_API_TOKEN",
@@ -34,7 +37,7 @@ describe("secret inventory", () => {
   it("selects only worker keys from a dotenv file", () => {
     const selected = selectWorkerDevVars(
       parseDotenv(
-        "ADMIN_PASSWORD=admin\nIP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCLOUDFLARE_API_TOKEN=no\n",
+        "ADMIN_PASSWORD=admin\nIP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCAMPUS_JWT_SECRET=jwt\nCAMPUS_JWT_AES_KEY=aes\nCAMPUS_IDENTITY_SECRET=id\nCLOUDFLARE_API_TOKEN=no\n",
       ),
     );
     expect(selected.missing).toEqual([]);
@@ -42,6 +45,9 @@ describe("secret inventory", () => {
       "ADMIN_PASSWORD",
       "IP_HASH_SECRET",
       "TURNSTILE_SECRET",
+      "CAMPUS_JWT_SECRET",
+      "CAMPUS_JWT_AES_KEY",
+      "CAMPUS_IDENTITY_SECRET",
     ]);
     expect(selected.vars.ADMIN_PASSWORD).toBe("admin");
   });

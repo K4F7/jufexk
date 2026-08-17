@@ -22,12 +22,10 @@ import {
   HistoricalBatchImportError,
   importIssue111HistoricalBatch,
 } from "./historical-batch-imports";
-import {
-  handleCampusAuthCallback,
-  handleCampusAuthStatus,
-} from "./campus-jwt";
+import { handleCampusAuthStatus } from "./campus-jwt";
 import {
   canOrdinaryUserWrite,
+  handleCampusAuthCallback,
   handleOrdinaryUserLogout,
   handleOrdinaryUserSession,
   resolveOrdinaryUser,
@@ -60,6 +58,9 @@ type Bindings = {
   CAMPUS_JWT_AUD?: string;
   CAMPUS_JWT_AES_KEY?: string | { get(): Promise<string> };
   CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
+  CAMPUS_JWT_ENABLED?: string;
+  CAMPUS_APP_ID?: string;
+  AUTHBRIDGE_BASE_URL?: string;
 };
 type Vars = {
   adminSession?: string;

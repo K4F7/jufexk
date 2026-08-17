@@ -4,6 +4,8 @@ import {
   buildAuthBridgeLoginUrl,
   campusJwtLive,
   decryptAuthBridgeAesSubject,
+  normalizeCampusJwtSecret,
+  safeCampusReturnPath,
   verifyCampusJwtHs256,
 } from "../src/campus-jwt";
 
@@ -21,12 +23,13 @@ async function signHs256(
   payload: Record<string, unknown>,
   secret: string,
   alg = "HS256",
+  secretBytes?: Uint8Array,
 ) {
   const header = toBase64Url(JSON.stringify({ alg, typ: "JWT" }));
   const body = toBase64Url(JSON.stringify(payload));
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(secret),
+    secretBytes || new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -52,7 +55,32 @@ describe("campus AuthBridge placeholder", () => {
     ).toBe(
       "https://authbridge.example.test/authbridge/login?appid=jufexk&mode=callback&callback=https%3A%2F%2Fxk.sein.moe%2Fapi%2Fauth%2Fcallback",
     );
-    expect(campusJwtLive({ CAMPUS_JWT_ENABLED: "1" })).toBe(false);
+    expect(campusJwtLive(undefined)).toBe(false);
+    expect(campusJwtLive({})).toBe(false);
+    expect(campusJwtLive({ CAMPUS_JWT_ENABLED: "1" })).toBe(true);
+    expect(safeCampusReturnPath("/courses/1")).toBe("/courses/1");
+    expect(safeCampusReturnPath("//evil.example")).toBe("/");
+    expect(safeCampusReturnPath("https://evil.example")).toBe("/");
+  });
+
+  it("verifies AuthBridge hex jwt_key as raw HMAC bytes and accepts missing aud", async () => {
+    const hexSecret =
+      "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+    const token = await signHs256(
+      {
+        sub: "campus-user-1",
+        exp: Math.floor(Date.now() / 1000) + 600,
+      },
+      hexSecret,
+      "HS256",
+      normalizeCampusJwtSecret(hexSecret),
+    );
+    await expect(verifyCampusJwtHs256(token, hexSecret, "jufexk")).resolves.toMatchObject({
+      sub: "campus-user-1",
+    });
+    await expect(
+      verifyCampusJwtHs256(token, "test-campus-jwt-secret", "jufexk"),
+    ).resolves.toBeNull();
   });
 
   it("verifies a local HS256 token and rejects a bad signature", async () => {

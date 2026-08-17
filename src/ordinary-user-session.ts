@@ -2,7 +2,12 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   CAMPUS_JWT_COOKIE,
+  type CampusJwtClaims,
+  campusJwtLive,
+  issueCampusJwtCookie,
+  readAuthBridgeCallbackToken,
   readCampusJwt,
+  safeCampusReturnPath,
   verifyCampusJwtHs256,
 } from "./campus-jwt";
 import {
@@ -28,7 +33,7 @@ export const USER_LOGOUT_PATH = "/api/user/logout";
  * - verify on the Worker: signature, `exp`, `aud`, and a stable subject
  * - AuthBridge `sub` is ciphertext when `enc=aes`; decrypt then hash
  * - do not trust decode-only payload; do not log the raw token
- * AuthBridge callback stays closed until this app is on the school whitelist.
+ * AuthBridge callback stays closed until CAMPUS_JWT_ENABLED=1.
  * @see https://github.com/Mine-JUFE/AuthBridge
  */
 export type OrdinaryUserStatus =
@@ -120,13 +125,38 @@ function campusSecrets(env: {
   CAMPUS_JWT_AUD?: string;
   CAMPUS_JWT_AES_KEY?: string | { get(): Promise<string> };
   CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
+  CAMPUS_JWT_ENABLED?: string;
 }) {
   return {
     jwtSecret: env.CAMPUS_JWT_SECRET,
     audience: typeof env.CAMPUS_JWT_AUD === "string" ? env.CAMPUS_JWT_AUD : "",
     aesKey: env.CAMPUS_JWT_AES_KEY,
     identitySecret: env.CAMPUS_IDENTITY_SECRET,
+    enabled: campusJwtLive(env),
   };
+}
+
+async function mapCampusJwtToken(
+  env: Parameters<typeof campusSecrets>[0] & { DB: D1Database },
+  token: string,
+): Promise<{ user: OrdinaryUser; claims: CampusJwtClaims } | null> {
+  const secrets = campusSecrets(env);
+  const jwtSecret = await readSecret(secrets.jwtSecret);
+  const identitySecret = await readSecret(secrets.identitySecret);
+  if (!jwtSecret || !identitySecret || !secrets.audience) return null;
+  const claims = await verifyCampusJwtHs256(token, jwtSecret, secrets.audience);
+  if (!claims) return null;
+  const subject = await campusIdentitySubject(claims, {
+    identitySecret,
+    aesKeyHex: await readSecret(secrets.aesKey),
+  });
+  if (!subject) return null;
+  const user = await resolveOrCreateIdentityUser(env.DB, {
+    provider: AUTH_PROVIDER_AUTHBRIDGE,
+    issuer: claims.aud || secrets.audience || AUTH_PROVIDER_AUTHBRIDGE,
+    subject,
+  });
+  return user ? { user, claims } : null;
 }
 
 /**
@@ -139,26 +169,8 @@ export async function resolveCampusJwt(
 ): Promise<OrdinaryUser | null> {
   const token = readCampusJwt(c);
   if (!token) return null;
-  const secrets = campusSecrets(c.env);
-  const jwtSecret = await readSecret(secrets.jwtSecret);
-  const identitySecret = await readSecret(secrets.identitySecret);
-  if (!jwtSecret || !identitySecret || !secrets.audience) return null;
-  const claims = await verifyCampusJwtHs256(
-    token,
-    jwtSecret,
-    secrets.audience,
-  );
-  if (!claims) return null;
-  const subject = await campusIdentitySubject(claims, {
-    identitySecret,
-    aesKeyHex: await readSecret(secrets.aesKey),
-  });
-  if (!subject) return null;
-  return resolveOrCreateIdentityUser(c.env.DB, {
-    provider: AUTH_PROVIDER_AUTHBRIDGE,
-    issuer: claims.aud || AUTH_PROVIDER_AUTHBRIDGE,
-    subject,
-  });
+  const mapped = await mapCampusJwtToken(c.env, token);
+  return mapped?.user ?? null;
 }
 
 /**
@@ -244,4 +256,37 @@ export async function handleOrdinaryUserLogout(c: Context) {
   }
   clearOrdinaryUserCookies(c);
   return c.json({ ok: true, ...guestSession() });
+}
+
+const closedCampusCallback = () => ({
+  error: "普通用户认证尚未开放接入",
+  reason: "not_whitelisted",
+});
+
+/**
+ * AuthBridge demo-backend shape: POST form/JSON `token`, verify HS256,
+ * then set an HttpOnly cookie on this origin and redirect. Closed until
+ * CAMPUS_JWT_ENABLED=1; missing secrets stay 503.
+ * @see https://github.com/Mine-JUFE/AuthBridge/blob/main/demo-backend/app.js
+ */
+export async function handleCampusAuthCallback(c: Context) {
+  const token = await readAuthBridgeCallbackToken(c);
+  const secrets = campusSecrets(c.env);
+  const jwtSecret = await readSecret(secrets.jwtSecret);
+  const identitySecret = await readSecret(secrets.identitySecret);
+  const aesKey = await readSecret(secrets.aesKey);
+  if (!secrets.enabled || !jwtSecret || !identitySecret || !aesKey) {
+    return c.json(closedCampusCallback(), 503);
+  }
+
+  const fail = () => c.redirect(`${LOGIN_PATH}?error=campus`, 303);
+  if (!token) return fail();
+  const mapped = await mapCampusJwtToken(c.env, token);
+  if (!mapped || !canOrdinaryUserWrite(mapped.user)) return fail();
+  issueCampusJwtCookie(
+    c,
+    token,
+    Math.max(1, mapped.claims.exp - Math.floor(Date.now() / 1000)),
+  );
+  return c.redirect(safeCampusReturnPath(c.req.query("from")), 303);
 }

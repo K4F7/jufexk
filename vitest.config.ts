@@ -36,6 +36,8 @@ export default defineConfig(async () => {
             CAMPUS_JWT_AES_KEY:
               "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
             CAMPUS_IDENTITY_SECRET: "test-campus-identity",
+            CAMPUS_APP_ID: "jufexk",
+            AUTHBRIDGE_BASE_URL: "https://authbridge.example.test/authbridge",
             TURNSTILE_SECRET: "",
             TURNSTILE_SITE_KEY: "",
           },
