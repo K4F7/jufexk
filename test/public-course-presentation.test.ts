@@ -3,7 +3,9 @@ import {
   isPublicSportsSkillName,
   isUmbrellaPeCourseName,
   publicCourseCategory,
+  publicCourseDisplayName,
   publicCourseVisibleSql,
+  publicPeSkillLabel,
   publicSportsMatchSql,
 } from "../src/lib/public-course-presentation";
 
@@ -31,11 +33,27 @@ describe("public PE course presentation", () => {
     expect(isPublicSportsSkillName("瑜伽")).toBe(true);
     expect(isPublicSportsSkillName("武术")).toBe(true);
     expect(isPublicSportsSkillName("体育1")).toBe(false);
+    expect(isPublicSportsSkillName("竞技网球发展概论")).toBe(false);
     expect(publicCourseCategory("网球", "general")).toBe("sports");
     expect(publicCourseCategory("击剑专项理论与实践1", "general")).toBe("sports");
     expect(publicCourseCategory("线性代数", "general")).toBe("general");
     expect(publicCourseCategory("大学体育", "pe")).toBe("sports");
     expect(publicCourseCategory("体育1", "sports")).toBe("sports");
+  });
+
+  it("collapses numbered PE titles onto a public skill label", () => {
+    expect(publicPeSkillLabel("击剑专项理论与实践1")).toBe("击剑");
+    expect(publicPeSkillLabel("击剑专项理论与实践6")).toBe("击剑");
+    expect(publicPeSkillLabel("篮球2")).toBe("篮球");
+    expect(publicPeSkillLabel("篮球专项理论与实践1")).toBe("篮球");
+    expect(publicPeSkillLabel("网球2")).toBe("网球");
+    expect(publicPeSkillLabel("羽毛球1")).toBe("羽毛球");
+    expect(publicPeSkillLabel("健身教练")).toBe("健美操");
+    expect(publicPeSkillLabel("健身教练2")).toBe("健美操");
+    expect(publicPeSkillLabel("竞技网球发展概论")).toBe(null);
+    expect(publicCourseDisplayName("击剑专项理论与实践1")).toBe("击剑");
+    expect(publicCourseDisplayName("健身教练")).toBe("健美操");
+    expect(publicCourseDisplayName("线性代数")).toBe("线性代数");
   });
 
   it("keeps sports SQL inside the public visibility gate", () => {
