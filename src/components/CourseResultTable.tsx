@@ -64,8 +64,10 @@ function TeacherLinks({ course }: { course: Course }) {
   // max-w-lg caps the cell's intrinsic max-content, so auto table layout
   // keeps the column bounded (no horizontal table scroll) and other columns
   // keep their natural width; text-overflow then renders the ellipsis.
+  // p-1 + -m-1 expands the overflow clip box by 4px without shifting layout,
+  // so the links' focus ring/outline is not clipped by overflow-hidden.
   return (
-    <span className="block max-w-lg min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+    <span className="-m-1 block max-w-lg min-w-0 overflow-hidden p-1 text-ellipsis whitespace-nowrap">
       {teachers.map((t, i) => (
         <Fragment key={t.id != null ? `${t.id}-${t.name}` : `${t.name}-${i}`}>
           {i > 0 ? " " : null}

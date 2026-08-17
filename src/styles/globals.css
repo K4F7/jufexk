@@ -113,6 +113,18 @@ body {
   outline-offset: 1px;
 }
 
+/*
+ * Links: 2px accent focus indicator aligned with form controls.
+ * HeroUI `.link` already draws a box-shadow ring via [data-focus-visible];
+ * the native outline coincides with it (same color/offset) and stays as a
+ * no-JS fallback, while plain anchors (brand wordmark, router links) get a
+ * real indicator instead of the thin browser default.
+ */
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .field-label {
   display: grid;
   gap: 0.3rem;
