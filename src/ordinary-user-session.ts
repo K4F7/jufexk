@@ -45,14 +45,19 @@ export type OrdinaryUserStatus =
 export type OrdinaryUser = {
   id: string;
   status: OrdinaryUserStatus;
+  pending_deletion_at?: string | null;
 };
 
 export type OrdinaryUserSession = {
   authenticated: boolean;
+  accountStatus?: "pending_deletion";
+  restoreUntil?: string;
   csrfToken?: string;
   loginPath: string;
   logoutPath: string;
 };
+
+const ACCOUNT_DELETION_RECOVERY_DAYS = 30;
 
 const hex = (bytes: ArrayBuffer) =>
   [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -109,7 +114,9 @@ async function loadOrCreateUser(
   userId: string,
 ): Promise<OrdinaryUser | null> {
   const existing = await db
-    .prepare("SELECT id,status FROM users WHERE id=?")
+    .prepare(
+      "SELECT id,status,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
+    )
     .bind(userId)
     .first<OrdinaryUser>();
   if (existing) return existing;
@@ -228,19 +235,34 @@ export function canOrdinaryUserWrite(user: OrdinaryUser) {
   return user.status === "active";
 }
 
+function restoreUntilFrom(pendingDeletionAt: string | null | undefined) {
+  const start = pendingDeletionAt ? Date.parse(pendingDeletionAt) : Number.NaN;
+  const from = Number.isFinite(start) ? start : Date.now();
+  return new Date(
+    from + ACCOUNT_DELETION_RECOVERY_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+}
+
+function pendingDeletionSession(
+  c: Context,
+  pendingDeletionAt: string | null | undefined,
+): OrdinaryUserSession {
+  return {
+    authenticated: false,
+    accountStatus: "pending_deletion",
+    restoreUntil: restoreUntilFrom(pendingDeletionAt),
+    csrfToken: issueOrdinaryUserCsrf(c, randomToken()),
+    loginPath: LOGIN_PATH,
+    logoutPath: LOGOUT_PATH,
+  };
+}
+
 export async function ordinaryUserSessionPayload(
   c: Context,
 ): Promise<OrdinaryUserSession> {
-  let user = await resolveOrdinaryUser(c);
-  // Recovery window: re-authenticating while pending_deletion restores the
-  // account. The deletion copy promises this; banned/deleted stay rejected.
+  const user = await resolveOrdinaryUser(c);
   if (user?.status === "pending_deletion") {
-    await c.env.DB.prepare(
-      "UPDATE users SET status='active', deletion_requested_at=NULL WHERE id=? AND status='pending_deletion'",
-    )
-      .bind(user.id)
-      .run();
-    user = { ...user, status: "active" };
+    return pendingDeletionSession(c, user.pending_deletion_at);
   }
   if (!user || !canOrdinaryUserWrite(user)) return guestSession();
   return {
@@ -292,8 +314,8 @@ export async function handleCampusAuthCallback(c: Context) {
   const fail = () => c.redirect(`${LOGIN_PATH}?error=campus`, 303);
   if (!token) return fail();
   const mapped = await mapCampusJwtToken(c.env, token);
-  // pending_deletion users may pass so the session probe can restore their
-  // account inside the recovery window; banned/deleted stay rejected.
+  // pending_deletion users may still receive a cookie so session can show
+  // the recovery window and CSRF restore; banned/deleted stay rejected.
   if (
     !mapped ||
     mapped.user.status === "banned" ||

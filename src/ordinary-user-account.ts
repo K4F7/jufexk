@@ -1,24 +1,22 @@
 import type { Context } from "hono";
 import {
   canOrdinaryUserWrite,
-  clearOrdinaryUserCookies,
   ordinaryUserCsrfOk,
+  ordinaryUserSessionPayload,
   originOk,
   resolveOrdinaryUser,
 } from "./ordinary-user-session";
 
-export const USER_ACCOUNT_PATH = "/api/user/account";
-export const ACCOUNT_DELETION_RECOVERY_DAYS = 30;
+export const USER_DELETION_PATH = "/api/user/deletion";
+export const USER_DELETION_RESTORE_PATH = "/api/user/deletion/restore";
 
 /**
- * Account deletion boundary for ordinary users (issue #139 / ADR-0016).
- * Deletion is a two-step danger action in the UI; here it flips the account
- * to `pending_deletion`, removes recognition and idempotency data, and keeps
- * auth identities so a re-login inside the recovery window still resolves the
- * same users.id. Approved teaching reviews stay anonymous and untouched; no
- * user-linked review column exists yet for unpublished content.
+ * Ordinary-user account deletion (issue #172 / ADR-0016).
+ * An active user who confirms DELETE immediately becomes pending_deletion,
+ * loses their recognitions, and keeps the auth identity for CSRF restore.
+ * This version does not finalize after 30 days.
  */
-export async function handleDeleteOrdinaryUserAccount(c: Context) {
+export async function handleRequestOrdinaryUserDeletion(c: Context) {
   const user = await resolveOrdinaryUser(c);
   if (!user) return c.json({ error: "请先登录" }, 401);
   if (!canOrdinaryUserWrite(user))
@@ -26,21 +24,39 @@ export async function handleDeleteOrdinaryUserAccount(c: Context) {
   if (!originOk(c) || !ordinaryUserCsrfOk(c))
     return c.json({ error: "安全校验失败，请刷新后重试" }, 403);
 
+  let confirm: unknown;
+  try {
+    const body = await c.req.json<{ confirm?: unknown }>();
+    confirm = body.confirm;
+  } catch {
+    return c.json({ error: "请确认删除" }, 400);
+  }
+  if (confirm !== "DELETE") return c.json({ error: "请确认删除" }, 400);
+
+  const pendingDeletionAt = new Date().toISOString();
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM review_endorsements WHERE user_id=?").bind(
       user.id,
     ),
-    c.env.DB.prepare("DELETE FROM write_idempotency WHERE user_id=?").bind(
-      user.id,
-    ),
     c.env.DB.prepare(
-      "UPDATE users SET status='pending_deletion', deletion_requested_at=CURRENT_TIMESTAMP WHERE id=?",
-    ).bind(user.id),
+      "UPDATE users SET status='pending_deletion', pending_deletion_at=? WHERE id=? AND status='active'",
+    ).bind(pendingDeletionAt, user.id),
   ]);
-  clearOrdinaryUserCookies(c);
-  return c.json({
-    ok: true,
-    status: "pending_deletion",
-    recoveryDays: ACCOUNT_DELETION_RECOVERY_DAYS,
-  });
+  return c.json(await ordinaryUserSessionPayload(c));
+}
+
+export async function handleRestoreOrdinaryUserDeletion(c: Context) {
+  const user = await resolveOrdinaryUser(c);
+  if (!user) return c.json({ error: "请先登录" }, 401);
+  if (user.status !== "pending_deletion")
+    return c.json({ error: "当前账号不在恢复期" }, 409);
+  if (!originOk(c) || !ordinaryUserCsrfOk(c))
+    return c.json({ error: "安全校验失败，请刷新后重试" }, 403);
+
+  await c.env.DB.prepare(
+    "UPDATE users SET status='active', pending_deletion_at=NULL WHERE id=? AND status='pending_deletion'",
+  )
+    .bind(user.id)
+    .run();
+  return c.json(await ordinaryUserSessionPayload(c));
 }
