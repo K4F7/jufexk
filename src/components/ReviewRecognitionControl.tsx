@@ -1,5 +1,6 @@
 import { Button, Spinner } from "@heroui/react";
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { ApiError, api } from "../lib/api";
 import {
   recognitionButtonLabel,
@@ -30,6 +31,11 @@ export function ReviewRecognitionControl({
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
   const [loginPrompted, setLoginPrompted] = useState(false);
+  const location = useLocation();
+  // Let the login page offer a way back to the page that sent the user there.
+  const loginTarget = `${loginPath}?from=${encodeURIComponent(
+    location.pathname + location.search,
+  )}`;
 
   useEffect(() => {
     setCount(confirmedCount);
@@ -109,7 +115,7 @@ export function ReviewRecognitionControl({
       ) : null}
       {loginPrompted ? (
         <p role="status" className="mb-0 mt-1.5 text-xs text-muted">
-          <RouterAriaLink to={loginPath}>使用普通用户登录</RouterAriaLink>
+          <RouterAriaLink to={loginTarget}>使用普通用户登录</RouterAriaLink>
           后才能认可评价。
         </p>
       ) : null}

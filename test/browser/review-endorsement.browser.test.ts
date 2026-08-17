@@ -191,11 +191,11 @@ test("guest sees counts, no selected state, and a real login link", async ({ pag
   const prompt = entry(page, "零计数当前文字评价。").getByRole("status");
   await expect(prompt.getByRole("link", { name: "使用普通用户登录" })).toHaveAttribute(
     "href",
-    "/login",
+    "/login?from=%2Fcourses%2F8",
   );
   await expect(zero).toHaveAttribute("aria-pressed", "false");
   await prompt.getByRole("link", { name: "使用普通用户登录" }).click();
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8$/);
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
 });
 
