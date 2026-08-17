@@ -10,6 +10,16 @@ import {
   putBaselineChunk,
   readBoundedJson,
 } from "./catalog-baseline-import";
+import {
+  canOrdinaryUserWrite,
+  resolveOrdinaryUser,
+} from "./ordinary-user-session";
+import {
+  decoratePublicReviews,
+  handleCreateEndorsement,
+  handleEndorsementViewer,
+  handleWithdrawEndorsement,
+} from "./review-endorsements";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
 
@@ -24,6 +34,7 @@ type Bindings = {
   IP_HASH_SECRET: string | { get(): Promise<string> };
   TURNSTILE_SECRET?: string | { get(): Promise<string> };
   TURNSTILE_SITE_KEY?: string;
+  ORDINARY_USER_TEST_AUTH_SECRET?: string;
 };
 type Vars = {
   adminSession?: string;
@@ -238,17 +249,19 @@ const getPublicReviewPage = async (
   id: number | null,
   size: number,
   cursor: PublicReviewCursor | null,
+  viewerUserId: string | null = null,
 ) => {
   const cursorSource = cursor?.source ?? -1;
   const cursorKey = cursor?.key ?? "";
   const { results } = await db
     .prepare(
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,
-         course_name,course_code,teacher_name
+         course_name,course_code,teacher_name,endorsement_count
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
            phr.course_id,phr.teacher_id,phr.comment,
-           c.name course_name,c.code course_code,t.name teacher_name
+           c.name course_name,c.code course_code,t.name teacher_name,
+           0 endorsement_count
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
          JOIN teachers t ON t.id=phr.teacher_id
@@ -256,7 +269,8 @@ const getPublicReviewPage = async (
          UNION ALL
          SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
            lr.course_id,lr.teacher_id,lr.comment,
-           c.name course_name,c.code course_code,t.name teacher_name
+           c.name course_name,c.code course_code,t.name teacher_name,
+           0 endorsement_count
          FROM legacy_reviews lr
          JOIN courses c ON c.id=lr.course_id
          JOIN teachers t ON t.id=lr.teacher_id
@@ -265,7 +279,8 @@ const getPublicReviewPage = async (
          UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,
-           c.name course_name,c.code course_code,t.name teacher_name
+           c.name course_name,c.code course_code,t.name teacher_name,
+           (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count
          FROM reviews r
          JOIN courses c ON c.id=r.course_id
          JOIN teachers t ON t.id=r.teacher_id
@@ -285,13 +300,36 @@ const getPublicReviewPage = async (
   const page = typedResults.slice(0, size);
   const last = page.at(-1);
   return {
-    items: page.map(({ source_order: _source, sort_key: _key, ...review }) => review),
+    items: await decoratePublicReviews(
+      db,
+      page.map(({ source_order: _source, sort_key: _key, ...review }) => review),
+      viewerUserId,
+    ),
     nextCursor:
       hasMore && last
         ? encodePublicReviewCursor({ source: last.source_order, key: last.sort_key })
         : null,
   };
 };
+const publicReviewViewerId = async (c: AppContext) => {
+  const viewer = await resolveOrdinaryUser(c);
+  return viewer && canOrdinaryUserWrite(viewer) ? viewer.id : null;
+};
+const getPublicReviewPageFor = async (
+  c: AppContext,
+  subject: "course_id" | "teacher_id",
+  id: number | null,
+  size: number,
+  cursor: PublicReviewCursor | null,
+) =>
+  getPublicReviewPage(
+    c.env.DB,
+    subject,
+    id,
+    size,
+    cursor,
+    await publicReviewViewerId(c),
+  );
 const csrfOk = (c: any, expected: string) => {
   const header = c.req.header("X-CSRF-Token"),
     cookie = getCookie(c, "jufexk_csrf");
@@ -469,7 +507,7 @@ app.get("/api/teachers/:id", async (c) => {
     .first();
   if (!teacher) return fail(c, "教师不存在", 404);
   const reviewCount = await getPublicTextReviewCount(c.env.DB, "teacher_id", id);
-  const reviewPage = await getPublicReviewPage(c.env.DB, "teacher_id", id, 20, null);
+  const reviewPage = await getPublicReviewPageFor(c, "teacher_id", id, 20, null);
   const courses = (
     await c.env.DB.prepare(
       `SELECT c.*,COALESCE(visible_counts.review_count,0) review_count,
@@ -498,8 +536,8 @@ app.get("/api/teachers/:id/reviews", async (c) => {
   const rawCursor = c.req.query("cursor");
   const cursor = decodePublicReviewCursor(rawCursor);
   if (rawCursor && !cursor) return fail(c, "评价游标无效", 400);
-  const page = await getPublicReviewPage(
-    c.env.DB,
+  const page = await getPublicReviewPageFor(
+    c,
     "teacher_id",
     id,
     publicReviewPageSize(c),
@@ -543,7 +581,7 @@ app.get("/api/courses/:id", async (c) => {
     .first();
   if (!course) return fail(c, "课程不存在", 404);
   const reviewCount = await getPublicTextReviewCount(c.env.DB, "course_id", id);
-  const reviewPage = await getPublicReviewPage(c.env.DB, "course_id", id, 20, null);
+  const reviewPage = await getPublicReviewPageFor(c, "course_id", id, 20, null);
   const teachers = (
     await c.env.DB.prepare(
       `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count,
@@ -578,8 +616,8 @@ app.get("/api/courses/:id/reviews", async (c) => {
   const rawCursor = c.req.query("cursor");
   const cursor = decodePublicReviewCursor(rawCursor);
   if (rawCursor && !cursor) return fail(c, "评价游标无效", 400);
-  const page = await getPublicReviewPage(
-    c.env.DB,
+  const page = await getPublicReviewPageFor(
+    c,
     "course_id",
     id,
     publicReviewPageSize(c),
@@ -587,6 +625,10 @@ app.get("/api/courses/:id/reviews", async (c) => {
   );
   return c.json(page);
 });
+
+app.get("/api/endorsements/viewer", handleEndorsementViewer);
+app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
+app.delete("/api/reviews/:id/endorsement", handleWithdrawEndorsement);
 
 async function verifyTurnstile(c: any, response: string, ip: string) {
   const secret = await readSecret(c.env.TURNSTILE_SECRET);
