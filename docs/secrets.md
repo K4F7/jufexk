@@ -1,42 +1,40 @@
 # 密钥托管
 
-Infisical 是站点密钥的权威来源。决策见 [ADR-0014](./adr/0014-infisical-secret-source.md)。Worker 运行时只读 wrangler 绑定，不调用 Infisical。仓库通过 `.infisical.json` 连接到组织 `sern` 的项目 `xk`（`xk-epjy`）。
+Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [ADR-0015](./adr/0015-cloudflare-secrets-store.md)。绑定在 `wrangler.jsonc` 的 `secrets_store_secrets`，读取时调用 `get()`。
+
+当前 store：`default_secrets_store`（`323163a091874b07aacdf5500bff903e`）。
 
 ## 必要密钥
 
-| Key | Infisical | 去向 | 状态 |
+| Key | 位置 | 去向 | 说明 |
 | --- | --- | --- | --- |
-| `ADMIN_PASSWORD` | `dev`/`prod` `/worker` | Worker Secret；运维脚本也读此名或 `JUFEXK_ADMIN_PASSWORD` | Infisical、Worker 与 GitHub `JUFEXK_ADMIN_PASSWORD` 已对齐 |
-| `IP_HASH_SECRET` | `dev`/`prod` `/worker` | Worker Secret | Infisical `dev`/`prod` 与 Worker 已对齐 |
-| `TURNSTILE_SECRET` | `dev`/`prod` `/worker` | Worker Secret | Infisical `dev`/`prod` 与 Worker 已对齐；Site Key 未变 |
-| `CLOUDFLARE_API_TOKEN` | `prod` `/ci` | GitHub Environment `production` | 仍只在 GitHub，现有 wrangler OAuth 不能轮换 |
-| `CLOUDFLARE_ACCOUNT_ID` | `prod` `/ci` | GitHub Environment `production` | 已写入 Infisical `prod /ci` |
+| `ADMIN_PASSWORD` | Secrets Store | Worker 绑定 | 运维脚本仍可读环境变量 `ADMIN_PASSWORD` 或 `JUFEXK_ADMIN_PASSWORD` |
+| `IP_HASH_SECRET` | Secrets Store | Worker 绑定 | 必须与管理员口令、Turnstile Secret 不同 |
+| `TURNSTILE_SECRET` | Secrets Store | Worker 绑定 | 与公开 `TURNSTILE_SITE_KEY` 成对 |
+| `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA `wrangler deploy` / D1 迁移 | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。需含 Workers Scripts Edit、D1 Edit、Account Settings Read、**Secrets Store Write** |
+| `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
 
-不要写入 Infisical：
+不要写入 Secrets Store：
 
-- `SITE_NAME`、`UNIVERSITY_NAME`、`TURNSTILE_SITE_KEY`、历史导入哈希、D1 `database_id`：仓库/`wrangler.jsonc` 公开配置
-- Vitest 中的 `test-password` / `test-ip-hash-secret`：仅测试夹具
-- `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`：运维参数，不是密钥
+- `SITE_NAME`、`UNIVERSITY_NAME`、`TURNSTILE_SITE_KEY`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置
+- Vitest 夹具口令：仅测试
+- `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`：运维参数
 
 ## 本机
 
-安装 Infisical CLI 后执行 `infisical login`。`.infisical.json` 已指定项目，无需再设 `INFISICAL_PROJECT_ID`：
+`.dev.vars` 仍是本机值的来源。写入 local Secrets Store：
 
 ```bash
-pnpm run secrets:pull
+pnpm run secrets:sync-local
 ```
 
-该命令从 `dev /worker` 写入不提交的 `.dev.vars`，不会写入 CI token。
-
-## 同步
-
-在 Infisical 控制台配置 Secret Sync，不要改 CI 去写 Worker Secret：
-
-1. `prod /worker` → Cloudflare Workers 脚本 `jufexk`（`ADMIN_PASSWORD`、`IP_HASH_SECRET`、`TURNSTILE_SECRET`）
-2. `prod /ci` → GitHub 仓库 Environment `production`（`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`）
-
-首次同步应关闭目标端删除，避免清掉尚未纳入 Infisical 的密钥。`CLOUDFLARE_API_TOKEN` 写入 Infisical 之前，不要对 GitHub `production` 开启覆盖同步。
+`wrangler dev` 读 local store，不会使用生产 secret。
 
 ## 轮换
 
-Worker 密钥先改 Infisical `prod /worker`，再写入 Cloudflare；`ADMIN_PASSWORD` 同时更新 GitHub `JUFEXK_ADMIN_PASSWORD`。`IP_HASH_SECRET` 轮换后，已落库的 IP HMAC 不再匹配，投稿频控和 30 天去重会重置。Turnstile 轮换可保留旧 secret 两小时宽限期。`CLOUDFLARE_API_TOKEN` 仍需在 Cloudflare 控制台新建后写入 GitHub 与 Infisical `prod /ci`。
+```bash
+pnpm exec wrangler secrets-store secret list 323163a091874b07aacdf5500bff903e --remote
+pnpm exec wrangler secrets-store secret update 323163a091874b07aacdf5500bff903e --secret-id <ID> --scopes workers --remote
+```
+
+更新 Secrets Store 后 Worker 绑定立即读到新值，不必重新 `wrangler secret put`。`IP_HASH_SECRET` 轮换后已落库的 IP HMAC 不再匹配。Turnstile 若在 Cloudflare 控制台轮换 widget secret，再把新值 `update` 进 Secrets Store。

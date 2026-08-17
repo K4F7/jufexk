@@ -4,13 +4,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-07-15",
   "compatibility_flags": ["nodejs_compat"],
-  "routes": [{ "pattern": "xk.sein.moe", "custom_domain": true }],
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
-  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -26,22 +19,4 @@
     "HISTORICAL_IMPORT_MANIFEST_SHA256": "96035445669d14f19dd469bf51161236f0a1010507c53f20e7f925fae0d82adf",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
   },
-  "secrets_store_secrets": [
-    {
-      "binding": "ADMIN_PASSWORD",
-      "store_id": "323163a091874b07aacdf5500bff903e",
-      "secret_name": "ADMIN_PASSWORD",
-    },
-    {
-      "binding": "IP_HASH_SECRET",
-      "store_id": "323163a091874b07aacdf5500bff903e",
-      "secret_name": "IP_HASH_SECRET",
-    },
-    {
-      "binding": "TURNSTILE_SECRET",
-      "store_id": "323163a091874b07aacdf5500bff903e",
-      "secret_name": "TURNSTILE_SECRET",
-    },
-  ],
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
 }

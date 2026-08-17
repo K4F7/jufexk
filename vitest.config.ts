@@ -7,7 +7,7 @@ export default defineConfig(async () => {
     define: { TEST_D1_MIGRATIONS: JSON.stringify(migrations) },
     plugins: [
       cloudflareTest({
-        wrangler: { configPath: "./wrangler.jsonc" },
+        wrangler: { configPath: "./wrangler.test.jsonc" },
         miniflare: {
           d1Databases: [
             "MIGRATION_DB",
