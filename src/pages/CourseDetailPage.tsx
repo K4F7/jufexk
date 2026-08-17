@@ -271,7 +271,6 @@ export function CourseDetailPage() {
       ) : (
         <PublicReviews
           rows={reviewFeed.reviews}
-          identity="teacher"
           total={selectedTeacher?.review_count ?? 0}
           hasMore={Boolean(reviewFeed.nextCursor)}
           isLoadingMore={reviewFeed.isLoadingMore}

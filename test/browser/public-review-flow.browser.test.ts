@@ -193,6 +193,10 @@ test("course detail gates reviews behind teacher selection", async ({ page }) =>
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(20);
+  // 课程×教师 流整流同属所选教师，条目不再重复教师身份「昵称」。
+  const feed = page.getByRole("list", { name: "评价列表" });
+  await expect(feed.getByRole("link")).toHaveCount(0);
+  await expect(feed.getByRole("listitem").first()).toContainText("匿名评价 1");
   await page.getByRole("button", { name: "继续加载" }).click();
   await expect(reviewItems(page)).toHaveCount(21);
   await expect(page.getByRole("button", { name: "继续加载" })).toHaveCount(0);
