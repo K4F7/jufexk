@@ -35,7 +35,7 @@
     "db:export-remote": "mkdir -p .local-data && wrangler d1 export jufexk --remote --output=.local-data/remote-export.sql -y",
     "db:import-remote-local": "python3 scripts/import-remote-export-local.py",
     "historical-import:production": "tsx scripts/historical-import/publish-production.ts",
-    "secrets:pull": "tsx scripts/secrets/pull-dev.ts"
+    "secrets:sync-local": "tsx scripts/secrets/sync-local.ts"
   },
   "dependencies": {
     "@heroui/react": "^3.2.4",

@@ -10,27 +10,25 @@ pnpm exec wrangler d1 migrations apply jufexk --local
 pnpm run dev
 ```
 
-管理员本地口令来自 Infisical `dev /worker`，用 `pnpm run secrets:pull` 写入不提交的 `.dev.vars`。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置，因此复用到其他高校时无需修改源码。密钥清单与轮换步骤见 `docs/secrets.md`。
+管理员本地口令放在不提交的 `.dev.vars`，再用 `pnpm run secrets:sync-local` 写入 local Secrets Store。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置，因此复用到其他高校时无需修改源码。密钥清单见 `docs/secrets.md`。
 
 ## 生产部署
 
-仓库已经包含真实 D1 `database_id` 和 `xk.sein.moe` Custom Domain 配置。密钥以 Infisical 为权威来源，再同步到 Cloudflare Worker Secrets；不要把口令、API Token 或 `.dev.vars` 提交到仓库。首次部署或应用迁移：
+仓库已经包含真实 D1 `database_id` 和 `xk.sein.moe` Custom Domain 配置。Worker 运行时密钥在 Cloudflare Secrets Store，不要把口令、API Token 或 `.dev.vars` 提交到仓库。首次部署或应用迁移：
 
 ```bash
 pnpm exec wrangler d1 migrations apply jufexk --remote
 pnpm run deploy
 ```
 
-`ADMIN_PASSWORD` 先在 Cloudflare 轮换，再写入 Infisical，不要把轮换前的生产口令导入仓库流程。
-
 ## GitHub Actions
 
-`.github/workflows/deploy.yml` 在 `main` 推送时依次执行类型检查、测试、构建、D1 迁移和 Worker 部署。工作流绑定 `production` Environment；建议在 GitHub 中配置必需审核人。仓库 `production` Environment 需有以下密钥，由 Infisical `prod /ci` 同步：
+`.github/workflows/deploy.yml` 在 `main` 推送时依次执行类型检查、测试、构建、D1 迁移和 Worker 部署。工作流绑定 `production` Environment；建议在 GitHub 中配置必需审核人。仓库 `production` Environment 只需：
 
-- `CLOUDFLARE_API_TOKEN`：具有 Workers Scripts Edit 与 D1 Edit 权限的 API Token。
+- `CLOUDFLARE_API_TOKEN`：Workers Scripts Edit、D1 Edit、Account Settings Read、Secrets Store Write。
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID。
 
-`ADMIN_PASSWORD`、`IP_HASH_SECRET` 与 `TURNSTILE_SECRET` 是 Worker Secret，由 Infisical 同步到 Cloudflare，不由 CI 写入。`IP_HASH_SECRET` 用于对来源 IP 做 HMAC 假名化，必须使用与管理员口令、Turnstile Secret 不同的随机值。
+`ADMIN_PASSWORD`、`IP_HASH_SECRET` 与 `TURNSTILE_SECRET` 在 Secrets Store，由 Worker 绑定读取，不由 CI 写入。`IP_HASH_SECRET` 用于对来源 IP 做 HMAC 假名化，必须使用与管理员口令、Turnstile Secret 不同的随机值。
 
 CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `pnpm exec wrangler d1 export`，并将备份保存到受限存储。
 
@@ -39,7 +37,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 投稿端已接入标准 Turnstile widget 与服务端 Siteverify。创建 Widget（域名包含 `xk.sein.moe`、`localhost`、`127.0.0.1`）后：
 
 1. 将公开 Site Key 配置为 `TURNSTILE_SITE_KEY` 普通变量；
-2. 将对应 Secret 写入 Infisical `prod /worker` 的 `TURNSTILE_SECRET`，由 Secret Sync 推送到 Worker；
+2. 将对应 Secret 写入 Secrets Store 的 `TURNSTILE_SECRET`；
 3. 重新部署。
 
 Site Key 与 Secret 同时存在时服务端才启用并强制验证。仅有 Site Key 时隐藏无效 widget，并使用蜜罐、同源校验、每 IP HMAC 假名每小时 5 次限制及 30 天重复投稿控制；仅有 Secret 时视为配置错误并拒绝公开写入。两者均未配置时也要求同源提交。

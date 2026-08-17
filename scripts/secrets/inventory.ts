@@ -1,6 +1,4 @@
-export const INFISICAL_ENVIRONMENTS = ["dev", "prod"] as const;
-export const WORKER_SECRET_PATH = "/worker";
-export const CI_SECRET_PATH = "/ci";
+export const SECRETS_STORE_ID = "323163a091874b07aacdf5500bff903e";
 
 export const WORKER_SECRETS = [
   "ADMIN_PASSWORD",
@@ -8,29 +6,9 @@ export const WORKER_SECRETS = [
   "TURNSTILE_SECRET",
 ] as const;
 
-export const REQUIRED_WORKER_SECRETS = [
-  "IP_HASH_SECRET",
-  "TURNSTILE_SECRET",
-] as const;
-
-export const PENDING_WORKER_SECRETS = ["ADMIN_PASSWORD"] as const;
-
-export const CI_SECRETS = [
+export const GITHUB_DEPLOY_SECRETS = [
   "CLOUDFLARE_API_TOKEN",
   "CLOUDFLARE_ACCOUNT_ID",
-] as const;
-
-export const PUBLIC_WRANGLER_VARS = [
-  "SITE_NAME",
-  "UNIVERSITY_NAME",
-  "TURNSTILE_SITE_KEY",
-  "HISTORICAL_IMPORT_ARTIFACT_SHA256",
-  "HISTORICAL_IMPORT_MANIFEST_SHA256",
-] as const;
-
-export const PUBLIC_REPO_CONFIG = [
-  ...PUBLIC_WRANGLER_VARS,
-  "database_id",
 ] as const;
 
 export type WorkerSecretName = (typeof WORKER_SECRETS)[number];
@@ -58,38 +36,12 @@ export function parseDotenv(text: string): Record<string, string> {
 export function selectWorkerDevVars(secrets: Record<string, string>) {
   const vars: Partial<Record<WorkerSecretName, string>> = {};
   for (const key of WORKER_SECRETS) {
-    const value = secrets[key];
-    if (value) vars[key] = value;
+    if (secrets[key]) vars[key] = secrets[key];
   }
   return {
     vars,
-    missing: WORKER_SECRETS.filter((key) => vars[key] === undefined),
-    missingRequired: REQUIRED_WORKER_SECRETS.filter((key) => vars[key] === undefined),
-    extra: Object.keys(secrets).filter(
-      (key) => !(WORKER_SECRETS as readonly string[]).includes(key),
-    ),
+    missing: WORKER_SECRETS.filter((key) => !vars[key]),
   };
-}
-
-export function mergeWorkerDevVars(
-  fromInfisical: Partial<Record<WorkerSecretName, string>>,
-  existing: Partial<Record<WorkerSecretName, string>>,
-) {
-  const vars: Partial<Record<WorkerSecretName, string>> = { ...fromInfisical };
-  for (const key of PENDING_WORKER_SECRETS) {
-    if (!vars[key] && existing[key]) vars[key] = existing[key];
-  }
-  return vars;
-}
-
-export function formatDevVars(vars: Partial<Record<WorkerSecretName, string>>) {
-  const missingRequired = REQUIRED_WORKER_SECRETS.filter((key) => !vars[key]);
-  if (missingRequired.length > 0) {
-    throw new Error(`缺少 Worker 密钥: ${missingRequired.join(", ")}`);
-  }
-  return `${WORKER_SECRETS.filter((key) => vars[key])
-    .map((key) => `${key}=${escapeDotenvValue(vars[key]!)}`)
-    .join("\n")}\n`;
 }
 
 function unquoteDotenvValue(value: string) {
@@ -100,9 +52,4 @@ function unquoteDotenvValue(value: string) {
     return value.slice(1, -1);
   }
   return value;
-}
-
-function escapeDotenvValue(value: string) {
-  if (!/[\s#"']/.test(value)) return value;
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }

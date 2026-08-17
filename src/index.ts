@@ -10,6 +10,7 @@ import {
   putBaselineChunk,
   readBoundedJson,
 } from "./catalog-baseline-import";
+import { readSecret, turnstileMode } from "./secrets";
 
 type Bindings = {
   DB: D1Database;
@@ -18,9 +19,9 @@ type Bindings = {
   UNIVERSITY_NAME: string;
   HISTORICAL_IMPORT_ARTIFACT_SHA256: string;
   HISTORICAL_IMPORT_MANIFEST_SHA256: string;
-  ADMIN_PASSWORD?: string;
-  IP_HASH_SECRET: string;
-  TURNSTILE_SECRET?: string;
+  ADMIN_PASSWORD?: string | { get(): Promise<string> };
+  IP_HASH_SECRET: string | { get(): Promise<string> };
+  TURNSTILE_SECRET?: string | { get(): Promise<string> };
   TURNSTILE_SITE_KEY?: string;
 };
 type Vars = {
@@ -325,17 +326,18 @@ app.use("/api/*", async (c, next) => {
   );
 });
 
-app.get("/api/config", async (c) =>
-  c.json({
+app.get("/api/config", async (c) => {
+  const turnstileSecret = await readSecret(c.env.TURNSTILE_SECRET);
+  return c.json({
     siteName: c.env.SITE_NAME,
     universityName: c.env.UNIVERSITY_NAME,
     admin: false,
     turnstileSiteKey:
-      c.env.TURNSTILE_SITE_KEY && c.env.TURNSTILE_SECRET
+      c.env.TURNSTILE_SITE_KEY && turnstileSecret
         ? c.env.TURNSTILE_SITE_KEY
         : "",
-  }),
-);
+  });
+});
 app.get("/api/courses", async (c) => {
   const { page, size } = pageArgs(c),
     search = clean(c.req.query("q"), 80),
@@ -588,23 +590,14 @@ app.get("/api/courses/:id/reviews", async (c) => {
   return c.json(page);
 });
 
-const turnstileMode = (
-  c: any,
-): "enabled" | "disabled" | "site-only" | "secret-only" => {
-  const hasSiteKey = Boolean(c.env.TURNSTILE_SITE_KEY);
-  const hasSecret = Boolean(c.env.TURNSTILE_SECRET);
-  if (hasSiteKey && hasSecret) return "enabled";
-  if (hasSiteKey) return "site-only";
-  if (hasSecret) return "secret-only";
-  return "disabled";
-};
 async function verifyTurnstile(c: any, response: string, ip: string) {
-  if (turnstileMode(c) !== "enabled")
-    return turnstileMode(c) !== "secret-only";
+  const secret = await readSecret(c.env.TURNSTILE_SECRET);
+  const mode = turnstileMode(c.env.TURNSTILE_SITE_KEY, secret);
+  if (mode !== "enabled") return mode !== "secret-only";
   if (!response) return false;
   try {
     const body = new URLSearchParams({
-      secret: c.env.TURNSTILE_SECRET,
+      secret,
       response,
       remoteip: ip,
     });
@@ -651,7 +644,10 @@ app.get("/api/offerings/:id", async (c) => {
 app.post("/api/reviews", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
   if (clean(b.website)) return c.json({ ok: true });
-  const captchaMode = turnstileMode(c);
+  const captchaMode = turnstileMode(
+    c.env.TURNSTILE_SITE_KEY,
+    await readSecret(c.env.TURNSTILE_SECRET),
+  );
   if (captchaMode === "secret-only")
     return fail(c, "人机验证配置异常", 503);
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
@@ -661,7 +657,7 @@ app.post("/api/reviews", async (c) => {
     teacherId = integer(b.teacherId),
     overall = rating(b.overall),
     ip = c.req.header("CF-Connecting-IP") || "unknown",
-    ipHash = await keyedDigest(ip, c.env.IP_HASH_SECRET);
+    ipHash = await keyedDigest(ip, await readSecret(c.env.IP_HASH_SECRET));
   if (
     rawOfferingId !== undefined &&
     rawOfferingId !== null &&
@@ -766,7 +762,10 @@ app.post("/api/reviews", async (c) => {
 app.post("/api/catalog-requests", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
   if (clean(b.website)) return c.json({ ok: true });
-  const captchaMode = turnstileMode(c);
+  const captchaMode = turnstileMode(
+    c.env.TURNSTILE_SITE_KEY,
+    await readSecret(c.env.TURNSTILE_SECRET),
+  );
   if (captchaMode === "secret-only")
     return fail(c, "人机验证配置异常", 503);
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
@@ -777,7 +776,7 @@ app.post("/api/catalog-requests", async (c) => {
     teacherSourceLabel = clean(b.teacherSourceLabel, 120),
     department = clean(b.department, 80),
     ip = c.req.header("CF-Connecting-IP") || "unknown",
-    ipHash = await keyedDigest(ip, c.env.IP_HASH_SECRET);
+    ipHash = await keyedDigest(ip, await readSecret(c.env.IP_HASH_SECRET));
   if (!(await verifyTurnstile(c, clean(b.turnstileToken, 2048), ip)))
     return fail(c, "人机验证失败，请重试", 403);
   if (!["course", "teacher"].includes(kind))
@@ -874,13 +873,14 @@ app.post("/api/admin/login", async (c) => {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
   const ipHash = await keyedDigest(
     c.req.header("CF-Connecting-IP") || "unknown",
-    c.env.IP_HASH_SECRET,
+    await readSecret(c.env.IP_HASH_SECRET),
   );
   if (!(await takeRateLimit(c.env.DB, `admin-login:${ipHash}`, 900, 8)))
     return fail(c, "登录尝试过多，请稍后再试", 429);
   const b = await c.req.json<{ password?: string }>();
+  const adminPassword = await readSecret(c.env.ADMIN_PASSWORD);
   const ok =
-    !!c.env.ADMIN_PASSWORD && clean(b.password, 200) === c.env.ADMIN_PASSWORD;
+    !!adminPassword && clean(b.password, 200) === adminPassword;
   await c.env.DB.prepare(
     "INSERT INTO admin_login_attempts(ip_hash,success) VALUES(?,?)",
   )
