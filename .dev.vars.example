@@ -1,0 +1,6 @@
+# Infisical env=dev path=/worker
+# pnpm run secrets:pull
+# ADMIN_PASSWORD 须在 Cloudflare 轮换后再写入 Infisical
+ADMIN_PASSWORD=
+IP_HASH_SECRET=
+TURNSTILE_SECRET=

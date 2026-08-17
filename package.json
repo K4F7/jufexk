@@ -13,7 +13,7 @@
     "prototype": "vite",
     "prototype:course-reviews": "vite --config prototypes/course-review-ui/vite.config.ts --host 127.0.0.1",
     "build": "vite build",
-    "test": "vitest run && vitest run --config vitest.legacy-evidence.config.ts && vitest run --config vitest.catalog-baseline.config.ts",
+    "test": "vitest run && vitest run --config vitest.legacy-evidence.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
     "test:legacy-evidence": "vitest run --config vitest.legacy-evidence.config.ts",
     "test:catalog-baseline": "vitest run --config vitest.catalog-baseline.config.ts",
     "test:browser": "playwright test",
@@ -34,7 +34,8 @@
     "db:seed-preview": "wrangler d1 execute jufexk --local --file=scripts/prototype-local-seed.sql",
     "db:export-remote": "mkdir -p .local-data && wrangler d1 export jufexk --remote --output=.local-data/remote-export.sql -y",
     "db:import-remote-local": "python3 scripts/import-remote-export-local.py",
-    "historical-import:production": "tsx scripts/historical-import/publish-production.ts"
+    "historical-import:production": "tsx scripts/historical-import/publish-production.ts",
+    "secrets:pull": "tsx scripts/secrets/pull-dev.ts"
   },
   "dependencies": {
     "@heroui/react": "^3.2.4",
