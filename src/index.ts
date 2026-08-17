@@ -19,7 +19,12 @@ import {
 } from "./catalog-baseline-import";
 import {
   publicCourseCategory,
+  publicCourseDisplayName,
   publicCourseVisibleSql,
+  publicPeCanonicalCourseSql,
+  publicPeFamilySearchSql,
+  publicPeResolveCanonicalIdSql,
+  publicPeSkillFamilySql,
   publicSportsMatchSql,
 } from "./lib/public-course-presentation";
 import {
@@ -203,21 +208,32 @@ const token = () =>
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 const fail = (c: any, error: string, status = 400) => c.json({ error }, status);
+const publicCourseRawName = (row: {
+  name?: unknown;
+  course_name?: unknown;
+}) =>
+  typeof row.name === "string"
+    ? row.name
+    : typeof row.course_name === "string"
+      ? row.course_name
+      : "";
 const withPublicCourseCategory = <
   T extends { category?: unknown; name?: unknown; course_name?: unknown },
 >(
   row: T,
-) => ({
-  ...row,
-  category: publicCourseCategory(
-    typeof row.name === "string"
-      ? row.name
-      : typeof row.course_name === "string"
-        ? row.course_name
-        : "",
-    typeof row.category === "string" ? row.category : "",
-  ),
-});
+) => {
+  const rawName = publicCourseRawName(row);
+  const displayName = publicCourseDisplayName(rawName);
+  return {
+    ...row,
+    ...(typeof row.name === "string" ? { name: displayName } : {}),
+    ...(typeof row.course_name === "string" ? { course_name: displayName } : {}),
+    category: publicCourseCategory(
+      rawName,
+      typeof row.category === "string" ? row.category : "",
+    ),
+  };
+};
 const pageArgs = (c: any) => ({
   page: Math.max(1, integer(c.req.query("page")) || 1),
   size: Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20)),
@@ -434,7 +450,7 @@ app.get("/api/courses", async (c) => {
     teacherId = integer(c.req.query("teacherId"));
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
-  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?))`;
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?) OR ${publicPeFamilySearchSql("c")})`;
   const args = [
     cat,
     department,
@@ -446,8 +462,12 @@ app.get("/api/courses", async (c) => {
     q,
     q,
     q,
+    q,
+    q,
+    q,
   ];
   const searchRankArgs = [
+    search,
     search,
     search,
     search,
@@ -480,7 +500,7 @@ app.get("/api/courses", async (c) => {
      GROUP BY c.id
      ORDER BY CASE
        WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? THEN 0
+       WHEN c.name=? OR c.code=? OR (${publicPeSkillFamilySql("c")})=? THEN 0
        WHEN c.name LIKE ? OR c.code LIKE ? THEN 1
        WHEN c.department=? THEN 2
        WHEN c.department LIKE ? THEN 3
@@ -516,7 +536,7 @@ app.get("/api/teachers", async (c) => {
     .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
     `SELECT t.*,
-       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
+       (SELECT COUNT(DISTINCT ${publicPeResolveCanonicalIdSql("c")}) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
        COALESCE(teacher_review_counts.review_count,0) review_count,
        (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
      FROM teachers t
@@ -547,7 +567,7 @@ app.get("/api/teachers/:id", async (c) => {
   const id = integer(c.req.param("id"));
   const teacher = await c.env.DB.prepare(
     `SELECT t.*,
-       (SELECT COUNT(DISTINCT ct.course_id) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
+       (SELECT COUNT(DISTINCT ${publicPeResolveCanonicalIdSql("c")}) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
        (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) review_count,
        (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
      FROM teachers t WHERE t.id=?`,
@@ -562,9 +582,11 @@ app.get("/api/teachers/:id", async (c) => {
       `SELECT c.*,COALESCE(visible_counts.review_count,0) review_count,
          (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${publicReviewBinding}) rating
        FROM course_teachers ct
-       JOIN courses c ON c.id=ct.course_id
+       JOIN courses taught ON taught.id=ct.course_id
+       JOIN courses c ON c.id=${publicPeResolveCanonicalIdSql("taught")}
        LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=c.id AND visible_counts.teacher_id=ct.teacher_id
-       WHERE ct.teacher_id=? AND ${publicCourseVisibleSql("c")}
+       WHERE ct.teacher_id=? AND ${publicCourseVisibleSql("taught")} AND ${publicCourseVisibleSql("c")}
+       GROUP BY c.id
        ORDER BY review_count DESC,c.name,c.id`,
     )
       .bind(id, id)
@@ -598,8 +620,8 @@ app.get("/api/courses/options", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const q = `%${search}%`;
-  const where = `${publicCourseVisibleSql("c")} AND (?='' OR c.name LIKE ? OR c.code LIKE ? OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (search_t.name LIKE ? OR search_t.department LIKE ?)))`;
-  const args = [search, q, q, q, q];
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")} AND (?='' OR c.name LIKE ? OR c.code LIKE ? OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (search_t.name LIKE ? OR search_t.department LIKE ?)) OR ${publicPeFamilySearchSql("c")})`;
+  const args = [search, q, q, q, q, q, q, q];
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM courses c WHERE ${where}`,
   )
@@ -634,14 +656,20 @@ app.get("/api/courses/:id", async (c) => {
   const teachers = (
     await c.env.DB.prepare(
       `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count,
-         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=ct.course_id AND r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
+         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=? AND r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
        FROM teachers t
        JOIN course_teachers ct ON ct.teacher_id=t.id
-       LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=ct.course_id AND visible_counts.teacher_id=t.id
-       WHERE ct.course_id=?
+       JOIN courses taught ON taught.id=ct.course_id
+       JOIN courses requested ON requested.id=?
+       LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=requested.id AND visible_counts.teacher_id=t.id
+       WHERE ${publicCourseVisibleSql("taught")}
+         AND (taught.id=requested.id
+           OR ((${publicPeSkillFamilySql("taught")}) IS NOT NULL
+             AND (${publicPeSkillFamilySql("taught")}) = (${publicPeSkillFamilySql("requested")})))
+       GROUP BY t.id
        ORDER BY review_count DESC,t.name,t.id`,
     )
-    .bind(id)
+    .bind(id, id)
     .all()
   ).results;
   const nameVariants = (

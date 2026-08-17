@@ -3,7 +3,7 @@ import {
   type ReviewTemplateKind,
 } from "./review-template-kind";
 
-/** Official KINGOSOFT umbrella PE titles. Hidden from public browse. */
+/** 教务伞形课名. Hidden from public browse. */
 export const UMBRELLA_PE_COURSE_NAMES = [
   "体育1",
   "体育2",
@@ -15,18 +15,29 @@ export const UMBRELLA_PE_COURSE_NAMES = [
   "体育II（留）",
 ] as const;
 
+/**
+ * Public PE skill families. Numbered / 专项理论与实践 siblings collapse
+ * to one 公开展示课名. 健身教练 is the catalog name for historical 健美操.
+ */
+export const PE_SKILL_FAMILIES = [
+  { label: "健美操", keys: ["健美操", "健身教练"] },
+  { label: "击剑", keys: ["击剑"] },
+  { label: "篮球", keys: ["篮球"] },
+  { label: "网球", keys: ["网球"] },
+  { label: "羽毛球", keys: ["羽毛球"] },
+  { label: "排球", keys: ["排球"] },
+  { label: "乒乓球", keys: ["乒乓球"] },
+  { label: "足球", keys: ["足球"] },
+  { label: "瑜伽", keys: ["瑜伽"] },
+  { label: "武术", keys: ["武术"] },
+] as const;
+
 /** Skill-style PE titles shown as 体育课, not 普通课程. */
 export const PUBLIC_SPORTS_NAME_PREFIXES = [
-  "网球",
-  "击剑",
-  "羽毛球",
-  "排球",
-  "篮球",
-  "健身教练",
-  "健美操",
-  "瑜伽",
-  "武术",
+  ...new Set(PE_SKILL_FAMILIES.flatMap((family) => family.keys)),
 ] as const;
+
+const SKILL_NAME_REST = /^(专项理论与实践)?\d*$/;
 
 function sqlStringLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
@@ -38,12 +49,30 @@ export function isUmbrellaPeCourseName(name?: string | null): boolean {
   return (UMBRELLA_PE_COURSE_NAMES as readonly string[]).includes(trimmed);
 }
 
-export function isPublicSportsSkillName(name?: string | null): boolean {
+export function publicPeSkillLabel(name?: string | null): string | null {
   const trimmed = name?.trim() ?? "";
-  if (!trimmed || isUmbrellaPeCourseName(trimmed)) return false;
-  return PUBLIC_SPORTS_NAME_PREFIXES.some(
-    (prefix) => trimmed === prefix || trimmed.startsWith(prefix),
-  );
+  if (!trimmed || isUmbrellaPeCourseName(trimmed)) return null;
+  const keys = PE_SKILL_FAMILIES.flatMap((family) =>
+    family.keys.map((key) => ({ key, label: family.label })),
+  ).sort((left, right) => right.key.length - left.key.length);
+  for (const { key, label } of keys) {
+    if (trimmed === key) return label;
+    if (
+      trimmed.startsWith(key) &&
+      SKILL_NAME_REST.test(trimmed.slice(key.length))
+    )
+      return label;
+  }
+  return null;
+}
+
+export function isPublicSportsSkillName(name?: string | null): boolean {
+  return publicPeSkillLabel(name) !== null;
+}
+
+export function publicCourseDisplayName(name?: string | null): string {
+  const trimmed = name?.trim() ?? "";
+  return publicPeSkillLabel(trimmed) ?? trimmed;
 }
 
 export function publicCourseCategory(
@@ -57,6 +86,77 @@ export function publicCourseCategory(
 export function publicCourseVisibleSql(alias = "c"): string {
   const names = UMBRELLA_PE_COURSE_NAMES.map(sqlStringLiteral).join(",");
   return `${alias}.name NOT IN (${names})`;
+}
+
+export function publicPeSkillFamilySql(alias = "c"): string {
+  const branches = PE_SKILL_FAMILIES.map((family) => {
+    const conds = family.keys.flatMap((key) => [
+      `${alias}.name = ${sqlStringLiteral(key)}`,
+      `${alias}.name GLOB ${sqlStringLiteral(`${key}[0-9]*`)}`,
+      `${alias}.name LIKE ${sqlStringLiteral(`${key}专项理论与实践%`)}`,
+    ]);
+    return `WHEN ${conds.join(" OR ")} THEN ${sqlStringLiteral(family.label)}`;
+  });
+  return `CASE ${branches.join(" ")} ELSE NULL END`;
+}
+
+function publicPeHasTextReviewSql(alias: string): string {
+  return `EXISTS(
+    SELECT 1 FROM public_historical_reviews phr WHERE phr.course_id=${alias}.id
+    UNION ALL
+    SELECT 1 FROM legacy_reviews lr
+     WHERE lr.course_id=${alias}.id AND lr.status='approved'
+       AND trim(COALESCE(lr.comment,''))<>''
+    UNION ALL
+    SELECT 1 FROM reviews r
+     WHERE r.course_id=${alias}.id AND r.status='approved'
+       AND trim(COALESCE(r.comment,''))<>''
+  )`;
+}
+
+function publicPeCanonicalOrderSql(alias: string): string {
+  const unnumbered = PE_SKILL_FAMILIES.flatMap((family) => family.keys)
+    .map((key) => `${alias}.name = ${sqlStringLiteral(key)}`)
+    .join(" OR ");
+  const firstNumbered = PE_SKILL_FAMILIES.flatMap((family) => family.keys)
+    .flatMap((key) => [
+      `${alias}.name = ${sqlStringLiteral(`${key}1`)}`,
+      `${alias}.name = ${sqlStringLiteral(`${key}专项理论与实践1`)}`,
+    ])
+    .join(" OR ");
+  return `CASE WHEN ${publicPeHasTextReviewSql(alias)} THEN 0 ELSE 1 END,
+      CASE
+        WHEN ${unnumbered} THEN 0
+        WHEN ${firstNumbered} THEN 1
+        ELSE 2
+      END,
+      ${alias}.id`;
+}
+
+export function publicPeResolveCanonicalIdSql(taughtAlias: string): string {
+  const taughtFamily = publicPeSkillFamilySql(taughtAlias);
+  const memberFamily = publicPeSkillFamilySql("pe_family");
+  return `COALESCE((
+    SELECT pe_family.id FROM courses pe_family
+    WHERE (${taughtFamily}) IS NOT NULL AND (${memberFamily}) = (${taughtFamily})
+    ORDER BY ${publicPeCanonicalOrderSql("pe_family")}
+    LIMIT 1
+  ), ${taughtAlias}.id)`;
+}
+
+export function publicPeCanonicalCourseSql(alias = "c"): string {
+  return `${alias}.id = ${publicPeResolveCanonicalIdSql(alias)}`;
+}
+
+export function publicPeFamilySearchSql(alias = "c"): string {
+  const family = publicPeSkillFamilySql(alias);
+  const hitFamily = publicPeSkillFamilySql("pe_hit");
+  return `((${family}) LIKE ? OR EXISTS(
+    SELECT 1 FROM courses pe_hit
+    WHERE (${family}) IS NOT NULL
+      AND (${hitFamily}) = (${family})
+      AND (pe_hit.name LIKE ? OR pe_hit.code LIKE ?)
+  ))`;
 }
 
 export function publicSportsMatchSql(alias = "c"): string {

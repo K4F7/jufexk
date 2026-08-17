@@ -144,11 +144,17 @@ describe("review template kind API contract", () => {
           (18107,'1005000671','体育4','sports'),
           (18108,'1005000681','体育Ⅰ（留）','sports'),
           (18103,'1005002272','网球','general'),
+          (18115,'1005001552','网球2','general'),
           (18104,'1005002536','击剑专项理论与实践1','general'),
+          (18110,'1005002546','击剑专项理论与实践2','general'),
+          (18111,'1005000472','篮球','general'),
+          (18112,'1005000492','篮球2','general'),
+          (18113,'1005000242','健身教练2','general'),
+          (18114,'1005002192','健身教练','general'),
           (18105,'1004001943','会计学','general')`,
       ),
       env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(18101,18101),(18102,18101),(18103,18101),(18104,18101),(18105,18101),(18106,18101),(18107,18101),(18108,18101)",
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(18101,18101),(18102,18101),(18103,18101),(18104,18101),(18105,18101),(18106,18101),(18107,18101),(18108,18101),(18110,18101),(18111,18101),(18112,18101),(18113,18101),(18114,18101),(18115,18101)",
       ),
     ]);
 
@@ -180,8 +186,16 @@ describe("review template kind API contract", () => {
     expect(sports.status).toBe(200);
     const sportsNames = sportsBody.items.map((item) => item.name);
     expect(sportsNames).toContain("网球");
-    expect(sportsNames).toContain("击剑专项理论与实践1");
+    expect(sportsNames).toContain("击剑");
+    expect(sportsNames).toContain("篮球");
+    expect(sportsNames).toContain("健美操");
     expect(sportsNames).toContain("测试体育课");
+    expect(sportsNames).not.toContain("击剑专项理论与实践1");
+    expect(sportsNames).not.toContain("击剑专项理论与实践2");
+    expect(sportsNames).not.toContain("网球2");
+    expect(sportsNames).not.toContain("篮球2");
+    expect(sportsNames).not.toContain("健身教练");
+    expect(sportsNames).not.toContain("健身教练2");
     for (const name of hiddenNames) expect(sportsNames).not.toContain(name);
     expect(sportsNames).not.toContain("会计学");
     expect(
@@ -196,6 +210,24 @@ describe("review template kind API contract", () => {
     for (const name of hiddenNames)
       expect(optionsBody.items.map((item) => item.name)).not.toContain(name);
 
+    const fencingSearch = await SELF.fetch(
+      `${origin}/api/courses?q=${encodeURIComponent("击剑专项理论与实践2")}`,
+    );
+    const fencingSearchBody = await fencingSearch.json<{
+      items: Array<{ name: string }>;
+    }>();
+    expect(fencingSearch.status).toBe(200);
+    expect(fencingSearchBody.items.map((item) => item.name)).toEqual(["击剑"]);
+
+    const aerobicsSearch = await SELF.fetch(
+      `${origin}/api/courses?q=${encodeURIComponent("健美操")}`,
+    );
+    const aerobicsSearchBody = await aerobicsSearch.json<{
+      items: Array<{ name: string }>;
+    }>();
+    expect(aerobicsSearch.status).toBe(200);
+    expect(aerobicsSearchBody.items.map((item) => item.name)).toContain("健美操");
+
     const tennis = await SELF.fetch(`${origin}/api/courses/18103`);
     const tennisBody = await tennis.json<{
       course: { name: string; category: string };
@@ -207,10 +239,33 @@ describe("review template kind API contract", () => {
     });
     expect(categoryLabel(tennisBody.course.category)).toBe("体育课");
 
+    const fencing = await SELF.fetch(`${origin}/api/courses/18104`);
+    const fencingBody = await fencing.json<{
+      course: { name: string; category: string };
+    }>();
+    expect(fencing.status).toBe(200);
+    expect(fencingBody.course).toMatchObject({
+      name: "击剑",
+      category: "sports",
+    });
+
+    const aerobics = await SELF.fetch(`${origin}/api/courses/18114`);
+    const aerobicsBody = await aerobics.json<{
+      course: { name: string; category: string };
+    }>();
+    expect(aerobics.status).toBe(200);
+    expect(aerobicsBody.course).toMatchObject({
+      name: "健美操",
+      category: "sports",
+    });
+
     const stored = await env.DB.prepare(
-      "SELECT category FROM courses WHERE id=18103",
-    ).first<{ category: string }>();
-    expect(stored?.category).toBe("general");
+      "SELECT name,category FROM courses WHERE id IN (18104,18114) ORDER BY id",
+    ).all<{ name: string; category: string }>();
+    expect(stored.results).toEqual([
+      { name: "击剑专项理论与实践1", category: "general" },
+      { name: "健身教练", category: "general" },
+    ]);
 
     const admin = await SELF.fetch(`${origin}/api/admin/courses`, {
       headers: await login(),
@@ -223,6 +278,14 @@ describe("review template kind API contract", () => {
       name: "网球",
       category: "general",
     });
+    expect(adminBody.find((course) => course.id === 18104)).toMatchObject({
+      name: "击剑专项理论与实践1",
+      category: "general",
+    });
+    expect(adminBody.find((course) => course.id === 18114)).toMatchObject({
+      name: "健身教练",
+      category: "general",
+    });
 
     const teacher = await SELF.fetch(`${origin}/api/teachers/18101`);
     const teacherBody = await teacher.json<{
@@ -232,17 +295,21 @@ describe("review template kind API contract", () => {
     expect(teacher.status).toBe(200);
     expect(teacherBody.courses.map((course) => course.name)).toEqual([
       "会计学",
-      "击剑专项理论与实践1",
+      "健美操",
+      "击剑",
+      "篮球",
       "网球",
     ]);
-    expect(teacherBody.teacher.course_count).toBe(3);
+    expect(teacherBody.teacher.course_count).toBe(5);
     expect(
       Object.fromEntries(
         teacherBody.courses.map((course) => [course.name, course.category]),
       ),
     ).toMatchObject({
       网球: "sports",
-      击剑专项理论与实践1: "sports",
+      击剑: "sports",
+      篮球: "sports",
+      健美操: "sports",
       会计学: "general",
     });
   });
