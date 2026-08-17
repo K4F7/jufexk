@@ -5,6 +5,7 @@
 [![React](https://img.shields.io/badge/React-19-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?logo=cloudflareworkers&logoColor=white)](https://workers.cloudflare.com/)
 [![pnpm](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 江西财经大学课程—教师评价站（站内名称「江财选课参考」）。评价必须绑定课程的具体任课教师，公开内容均经管理员人工审核后匿名展示。
 
@@ -302,4 +303,4 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 
 ## 许可证
 
-本仓库为私有项目，暂未选择开源许可证；未经授权不得复制、分发或用于其他用途。
+本项目采用 [MIT License](./LICENSE)。
