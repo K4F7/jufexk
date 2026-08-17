@@ -1,4 +1,4 @@
-import { Button } from "@heroui/react";
+import { buttonVariants, Link } from "@heroui/react";
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
 import type { SiteConfig } from "../lib/types";
@@ -37,7 +37,7 @@ function navSelectedKey(pathname: string): string {
 }
 
 /**
- * Production shell — visually frozen: left-cluster + HeroUI Button nav (prototype C).
+ * Production shell — visually frozen: left-cluster + button-styled Link nav (prototype C).
  * Brand wordmark · Button secondary/ghost 课程/教师 · university + ThemeToggle.
  */
 function DefaultShell({
@@ -67,11 +67,27 @@ function DefaultShell({
             {links.map((link) => {
               const active = selectedKey === link.id;
               return (
-                <NavLink key={link.id} to={link.to} className="no-underline">
-                  <Button size="sm" variant={active ? "secondary" : "ghost"}>
-                    {link.label}
-                  </Button>
-                </NavLink>
+                <Link
+                  key={link.id}
+                  className={`${buttonVariants({
+                    size: "sm",
+                    variant: active ? "secondary" : "ghost",
+                  })} no-underline`}
+                  href={link.to}
+                  render={(domProps) => (
+                    <NavLink
+                      {...(domProps as object)}
+                      className={
+                        typeof domProps.className === "string"
+                          ? domProps.className
+                          : undefined
+                      }
+                      to={link.to}
+                    />
+                  )}
+                >
+                  {link.label}
+                </Link>
               );
             })}
           </nav>
