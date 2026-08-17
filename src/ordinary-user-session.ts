@@ -1,21 +1,34 @@
 import type { Context } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
-import { readCampusJwt } from "./campus-jwt";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import {
+  CAMPUS_JWT_COOKIE,
+  readCampusJwt,
+  verifyCampusJwtHs256,
+} from "./campus-jwt";
+import {
+  AUTH_PROVIDER_AUTHBRIDGE,
+  campusIdentitySubject,
+  resolveOrCreateIdentityUser,
+} from "./ordinary-user-identity";
+import { readSecret } from "./secrets";
 
 export const ORDINARY_USER_CSRF_COOKIE = "jufexk_user_csrf";
 export const ORDINARY_USER_ID_HEADER = "X-Jufexk-Ordinary-User";
 export const ORDINARY_USER_MAC_HEADER = "X-Jufexk-Ordinary-User-Mac";
 export const LOGIN_PATH = "/login";
 export const LOGOUT_PATH = "/logout";
+export const USER_SESSION_PATH = "/api/user/session";
+export const USER_LOGOUT_PATH = "/api/user/logout";
 
 /**
  * Campus JWT issued after JXUFE CAS, via Mine-JUFE/AuthBridge.
  * Public contract (no local AuthBridge source in this repo):
  * - login: GET {authbridge}/login?appid=…&mode=callback
  * - callback POST field: `token` (HS256, per-app key; optional AES/ECC wrap)
- * - verify on the Worker: signature, `exp`, `aud`, and a stable `sub`
+ * - verify on the Worker: signature, `exp`, `aud`, and a stable subject
+ * - AuthBridge `sub` is ciphertext when `enc=aes`; decrypt then hash
  * - do not trust decode-only payload; do not log the raw token
- * Production verifier stays closed until this app is on the AuthBridge whitelist.
+ * AuthBridge callback stays closed until this app is on the school whitelist.
  * @see https://github.com/Mine-JUFE/AuthBridge
  */
 export type OrdinaryUserStatus =
@@ -27,6 +40,13 @@ export type OrdinaryUserStatus =
 export type OrdinaryUser = {
   id: string;
   status: OrdinaryUserStatus;
+};
+
+export type OrdinaryUserSession = {
+  authenticated: boolean;
+  csrfToken?: string;
+  loginPath: string;
+  logoutPath: string;
 };
 
 const hex = (bytes: ArrayBuffer) =>
@@ -63,6 +83,22 @@ const timingSafeEqualHex = (left: string, right: string) => {
   return diff === 0;
 };
 
+const guestSession = (): OrdinaryUserSession => ({
+  authenticated: false,
+  loginPath: LOGIN_PATH,
+  logoutPath: LOGOUT_PATH,
+});
+
+const originOk = (c: Context) => {
+  const origin = c.req.header("Origin");
+  return origin === new URL(c.req.url).origin;
+};
+
+const randomToken = () =>
+  [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+
 async function loadOrCreateUser(
   db: D1Database,
   userId: string,
@@ -79,23 +115,57 @@ async function loadOrCreateUser(
   return { id: userId, status: "active" };
 }
 
+function campusSecrets(env: {
+  CAMPUS_JWT_SECRET?: string | { get(): Promise<string> };
+  CAMPUS_JWT_AUD?: string;
+  CAMPUS_JWT_AES_KEY?: string | { get(): Promise<string> };
+  CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
+}) {
+  return {
+    jwtSecret: env.CAMPUS_JWT_SECRET,
+    audience: typeof env.CAMPUS_JWT_AUD === "string" ? env.CAMPUS_JWT_AUD : "",
+    aesKey: env.CAMPUS_JWT_AES_KEY,
+    identitySecret: env.CAMPUS_IDENTITY_SECRET,
+  };
+}
+
 /**
- * Campus JWT stays closed until AuthBridge whitelists this app.
- * Always returns null so an unverified token cannot mint an ordinary user.
+ * Verify a campus AuthBridge JWT and map it to a stable users.id.
+ * Encrypted `sub` is decrypted then hashed; raw campus handles never persist.
+ * Missing secrets, bad signatures, and `enc=ecc` fail closed.
  */
 export async function resolveCampusJwt(
   c: Context,
 ): Promise<OrdinaryUser | null> {
-  void readCampusJwt(c);
-  return null;
+  const token = readCampusJwt(c);
+  if (!token) return null;
+  const secrets = campusSecrets(c.env);
+  const jwtSecret = await readSecret(secrets.jwtSecret);
+  const identitySecret = await readSecret(secrets.identitySecret);
+  if (!jwtSecret || !identitySecret || !secrets.audience) return null;
+  const claims = await verifyCampusJwtHs256(
+    token,
+    jwtSecret,
+    secrets.audience,
+  );
+  if (!claims) return null;
+  const subject = await campusIdentitySubject(claims, {
+    identitySecret,
+    aesKeyHex: await readSecret(secrets.aesKey),
+  });
+  if (!subject) return null;
+  return resolveOrCreateIdentityUser(c.env.DB, {
+    provider: AUTH_PROVIDER_AUTHBRIDGE,
+    issuer: claims.aud || AUTH_PROVIDER_AUTHBRIDGE,
+    subject,
+  });
 }
 
 /**
  * Session boundary for ordinary-user writes.
- * Production accepts a campus AuthBridge JWT once the verifier is wired.
- * Until then this resolver only accepts a signed test proof of `users.id`
- * when the test secret is bound. Admin cookies, IP hashes and submitter
- * hashes never authenticate here. Email OTP / Access are not used.
+ * Guests stay anonymous. Campus JWT or the signed test proof of a
+ * `users.id` can authenticate; admin cookies, IP hashes and submitter
+ * hashes never authenticate here.
  */
 export async function resolveOrdinaryUser(
   c: Context,
@@ -137,6 +207,41 @@ export function issueOrdinaryUserCsrf(c: Context, token: string) {
   return csrf;
 }
 
+export function clearOrdinaryUserCookies(c: Context) {
+  deleteCookie(c, CAMPUS_JWT_COOKIE, { path: "/" });
+  deleteCookie(c, ORDINARY_USER_CSRF_COOKIE, { path: "/" });
+}
+
 export function canOrdinaryUserWrite(user: OrdinaryUser) {
   return user.status === "active";
+}
+
+export async function ordinaryUserSessionPayload(
+  c: Context,
+): Promise<OrdinaryUserSession> {
+  const user = await resolveOrdinaryUser(c);
+  if (!user || !canOrdinaryUserWrite(user)) return guestSession();
+  return {
+    authenticated: true,
+    csrfToken: issueOrdinaryUserCsrf(c, randomToken()),
+    loginPath: LOGIN_PATH,
+    logoutPath: LOGOUT_PATH,
+  };
+}
+
+export async function handleOrdinaryUserSession(c: Context) {
+  return c.json(await ordinaryUserSessionPayload(c));
+}
+
+export async function handleOrdinaryUserLogout(c: Context) {
+  const user = await resolveOrdinaryUser(c);
+  if (
+    user &&
+    canOrdinaryUserWrite(user) &&
+    (!originOk(c) || !ordinaryUserCsrfOk(c))
+  ) {
+    return c.json({ error: "安全校验失败，请刷新后重试" }, 403);
+  }
+  clearOrdinaryUserCookies(c);
+  return c.json({ ok: true, ...guestSession() });
 }

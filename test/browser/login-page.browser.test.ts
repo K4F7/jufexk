@@ -68,7 +68,7 @@ test("direct visit shows the honest status and a way back to the catalog", async
 }) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
-  await expect(page.getByText("校内邮箱登录尚未开放")).toBeVisible();
+  await expect(page.getByText("校园 JWT 登录尚未开放")).toBeVisible();
   await expect(page.getByText("接入状态：未开放。")).toBeVisible();
 
   const back = page.getByRole("link", { name: "返回继续浏览" });

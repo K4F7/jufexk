@@ -41,16 +41,17 @@ export function LoginPage() {
         <Card.Header>
           <Card.Title id="login-heading">普通用户登录</Card.Title>
           <Card.Description>
-            登录使用江西财经大学校内邮箱，取得普通用户会话后即可投稿或认可任课评价。公开课程、教师和评价页面无需登录，可继续匿名浏览。
+            大多数访问者是游客，课程、教师和公开评价可直接浏览。只有投稿或认可时才需要校园
+            JWT 普通用户会话；管理员后台使用单独的口令登录。
           </Card.Description>
         </Card.Header>
         <Card.Content>
           <Alert status="warning">
             <Alert.Indicator />
             <Alert.Content>
-              <Alert.Title>校内邮箱登录尚未开放</Alert.Title>
+              <Alert.Title>校园 JWT 登录尚未开放</Alert.Title>
               <Alert.Description>
-                学校认证服务还未放行本站，开放前无法登录，也不需要任何操作。
+                已按 AuthBridge 预留 callback 槽位，但现在不会跳转或请求校方认证服务。
                 {campusAuth && !campusAuth.enabled
                   ? " 接入状态：未开放。"
                   : null}

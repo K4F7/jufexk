@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAuthBridgeLoginUrl,
   campusJwtLive,
+  decryptAuthBridgeAesSubject,
   verifyCampusJwtHs256,
 } from "../src/campus-jwt";
 
@@ -88,6 +89,58 @@ describe("campus AuthBridge placeholder", () => {
         claims: ["sub", "exp", "aud", "enc"],
       },
     });
+  });
+
+  it("rejects expired tokens and future nbf", async () => {
+    const secret = "local-only-test-key";
+    const expired = await signHs256(
+      { sub: "campus-user-1", aud: "jufexk", exp: Math.floor(Date.now() / 1000) - 30 },
+      secret,
+    );
+    const notYet = await signHs256(
+      {
+        sub: "campus-user-1",
+        aud: "jufexk",
+        nbf: Math.floor(Date.now() / 1000) + 600,
+        exp: Math.floor(Date.now() / 1000) + 1200,
+      },
+      secret,
+    );
+    await expect(verifyCampusJwtHs256(expired, secret, "jufexk")).resolves.toBeNull();
+    await expect(verifyCampusJwtHs256(notYet, secret, "jufexk")).resolves.toBeNull();
+  });
+
+  it("decrypts an AuthBridge AES-wrapped campus handle", async () => {
+    const keyHex =
+      "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+    const keyBytes = Uint8Array.from(
+      keyHex.match(/../g)!.map((part) => Number.parseInt(part, 16)),
+    );
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, [
+      "encrypt",
+    ]);
+    const encrypted = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        new TextEncoder().encode("20230001"),
+      ),
+    );
+    const toB64 = (bytes: Uint8Array) =>
+      btoa(String.fromCharCode(...bytes));
+    await expect(
+      decryptAuthBridgeAesSubject(
+        {
+          sub: toB64(encrypted.slice(0, -16)),
+          exp: Math.floor(Date.now() / 1000) + 60,
+          enc: "aes",
+          iv: toB64(iv),
+          tag: toB64(encrypted.slice(-16)),
+        },
+        keyHex,
+      ),
+    ).resolves.toBe("20230001");
   });
 
   it("accepts the AuthBridge form field but does not establish a session", async () => {
