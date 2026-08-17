@@ -1,6 +1,6 @@
 # 历史评价采用 GPU OCR-first 分级审核流水线
 
-状态：已接受
+状态：已接受；单元格审核编排见 [ADR-0019](./0019-grok-workflow-legacy-review-package.md)（冻结后可用 Grok workflow；截图与矩阵冻结仍不得使用 Grok）
 
 日期：2026-07-28
 
@@ -63,7 +63,7 @@ Capture QA 核对实际工作表、首尾原始行、上下文与评价行对齐
 3. 缩小到单格 Luna 重试；
 4. 单格仍失败时依次使用 5.5、5.4 各重试一次。
 
-不得使用 Grok。尝试耗尽时仅把该格标记为 `unresolved: agent_exhausted`，保留原始错误和恢复条件；其他成功格保持有效，整组不得因此失败。
+既有 Codex/Luna runner 仍按上列 5.5/5.4 回退。冻结后若改走 [ADR-0019](./0019-grok-workflow-legacy-review-package.md) 的 Grok workflow，则用干净子 agent 重试、二分、单格，不再把 Grok 当作 Luna 转写后备，也不走 Codex 5.5/5.4。尝试耗尽时仅把该格标记为 `unresolved: agent_exhausted`，保留原始错误和恢复条件；其他成功格保持有效，整组不得因此失败。
 
 ## 一致性、仲裁与组状态
 
