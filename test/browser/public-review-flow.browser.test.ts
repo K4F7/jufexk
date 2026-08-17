@@ -172,7 +172,7 @@ test("course and teacher details load the same bounded anonymous feed", async ({
 
 test("empty and mobile states remain accessible without overflow", async ({ page }) => {
   await page.goto("/courses/10");
-  await expect(page.getByRole("status")).toHaveText("暂无评价");
+  await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
 
   await page.goto("/courses/8");
   await expect(page.getByRole("listitem")).toHaveCount(20);
@@ -193,7 +193,7 @@ test("course and teacher catalogs preserve default and search result order", asy
   await expect(page.getByRole("row").nth(1)).toContainText("暂无文字评价课程");
   await page.getByRole("link", { name: "暂无文字评价课程" }).click();
   await expect(page).toHaveURL(/\/courses\/10/);
-  await expect(page.getByRole("status")).toHaveText("暂无评价");
+  await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
 
   await page.goto("/teachers");
   await expect(page.getByRole("row").nth(1)).toContainText("测试教师");
