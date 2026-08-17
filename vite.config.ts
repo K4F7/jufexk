@@ -13,6 +13,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Issue worktrees copy the full repo. Watching them freezes Vite HMR (#152).
+    watch: {
+      ignored: ["**/.worktree/**"],
+    },
     proxy: {
       "/api": {
         target: "http://localhost:8787",
