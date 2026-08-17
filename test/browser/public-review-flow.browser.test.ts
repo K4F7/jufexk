@@ -8,6 +8,8 @@ const reviews = Array.from({ length: 21 }, (_, index) => ({
   course_code: "GEN0108",
   teacher_name: "测试教师",
   comment: `匿名评价 ${index + 1}，正文包含足够长的内容用于验证窄屏布局不会溢出或覆盖目录上下文。`,
+  endorsement_count: 0,
+  endorsable: false,
 }));
 
 async function mockApi(page: Page) {
@@ -16,6 +18,22 @@ async function mockApi(page: Page) {
     if (url.pathname === "/api/config")
       return route.fulfill({
         json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+      });
+    if (url.pathname === "/api/endorsements/viewer")
+      return route.fulfill({
+        json: {
+          authenticated: false,
+          loginPath: "/login",
+          logoutPath: "/cdn-cgi/access/logout",
+        },
+      });
+    if (url.pathname === "/api/endorsements/viewer")
+      return route.fulfill({
+        json: {
+          authenticated: false,
+          loginPath: "/login",
+          logoutPath: "/cdn-cgi/access/logout",
+        },
       });
     if (url.pathname === "/api/courses") {
       const searched = url.searchParams.has("q") && url.searchParams.get("q") !== "";
@@ -164,6 +182,7 @@ test("course and teacher details load the same bounded anonymous feed", async ({
   await expect(page.getByRole("button", { name: "继续加载" })).toHaveCount(0);
   await expect(page.getByText("来源", { exact: true })).toHaveCount(0);
   await expect(page.getByText("历史评价", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /认可/ })).toHaveCount(0);
 
   await page.goto("/teachers/9");
   await expect(page.getByRole("listitem")).toHaveCount(20);
@@ -186,7 +205,7 @@ test("empty and mobile states remain accessible without overflow", async ({ page
 test("course and teacher catalogs preserve default and search result order", async ({ page }) => {
   await page.goto("/courses");
   await expect(page.getByRole("row").nth(1)).toContainText("中国传统文化导论");
-  await expect(page.getByRole("row").nth(1)).toContainText("21 投");
+  await expect(page.getByRole("row").nth(1)).toContainText(/21.*投/);
   await expect(page.getByRole("link", { name: "暂无文字评价课程" })).toBeVisible();
 
   await page.goto("/courses?q=暂无");
@@ -197,7 +216,7 @@ test("course and teacher catalogs preserve default and search result order", asy
 
   await page.goto("/teachers");
   await expect(page.getByRole("row").nth(1)).toContainText("测试教师");
-  await expect(page.getByRole("row").nth(1)).toContainText("21 投");
+  await expect(page.getByRole("row").nth(1)).toContainText(/21.*投/);
 
   await page.goto("/teachers?q=零评价");
   await expect(page.getByRole("row").nth(1)).toContainText("零评价教师");

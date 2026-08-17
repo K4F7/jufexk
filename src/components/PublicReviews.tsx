@@ -1,6 +1,9 @@
 import { Button, Separator, Spinner } from "@heroui/react";
+import { useEndorsementViewer } from "../hooks/useEndorsementViewer";
+import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
 import { EmptyBox } from "./EmptyBox";
+import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 import { RouterAriaLink } from "./RouterAriaLink";
 
 export function PublicReviews({
@@ -20,6 +23,7 @@ export function PublicReviews({
   loadMoreError: string;
   onLoadMore: () => void;
 }) {
+  const { viewer, ready, clear } = useEndorsementViewer();
   return (
     <section className="mb-2" aria-labelledby={`${identity}-reviews-heading`}>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -57,6 +61,15 @@ export function PublicReviews({
                   <p className="mb-0 mt-1.5 break-words text-sm leading-relaxed">
                     {review.comment}
                   </p>
+                  {isEndorsableReview(review) ? (
+                    <ReviewRecognitionControl
+                      review={review}
+                      ready={ready}
+                      authenticated={viewer.authenticated}
+                      loginPath={viewer.loginPath}
+                      onUnauthenticated={clear}
+                    />
+                  ) : null}
                 </article>
               </div>
             );
