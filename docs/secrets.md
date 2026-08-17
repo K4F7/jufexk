@@ -6,10 +6,10 @@ Infisical 是站点密钥的权威来源。决策见 [ADR-0014](./adr/0014-infis
 
 | Key | Infisical | 去向 | 状态 |
 | --- | --- | --- | --- |
-| `ADMIN_PASSWORD` | `dev`/`prod` `/worker` | Worker Secret；运维脚本也读此名或 `JUFEXK_ADMIN_PASSWORD` | `dev` 已写入；`prod` 待 Cloudflare 轮换后再写入 |
-| `IP_HASH_SECRET` | `dev`/`prod` `/worker` | Worker Secret | 生产已在 Cloudflare，待导入 Infisical |
-| `TURNSTILE_SECRET` | `dev`/`prod` `/worker` | Worker Secret | 生产已在 Cloudflare，待导入 Infisical |
-| `CLOUDFLARE_API_TOKEN` | `prod` `/ci` | GitHub Environment `production` | 已在 GitHub，待导入 Infisical |
+| `ADMIN_PASSWORD` | `dev`/`prod` `/worker` | Worker Secret；运维脚本也读此名或 `JUFEXK_ADMIN_PASSWORD` | Infisical、Worker 与 GitHub `JUFEXK_ADMIN_PASSWORD` 已对齐 |
+| `IP_HASH_SECRET` | `dev`/`prod` `/worker` | Worker Secret | Infisical `dev`/`prod` 与 Worker 已对齐 |
+| `TURNSTILE_SECRET` | `dev`/`prod` `/worker` | Worker Secret | Infisical `dev`/`prod` 与 Worker 已对齐；Site Key 未变 |
+| `CLOUDFLARE_API_TOKEN` | `prod` `/ci` | GitHub Environment `production` | 仍只在 GitHub，现有 wrangler OAuth 不能轮换 |
 | `CLOUDFLARE_ACCOUNT_ID` | `prod` `/ci` | GitHub Environment `production` | 已写入 Infisical `prod /ci` |
 
 不要写入 Infisical：
@@ -26,7 +26,7 @@ Infisical 是站点密钥的权威来源。决策见 [ADR-0014](./adr/0014-infis
 pnpm run secrets:pull
 ```
 
-该命令从 `dev /worker` 写入不提交的 `.dev.vars`，不会写入 CI token。`ADMIN_PASSWORD` 尚未进入 Infisical 时会保留本机已有口令并提示待轮换。
+该命令从 `dev /worker` 写入不提交的 `.dev.vars`，不会写入 CI token。
 
 ## 同步
 
@@ -35,11 +35,8 @@ pnpm run secrets:pull
 1. `prod /worker` → Cloudflare Workers 脚本 `jufexk`（`ADMIN_PASSWORD`、`IP_HASH_SECRET`、`TURNSTILE_SECRET`）
 2. `prod /ci` → GitHub 仓库 Environment `production`（`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`）
 
-首次同步应关闭目标端删除，避免清掉尚未纳入 Infisical 的密钥。`ADMIN_PASSWORD` 写入 Infisical 之前，不要对 Worker 开启覆盖同步。
+首次同步应关闭目标端删除，避免清掉尚未纳入 Infisical 的密钥。`CLOUDFLARE_API_TOKEN` 写入 Infisical 之前，不要对 GitHub `production` 开启覆盖同步。
 
-## 轮换 ADMIN_PASSWORD
+## 轮换
 
-1. 在 Cloudflare 为 Worker `jufexk` 写入新的 `ADMIN_PASSWORD`
-2. 确认后台登录可用
-3. 把同一新值写入 Infisical `prod /worker` 与 `dev /worker`（若本机也改用新口令）
-4. 此后只改 Infisical，由 Secret Sync 推送到 Cloudflare
+Worker 密钥先改 Infisical `prod /worker`，再写入 Cloudflare；`ADMIN_PASSWORD` 同时更新 GitHub `JUFEXK_ADMIN_PASSWORD`。`IP_HASH_SECRET` 轮换后，已落库的 IP HMAC 不再匹配，投稿频控和 30 天去重会重置。Turnstile 轮换可保留旧 secret 两小时宽限期。`CLOUDFLARE_API_TOKEN` 仍需在 Cloudflare 控制台新建后写入 GitHub 与 Infisical `prod /ci`。
