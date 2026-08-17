@@ -19,15 +19,7 @@ async function mockApi(page: Page) {
       return route.fulfill({
         json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
       });
-    if (url.pathname === "/api/endorsements/viewer")
-      return route.fulfill({
-        json: {
-          authenticated: false,
-          loginPath: "/login",
-          logoutPath: "/logout",
-        },
-      });
-    if (url.pathname === "/api/endorsements/viewer")
+    if (url.pathname === "/api/user/session")
       return route.fulfill({
         json: {
           authenticated: false,

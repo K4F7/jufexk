@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import {
   canOrdinaryUserWrite,
   ordinaryUserCsrfOk,
-  ordinaryUserSessionPayload,
+  originOk,
   resolveOrdinaryUser,
 } from "./ordinary-user-session";
 
@@ -11,11 +11,6 @@ const fail = (
   error: string,
   status: 400 | 401 | 403 | 404 | 409 = 400,
 ) => c.json({ error }, status);
-
-const originOk = (c: Context) => {
-  const origin = c.req.header("Origin");
-  return origin === new URL(c.req.url).origin;
-};
 
 const digest = async (value: string) =>
   [
@@ -180,10 +175,6 @@ export async function decoratePublicReviews(
     }
     return decorated;
   });
-}
-
-export async function handleEndorsementViewer(c: Context) {
-  return c.json(await ordinaryUserSessionPayload(c));
 }
 
 async function mutateEndorsement(

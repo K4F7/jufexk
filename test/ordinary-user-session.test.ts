@@ -368,6 +368,65 @@ describe("ordinary user session boundary", () => {
     }
   });
 
+  it("restores a pending_deletion account via the live callback, but not banned", async () => {
+    const restore = enableCampusJwt();
+    try {
+      const token = await campusToken({ sub: "campus-recovery-sub" });
+      const first = await SELF.fetch(`${origin}/api/auth/callback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `token=${encodeURIComponent(token)}`,
+        redirect: "manual",
+      });
+      expect(first.status).toBe(303);
+      const subject = await campusSubject(token);
+      const account = await env.DB.prepare(
+        "SELECT user_id FROM auth_identities WHERE subject=?",
+      )
+        .bind(subject)
+        .first<{ user_id: string }>();
+      expect(account?.user_id).toBeTruthy();
+      const setStatus = (status: string) =>
+        env.DB.prepare("UPDATE users SET status=? WHERE id=?")
+          .bind(status, account?.user_id)
+          .run();
+
+      await setStatus("pending_deletion");
+      const recovered = await SELF.fetch(`${origin}/api/auth/callback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `token=${encodeURIComponent(token)}`,
+        redirect: "manual",
+      });
+      expect(recovered.status).toBe(303);
+      expect(recovered.headers.get("location")).not.toBe("/login?error=campus");
+      const cookie = firstSetCookie(recovered).split(";", 1)[0];
+      const session = await SELF.fetch(`${origin}/api/user/session`, {
+        headers: { Cookie: cookie },
+      });
+      expect(await session.json()).toMatchObject({ authenticated: true });
+      const restored = await env.DB.prepare(
+        "SELECT status FROM users WHERE id=?",
+      )
+        .bind(account?.user_id)
+        .first<{ status: string }>();
+      expect(restored?.status).toBe("active");
+
+      await setStatus("banned");
+      const banned = await SELF.fetch(`${origin}/api/auth/callback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `token=${encodeURIComponent(token)}`,
+        redirect: "manual",
+      });
+      expect(banned.status).toBe(303);
+      expect(banned.headers.get("location")).toBe("/login?error=campus");
+      expect(banned.headers.get("set-cookie")).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
   it("keeps callback closed with 503 when campus secrets are unbound", async () => {
     const restore = enableCampusJwt();
     const testEnv = env as typeof env & {

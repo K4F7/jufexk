@@ -1,5 +1,5 @@
 import { Button, Separator, Spinner } from "@heroui/react";
-import { useEndorsementViewer } from "../hooks/useEndorsementViewer";
+import { useViewer } from "../hooks/useViewer";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
 import { EmptyBox } from "./EmptyBox";
@@ -23,7 +23,7 @@ export function PublicReviews({
   loadMoreError: string;
   onLoadMore: () => void;
 }) {
-  const { viewer, ready, clear } = useEndorsementViewer();
+  const { viewer, ready, clear } = useViewer();
   return (
     <section className="mb-2" aria-labelledby={`${identity}-reviews-heading`}>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">

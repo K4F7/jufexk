@@ -84,7 +84,7 @@ async function mockApi(page: Page, store: Store) {
         admin: false,
       });
     }
-    if (url.pathname === "/api/endorsements/viewer") {
+    if (url.pathname === "/api/user/session") {
       return fulfillJson(route, {
         authenticated: store.authenticated,
         csrfToken: store.authenticated ? "csrf-user" : undefined,
