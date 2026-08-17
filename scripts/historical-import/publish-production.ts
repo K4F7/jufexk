@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { access, mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveAdminPassword } from "../secrets/inventory";
 import { parseProductionImportArguments } from "./production-arguments";
+import { createProductionD1ExportCommand } from "./production-wrangler";
 
 const exec = promisify(execFile);
 const { apply, root } = parseProductionImportArguments(process.argv.slice(2));
@@ -33,7 +34,11 @@ if (rows.length !== expectedImportable) throw new Error(`导入行数不匹配: 
 
 await mkdir(dirname(backupPath), { recursive: true });
 if (apply && await readFile(backupPath).then(() => true).catch(() => false)) throw new Error(`备份路径已存在，拒绝覆盖旧备份: ${backupPath}`);
-if (apply) await exec("pnpm", ["exec", "wrangler", "d1", "export", "jufexk", "--remote", `--output=${backupPath}`, "-y"]);
+if (apply) {
+  const command = createProductionD1ExportCommand(backupPath);
+  await access(command.wranglerCli);
+  await exec(command.executable, command.args);
+}
 const backup = await readFile(backupPath).catch(() => { throw new Error(`找不到备份文件: ${backupPath}`); });
 const backupSha256 = createHash("sha256").update(backup).digest("hex");
 
