@@ -1,6 +1,8 @@
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { CourseTeacherTable } from "../components/CourseTeacherTable";
+import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
@@ -78,42 +80,34 @@ function useTeachingReviewsFeedPrototypeVariant(): "A" | null {
   }, [params]);
 }
 
-/** Production summary header (pre-freeze baseline). */
+/** Production summary — frozen 摘要 B: left identity / right rating Surface. */
 function ProductionSummary({
   course,
+  reviewCount,
   onBack,
 }: {
   course: Course & { teachers: Teacher[] };
+  reviewCount: number;
   onBack: () => void;
 }) {
   return (
-    <>
-      <Button variant="ghost" className="mb-2 px-0" onPress={onBack}>
-        ← 返回
-      </Button>
-      <div className="mb-4 border-b border-border pb-4 pt-2">
-        <Chip size="sm" variant="soft">
-          <Chip.Label>{categoryLabel(course.category)}</Chip.Label>
-        </Chip>
-        <h1 className="mb-1 mt-2 text-[26px] font-bold leading-tight">{course.name}</h1>
-        <p className="m-0 text-muted">
-          {course.code} · {course.department} ·{" "}
-          {course.teachers?.length
-            ? course.teachers.map((t, i) => (
-                <span key={t.id}>
-                  {i > 0 ? " " : null}
-                  <Link
-                    to={`/teachers/${t.id}`}
-                    className="text-muted underline underline-offset-4 hover:text-foreground"
-                  >
-                    {t.name}
-                  </Link>
-                </span>
-              ))
-            : "教师待补充"}
-        </p>
-      </div>
-    </>
+    <DetailSummary
+      backLabel="返回课程目录"
+      onBack={onBack}
+      rating={course.rating}
+      reviewCount={reviewCount}
+      ariaLabel="课程摘要"
+    >
+      <Chip size="sm" variant="soft">
+        <Chip.Label>{categoryLabel(course.category)}</Chip.Label>
+      </Chip>
+      <h1 className="mb-1 mt-2 text-[26px] font-bold leading-tight">
+        {course.name}
+      </h1>
+      <p className="m-0 text-muted">
+        {course.code} · {course.department || "院系待补充"}
+      </p>
+    </DetailSummary>
   );
 }
 
@@ -169,7 +163,7 @@ export function CourseDetailPage() {
     Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
 
   return (
-    <section>
+    <section className="mx-auto w-full max-w-[880px]">
       {comparingSummary && summaryVariant && CourseDetailSummaryPrototypeLazy ? (
         <Suspense fallback={<EmptyBox role="status">加载摘要原型…</EmptyBox>}>
           <CourseDetailSummaryPrototypeLazy
@@ -184,8 +178,29 @@ export function CourseDetailPage() {
           />
         </Suspense>
       ) : (
-        <ProductionSummary course={c} onBack={goBack} />
+        <ProductionSummary
+          course={c}
+          reviewCount={data.reviewCount}
+          onBack={goBack}
+        />
       )}
+
+      <section className="mb-6" aria-labelledby="course-teachers-heading">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2
+            id="course-teachers-heading"
+            className="m-0 text-[17px] font-bold leading-snug"
+          >
+            任课教师
+          </h2>
+          {c.teachers?.length ? (
+            <span className="text-[13px] text-muted">
+              {c.teachers.length} 位
+            </span>
+          ) : null}
+        </div>
+        <CourseTeacherTable items={c.teachers ?? []} />
+      </section>
 
       {comparingTeachingFeed &&
       teachingFeedVariant &&

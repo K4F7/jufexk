@@ -274,7 +274,7 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     livePath: "/courses/3",
     winner: "A + B 维度 soft Chip",
     notes:
-      "Issue #61 · 用户确认 A 结构，并吸收 B 的维度 soft Chip 白胶囊。生产 ReviewCard / LegacyReviews。对照原型仍可 DEV 预览 A/B/C。",
+      "Issue #61 · 用户确认 A 结构，并吸收 B 的维度 soft Chip 白胶囊。生产后经 #68/#90 改为 PublicReviews 统一匿名文字流，ReviewCard / LegacyReviews 于 #115 移除。对照原型仍可 DEV 预览 A/B/C。",
     variants: [
       {
         key: "A",
@@ -307,7 +307,7 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     livePath: "/teachers/650",
     winner: "课程语言迁移（摘要 B + 课程域表 + 模块 10 投稿/历史）",
     notes:
-      "Issue #62 · foundations 规定不单开 A/B/C。生产：摘要左身份/右评分；TeacherCourseTable 课程域折叠；ReviewCard identity=course；LegacyReviews showCourse。",
+      "Issue #62 · foundations 规定不单开 A/B/C。生产：摘要左身份/右评分（DetailSummary，评分 Surface 落地于 #115）；TeacherCourseTable 课程域折叠；PublicReviews identity=course 统一文字流。",
     variants: [
       {
         key: "A",
