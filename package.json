@@ -29,6 +29,7 @@
     "formula-bar-smoke": "tsx scripts/legacy_evidence/formula_bar_smoke_cli.ts",
     "formula-bar-full-audit": "tsx scripts/legacy_evidence/formula_bar_full_scan_cli.ts",
     "legacy-review-package": "tsx scripts/legacy_evidence/review_package_cli.ts",
+    "smoke-recapture": "tsx scripts/legacy_evidence/smoke_recapture_cli.ts",
     "deploy": "pnpm run build && wrangler deploy",
     "types": "wrangler types",
     "check": "wrangler types && tsc --noEmit && pnpm test && pnpm run test:browser && pnpm run test:legacy-ocr-contract && vite build && wrangler deploy --dry-run",
