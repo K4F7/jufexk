@@ -1011,7 +1011,9 @@ function buildInventoryRow(
   };
 }
 
-function assertInventoryHasNoReviewBodies(inventory: SmokeReuseRecaptureInventory) {
+function assertInventoryHasNoReviewBodies(
+  inventory: Omit<SmokeReuseRecaptureInventory, "inventory_sha256">,
+) {
   const encoded = JSON.stringify(inventory);
   if (encoded.includes("formula_bar_value") || encoded.includes("visible_cell_text")) {
     throw new Error("smoke inventory must not include formula-bar values or visible-cell text");
