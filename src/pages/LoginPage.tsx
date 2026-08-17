@@ -1,5 +1,7 @@
-import { Alert } from "@heroui/react";
+import { Alert, Card } from "@heroui/react";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { RouterAriaLink } from "../components/RouterAriaLink";
 import { api } from "../lib/api";
 
 type CampusAuthStatus = {
@@ -7,8 +9,24 @@ type CampusAuthStatus = {
   reason?: string;
 };
 
+const DEFAULT_BACK_TARGET = "/courses";
+
+/**
+ * The return target must stay on this site: absolute URLs, protocol-relative
+ * URLs and a loop back onto /login itself all fall back to the catalog.
+ */
+function backTargetFrom(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
+    return DEFAULT_BACK_TARGET;
+  }
+  if (raw.split(/[?#]/, 1)[0] === "/login") return DEFAULT_BACK_TARGET;
+  return raw;
+}
+
 export function LoginPage() {
   const [campusAuth, setCampusAuth] = useState<CampusAuthStatus | null>(null);
+  const [searchParams] = useSearchParams();
+  const backTarget = backTargetFrom(searchParams.get("from"));
 
   useEffect(() => {
     api<CampusAuthStatus>("/api/auth/campus")
@@ -18,25 +36,31 @@ export function LoginPage() {
 
   return (
     <section aria-labelledby="login-heading" className="mx-auto max-w-xl py-8">
-      <h1 id="login-heading" className="m-0 text-xl font-bold">
-        普通用户登录
-      </h1>
-      <p className="mt-3 text-sm leading-relaxed text-muted">
-        通过校园 JWT 取得普通用户会话后，即可投稿或认可任课评价。公开课程、教师和评价页面仍可匿名浏览。
-      </p>
-      <Alert status="warning" className="mt-4">
-        <Alert.Indicator />
-        <Alert.Content>
-          <Alert.Title>校园 JWT 白名单尚未开通</Alert.Title>
-          <Alert.Description>
-            已按 AuthBridge 预留 callback 槽位（POST /api/auth/callback，字段
-            token），但现在不会跳转或请求校方认证服务。
-            {campusAuth && !campusAuth.enabled
-              ? " 接入状态：未开放。"
-              : null}
-          </Alert.Description>
-        </Alert.Content>
-      </Alert>
+      <Card role="article" aria-labelledby="login-heading">
+        <Card.Header>
+          <Card.Title id="login-heading">普通用户登录</Card.Title>
+          <Card.Description>
+            登录使用江西财经大学校内邮箱，取得普通用户会话后即可投稿或认可任课评价。公开课程、教师和评价页面无需登录，可继续匿名浏览。
+          </Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <Alert status="warning">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>校内邮箱登录尚未开放</Alert.Title>
+              <Alert.Description>
+                学校认证服务还未放行本站，开放前无法登录，也不需要任何操作。
+                {campusAuth && !campusAuth.enabled
+                  ? " 接入状态：未开放。"
+                  : null}
+              </Alert.Description>
+            </Alert.Content>
+          </Alert>
+        </Card.Content>
+        <Card.Footer>
+          <RouterAriaLink to={backTarget}>返回继续浏览</RouterAriaLink>
+        </Card.Footer>
+      </Card>
     </section>
   );
 }
