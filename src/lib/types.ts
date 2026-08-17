@@ -83,6 +83,21 @@ export type PublicReview = {
   course_name?: string;
   course_code?: string;
   teacher_name?: string;
+  endorsement_count?: number;
+  endorsable?: boolean;
+  viewer_endorsed?: boolean;
+};
+
+export type EndorsementViewer = {
+  authenticated: boolean;
+  csrfToken?: string;
+  loginPath: string;
+  logoutPath: string;
+};
+
+export type EndorsementState = {
+  endorsementCount: number;
+  viewerEndorsed: boolean;
 };
 
 export type PublicReviewPage = {

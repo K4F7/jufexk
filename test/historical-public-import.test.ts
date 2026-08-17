@@ -306,6 +306,8 @@ describe("approved historical review tracer import", () => {
         course_name: `历史课程-${suffix}`,
         course_code: courseCode,
         teacher_name: teacherLabel,
+        endorsement_count: 0,
+        endorsable: false,
       });
       expect(teacherReview).toEqual({
         id: `historical:${reviewId}`,
@@ -315,6 +317,8 @@ describe("approved historical review tracer import", () => {
         course_name: `历史课程-${suffix}`,
         course_code: courseCode,
         teacher_name: teacherLabel,
+        endorsement_count: 0,
+        endorsable: false,
       });
       for (const projected of [courseReview, teacherReview]) {
         const json = JSON.stringify(projected);
