@@ -6,6 +6,7 @@ import type { SiteConfig } from "./lib/types";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
 
@@ -125,7 +126,7 @@ export function App() {
               }
             />
           ) : null}
-          <Route path="*" element={<Navigate to="/courses" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
         {import.meta.env.DEV ? <DevPrototypeMount /> : null}
       </AppShell>
