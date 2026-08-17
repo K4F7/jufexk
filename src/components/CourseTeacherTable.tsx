@@ -1,6 +1,6 @@
 /**
  * Teachers of a course — dense fold aligned with TeacherCourseTable.
- * Columns: 教师 (name + title) · 院系 · 评分/投稿 (per course-teacher relation).
+ * Columns: 教师 (name) · 院系 · 评分/投稿 (per course-teacher relation).
  * Whole row + teacher name → teacher detail; real links (keyboard / new-tab safe).
  * Issue #115 · docs/ui/foundations.md §详情体验.
  */
@@ -40,17 +40,12 @@ export function CourseTeacherTable({ items, className }: CourseTeacherTableProps
                 className="cursor-pointer"
               >
                 <Table.Cell>
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <RouterAriaLink
-                      to={`/teachers/${teacher.id}`}
-                      className="font-semibold no-underline"
-                    >
-                      {teacher.name}
-                    </RouterAriaLink>
-                    <span className="text-[12px] text-muted">
-                      {teacher.title || "职称待补充"}
-                    </span>
-                  </div>
+                  <RouterAriaLink
+                    to={`/teachers/${teacher.id}`}
+                    className="font-semibold no-underline"
+                  >
+                    {teacher.name}
+                  </RouterAriaLink>
                 </Table.Cell>
                 <Table.Cell>
                   <span className="text-[13px] text-muted">

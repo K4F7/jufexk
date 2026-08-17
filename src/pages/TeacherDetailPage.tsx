@@ -1,7 +1,7 @@
 /**
  * Teacher detail — single-page vertical IA (frozen, module 11).
  *
- * 1. 摘要 B: left identity (name / title / dept / course count / bio) · right review-count Surface
+ * 1. 摘要 B: left identity (name / dept / course count / bio) · right review-count Surface
  * 2. 任课课程 — TeacherCourseTable (course-domain dense fold, per-relation rating)
  * 3. 评价 — PublicReviews unified text stream (identity=course)
  *
@@ -78,12 +78,6 @@ function TeacherSummary({
         {teacher.name}
       </h1>
       <dl className="m-0 grid gap-1.5 text-sm">
-        <div className="flex flex-wrap gap-x-2">
-          <dt className="shrink-0 text-muted">职称</dt>
-          <dd className="m-0 text-foreground">
-            {teacher.title || "职称未标注"}
-          </dd>
-        </div>
         <div className="flex flex-wrap gap-x-2">
           <dt className="shrink-0 text-muted">院系</dt>
           <dd className="m-0 text-foreground">

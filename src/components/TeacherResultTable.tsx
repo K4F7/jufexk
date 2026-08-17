@@ -2,7 +2,7 @@
  * Teacher catalog result table — adapted from course-table B (dense fold).
  *
  * Four columns (teacher domain, not course isomorphic):
- *   教师 (name + title) · 院系 · 投稿 · 课程数
+ *   教师 (name) · 院系 · 投稿 · 课程数
  * Whole row → teacher detail; name is a real link.
  * Ratings bind to 教师×课程 and are never shown on teacher rows
  * (Issue #153); the 投稿 column carries the public review count only.
@@ -68,18 +68,13 @@ export function TeacherResultTable({
                 className="cursor-pointer"
               >
                 <Table.Cell>
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <TeacherNameLink
-                      teacher={teacher}
-                      search={search}
-                      className="font-semibold no-underline"
-                    >
-                      {teacher.name}
-                    </TeacherNameLink>
-                    <span className="text-[12px] text-muted">
-                      {teacher.title || "职称待补充"}
-                    </span>
-                  </div>
+                  <TeacherNameLink
+                    teacher={teacher}
+                    search={search}
+                    className="font-semibold no-underline"
+                  >
+                    {teacher.name}
+                  </TeacherNameLink>
                 </Table.Cell>
                 <Table.Cell>
                   <span className="text-[13px] text-muted">

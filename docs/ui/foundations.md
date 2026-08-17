@@ -55,7 +55,7 @@
 ### 教师目录
 
 - 教师目录**沿用**课程目录冻结语言，不单独开 A/B/C：`CatalogSearchHeader` C · `CatalogResultsStates` A · 折叠结果表（教师领域列）。
-- 列：教师（姓名 + 职称次行）· 院系 · 投稿 · 课程数；实现见 `src/components/TeacherResultTable.tsx`。
+- 列：教师（姓名）· 院系 · 投稿 · 课程数；实现见 `src/components/TeacherResultTable.tsx`。前台不展示职称（Issue #148）。
 - 教师界面不展示教师级跨课程聚合评分（评分严格绑定 教师×课程，Issue #153）：结果表投稿列仅显示公开投稿数。默认按投稿数降序，再按姓名排序。
 - 搜索匹配姓名或院系；条件与页码保存在 URL。
 
@@ -69,7 +69,7 @@
 - 学生投稿为统一匿名文字流（Issue #68/#90）：身份行为对方真实链接，正文紧随，`Separator` 分隔，分段加载；单条不展示评分与评价维度（历史评价无 overall，统一流保持现代/历史一致，见 CONTEXT §历史评价）。
 - 历史文字资料匿名并入统一文字流：不包含 overall，不参与评分与排序统计，不公开历史来源；评价流空态文案统一为「暂无评价」。
 - **教师详情（视觉冻结 · 模块 11）**：单页纵向，沿用课程详情冻结语言，**不单开 A/B/C**。
-  - **摘要 B**：左身份（姓名 / 职称 / 院系 / 任课门数 / 简介）· 右 Surface 仅显示公开评价数（#153 移除教师级聚合评分）。
+  - **摘要 B**：左身份（姓名 / 院系 / 任课门数 / 简介）· 右 Surface 仅显示公开评价数（#153 移除教师级聚合评分；#148 不展示职称）。
   - **任课课程表**：课程域折叠列（课名+类别 Chip · 课号次行 / 院系 / 评分·投稿）；真实课程链接；实现见 `TeacherCourseTable`。
   - **相关投稿**：对齐模块 10 统一文字流（`PublicReviews` identity=`course`，身份行=课程名链接）。
   - 返回教师目录保留 URL 状态。
@@ -188,7 +188,7 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 | 课程结果表 | 视觉冻结 | **B — 课程优先折叠（高密度）**：四列；课名+类别 Chip 同行、课号次行；末列仅显示公开投稿数 `N 投`（#140 移除课程级评分）；教师列默认单行、溢出时行内展开/折叠；院系单行；课程名与教师为真实 Link；整行进课程详情 | 用户确认 B 结构；压紧行高后采用；A 的七列适合无筛选粗浏览，作后续意向不写进本批生产；#140 明确评分严格绑定 教师×课程、课程界面不出现评分 | 生产：`src/components/CourseResultTable.tsx` · 原型对照：`src/prototype/CourseTableVariants.tsx` B · Issue #140 |
 | 分页及加载、错误、空状态 | 视觉冻结 | **A — 精简页脚**：上一页/页码/下一页 + 共 N 门；首次 Spinner；刷新轻量行；错误虚线框+重试；空态分筛选/真空并提供清除 | 用户在 A/B/C 中确认 A | 生产：`src/components/CatalogResultsStates.tsx` · 原型对照：`src/prototype/CatalogStatesVariants.tsx` A |
 | 课程目录整页集成 | 视觉冻结 | **冻结栈串联**：Shell C · 搜索 C · 筛选 D · 结果表 B · 状态 A；`/courses` 生产路径 | 各子模块已用户确认；本步做整页对齐与文案/间距收口，无新结构变体 | 生产：`src/pages/CoursesPage.tsx` + 上述冻结组件 |
-| 教师目录适配 | 视觉冻结 | **课程语言迁移**：搜索 C · 状态 A · 四列折叠表（姓名+职称 / 院系 / 投稿 / 课程数）；#153 移除教师级聚合评分，投稿列仅显示公开投稿数 | foundations 规定不单开变体；与课程目录视觉一致、字段保持教师域；评分严格绑定 教师×课程 | 生产：`src/pages/TeachersPage.tsx` · `TeacherResultTable.tsx` · Issue #153 |
+| 教师目录适配 | 视觉冻结 | **课程语言迁移**：搜索 C · 状态 A · 四列折叠表（姓名 / 院系 / 投稿 / 课程数）；#153 移除教师级聚合评分，投稿列仅显示公开投稿数；#148 不展示职称 | foundations 规定不单开变体；与课程目录视觉一致、字段保持教师域；评分严格绑定 教师×课程 | 生产：`src/pages/TeachersPage.tsx` · `TeacherResultTable.tsx` · Issue #153 · #148 |
 | 课程详情摘要 | 视觉冻结 | **B — 左身份 / 右评价数**：类别 Chip + 课程名 + 课号/院系 · 右 Surface 仅显示公开评价数（#140 移除课程级评分数字）；下接「任课教师」关系表（评分按 教师×课程 展示） | 评价必须绑定课程+任课教师（见 CONTEXT）；#115 明确重开并落地生产，按任课关系拆分评分比课程聚合更实用；#140 进一步明确课程界面不出现评分 | 生产：`CourseDetailPage.tsx` · `DetailSummary.tsx` · `CourseTeacherTable.tsx` · 原型：`src/prototype/CourseDetailSummaryVariants.tsx` B · Issue #60 → #115 → #140 |
 | 学生投稿条目与历史文字资料 | 视觉冻结 | **统一匿名文字流**（#68/#90 取代 A+B 条目）：身份行=对方真实链接 + 正文 + `Separator` + 分段加载；单条不展示评分/维度，历史文字匿名并入同一流，空态「暂无评价」 | 历史评价无 overall（见 CONTEXT），统一文字流保证现代/历史一致；原 A 结构 + B 维度 soft Chip 保留于原型对照 | 生产：`PublicReviews.tsx` · 原型：`CourseDetailReviewsVariants.tsx` A+B · Issue #61 → #68/#90；`ReviewCard`/`LegacyReviews` 死代码于 #115 移除 |
 | 教师详情与任课课程表 | 视觉冻结 | **课程详情语言迁移**：摘要 B（左身份/右评价数 Surface，#153 移除教师级聚合评分）· 任课表课程域折叠（评分按 教师×课程 展示）· 投稿对齐模块 10 统一文字流（身份行=课程名） | foundations 规定不单开变体；与详情冻结语言一致、字段保持课程域；评分严格绑定 教师×课程 | 生产：`TeacherDetailPage.tsx` · `DetailSummary.tsx` · `TeacherCourseTable.tsx` · Issue #62 · 摘要评价数 Surface 落地于 #115 → #153 |
