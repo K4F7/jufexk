@@ -38,6 +38,7 @@ export type PrototypeModuleDef = {
  * teacher-detail: 课程详情语言迁移，不单开 A/B/C（issue #62 / module 11）。
  * catalog-followup: 收藏 / 本专业入口（issue #63；决策记录 #73）— 用户已选择 C（条件密度 + Tag 清单），生产未实现。
  * teaching-reviews-feed: 任课评价文字流视觉确认（issue #71 承接 #68 / module 12）— 探索中。
+ * review-recognition: 任课评价认可交互状态（issue #74 承接 #70 / module 13）— 探索中。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -366,6 +367,38 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
         name: "匿名文字流",
         summary:
           "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 学期 · 总体评分 · 正文 · 发布时间；无逐维度 Chip / 无维度均分 / 无作者。",
+      },
+    ],
+  },
+  {
+    id: "review-recognition",
+    title: "任课评价认可交互状态",
+    question:
+      "任课评价条目 footer 上，「认可」低强度信号的按钮位置、强调程度、登录提示、pending 与失败恢复如何表达？",
+    status: "exploring",
+    preview: "live",
+    /** Same host as teaching-reviews-feed: real course page context. */
+    livePath: "/courses/3",
+    notes:
+      "Issue #74（承接 #70）· DEV-only 内存 stub，不调用生产写接口；覆盖未登录 / 零计数 / 非零计数 / 已认可 / 建立中 / 撤回中 / 失败 / 大计数；无负向状态、不按认可排序；历史评价与纯评分不显示认可。即使视觉冻结，也须等普通用户认证、唯一约束与幂等 API 就绪后另开 frontend/backend Issue。",
+    variants: [
+      {
+        key: "A",
+        name: "footer 右置",
+        summary:
+          "发布时间居左，低强调认可 Button（ghost · 含计数）居 footer 右端。",
+      },
+      {
+        key: "B",
+        name: "footer 左置",
+        summary:
+          "低强调认可 Button（ghost · 含计数）居左，发布时间以 · 跟随。",
+      },
+      {
+        key: "C",
+        name: "动作与计数分离",
+        summary:
+          "Button 只含「认可 / 已认可」动作；计数为独立 muted 文本「N 人认可」。",
       },
     ],
   },

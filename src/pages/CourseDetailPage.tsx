@@ -49,6 +49,15 @@ const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
     )
   : null;
 
+/** DEV-only: 认可交互状态 (module 13 / #74 承接 #70). */
+const ReviewRecognitionPrototypeLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/ReviewRecognitionVariants").then((m) => ({
+        default: m.ReviewRecognitionPrototype,
+      })),
+    )
+  : null;
+
 function useCourseDetailSummaryPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
   return useMemo(() => {
@@ -76,6 +85,17 @@ function useTeachingReviewsFeedPrototypeVariant(): "A" | null {
   return useMemo(() => {
     if (!import.meta.env.DEV) return null;
     if (params.get("module") !== "teaching-reviews-feed") return null;
+    return "A";
+  }, [params]);
+}
+
+function useReviewRecognitionPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "review-recognition") return null;
+    const key = (params.get("variant") || "A").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
     return "A";
   }, [params]);
 }
@@ -118,6 +138,7 @@ export function CourseDetailPage() {
   const summaryVariant = useCourseDetailSummaryPrototypeVariant();
   const reviewsVariant = useCourseDetailReviewsPrototypeVariant();
   const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
+  const recognitionVariant = useReviewRecognitionPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const reviewFeed = usePublicReviewPagination("courses", id);
@@ -161,6 +182,8 @@ export function CourseDetailPage() {
     Boolean(reviewsVariant) && Boolean(CourseDetailReviewsPrototypeLazy);
   const comparingTeachingFeed =
     Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
+  const comparingRecognition =
+    Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
   return (
     <section className="mx-auto w-full max-w-[880px]">
@@ -202,9 +225,19 @@ export function CourseDetailPage() {
         <CourseTeacherTable items={c.teachers ?? []} />
       </section>
 
-      {comparingTeachingFeed &&
-      teachingFeedVariant &&
-      TeachingReviewsFeedPrototypeLazy ? (
+      {comparingRecognition &&
+      recognitionVariant &&
+      ReviewRecognitionPrototypeLazy ? (
+        <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
+          <ReviewRecognitionPrototypeLazy
+            key={recognitionVariant}
+            variant={recognitionVariant}
+            model={{ hostLabel: c.name }}
+          />
+        </Suspense>
+      ) : comparingTeachingFeed &&
+        teachingFeedVariant &&
+        TeachingReviewsFeedPrototypeLazy ? (
         <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
           <TeachingReviewsFeedPrototypeLazy
             key={teachingFeedVariant}
