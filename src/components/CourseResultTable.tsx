@@ -4,16 +4,16 @@
  * Four columns: 课程 (name + category Chip · code) · 教师 · 院系 · 投稿.
  * Whole row → course detail; course name + teacher names are real links
  * (keyboard / new-tab safe). Teacher pairs come from `teacher_refs`.
- * The teacher cell clamps to one line so row heights stay consistent; when
- * the names overflow, an inline 展开/折叠 Button (aria-expanded) reveals the
- * full list. Ratings bind to 教师×课程 and are never shown on course rows
+ * The teacher cell is a single line clipped with an ellipsis so row heights
+ * stay consistent; the full teacher list lives on the course detail page
+ * (Issue #155). Ratings bind to 教师×课程 and are never shown on course rows
  * (Issue #140); the last column carries the public review count only.
  *
  * Intent (not implemented): unfiltered high-density scan could use a
  * seven-column layout (prototype A); production ships B only this batch.
  */
-import { Button, Chip, Table } from "@heroui/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Chip, Table } from "@heroui/react";
+import { Fragment } from "react";
 import { categoryLabel } from "../lib/labels";
 import type { Course } from "../lib/types";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -56,88 +56,28 @@ function parseTeachers(course: Course): TeacherRef[] {
 
 function TeacherLinks({ course }: { course: Course }) {
   const teachers = parseTeachers(course);
-  const listId = useId();
-  const listRef = useRef<HTMLSpanElement>(null);
-  const [expanded, setExpanded] = useState(false);
-  /** Leading teachers fully visible on the clamped line; null until measured */
-  const [visibleCount, setVisibleCount] = useState<number | null>(null);
-
-  const overflowing = visibleCount != null && visibleCount < teachers.length;
-
-  useEffect(() => {
-    if (expanded) return;
-    const el = listRef.current;
-    if (!el) return;
-    const check = () => {
-      const limit = el.getBoundingClientRect().right;
-      let n = 0;
-      for (const child of Array.from(el.children)) {
-        if (child.getBoundingClientRect().right <= limit + 1) n++;
-        else break;
-      }
-      setVisibleCount(n);
-    };
-    check();
-    const observer = new ResizeObserver(check);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [expanded, teachers.length]);
 
   if (teachers.length === 0) {
     return <span className="text-muted">待补充</span>;
   }
 
+  // max-w-lg caps the cell's intrinsic max-content, so auto table layout
+  // keeps the column bounded (no horizontal table scroll) and other columns
+  // keep their natural width; text-overflow then renders the ellipsis.
   return (
-    <span
-      className={`flex min-w-0 gap-1.5 ${expanded ? "items-start" : "items-center"}`}
-    >
-      <span
-        ref={listRef}
-        id={listId}
-        className={
-          expanded
-            ? "inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5"
-            : "inline-flex min-w-0 flex-nowrap items-center gap-x-1.5 overflow-hidden"
-        }
-      >
-        {teachers.map((t, i) => {
-          // Clipped names leave the tab order; keyboard users reveal them
-          // via the 展开 toggle instead of tabbing onto invisible links.
-          const clipped =
-            !expanded && visibleCount != null && i >= visibleCount;
-          return t.id != null ? (
-            <RouterAriaLink
-              key={`${t.id}-${t.name}`}
-              to={`/teachers/${t.id}`}
-              className="text-sm"
-              tabIndex={clipped ? -1 : undefined}
-            >
+    <span className="block max-w-lg min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+      {teachers.map((t, i) => (
+        <Fragment key={t.id != null ? `${t.id}-${t.name}` : `${t.name}-${i}`}>
+          {i > 0 ? " " : null}
+          {t.id != null ? (
+            <RouterAriaLink to={`/teachers/${t.id}`} className="text-sm">
               {t.name}
             </RouterAriaLink>
           ) : (
-            <span key={`${t.name}-${i}`}>{t.name}</span>
-          );
-        })}
-      </span>
-      {overflowing || expanded ? (
-        <span
-          className="shrink-0"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") e.stopPropagation();
-          }}
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-expanded={expanded}
-            aria-controls={listId}
-            onPress={() => setExpanded((v) => !v)}
-          >
-            {expanded ? "折叠" : "展开"}
-          </Button>
-        </span>
-      ) : null}
+            <span>{t.name}</span>
+          )}
+        </Fragment>
+      ))}
     </span>
   );
 }

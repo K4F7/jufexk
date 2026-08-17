@@ -9,13 +9,10 @@ import { Link as RouterLink } from "react-router-dom";
 export function RouterAriaLink({
   to,
   className,
-  tabIndex,
   children,
 }: {
   to: string;
   className?: string;
-  /** e.g. -1 to keep a clipped link out of the tab order */
-  tabIndex?: number;
   children: ReactNode;
 }) {
   return (
@@ -26,7 +23,6 @@ export function RouterAriaLink({
         <RouterLink
           {...(domProps as object)}
           to={to}
-          tabIndex={tabIndex}
           className={
             typeof domProps.className === "string"
               ? domProps.className
