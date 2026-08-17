@@ -30,7 +30,48 @@ export const PE_SKILL_FAMILIES = [
   { label: "足球", keys: ["足球"] },
   { label: "瑜伽", keys: ["瑜伽"] },
   { label: "武术", keys: ["武术"] },
+  { label: "体育舞蹈", keys: ["体育舞蹈"] },
+  { label: "轮滑", keys: ["轮滑"] },
+  { label: "散打", keys: ["散打"] },
 ] as const;
+
+/**
+ * Visible PE sports that have no non-umbrella catalog course.
+ * 表上黄丽华 → 目录黄丽萍；刘春来 only has 体育1–4 + 体育心理学.
+ */
+export const VIRTUAL_PE_SPORTS = [
+  { id: 800001, label: "瑜伽", teacherNames: ["黄丽萍"] },
+  { id: 800002, label: "武术", teacherNames: ["刘春来"] },
+] as const;
+
+export function isVirtualPeSportId(id?: number | null): boolean {
+  return VIRTUAL_PE_SPORTS.some((sport) => sport.id === id);
+}
+
+export function virtualPeSportById(id: number) {
+  return VIRTUAL_PE_SPORTS.find((sport) => sport.id === id) ?? null;
+}
+
+export function virtualPeSportForTeacherName(name?: string | null) {
+  const trimmed = name?.trim() ?? "";
+  if (!trimmed) return null;
+  return (
+    VIRTUAL_PE_SPORTS.find((sport) =>
+      (sport.teacherNames as readonly string[]).includes(trimmed),
+    ) ?? null
+  );
+}
+
+export function virtualPeSportMatchesQuery(
+  sport: (typeof VIRTUAL_PE_SPORTS)[number],
+  search: string,
+) {
+  if (!search) return true;
+  return (
+    sport.label.includes(search) ||
+    sport.teacherNames.some((teacher) => teacher.includes(search))
+  );
+}
 
 /** Skill-style PE titles shown as 体育课, not 普通课程. */
 export const PUBLIC_SPORTS_NAME_PREFIXES = [

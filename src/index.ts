@@ -18,6 +18,7 @@ import {
   readBoundedJson,
 } from "./catalog-baseline-import";
 import {
+  isVirtualPeSportId,
   publicCourseCategory,
   publicCourseDisplayName,
   publicCourseVisibleSql,
@@ -26,6 +27,10 @@ import {
   publicPeResolveCanonicalIdSql,
   publicPeSkillFamilySql,
   publicSportsMatchSql,
+  VIRTUAL_PE_SPORTS,
+  virtualPeSportById,
+  virtualPeSportForTeacherName,
+  virtualPeSportMatchesQuery,
 } from "./lib/public-course-presentation";
 import {
   HistoricalBatchImportError,
@@ -233,6 +238,48 @@ const withPublicCourseCategory = <
       typeof row.category === "string" ? row.category : "",
     ),
   };
+};
+const virtualPeSportItem = (
+  sport: (typeof VIRTUAL_PE_SPORTS)[number],
+  teachers: Array<{ id: number; name: string }>,
+) => ({
+  id: sport.id,
+  code: "",
+  name: sport.label,
+  category: "sports" as const,
+  department: "",
+  teachers: teachers.map((teacher) => teacher.name).join(","),
+  teacher_refs: teachers
+    .map((teacher) => `${teacher.id}:${teacher.name}`)
+    .join(","),
+  review_count: 0,
+  rating: null,
+});
+const loadVirtualPeSportItems = async (
+  db: D1Database,
+  search: string,
+  teacherId: number | null,
+  department: string,
+) => {
+  if (department) return [];
+  const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
+  for (const sport of VIRTUAL_PE_SPORTS) {
+    if (!virtualPeSportMatchesQuery(sport, search)) continue;
+    const placeholders = sport.teacherNames.map(() => "?").join(",");
+    const teachers = (
+      await db
+        .prepare(
+          `SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`,
+        )
+        .bind(...sport.teacherNames)
+        .all<{ id: number; name: string }>()
+    ).results;
+    if (!teachers.length) continue;
+    if (teacherId && !teachers.some((teacher) => teacher.id === teacherId))
+      continue;
+    items.push(virtualPeSportItem(sport, teachers));
+  }
+  return items;
 };
 const pageArgs = (c: any) => ({
   page: Math.max(1, integer(c.req.query("page")) || 1),
@@ -532,12 +579,23 @@ app.get("/api/courses", async (c) => {
   )
     .bind(...args, ...searchRankArgs, size, (page - 1) * size)
     .all();
+  const virtualItems = await loadVirtualPeSportItems(
+    c.env.DB,
+    search,
+    teacherId,
+    department,
+  );
+  const listed = results.map(withPublicCourseCategory);
+  const extras = virtualItems.filter(
+    (item) => !listed.some((row) => row.name === item.name),
+  );
+  const totalCount = (total?.n || 0) + extras.length;
   return c.json({
-    items: results.map(withPublicCourseCategory),
+    items: page === 1 ? [...listed, ...extras] : listed,
     page,
     pageSize: size,
-    total: total?.n || 0,
-    pages: Math.ceil((total?.n || 0) / size),
+    total: totalCount,
+    pages: Math.ceil(totalCount / size),
   });
 });
 app.get("/api/teachers", async (c) => {
@@ -574,7 +632,13 @@ app.get("/api/teachers", async (c) => {
     .all();
   const totalCount = total?.n || 0;
   return c.json({
-    items: results,
+    items: results.map((row: { name?: string; course_count?: number }) => {
+      const sport = virtualPeSportForTeacherName(
+        typeof row.name === "string" ? row.name : "",
+      );
+      if (!sport) return row;
+      return { ...row, course_count: Number(row.course_count || 0) + 1 };
+    }),
     page,
     pageSize: size,
     total: totalCount,
@@ -610,9 +674,30 @@ app.get("/api/teachers/:id", async (c) => {
       .bind(id, id)
       .all()
   ).results;
+  const publicCourses = courses.map(withPublicCourseCategory);
+  const visibleSport = virtualPeSportForTeacherName(
+    typeof (teacher as { name?: string }).name === "string"
+      ? (teacher as { name: string }).name
+      : "",
+  );
+  if (
+    visibleSport &&
+    !publicCourses.some((course) => course.name === visibleSport.label)
+  ) {
+    publicCourses.push(
+      virtualPeSportItem(visibleSport, [
+        {
+          id: id as number,
+          name: (teacher as { name: string }).name,
+        },
+      ]),
+    );
+    (teacher as { course_count: number }).course_count =
+      Number((teacher as { course_count?: number }).course_count || 0) + 1;
+  }
   return c.json({
     teacher,
-    courses: courses.map(withPublicCourseCategory),
+    courses: publicCourses,
     reviews: reviewPage.items,
     reviewCount,
     nextReviewCursor: reviewPage.nextCursor,
@@ -661,6 +746,31 @@ app.get("/api/courses/options", async (c) => {
 });
 app.get("/api/courses/:id", async (c) => {
   const id = integer(c.req.param("id"));
+  const virtual = id ? virtualPeSportById(id) : null;
+  if (virtual) {
+    const placeholders = virtual.teacherNames.map(() => "?").join(",");
+    const teachers = (
+      await c.env.DB.prepare(
+        `SELECT t.*,0 review_count,NULL rating FROM teachers t
+         WHERE t.name IN (${placeholders}) ORDER BY t.name,t.id`,
+      )
+        .bind(...virtual.teacherNames)
+        .all()
+    ).results;
+    if (!teachers.length) return fail(c, "课程不存在", 404);
+    return c.json({
+      course: {
+        id: virtual.id,
+        code: "",
+        name: virtual.label,
+        category: "sports",
+        department: "",
+        teachers,
+        nameVariants: [],
+      },
+      reviewCount: 0,
+    });
+  }
   const course = await c.env.DB.prepare(
     `SELECT c.*,
        (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.status='approved'${publicReviewBinding}) rating
@@ -704,10 +814,36 @@ app.get("/api/courses/:id", async (c) => {
 });
 app.get("/api/courses/:id/reviews", async (c) => {
   const id = integer(c.req.param("id"));
-  const course = await c.env.DB.prepare("SELECT id FROM courses WHERE id=?").bind(id).first();
-  if (!course) return fail(c, "课程不存在", 404);
   const teacherId = integer(c.req.query("teacherId"));
   if (!teacherId) return fail(c, "课程评价需先指定任课教师（teacherId）", 400);
+  if (id && isVirtualPeSportId(id)) {
+    const virtual = virtualPeSportById(id);
+    const teacher = await c.env.DB.prepare(
+      "SELECT id,name FROM teachers WHERE id=?",
+    )
+      .bind(teacherId)
+      .first<{ id: number; name: string }>();
+    if (
+      !virtual ||
+      !teacher ||
+      !(virtual.teacherNames as readonly string[]).includes(teacher.name)
+    )
+      return fail(c, "课程不存在", 404);
+    const rawVirtualCursor = c.req.query("cursor");
+    const virtualCursor = decodePublicReviewCursor(rawVirtualCursor);
+    if (rawVirtualCursor && !virtualCursor) return fail(c, "评价游标无效", 400);
+    return c.json(
+      await getPublicReviewPageFor(
+        c,
+        "teacher_id",
+        teacherId,
+        publicReviewPageSize(c),
+        virtualCursor,
+      ),
+    );
+  }
+  const course = await c.env.DB.prepare("SELECT id FROM courses WHERE id=?").bind(id).first();
+  if (!course) return fail(c, "课程不存在", 404);
   const rawCursor = c.req.query("cursor");
   const cursor = decodePublicReviewCursor(rawCursor);
   if (rawCursor && !cursor) return fail(c, "评价游标无效", 400);
