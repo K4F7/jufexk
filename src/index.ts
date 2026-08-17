@@ -10,6 +10,7 @@ import {
   putBaselineChunk,
   readBoundedJson,
 } from "./catalog-baseline-import";
+import { normalizeReviewTemplateKind } from "./lib/review-template-kind";
 import {
   canOrdinaryUserWrite,
   resolveOrdinaryUser,
@@ -168,6 +169,12 @@ const token = () =>
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 const fail = (c: any, error: string, status = 400) => c.json({ error }, status);
+const withPublicCourseCategory = <T extends { category?: unknown }>(row: T) => ({
+  ...row,
+  category: normalizeReviewTemplateKind(
+    typeof row.category === "string" ? row.category : "",
+  ),
+});
 const pageArgs = (c: any) => ({
   page: Math.max(1, integer(c.req.query("page")) || 1),
   size: Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20)),
@@ -446,7 +453,7 @@ app.get("/api/courses", async (c) => {
     .bind(...args, ...searchRankArgs, size, (page - 1) * size)
     .all();
   return c.json({
-    items: results,
+    items: results.map(withPublicCourseCategory),
     page,
     pageSize: size,
     total: total?.n || 0,
@@ -523,7 +530,7 @@ app.get("/api/teachers/:id", async (c) => {
   ).results;
   return c.json({
     teacher,
-    courses,
+    courses: courses.map(withPublicCourseCategory),
     reviews: reviewPage.items,
     reviewCount,
     nextReviewCursor: reviewPage.nextCursor,
@@ -563,7 +570,7 @@ app.get("/api/courses/options", async (c) => {
     .all();
   const totalCount = total?.n || 0;
   return c.json({
-    items: results,
+    items: results.map(withPublicCourseCategory),
     page,
     pageSize: size,
     total: totalCount,
@@ -603,7 +610,7 @@ app.get("/api/courses/:id", async (c) => {
       .all()
   ).results;
   return c.json({
-    course: { ...course, teachers, nameVariants },
+    course: { ...withPublicCourseCategory(course), teachers, nameVariants },
     reviews: reviewPage.items,
     reviewCount,
     nextReviewCursor: reviewPage.nextCursor,
@@ -679,7 +686,7 @@ app.get("/api/offerings/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
-  return c.json({ offering, teachers });
+  return c.json({ offering: withPublicCourseCategory(offering), teachers });
 });
 app.post("/api/reviews", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
