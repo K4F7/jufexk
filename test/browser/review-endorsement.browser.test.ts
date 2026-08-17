@@ -89,7 +89,7 @@ async function mockApi(page: Page, store: Store) {
         authenticated: store.authenticated,
         csrfToken: store.authenticated ? "csrf-user" : undefined,
         loginPath: "/login",
-        logoutPath: "/cdn-cgi/access/logout",
+        logoutPath: "/logout",
       });
     }
     if (url.pathname === "/api/courses/8") {
@@ -189,14 +189,14 @@ test("guest sees counts, no selected state, and a real login link", async ({ pag
 
   await zero.click();
   const prompt = entry(page, "零计数当前文字评价。").getByRole("status");
-  await expect(prompt.getByRole("link", { name: "使用校内邮箱登录" })).toHaveAttribute(
+  await expect(prompt.getByRole("link", { name: "使用普通用户登录" })).toHaveAttribute(
     "href",
     "/login",
   );
   await expect(zero).toHaveAttribute("aria-pressed", "false");
-  await prompt.getByRole("link", { name: "使用校内邮箱登录" }).click();
+  await prompt.getByRole("link", { name: "使用普通用户登录" }).click();
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "校内邮箱登录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
 });
 
 test("signed-in user can endorse and withdraw with pending and selected state", async ({

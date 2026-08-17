@@ -109,7 +109,7 @@ export function ReviewRecognitionControl({
       ) : null}
       {loginPrompted ? (
         <p role="status" className="mb-0 mt-1.5 text-xs text-muted">
-          <RouterAriaLink to={loginPath}>使用校内邮箱登录</RouterAriaLink>
+          <RouterAriaLink to={loginPath}>使用普通用户登录</RouterAriaLink>
           后才能认可评价。
         </p>
       ) : null}

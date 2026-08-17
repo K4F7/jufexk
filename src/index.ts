@@ -23,6 +23,10 @@ import {
   importIssue111HistoricalBatch,
 } from "./historical-batch-imports";
 import {
+  handleCampusAuthCallback,
+  handleCampusAuthStatus,
+} from "./campus-jwt";
+import {
   canOrdinaryUserWrite,
   resolveOrdinaryUser,
 } from "./ordinary-user-session";
@@ -648,6 +652,8 @@ app.get("/api/courses/:id/reviews", async (c) => {
 });
 
 app.get("/api/endorsements/viewer", handleEndorsementViewer);
+app.get("/api/auth/campus", handleCampusAuthStatus);
+app.post("/api/auth/callback", handleCampusAuthCallback);
 app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
 app.delete("/api/reviews/:id/endorsement", handleWithdrawEndorsement);
 
