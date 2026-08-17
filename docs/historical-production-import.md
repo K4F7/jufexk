@@ -1,6 +1,6 @@
 # 历史评价生产导入与验收
 
-生产操作只允许在已批准的维护窗口执行。v2 冻结包固定放在 `D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-production-v2`，生产脚本只读取其中的 `manifest.json` 与 `importable-legacy-reviews.jsonl`；`catalog-relation-unavailable.jsonl` 中的 419 条由 #111 独立处理，不得上传。
+生产操作只允许在已批准的维护窗口执行。v2 冻结包固定放在 `D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-production-v2`，生产脚本只读取其中的 `manifest.json` 与 `importable-legacy-reviews.jsonl`；`catalog-relation-unavailable.jsonl` 中的 419 条由 #111 独立处理，不得上传。#111 确认候选 61 对 / 164 条的交接见 [issue111-handoff.md](./issue111-handoff.md)，候选包绝对路径为 `D:\19016\Documents\Workload\jufexk-production-inputs\issue111-relation-addition-v1`。
 
 先准备管理员密码和已导出的生产备份绝对路径，执行只读预检。预检要求备份文件已存在，并核对 v2 目录 marker、3740 门课程、1951 位教师、11482 条任课关系、冻结包契约与 522 条可导入记录；退出码 `2` 表示预览完成且没有写入。
 
