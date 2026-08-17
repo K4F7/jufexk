@@ -1,7 +1,7 @@
 /**
  * Teacher detail — single-page vertical IA (frozen, module 11).
  *
- * 1. 摘要 B: left identity (name / title / dept / course count / bio) · right rating Surface
+ * 1. 摘要 B: left identity (name / title / dept / course count / bio) · right review-count Surface
  * 2. 任课课程 — TeacherCourseTable (course-domain dense fold, per-relation rating)
  * 3. 评价 — PublicReviews unified text stream (identity=course)
  *
@@ -71,7 +71,6 @@ function TeacherSummary({
     <DetailSummary
       backLabel="返回教师目录"
       onBack={onBack}
-      rating={teacher.rating}
       reviewCount={reviewCount}
       ariaLabel="教师摘要"
     >
