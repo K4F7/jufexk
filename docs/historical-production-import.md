@@ -1,6 +1,6 @@
 # 历史评价生产导入与验收
 
-生产操作只允许在已批准的维护窗口执行。v2 冻结包固定放在 `D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-production-v2`，生产脚本只读取其中的 `manifest.json` 与 `importable-legacy-reviews.jsonl`；`catalog-relation-unavailable.jsonl` 中的 419 条由 #111 独立处理，不得上传。#111 确认候选 61 对 / 164 条的交接见 [issue111-handoff.md](./issue111-handoff.md)，候选包绝对路径为 `D:\19016\Documents\Workload\jufexk-production-inputs\issue111-relation-addition-v1`。
+生产操作只允许在已批准的维护窗口执行。v2 冻结包固定放在 `D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-production-v2`，生产脚本只读取其中的 `manifest.json` 与 `importable-legacy-reviews.jsonl`；`catalog-relation-unavailable.jsonl` 中的 419 条由 #111 独立处理，不得上传。#111 确认候选 61 对 / 164 条的交接见 [issue111-handoff.md](./issue111-handoff.md)，候选包绝对路径为 `D:\19016\Documents\Workload\jufexk-production-inputs\issue111-relation-addition-v1`。体育课名 × 老师 10 对 / 64 条是其后的独立后续，见 [pe-course-teacher-handoff.md](./pe-course-teacher-handoff.md)，不得重放 522 / 164 / 120 / 12，也不得重放这 64 条。
 
 先准备管理员密码和已导出的生产备份绝对路径，执行只读预检。预检要求备份文件已存在，并核对 v2 目录 marker、3740 门课程、1951 位教师、11482 条任课关系、冻结包契约与 522 条可导入记录；退出码 `2` 表示预览完成且没有写入。
 
@@ -65,4 +65,13 @@ $env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\
 pnpm run historical-import:issue111
 pnpm run historical-import:issue111 -- --apply
 ```
+
+## 体育课名 × 老师：已写入的 5 条任课关系 + 64 条历史评价
+
+本批不得复用或改写上面的 522 条或 #111 的 164 / 120 / 12 条，也不得重放本批 64 条。领域决策见 [ADR-0018](./adr/0018-pe-course-name-teacher-binding.md)，交接见 [pe-course-teacher-handoff.md](./pe-course-teacher-handoff.md)。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\issue111-pe-course-teacher-v1`。主工作区整理副本：`D:\19016\Documents\Workload\jufexk\.local-data\course-x-teacher\working\`。
+
+2026-08-17 维护窗口已写入：课程 / 教师仍为 `3740 / 1951`，任课关系 `11567 → 11572`，公开历史评价 `818 → 882`。目录基线 marker 哈希未变。不要再执行该包的 apply 脚本。
+
 
