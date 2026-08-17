@@ -24,7 +24,7 @@ async function mockApi(page: Page) {
         json: {
           authenticated: false,
           loginPath: "/login",
-          logoutPath: "/cdn-cgi/access/logout",
+          logoutPath: "/logout",
         },
       });
     if (url.pathname === "/api/endorsements/viewer")
@@ -32,7 +32,7 @@ async function mockApi(page: Page) {
         json: {
           authenticated: false,
           loginPath: "/login",
-          logoutPath: "/cdn-cgi/access/logout",
+          logoutPath: "/logout",
         },
       });
     if (url.pathname === "/api/courses") {

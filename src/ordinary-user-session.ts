@@ -1,12 +1,23 @@
 import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
+import { readCampusJwt } from "./campus-jwt";
 
 export const ORDINARY_USER_CSRF_COOKIE = "jufexk_user_csrf";
 export const ORDINARY_USER_ID_HEADER = "X-Jufexk-Ordinary-User";
 export const ORDINARY_USER_MAC_HEADER = "X-Jufexk-Ordinary-User-Mac";
 export const LOGIN_PATH = "/login";
-export const LOGOUT_PATH = "/cdn-cgi/access/logout";
+export const LOGOUT_PATH = "/logout";
 
+/**
+ * Campus JWT issued after JXUFE CAS, via Mine-JUFE/AuthBridge.
+ * Public contract (no local AuthBridge source in this repo):
+ * - login: GET {authbridge}/login?appid=…&mode=callback
+ * - callback POST field: `token` (HS256, per-app key; optional AES/ECC wrap)
+ * - verify on the Worker: signature, `exp`, `aud`, and a stable `sub`
+ * - do not trust decode-only payload; do not log the raw token
+ * Production verifier stays closed until this app is on the AuthBridge whitelist.
+ * @see https://github.com/Mine-JUFE/AuthBridge
+ */
 export type OrdinaryUserStatus =
   | "active"
   | "banned"
@@ -69,14 +80,28 @@ async function loadOrCreateUser(
 }
 
 /**
- * Session boundary for ordinary-user writes (ADR-0016).
- * Production Access JWT verification belongs to #138; this resolver only
- * accepts a signed test proof of `users.id` when the test secret is bound.
- * Admin cookies, IP hashes and submitter hashes never authenticate here.
+ * Campus JWT stays closed until AuthBridge whitelists this app.
+ * Always returns null so an unverified token cannot mint an ordinary user.
+ */
+export async function resolveCampusJwt(
+  c: Context,
+): Promise<OrdinaryUser | null> {
+  void readCampusJwt(c);
+  return null;
+}
+
+/**
+ * Session boundary for ordinary-user writes.
+ * Production accepts a campus AuthBridge JWT once the verifier is wired.
+ * Until then this resolver only accepts a signed test proof of `users.id`
+ * when the test secret is bound. Admin cookies, IP hashes and submitter
+ * hashes never authenticate here. Email OTP / Access are not used.
  */
 export async function resolveOrdinaryUser(
   c: Context,
 ): Promise<OrdinaryUser | null> {
+  const campusUser = await resolveCampusJwt(c);
+  if (campusUser) return campusUser;
   const secret =
     typeof c.env.ORDINARY_USER_TEST_AUTH_SECRET === "string"
       ? c.env.ORDINARY_USER_TEST_AUTH_SECRET

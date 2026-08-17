@@ -200,7 +200,7 @@ describe("review endorsement API", () => {
     const session = await viewerSession("user-endorse-repeat");
     expect(session.authenticated).toBe(true);
     expect(session.loginPath).toBe("/login");
-    expect(session.logoutPath).toBe("/cdn-cgi/access/logout");
+    expect(session.logoutPath).toBe("/logout");
     const viewer = await SELF.fetch(`${origin}/api/endorsements/viewer`, {
       headers: session.auth,
     });

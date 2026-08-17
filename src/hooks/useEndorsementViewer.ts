@@ -5,7 +5,7 @@ import type { EndorsementViewer } from "../lib/types";
 const FALLBACK: EndorsementViewer = {
   authenticated: false,
   loginPath: "/login",
-  logoutPath: "/cdn-cgi/access/logout",
+  logoutPath: "/logout",
 };
 
 export function useEndorsementViewer() {
