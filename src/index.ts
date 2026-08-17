@@ -10,6 +10,7 @@ import {
   putBaselineChunk,
   readBoundedJson,
 } from "./catalog-baseline-import";
+import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
 
 type Bindings = {
@@ -320,10 +321,7 @@ app.use("/api/*", async (c, next) => {
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "same-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  c.header(
-    "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
-  );
+  c.header("Content-Security-Policy", API_CONTENT_SECURITY_POLICY);
 });
 
 app.get("/api/config", async (c) => {
