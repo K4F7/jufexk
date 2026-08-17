@@ -1,6 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
-import { CatalogFilters } from "../components/CatalogFilters";
+import {
+  CatalogFilters,
+  isPublicCategoryFilter,
+} from "../components/CatalogFilters";
 import {
   CatalogResultsStates,
   COURSE_CATALOG_COPY,
@@ -122,7 +125,8 @@ export function CoursesPage() {
   const catalogStatesVariant = useCatalogStatesPrototypeVariant();
   const catalogFollowupVariant = useCatalogFollowupPrototypeVariant();
   const q = params.get("q") || "";
-  const category = params.get("category") || "";
+  const rawCategory = params.get("category") || "";
+  const category = isPublicCategoryFilter(rawCategory) ? rawCategory : "";
   const department = params.get("department") || "";
   const teacherId = params.get("teacherId") || "";
   const parsedPage = Number(params.get("page") || "1");
@@ -143,6 +147,13 @@ export function CoursesPage() {
 
   useEffect(() => setQueryDraft(q), [q]);
   useEffect(() => setDepartmentDraft(department), [department]);
+  useEffect(() => {
+    // Stale bookmarks may still carry major/pe/general; those 400 on the API.
+    if (!rawCategory || isPublicCategoryFilter(rawCategory)) return;
+    const next = new URLSearchParams(params);
+    next.delete("category");
+    setParams(next, { replace: true });
+  }, [rawCategory, params, setParams]);
 
   useEffect(() => {
     const timer = window.setTimeout(

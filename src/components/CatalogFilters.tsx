@@ -21,11 +21,12 @@ const ALL_VALUE = "__all__";
 
 const CATEGORY_OPTIONS = [
   { id: "", label: "全部" },
-  { id: "major", label: "专业课" },
-  { id: "pe", label: "体育课" },
-  { id: "sports", label: "体育课（sports）" },
-  { id: "general", label: "公共选修" },
+  { id: "sports", label: "体育课" },
 ] as const;
+
+export function isPublicCategoryFilter(value: string) {
+  return CATEGORY_OPTIONS.some((opt) => opt.id !== "" && opt.id === value);
+}
 
 export type CatalogFiltersProps = {
   queryDraft: string;
