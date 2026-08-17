@@ -1,16 +1,16 @@
 # 密钥托管
 
-Infisical 是站点密钥的权威来源。决策见 [ADR-0014](./adr/0014-infisical-secret-source.md)。Worker 运行时只读 wrangler 绑定，不调用 Infisical。
+Infisical 是站点密钥的权威来源。决策见 [ADR-0014](./adr/0014-infisical-secret-source.md)。Worker 运行时只读 wrangler 绑定，不调用 Infisical。仓库通过 `.infisical.json` 连接到组织 `sern` 的项目 `xk`（`xk-epjy`）。
 
 ## 必要密钥
 
 | Key | Infisical | 去向 | 状态 |
 | --- | --- | --- | --- |
-| `ADMIN_PASSWORD` | `dev`/`prod` `/worker` | Worker Secret；运维脚本也读此名或 `JUFEXK_ADMIN_PASSWORD` | 待 Cloudflare 轮换后再写入 Infisical，不要导入旧口令 |
+| `ADMIN_PASSWORD` | `dev`/`prod` `/worker` | Worker Secret；运维脚本也读此名或 `JUFEXK_ADMIN_PASSWORD` | `dev` 已写入；`prod` 待 Cloudflare 轮换后再写入 |
 | `IP_HASH_SECRET` | `dev`/`prod` `/worker` | Worker Secret | 生产已在 Cloudflare，待导入 Infisical |
 | `TURNSTILE_SECRET` | `dev`/`prod` `/worker` | Worker Secret | 生产已在 Cloudflare，待导入 Infisical |
 | `CLOUDFLARE_API_TOKEN` | `prod` `/ci` | GitHub Environment `production` | 已在 GitHub，待导入 Infisical |
-| `CLOUDFLARE_ACCOUNT_ID` | `prod` `/ci` | GitHub Environment `production` | 已在 GitHub，待导入 Infisical |
+| `CLOUDFLARE_ACCOUNT_ID` | `prod` `/ci` | GitHub Environment `production` | 已写入 Infisical `prod /ci` |
 
 不要写入 Infisical：
 
@@ -20,7 +20,7 @@ Infisical 是站点密钥的权威来源。决策见 [ADR-0014](./adr/0014-infis
 
 ## 本机
 
-安装 Infisical CLI 后登录，或设置 `INFISICAL_TOKEN` 与 `INFISICAL_PROJECT_ID`：
+安装 Infisical CLI 后执行 `infisical login`。`.infisical.json` 已指定项目，无需再设 `INFISICAL_PROJECT_ID`：
 
 ```bash
 pnpm run secrets:pull
