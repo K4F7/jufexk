@@ -70,8 +70,10 @@ function listLocalSecretIds() {
   );
   const ids = new Map<string, string>();
   const text = `${result.stdout || ""}\n${result.stderr || ""}`;
-  const row =
-    /^\|\s*(ADMIN_PASSWORD|IP_HASH_SECRET|TURNSTILE_SECRET)\s*\|\s*([0-9a-f]{32})\s*\|/gim;
+  const row = new RegExp(
+    `^\\|\\s*(${WORKER_SECRETS.join("|")})\\s*\\|\\s*([0-9a-f]{32})\\s*\\|`,
+    "gim",
+  );
   for (const match of text.matchAll(row)) ids.set(match[1], match[2]);
   return ids;
 }

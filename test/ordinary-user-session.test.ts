@@ -93,6 +93,30 @@ function assertNoIdentityLeak(value: unknown) {
   expect(raw).not.toMatch(/"id":"[0-9a-f]{32}"/);
 }
 
+function enableCampusJwt() {
+  const testEnv = env as typeof env & { CAMPUS_JWT_ENABLED?: string };
+  const previous = testEnv.CAMPUS_JWT_ENABLED;
+  testEnv.CAMPUS_JWT_ENABLED = "1";
+  return () => {
+    testEnv.CAMPUS_JWT_ENABLED = previous;
+  };
+}
+
+function setCookies(response: Response) {
+  const headers = response.headers as Headers & { getSetCookie?(): string[] };
+  return headers.getSetCookie?.() || [];
+}
+
+function firstSetCookie(response: Response) {
+  return (
+    setCookies(response).find((value) =>
+      value.startsWith(`${CAMPUS_JWT_COOKIE}=`),
+    ) ||
+    response.headers.get("set-cookie") ||
+    ""
+  );
+}
+
 describe("ordinary user session boundary", () => {
   it("lets guests read public catalog without a JWT", async () => {
     const response = await SELF.fetch(`${origin}/api/courses`);
@@ -280,5 +304,133 @@ describe("ordinary user session boundary", () => {
     });
     expect(response.status).toBe(503);
     expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("writes an HttpOnly campus cookie and session after a live AuthBridge callback", async () => {
+    const restore = enableCampusJwt();
+    try {
+      const status = await SELF.fetch(`${origin}/api/auth/campus`);
+      expect(await status.json()).toMatchObject({
+        enabled: true,
+        reason: "live",
+        appId: "jufexk",
+        audience: "jufexk",
+      });
+      const wrap = await encryptStudentId("20230001");
+      const token = await campusToken({ ...wrap, aud: undefined });
+      const response = await SELF.fetch(
+        `${origin}/api/auth/callback?from=/courses/1`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `token=${encodeURIComponent(token)}`,
+          redirect: "manual",
+        },
+      );
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe("/courses/1");
+      const cookie = firstSetCookie(response);
+      expect(cookie).toMatch(new RegExp(`${CAMPUS_JWT_COOKIE}=`));
+      expect(cookie).toMatch(/HttpOnly/i);
+      expect(cookie).toMatch(/Secure/i);
+      expect(cookie).toMatch(/SameSite=Lax/i);
+      const bodyText = await response.text();
+      expect(bodyText).not.toContain(token);
+      expect(bodyText).not.toMatch(/20230001|campus-stable-sub/);
+      const sessionCookie = cookie.split(";", 1)[0];
+      const session = await SELF.fetch(`${origin}/api/user/session`, {
+        headers: { Cookie: sessionCookie },
+      });
+      const body = await session.json<{
+        authenticated: boolean;
+        csrfToken?: string;
+      }>();
+      expect(body.authenticated).toBe(true);
+      assertNoIdentityLeak(body);
+      const logout = await SELF.fetch(`${origin}/api/user/logout`, {
+        method: "POST",
+        headers: {
+          Origin: origin,
+          Cookie: `${sessionCookie}; ${ORDINARY_USER_CSRF_COOKIE}=${body.csrfToken}`,
+          "X-CSRF-Token": body.csrfToken || "",
+        },
+      });
+      expect(logout.status).toBe(200);
+      expect(await logout.json()).toMatchObject({ authenticated: false });
+      const cleared = setCookies(logout).find((value) =>
+        value.startsWith(`${CAMPUS_JWT_COOKIE}=`),
+      );
+      expect(cleared).toMatch(/Max-Age=0|Expires=/i);
+      const after = await SELF.fetch(`${origin}/api/user/session`);
+      expect(await after.json()).toMatchObject({ authenticated: false });
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps callback closed with 503 when campus secrets are unbound", async () => {
+    const restore = enableCampusJwt();
+    const testEnv = env as typeof env & {
+      CAMPUS_JWT_SECRET?: string;
+      CAMPUS_JWT_AES_KEY?: string;
+    };
+    const previousSecret = testEnv.CAMPUS_JWT_SECRET;
+    const previousAes = testEnv.CAMPUS_JWT_AES_KEY;
+    try {
+      for (const unset of [
+        () => {
+          testEnv.CAMPUS_JWT_SECRET = "";
+        },
+        () => {
+          testEnv.CAMPUS_JWT_AES_KEY = "";
+        },
+      ]) {
+        testEnv.CAMPUS_JWT_SECRET = previousSecret;
+        testEnv.CAMPUS_JWT_AES_KEY = previousAes;
+        unset();
+        const response = await SELF.fetch(`${origin}/api/auth/callback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `token=${encodeURIComponent(await campusToken())}`,
+        });
+        expect(response.status).toBe(503);
+        expect(response.headers.get("set-cookie")).toBeNull();
+        expect(await response.text()).not.toMatch(
+          /campus-stable-sub|test-campus-jwt-secret/,
+        );
+      }
+    } finally {
+      testEnv.CAMPUS_JWT_SECRET = previousSecret;
+      testEnv.CAMPUS_JWT_AES_KEY = previousAes;
+      restore();
+    }
+  });
+
+  it("rejects live callback tokens with a bad signature, wrong aud, or expiry", async () => {
+    const restore = enableCampusJwt();
+    try {
+      const good = await campusToken();
+      const badSig = `${good.slice(0, -2)}ab`;
+      const wrongAud = await campusToken({ aud: "other-app" });
+      const expired = await campusToken({
+        exp: Math.floor(Date.now() / 1000) - 30,
+      });
+      for (const token of [badSig, wrongAud, expired, ""]) {
+        const response = await SELF.fetch(`${origin}/api/auth/callback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: token ? `token=${encodeURIComponent(token)}` : "",
+          redirect: "manual",
+        });
+        expect(response.status).toBe(303);
+        expect(response.headers.get("location")).toBe("/login?error=campus");
+        expect(response.headers.get("set-cookie")).toBeNull();
+        expect(await response.text()).not.toMatch(
+          /campus-stable-sub|test-campus-jwt-secret/,
+        );
+      }
+    } finally {
+      restore();
+    }
   });
 });

@@ -3,8 +3,11 @@
 ADMIN_PASSWORD=
 IP_HASH_SECRET=
 TURNSTILE_SECRET=
-# Campus JWT stays closed until AuthBridge whitelist. Do not enable in production yet.
-# CAMPUS_JWT_SECRET=
+CAMPUS_JWT_SECRET=
+CAMPUS_JWT_AES_KEY=
+CAMPUS_IDENTITY_SECRET=
+# Public wrangler vars. CAMPUS_JWT_ENABLED=1 only after AuthBridge whitelist.
 # CAMPUS_JWT_AUD=jufexk
-# CAMPUS_JWT_AES_KEY=
-# CAMPUS_IDENTITY_SECRET=
+# CAMPUS_APP_ID=jufexk
+# AUTHBRIDGE_BASE_URL=https://mc.jxufe.edu.cn/authbridge
+# CAMPUS_JWT_ENABLED=

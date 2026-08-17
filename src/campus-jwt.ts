@@ -1,9 +1,9 @@
 import type { Context } from "hono";
-import { getCookie } from "hono/cookie";
+import { getCookie, setCookie } from "hono/cookie";
 
 /**
- * AuthBridge contract we will implement after the school whitelist.
- * Do not fetch or redirect to AuthBridge until that happens.
+ * AuthBridge HS256 callback contract.
+ * Production stays closed until CAMPUS_JWT_ENABLED=1 after the school whitelist.
  * @see https://github.com/Mine-JUFE/AuthBridge
  */
 export const CAMPUS_JWT_COOKIE = "jufexk_campus_jwt";
@@ -14,39 +14,59 @@ export const AUTHBRIDGE_CALLBACK_MODE = "callback";
 export const AUTHBRIDGE_TOKEN_FIELD = "token";
 export const AUTHBRIDGE_ALGORITHM = "HS256";
 
+const CAMPUS_AUTH_CONTRACT = {
+  provider: "authbridge",
+  mode: AUTHBRIDGE_CALLBACK_MODE,
+  tokenField: AUTHBRIDGE_TOKEN_FIELD,
+  algorithm: AUTHBRIDGE_ALGORITHM,
+  claims: ["sub", "exp", "aud", "enc"],
+} as const;
+
 export type CampusAuthStatus = {
-  enabled: false;
-  reason: "not_whitelisted";
+  enabled: boolean;
+  reason: "not_whitelisted" | "live";
   loginPath: string;
   logoutPath: string;
   callbackPath: string;
-  contract: {
-    provider: "authbridge";
-    mode: typeof AUTHBRIDGE_CALLBACK_MODE;
-    tokenField: typeof AUTHBRIDGE_TOKEN_FIELD;
-    algorithm: typeof AUTHBRIDGE_ALGORITHM;
-    claims: readonly ["sub", "exp", "aud", "enc"];
-  };
+  contract: typeof CAMPUS_AUTH_CONTRACT;
+  appId?: string;
+  audience?: string;
+  authBridgeBaseUrl?: string;
 };
 
-export function campusJwtLive(_env: { CAMPUS_JWT_ENABLED?: string } | undefined) {
-  return false;
+export function campusJwtLive(env: { CAMPUS_JWT_ENABLED?: string } | undefined) {
+  return env?.CAMPUS_JWT_ENABLED === "1";
 }
 
-export function campusAuthStatus(): CampusAuthStatus {
+export function campusAuthStatus(
+  env?: {
+    CAMPUS_JWT_ENABLED?: string;
+    CAMPUS_APP_ID?: string;
+    CAMPUS_JWT_AUD?: string;
+    AUTHBRIDGE_BASE_URL?: string;
+  },
+): CampusAuthStatus {
+  if (!campusJwtLive(env)) {
+    return {
+      enabled: false,
+      reason: "not_whitelisted",
+      loginPath: "/login",
+      logoutPath: "/logout",
+      callbackPath: CAMPUS_AUTH_CALLBACK_PATH,
+      contract: CAMPUS_AUTH_CONTRACT,
+    };
+  }
   return {
-    enabled: false,
-    reason: "not_whitelisted",
+    enabled: true,
+    reason: "live",
     loginPath: "/login",
     logoutPath: "/logout",
     callbackPath: CAMPUS_AUTH_CALLBACK_PATH,
-    contract: {
-      provider: "authbridge",
-      mode: AUTHBRIDGE_CALLBACK_MODE,
-      tokenField: AUTHBRIDGE_TOKEN_FIELD,
-      algorithm: AUTHBRIDGE_ALGORITHM,
-      claims: ["sub", "exp", "aud", "enc"],
-    },
+    contract: CAMPUS_AUTH_CONTRACT,
+    appId: typeof env?.CAMPUS_APP_ID === "string" ? env.CAMPUS_APP_ID : "",
+    audience: typeof env?.CAMPUS_JWT_AUD === "string" ? env.CAMPUS_JWT_AUD : "",
+    authBridgeBaseUrl:
+      typeof env?.AUTHBRIDGE_BASE_URL === "string" ? env.AUTHBRIDGE_BASE_URL : "",
   };
 }
 
@@ -132,6 +152,29 @@ const hexToBytes = (value: string) => {
   return bytes;
 };
 
+/** AuthBridge treats even-length hex jwt_key as raw HMAC bytes. */
+export function normalizeCampusJwtSecret(secret: string): Uint8Array<ArrayBuffer> {
+  const source = hexToBytes(secret) || textEncoder.encode(secret.trim());
+  return Uint8Array.from(source);
+}
+
+export function safeCampusReturnPath(raw: string | undefined) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) {
+    return "/";
+  }
+  return raw;
+}
+
+export function issueCampusJwtCookie(c: Context, token: string, maxAge: number) {
+  setCookie(c, CAMPUS_JWT_COOKIE, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge,
+  });
+}
+
 export async function decryptAuthBridgeAesSubject(
   claims: CampusJwtClaims,
   aesKeyHex: string,
@@ -185,7 +228,7 @@ export async function verifyCampusJwtHs256(
   if (header.alg !== AUTHBRIDGE_ALGORITHM) return null;
   const key = await crypto.subtle.importKey(
     "raw",
-    textEncoder.encode(secret),
+    normalizeCampusJwtSecret(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -204,7 +247,15 @@ export async function verifyCampusJwtHs256(
   if (!sub || !Number.isFinite(exp) || exp * 1000 <= Date.now()) return null;
   if (nbf !== null && (!Number.isFinite(nbf) || nbf * 1000 > Date.now()))
     return null;
-  if (audience && payload.aud !== audience) return null;
+  // AuthBridge signs HS256 without an `aud` claim today. Only reject a mismatch
+  // when the token actually carries aud.
+  if (
+    audience &&
+    typeof payload.aud === "string" &&
+    payload.aud !== audience
+  ) {
+    return null;
+  }
   return {
     sub,
     exp,
@@ -216,16 +267,5 @@ export async function verifyCampusJwtHs256(
 }
 
 export async function handleCampusAuthStatus(c: Context) {
-  return c.json(campusAuthStatus());
-}
-
-export async function handleCampusAuthCallback(c: Context) {
-  await readAuthBridgeCallbackToken(c);
-  return c.json(
-    {
-      error: "普通用户认证尚未开放接入",
-      reason: "not_whitelisted",
-    },
-    503,
-  );
+  return c.json(campusAuthStatus(c.env));
 }

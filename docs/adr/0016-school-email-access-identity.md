@@ -18,13 +18,13 @@ Worker 必须独立验签 JWT，并把认证方主体映射到站内稳定、不
 
 - AuthBridge 默认算法是 HS256，claims 为 `sub`、`exp`、可选 `aud`/`enc`/`iv`/`tag`。`enc=aes` 时 `sub` 是学号密文，必须先解密再哈希；`enc=ecc` 在未配置解密能力时失败关闭。
 - 每次认证走共享 verifier：校验签名、`exp`、可选 `nbf`、配置的 `aud`、非空 `sub`。禁止只解码 payload、接受 `alg=none` 或把任意第三方/自签名 token 当普通用户。
-- 验签密钥、AES 密钥和身份摘要密钥缺失时不得降级放行。校方白名单开通前，`POST /api/auth/callback` 固定返回 503，不写 cookie。
+- 验签密钥、AES 密钥和身份摘要密钥缺失时不得降级放行。`CAMPUS_JWT_ENABLED` 未设为 `1` 时，`POST /api/auth/callback` 固定返回 503，不写 cookie。
 - 原始 JWT、学号、密文 `sub` 和认证身份不得写入 D1、应用日志、错误响应或分析事件。状态变更仍须同源与 CSRF；JWT 已验证不等于请求不受 CSRF 影响。
 
 ## 普通用户与身份绑定
 
 - `users.id` 是随机生成且永久稳定的站内标识。任课评价、认可、封禁和账号状态只引用该标识；公开 API 和页面永不返回它。
-- 认证身份以 `(provider, issuer, subject)` 唯一。`provider` 为 `authbridge`，`issuer` 为 JWT `aud`（缺省时为 `authbridge`），`subject` 是学号或稳定 `sub` 的 HMAC，不是明文。
+- 认证身份以 `(provider, issuer, subject)` 唯一。`provider` 为 `authbridge`，`issuer` 为 JWT `aud`（缺省时为配置的 `CAMPUS_JWT_AUD`，再缺省为 `authbridge`），`subject` 是学号或稳定 `sub` 的 HMAC，不是明文。AuthBridge 当前签发的 JWT 通常没有 `aud` claim。
 - 同一认证主体重复登录复用原普通用户。AuthBridge 每次加密会换 IV，因此必须解密后再哈希，不能把密文 `sub` 当主键。
 - 站点第一版没有邮箱声明，因此不按邮箱合并账号。多个认证主体默认是不同普通用户。
 
@@ -44,6 +44,35 @@ Worker 必须独立验签 JWT，并把认证方主体映射到站内稳定、不
 
 - 历史评价永久保持 `user_id = NULL`，不能被后来注册的普通用户认领。
 - 普通用户身份上线前的匿名任课评价和 `submitter_hash` 不自动关联账号。
+
+## 实施门槛
+
+开通 AuthBridge 登录前按此检查。依据：[AuthBridge README](https://github.com/Mine-JUFE/AuthBridge/blob/main/README.md) 与 [demo-backend](https://github.com/Mine-JUFE/AuthBridge/blob/main/demo-backend/app.js)。
+
+代码与密钥占位可以先合入；`POST /api/auth/callback` 在 `CAMPUS_JWT_ENABLED` 未设为 `1` 时维持 503、不写 cookie。不要用「密钥已绑定」当作产品开关。
+
+校方 / AuthBridge 确认：
+
+- `appid` 与 `app_aud`（JWT 默认不带 `aud` claim；`CAMPUS_JWT_AUD` 仍作为身份 `issuer` 回退）
+- callback 白名单含 `https://xk.sein.moe/api/auth/callback`（不要带死 query）
+- `encrypt_type`：AuthBridge 默认 `aes`。`enc=ecc` 在本站未实现解密前失败关闭
+- `jwt_expires_in`：会话长度等于 JWT `exp`（cookie `maxAge` 跟随 `exp`）
+- AuthBridge 基址（占位 `https://mc.jxufe.edu.cn/authbridge`）
+
+Secrets Store：
+
+- `CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_IDENTITY_SECRET` 已绑定。现值为开通前占位，上线前换成校方应用密钥
+- AuthBridge `jwt_key` 若为偶数位 hex，按原始字节做 HS256，不要按 UTF-8 字符串验签
+- 占位或真实值都不得提交进仓库或日志
+
+预览验证后再打开 `CAMPUS_JWT_ENABLED=1`：
+
+- 浏览器自动 POST `token` 到 callback 后写入 `jufexk_campus_jwt`（`HttpOnly` / `Secure` / `SameSite=Lax`）并 303 回站内
+- 错误签名、错误 `aud`、过期、`enc=ecc` 拒绝；注销走 `POST /api/user/logout`
+- 公开响应、错误提示与日志不出现 JWT、学号、密文 `sub` 或 `user_id`
+- 回滚：去掉 `CAMPUS_JWT_ENABLED`，callback 立即回到 503
+
+真实 Worker + D1 HTTP 测试必须覆盖：未启用 503、启用后写 cookie 建会话、错误签名/`aud`/时效拒绝、响应不泄露身份。
 
 ## Considered Options
 
