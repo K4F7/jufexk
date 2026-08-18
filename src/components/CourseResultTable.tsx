@@ -96,6 +96,7 @@ function TeacherLinks({
             <RouterAriaLink
               to={teacherReviewHref(course.id, t.id, search)}
               className="text-sm"
+              aria-label={highlightTerms.length ? t.name : undefined}
             >
               <HighlightSearchTerms text={t.name} terms={highlightTerms} />
             </RouterAriaLink>
@@ -154,6 +155,9 @@ export function CourseResultTable({
                       <RouterAriaLink
                         to={`/courses/${course.id}${search}`}
                         className="font-semibold no-underline"
+                        aria-label={
+                          highlightTerms.length ? course.name : undefined
+                        }
                       >
                         <HighlightSearchTerms
                           text={course.name}

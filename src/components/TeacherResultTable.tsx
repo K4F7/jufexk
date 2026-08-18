@@ -28,14 +28,20 @@ function TeacherNameLink({
   search,
   children,
   className,
+  "aria-label": ariaLabel,
 }: {
   teacher: Teacher;
   search: string;
   children: ReactNode;
   className?: string;
+  "aria-label"?: string;
 }) {
   return (
-    <RouterAriaLink to={`/teachers/${teacher.id}${search}`} className={className}>
+    <RouterAriaLink
+      to={`/teachers/${teacher.id}${search}`}
+      className={className}
+      aria-label={ariaLabel}
+    >
       {children}
     </RouterAriaLink>
   );
@@ -81,6 +87,9 @@ export function TeacherResultTable({
                     teacher={teacher}
                     search={search}
                     className="font-semibold no-underline"
+                    aria-label={
+                      highlightTerms.length ? teacher.name : undefined
+                    }
                   >
                     <HighlightSearchTerms
                       text={teacher.name}
