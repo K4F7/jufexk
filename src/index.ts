@@ -160,23 +160,26 @@ const parseTagCsv = (value: unknown) =>
   typeof value === "string" && value
     ? value.split(",").map((tag) => tag.trim()).filter(Boolean)
     : [];
-const parseAdminSchemeKey = (raw: unknown) => {
-  if (raw === undefined) return { provided: false as const };
+type AdminFieldParse<T> =
+  | { provided: false }
+  | { provided: true; value: T }
+  | { provided: true; error: string };
+const parseAdminSchemeKey = (raw: unknown): AdminFieldParse<SchemeKey> => {
+  if (raw === undefined) return { provided: false };
   if (typeof raw !== "string" || !isSchemeKey(raw))
-    return { provided: true as const, error: "评价规则无效" };
-  return { provided: true as const, value: raw as SchemeKey };
+    return { provided: true, error: "评价规则无效" };
+  return { provided: true, value: raw };
 };
-const parseAdminTags = (raw: unknown) => {
-  if (raw === undefined) return { provided: false as const };
-  if (!Array.isArray(raw))
-    return { provided: true as const, error: "课程标签无效" };
+const parseAdminTags = (raw: unknown): AdminFieldParse<CourseTag[]> => {
+  if (raw === undefined) return { provided: false };
+  if (!Array.isArray(raw)) return { provided: true, error: "课程标签无效" };
   const tags: CourseTag[] = [];
   for (const item of raw) {
     if (typeof item !== "string" || !isCourseTag(item))
-      return { provided: true as const, error: "未知课程标签" };
+      return { provided: true, error: "未知课程标签" };
     if (!tags.includes(item)) tags.push(item);
   }
-  return { provided: true as const, value: tags };
+  return { provided: true, value: tags };
 };
 const loadCourseSchemeInput = (
   db: D1Database,
@@ -2305,9 +2308,9 @@ app.post("/api/admin/courses", async (c) => {
     description = clean(b.description, 500),
     teacherIdsProvided = Object.hasOwn(b, "teacherIds");
   const scheme = parseAdminSchemeKey(b.schemeKey);
-  if (scheme.provided && "error" in scheme) return fail(c, scheme.error);
+  if ("error" in scheme) return fail(c, scheme.error);
   const tags = parseAdminTags(b.tags);
-  if (tags.provided && "error" in tags) return fail(c, tags.error);
+  if ("error" in tags) return fail(c, tags.error);
   if (!code || !name || !["general", "sports"].includes(category))
     return fail(c, "课号、课程名称和类别无效");
   let id = integer(b.id);
