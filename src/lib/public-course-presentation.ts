@@ -1,3 +1,4 @@
+import { likeSql } from "./catalog-search";
 import {
   normalizeReviewTemplateKind,
   type ReviewTemplateKind,
@@ -62,14 +63,15 @@ export function virtualPeSportForTeacherName(name?: string | null) {
   );
 }
 
+/** 与目录搜索同构：每个词条都要命中课名或某位任课教师。 */
 export function virtualPeSportMatchesQuery(
   sport: (typeof VIRTUAL_PE_SPORTS)[number],
-  search: string,
+  terms: string[],
 ) {
-  if (!search) return true;
-  return (
-    sport.label.includes(search) ||
-    sport.teacherNames.some((teacher) => teacher.includes(search))
+  return terms.every(
+    (term) =>
+      sport.label.includes(term) ||
+      sport.teacherNames.some((teacher) => teacher.includes(term)),
   );
 }
 
@@ -192,11 +194,11 @@ export function publicPeCanonicalCourseSql(alias = "c"): string {
 export function publicPeFamilySearchSql(alias = "c"): string {
   const family = publicPeSkillFamilySql(alias);
   const hitFamily = publicPeSkillFamilySql("pe_hit");
-  return `((${family}) LIKE ? OR EXISTS(
+  return `(${likeSql(`(${family})`)} OR EXISTS(
     SELECT 1 FROM courses pe_hit
     WHERE (${family}) IS NOT NULL
       AND (${hitFamily}) = (${family})
-      AND (pe_hit.name LIKE ? OR pe_hit.code LIKE ?)
+      AND (${likeSql("pe_hit.name")} OR ${likeSql("pe_hit.code")})
   ))`;
 }
 

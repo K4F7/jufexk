@@ -18,6 +18,12 @@ import {
   readBoundedJson,
 } from "./catalog-baseline-import";
 import {
+  andSearchTerms,
+  likePrefix,
+  likeSql,
+  parseSearchTerms,
+} from "./lib/catalog-search";
+import {
   isVirtualPeSportId,
   publicCourseCategory,
   publicCourseDisplayName,
@@ -299,14 +305,14 @@ const virtualPeSportItem = (
 });
 const loadVirtualPeSportItems = async (
   db: D1Database,
-  search: string,
+  searchTerms: string[],
   teacherId: number | null,
   department: string,
 ) => {
   if (department) return [];
   const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
   for (const sport of VIRTUAL_PE_SPORTS) {
-    if (!virtualPeSportMatchesQuery(sport, search)) continue;
+    if (!virtualPeSportMatchesQuery(sport, searchTerms)) continue;
     const placeholders = sport.teacherNames.map(() => "?").join(",");
     const teachers = (
       await db
@@ -580,8 +586,7 @@ app.get("/api/courses", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c),
     search = clean(c.req.query("q"), 80),
-    q = `%${search}%`,
-    prefix = `${search}%`,
+    searchTerms = parseSearchTerms(search),
     cat = clean(c.req.query("category"), 20),
     department = clean(c.req.query("department"), 80),
     teacherId = integer(c.req.query("teacherId")),
@@ -590,51 +595,64 @@ app.get("/api/courses", async (c) => {
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  const searchFilter = search
-    ? ` AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?) OR ${publicCourseFamilySearchSql("pcc")})`
-    : "";
-  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchFilter}`;
+  // 单个词条的命中面：课名 / 课号 / 院系 / 任课教师 / 课名变体 / 体育族名。
+  // 任课教师走 EXISTS 而不是行级 JOIN，这样「课名 + 教师」这类多词查询里，
+  // 不同词条可以由课程本身和它的某位教师分别满足。
+  const searchTermSql = `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("c.department")}
+       OR EXISTS(SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND ${likeSql("search_t.name")})
+       OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND ${likeSql("cnv.name")})
+       OR ${publicCourseFamilySearchSql("pcc")}`;
+  const searchGroup = andSearchTerms(searchTerms, searchTermSql);
+  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = [
     cat,
     department,
     department,
     ...(teacherId === null ? [] : [teacherId]),
-    ...(search ? [q, q, q, q, q, q, q] : []),
+    ...searchGroup.args,
   ];
-  const searchRankArgs = [
-    search,
-    search,
-    search,
-    search,
-    prefix,
-    prefix,
-    search,
-    prefix,
-    search,
-    search,
-    prefix,
-    prefix,
-  ];
-  const countJoins = teacherId === null && !search
-    ? `JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id`
-    : `JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id`;
+  const countJoins =
+    teacherId === null
+      ? publicCourseCanonicalJoin
+      : `${publicCourseCanonicalJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id`;
   const total = await c.env.DB.prepare(
     `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
   )
     .bind(...args)
     .first<{ n: number }>();
+  // 多词查询里所有词条都落在课名或课号上时最贴近意图，排在院系与教师命中之前。
+  const allTermsInTitle =
+    searchTerms.length > 1
+      ? andSearchTerms(searchTerms, `${likeSql("c.name")} OR ${likeSql("c.code")}`)
+      : { sql: "", args: [] };
   const relevanceOrder = `CASE
        WHEN ?='' THEN 0
        WHEN c.name=? OR c.code=? OR (${publicPeSkillFamilySql("c")})=? THEN 0
-       WHEN c.name LIKE ? OR c.code LIKE ? THEN 1
-       WHEN c.department=? THEN 2
-       WHEN c.department LIKE ? THEN 3
+       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} THEN 1
+       ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
+       WHEN c.department=? THEN 3
+       WHEN ${likeSql("c.department")} THEN 4
        WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name=?)
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name=?) THEN 4
-       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name LIKE ?)
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name LIKE ?) THEN 5
-       ELSE 6
+         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name=?) THEN 5
+       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND ${likeSql("rank_t.name")})
+         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND ${likeSql("rank_cnv.name")}) THEN 6
+       ELSE 7
      END,review_count DESC,c.name,c.code,c.id`;
+  const searchRankArgs = [
+    search,
+    search,
+    search,
+    search,
+    likePrefix(search),
+    likePrefix(search),
+    ...allTermsInTitle.args,
+    search,
+    likePrefix(search),
+    search,
+    search,
+    likePrefix(search),
+    likePrefix(search),
+  ];
   const { results } = await c.env.DB.prepare(
     `SELECT c.*,
        GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
@@ -659,7 +677,7 @@ app.get("/api/courses", async (c) => {
     .all();
   const virtualItems = await loadVirtualPeSportItems(
     c.env.DB,
-    search,
+    searchTerms,
     teacherId,
     department,
   );
@@ -697,10 +715,13 @@ app.get("/api/teachers", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const q = `%${search}%`;
-  const prefix = `${search}%`;
-  const where = "t.name LIKE ? OR t.department LIKE ?";
-  const args = [q, q];
+  const searchTerms = parseSearchTerms(search);
+  const searchGroup = andSearchTerms(
+    searchTerms,
+    `${likeSql("t.name")} OR ${likeSql("t.department")}`,
+  );
+  const where = searchGroup.sql || "1=1";
+  const args = searchGroup.args;
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM teachers t WHERE ${where}`,
   )
@@ -717,14 +738,23 @@ app.get("/api/teachers", async (c) => {
      ORDER BY CASE
        WHEN ?='' THEN 0
        WHEN t.name=? THEN 0
-       WHEN t.name LIKE ? THEN 1
+       WHEN ${likeSql("t.name")} THEN 1
        WHEN t.department=? THEN 2
-       WHEN t.department LIKE ? THEN 3
+       WHEN ${likeSql("t.department")} THEN 3
        ELSE 4
      END,review_count DESC,t.name,t.department,t.id
      LIMIT ? OFFSET ?`,
   )
-    .bind(...args, search, search, prefix, search, prefix, size, (page - 1) * size)
+    .bind(
+      ...args,
+      search,
+      search,
+      likePrefix(search),
+      search,
+      likePrefix(search),
+      size,
+      (page - 1) * size,
+    )
     .all();
   const totalCount = total?.n || 0;
   return c.json({
@@ -818,9 +848,14 @@ app.get("/api/teachers/:id/reviews", async (c) => {
 app.get("/api/courses/options", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const q = `%${search}%`;
-  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")} AND (?='' OR c.name LIKE ? OR c.code LIKE ? OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (search_t.name LIKE ? OR search_t.department LIKE ?)) OR ${publicPeFamilySearchSql("c")})`;
-  const args = [search, q, q, q, q, q, q, q];
+  const searchGroup = andSearchTerms(
+    parseSearchTerms(search),
+    `${likeSql("c.name")} OR ${likeSql("c.code")}
+       OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (${likeSql("search_t.name")} OR ${likeSql("search_t.department")}))
+       OR ${publicPeFamilySearchSql("c")}`,
+  );
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const args = searchGroup.args;
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM courses c WHERE ${where}`,
   )
