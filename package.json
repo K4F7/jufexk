@@ -34,6 +34,7 @@
     "other-smoke": "tsx scripts/legacy_evidence/other_smoke_cli.ts",
     "legacy-production-gap": "tsx scripts/legacy_evidence/production_gap_cli.ts",
     "rest-sheets-capture": "tsx scripts/legacy_evidence/rest_sheets_capture_cli.ts",
+    "live-layout-context-index": "tsx scripts/legacy_evidence/live_layout_context_index_cli.ts",
     "deploy": "pnpm run build && wrangler deploy",
     "types": "wrangler types",
     "check": "wrangler types && tsc --noEmit && pnpm test && pnpm run test:browser && pnpm run test:legacy-ocr-contract && vite build && wrangler deploy --dry-run",
