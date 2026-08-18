@@ -10,15 +10,21 @@ export function RouterAriaLink({
   to,
   className,
   children,
+  "aria-label": ariaLabel,
+  "aria-current": ariaCurrent,
 }: {
   to: string;
   className?: string;
   children: ReactNode;
+  "aria-label"?: string;
+  "aria-current"?: "page" | "true" | "false";
 }) {
   return (
     <Link
       href={to}
       className={className}
+      aria-label={ariaLabel}
+      aria-current={ariaCurrent}
       render={(domProps) => (
         <RouterLink
           {...(domProps as object)}
