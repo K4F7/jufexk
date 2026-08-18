@@ -1070,8 +1070,8 @@ app.post("/api/reviews", async (c) => {
         dedupeKey,
       ),
       c.env.DB.prepare(
-        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,term,submitter_hash,scheme_key,scheme_version,scores)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,term,submitter_hash,scheme_key,scheme_version,scores,status,reviewed_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
       ).bind(
         courseId,
         teacherId,
@@ -1091,7 +1091,7 @@ app.post("/api/reviews", async (c) => {
       return fail(c, "近期已提交过这位教师的同一课程评价", 409);
     throw error;
   }
-  return c.json({ ok: true, message: "投稿已进入审核队列" });
+  return c.json({ ok: true, message: "评价已发布" });
 });
 app.post("/api/catalog-requests", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
@@ -1767,9 +1767,10 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       c.env.DB.prepare(
         `INSERT INTO reviews(
            course_id,teacher_id,category,overall,comment,
-           term,submitter_hash,scheme_key,scheme_version,scores
+           term,submitter_hash,scheme_key,scheme_version,scores,
+           status,reviewed_at
          )
-         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?
+         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP
          FROM courses c,teachers t
          WHERE c.code=? AND t.source_teacher_label=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
