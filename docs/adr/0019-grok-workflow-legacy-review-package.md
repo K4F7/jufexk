@@ -18,7 +18,7 @@
 
 1. **主机分工**：Capture、矩阵冻结、逐行上下文索引仍走现有 TypeScript。Grok workflow `legacy-review-package` 只编排已冻结公式栏证据与 capture manifest，不截图、不点网格、不写腾讯表格。
 2. **确定性清单**：`scripts/legacy_evidence/review_package.ts` 生成审核包清单。模型不得创建或删除矩阵键。同一工作表最多 8 个相邻待审格一批；公式栏正文 ≥400 字缩到 4 格，≥800 字缩到 1 格。
-3. **恢复**：成功/失败都追加到 gitignored 的 `matrix.json` 与 `attempts.json`。同一批次先干净重试一次，两次失败再二分，单格两次失败才 `unresolved: agent_exhausted`；其余格保持有效。只缺一侧结论的格子必须再入队。重新跑同一 `out_dir` 即续跑。Grok 进程被杀后不得假装可 resume，只能再启动并读磁盘。单波最多 8 个待审批次（每批至多 8 格，A/B 并行约 16 个 agent，外加 inventory / OCR / 仲裁 / compile）；建议 `agent_budget` 64。四轮仍无进展则停止并留下磁盘检查点。
+3. **恢复与无人值守**：成功/失败都追加到 gitignored 的 `matrix.json` 与 `attempts.json`。同一批次先干净重试一次，两次失败再二分，单格两次失败才 `unresolved: agent_exhausted`；其余格保持有效。只缺一侧结论的格子必须再入队。workflow 在给定冻结范围内循环到没有待审格：每波按剩余 `agent_budget` 决定批次数（每波最多 8 批），OCR → A/B → 仲裁 → compile 之间不等人。指纹两次相同或预算不足时停下并留下检查点。重新跑同一 `out_dir` 即续跑。Grok 进程被杀后不得假装可 resume。建议按待审起始格 × 3 加 16 预留设置 `agent_budget`（上限 1024）。冻结上下文索引盖不住的行不得猜测，标 `missing_context`。
 4. **OCR**：仍强制本机 GPU RapidOCR（三个会话均为 `CUDAExecutionProvider`），workflow 只调用 `scripts/legacy_ocr/ocr_review_cells.py` 对已路由评价起始格的裁图做识别。CUDA 不可用必须停，不得回退 CPU。缺 OCR 时清单状态为 `needs_ocr`，不派发 A/B。
 5. **A/B 审什么**：正文权威是公式栏原值。分析 A 看裁图、行上下文和公式栏原值，不看 OCR；分析 B 额外看 OCR。双方输出课程/教师可见值、锚点继承、横向溢出和画面/公式栏对应关系，不得发明第三版通顺稿，也不得改写公式栏正文。
 6. **思政课系统性画面冲突**：公式栏非空且 `visible_text_conflicts_with_formula` 时，仍采用公式栏正文，标记 `formula_bar_visual_conflict`，A/B 只审映射与溢出。不得因为常见画面冲突把整表打成 `unresolved`。定位失败（`halt_batch`、地址错位、双读不一致）仍按格 `unresolved` 并要求重截。
@@ -34,4 +34,4 @@
 
 ## 后果
 
-仓库增加项目级 workflow `.grok/workflows/legacy-review-package.rhai` 与确定性清单编译器。冒烟与全量仍须等 #180 冻结新的 capture manifest 后才能实跑；本决策不授权跳过人工批准。
+仓库增加项目级 workflow `.grok/workflows/legacy-review-package.rhai` 与确定性清单编译器。#180 冒烟包冻结后，workflow 可在该包的上下文覆盖范围内无人值守跑完机器审核包。没有逐行上下文的行、以及人工批准，仍不在本 workflow 内完成。

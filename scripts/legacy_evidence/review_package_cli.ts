@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   analysisPayload,
   applyAnalyses,
@@ -8,13 +8,15 @@ import {
   compileReviewPackage,
   disagreements,
   loadScopedEvidence,
+  loadSmokeImageOverrides,
+  parseContextDocument,
   readJsonIfExists,
+  resolveSmokeEvidenceDir,
   validateAnalysisResponse,
   validateArbitrationResponse,
   writeReviewJson,
   type CellAnalysis,
   type CellArbitration,
-  type ContextRow,
   type OcrEvidence,
   type ReviewAttempt,
   type RoutedCell,
@@ -42,21 +44,27 @@ function optionalInteger(name: string) {
 function usage() {
   return [
     "Usage:",
-    "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts inventory --evidence-dir <dir> --context <json> --out <dir> [--worksheet <name>] [--first-row N] [--last-row N] [--ocr-dir <dir>] [--max-batches N]",
+    "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts inventory --evidence-dir <dir> --context <json> --out <dir> [--worksheet <name>] [--first-row N] [--last-row N] [--ocr-dir <dir>] [--max-batches N] [--smoke-root <dir>]",
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts compile --inventory <json> --analyses <json> --out <dir>",
   ].join("\n");
 }
 
-async function loadContext(path: string): Promise<ContextRow[]> {
-  const raw = JSON.parse(await readFile(resolve(path), "utf8"));
-  const rows = Array.isArray(raw) ? raw : raw.context_index;
-  if (!Array.isArray(rows)) throw new Error("context file must be an array or {context_index:[]}");
-  return rows.map((item: ContextRow) => {
-    if (!Number.isInteger(item.row) || typeof item.course !== "string" || typeof item.teacher !== "string") {
-      throw new Error("invalid context row");
+async function loadContext(path: string) {
+  return parseContextDocument(JSON.parse(await readFile(resolve(path), "utf8")));
+}
+
+async function detectSmokeRoot(contextPath: string, evidenceDir: string) {
+  const explicit = optionalOption("--smoke-root");
+  if (explicit) return resolve(explicit);
+  for (const candidate of [dirname(resolve(contextPath)), resolve(evidenceDir)]) {
+    try {
+      await readFile(join(candidate, "smoke-manifest.json"), "utf8");
+      return candidate;
+    } catch {
+      continue;
     }
-    return { row: item.row, course: item.course, teacher: item.teacher };
-  });
+  }
+  return undefined;
 }
 
 async function loadOcr(ocrDir?: string): Promise<Record<string, OcrEvidence>> {
@@ -69,8 +77,12 @@ async function loadOcr(ocrDir?: string): Promise<Record<string, OcrEvidence>> {
 
 async function inventoryCommand() {
   const outDir = resolve(option("--out"));
+  const contextPath = option("--context");
+  const requestedEvidence = option("--evidence-dir");
+  const smokeRoot = await detectSmokeRoot(contextPath, requestedEvidence);
+  const evidenceDir = smokeRoot ? await resolveSmokeEvidenceDir(smokeRoot) : requestedEvidence;
   const loaded = await loadScopedEvidence({
-    evidence_dir: option("--evidence-dir"),
+    evidence_dir: evidenceDir,
     worksheet: optionalOption("--worksheet"),
     first_row: optionalInteger("--first-row"),
     last_row: optionalInteger("--last-row"),
@@ -81,9 +93,10 @@ async function inventoryCommand() {
   const ocrDir = optionalOption("--ocr-dir") ?? join(outDir, "ocr");
   const inventory = buildReviewInventory({
     evidence: loaded.evidence,
-    context_index: await loadContext(option("--context")),
+    context_index: await loadContext(contextPath),
     ocr_by_key: await loadOcr(ocrDir),
     image_base_by_key: loaded.image_base_by_key,
+    image_overrides: smokeRoot ? await loadSmokeImageOverrides(smokeRoot) : {},
     worksheet: optionalOption("--worksheet"),
     first_row: optionalInteger("--first-row"),
     last_row: optionalInteger("--last-row"),

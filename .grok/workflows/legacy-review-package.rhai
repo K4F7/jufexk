@@ -1,6 +1,6 @@
 let meta = #{
     name: "legacy-review-package",
-    description: "After a frozen formula-bar matrix, run CUDA RapidOCR by command, isolated A/B mapping review, and arbitration. Never approves records.",
+    description: "Unattended post-freeze review: CUDA RapidOCR, isolated A/B, arbitration, and compile until the frozen context scope is empty. Never approves records.",
     when_to_use: "A formula-bar / capture manifest is already frozen and you need the post-freeze review package. Do not use this for screenshots or locator work.",
     phases: [
         #{ title: "Inventory", detail: "route frozen cells into batches of at most 8" },
@@ -122,6 +122,20 @@ fn inventory_command(out_dir, evidence_dir, context_path, manifest_path, ocr_dir
     command
 }
 
+fn wave_size(requested) {
+    let cap = budget();
+    let remaining = if cap == () || cap.remaining == () { 128 } else { cap.remaining };
+    if remaining < 1 { return 0; }
+    let room = remaining - 3;
+    let n = 0;
+    while (n + 1) * 3 <= room && n < 8 {
+        n += 1;
+    }
+    if requested != () && requested < n { n = requested; }
+    if n < 0 { n = 0; }
+    n
+}
+
 fn isolation_rules() {
     let text = "Do not inspect repository files, issues, ADRs, CONTEXT.md, Git state, or any path not listed in the payload. ";
     text += "Use read_file on the payload JSON first, then on each listed image path. ";
@@ -192,16 +206,28 @@ if !has_text(inventory_path) && !has_text(context_path) {
 }
 
 let last_fingerprint = "";
-let round = 0;
+let wave = 0;
 let last_inventory = ();
 let last_package = ();
 
-while round < 4 {
+while wave < 64 {
+    let cap = budget();
+    let remaining = if cap == () || cap.remaining == () { 128 } else { cap.remaining };
+    if remaining < 1 {
+        complete(#{
+            summary: "Agent budget is exhausted. Rerun the same out_dir with a higher agent_budget.",
+            status: "budget_exhausted",
+            review_package: last_package,
+            inventory: last_inventory,
+            out_dir: out_dir,
+        });
+    }
+    let this_wave = wave_size(max_batches);
     phase("Inventory");
     let inventory_prompt = "Build or refresh the deterministic review-package inventory. ";
     inventory_prompt += "Do not screenshot, click grid cells, or write Tencent Docs / the business database. ";
     inventory_prompt += "Do not invent matrix keys. Run this exact command from the repository root and return its stdout JSON unchanged:\n";
-    inventory_prompt += inventory_command(out_dir, evidence_dir, context_path, manifest_path, ocr_dir, worksheet, first_row, last_row, max_batches);
+    inventory_prompt += inventory_command(out_dir, evidence_dir, context_path, manifest_path, ocr_dir, worksheet, first_row, last_row, this_wave);
     if has_text(inventory_path) {
         inventory_prompt = "Read ";
         inventory_prompt += inventory_path;
@@ -253,16 +279,26 @@ while round < 4 {
                 out_dir: out_dir,
             });
         }
-        round += 1;
+        wave += 1;
         continue;
     }
 
     let pending = last_inventory.pending_batches;
+    let pending_cells = last_inventory.pending_cells;
     if pending == () || type_of(pending) != "array" || pending.len() == 0 {
+        if pending_cells != () && pending_cells > 0 {
+            complete(#{
+                summary: "Pending cells remain but this wave could not emit batches. Rerun the same out_dir with a higher agent_budget.",
+                status: "budget_exhausted",
+                reason: last_inventory.reason,
+                review_package: last_package,
+                out_dir: out_dir,
+            });
+        }
         phase("Compile");
         complete(#{
-            summary: "No pending review batches.",
-            status: if inv_status == () { "empty" } else { inv_status },
+            summary: if last_package == () { "No pending review batches." } else { "Frozen-scope review package finished unattended." },
+            status: if last_package != () { "completed" } else if inv_status == () { "empty" } else { inv_status },
             reason: last_inventory.reason,
             inventory_path: last_inventory.inventory_path,
             review_package: last_package,
@@ -284,7 +320,7 @@ while round < 4 {
         });
     }
     last_fingerprint = current_fp;
-    log("Round " + (round + 1).to_string() + ": " + pending.len().to_string() + " pending batches");
+    log("Wave " + (wave + 1).to_string() + ": " + pending.len().to_string() + " pending batches, budget remaining " + budget().remaining.to_string());
 
     phase("Analyze");
     let jobs = [];
@@ -350,7 +386,7 @@ while round < 4 {
         analysis_b: analyses_b,
         arbitration: analyses_arb,
     };
-    let compile_path = out_dir + "/round-" + (round + 1).to_string() + "-analyses.json";
+    let compile_path = out_dir + "/wave-" + (wave + 1).to_string() + "-analyses.json";
     let compile_prompt = "Write this JSON exactly to ";
     compile_prompt += compile_path;
     compile_prompt += " and then run this command from the repository root. Do not mark any cell approved. ";
@@ -369,18 +405,20 @@ while round < 4 {
         output_schema: compile_schema,
     });
     if usable(compiled) { last_package = compiled.output; }
-    round += 1;
+    wave += 1;
 }
 
 if last_package != () {
     complete(#{
-        summary: "Review package compiled after the batch cap.",
+        summary: "Stopped after 64 waves. Rerun the same out_dir to continue.",
+        status: "wave_cap",
         review_package: last_package,
         out_dir: out_dir,
     });
 }
 complete(#{
-    summary: "Stopped after four inventory rounds without a compiled package.",
+    summary: "Stopped after 64 waves without a compiled package.",
+    status: "wave_cap",
     inventory: last_inventory,
     out_dir: out_dir,
 });

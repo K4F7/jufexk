@@ -9,6 +9,7 @@ import {
   buildReviewInventory,
   compileReviewPackage,
   disagreements,
+  parseContextDocument,
   routeFormulaBarCell,
   validateAnalysisResponse,
   type CellAnalysis,
@@ -272,5 +273,55 @@ describe("legacy review package compile", () => {
     });
     expect(inventory).toMatchObject({ status: "needs_ocr", pending_batches: [] });
     expect(inventory.ocr_command).toContain("ocr_review_cells.py");
+  });
+
+  it("keeps frozen context when A/B leave course or teacher blank", async () => {
+    const evidence = await origin();
+    const inventory = buildReviewInventory({
+      evidence: [evidence],
+      context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
+      ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
+    });
+    const blankTeacher = mapping("体育课|6|D", { visible_teacher: "", teacher_status: "unclear" });
+    const compiled = compileReviewPackage(inventory, applyAnalyses(
+      inventory.cells,
+      new Map([["体育课|6|D", blankTeacher]]),
+      new Map([["体育课|6|D", blankTeacher]]),
+    ));
+    expect(compiled.cells[0]).toMatchObject({
+      visible_course: "太极拳",
+      visible_teacher: "甲",
+      context: { course: "太极拳", teacher: "甲" },
+    });
+  });
+});
+
+describe("frozen smoke context", () => {
+  it("parses smoke-context-index-v1 and does not mix same row numbers across worksheets", () => {
+    const rows = parseContextDocument({
+      contract_version: "smoke-context-index-v1",
+      sheets: [
+        { worksheet: "体育课", rows: [{ row: 8, visible_course: "健美操", visible_teacher: "刘璇" }] },
+        { worksheet: "思政课", rows: [{ row: 8, visible_course: "马原", visible_teacher: "李凤丹" }] },
+      ],
+    });
+    expect(rows).toEqual([
+      { worksheet: "体育课", row: 8, course: "健美操", teacher: "刘璇" },
+      { worksheet: "思政课", row: 8, course: "马原", teacher: "李凤丹" },
+    ]);
+  });
+
+  it("uses a recapture image override without rewriting formula-bar evidence", async () => {
+    const evidence = await captureFormulaBarCell(
+      { worksheet: "体育课", address: "G7" },
+      source("G7", "旧冲突正文", "画面对不上"),
+    );
+    const cell = routeFormulaBarCell(evidence, {
+      context: { row: 7, course: "健美操", teacher: "陈军" },
+      image_override: { cell: "D:/smoke/captures/体育课/G7-cell.jpg" },
+    });
+    expect(cell.cell_image).toBe("D:/smoke/captures/体育课/G7-cell.jpg");
+    expect(cell.formula_bar_value).toBe("旧冲突正文");
+    expect(cell.formula_bar_visual_conflict).toBe(true);
   });
 });
