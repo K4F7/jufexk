@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { MOOC_SCORES, OFFLINE_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
 let ipSequence = 60;
@@ -214,11 +215,8 @@ describe("catalog addition requests", () => {
         overall: 5,
         comment: "随申请一起提交的评价",
         term: "2025 秋",
-        clarity: 5,
-        knowledge: 4,
-        gradingScore: 4,
-        workloadScore: 3,
-        fairness: 5,
+        scores: OFFLINE_SCORES,
+        schemeKey: "pe",
       },
     });
     const { id } = await submitted.json<{ id: number }>();
@@ -243,8 +241,8 @@ describe("catalog addition requests", () => {
     expect(catalogBody.items[0].teachers).toContain("批准后的教师");
 
     const review = await env.DB.prepare(
-      `SELECT status,comment,term,course_id,clarity,knowledge,grading_score,
-         workload_score,fairness FROM reviews WHERE comment=? LIMIT 1`,
+      `SELECT status,comment,term,course_id,scheme_key,scheme_version,scores
+         FROM reviews WHERE comment=? LIMIT 1`,
     )
       .bind("随申请一起提交的评价")
       .first<{
@@ -252,22 +250,78 @@ describe("catalog addition requests", () => {
         comment: string;
         term: string;
         course_id: number;
-        clarity: number;
-        knowledge: number;
-        grading_score: number;
-        workload_score: number;
-        fairness: number;
+        scheme_key: string;
+        scheme_version: number;
+        scores: string;
       }>();
     expect(review).toMatchObject({
       status: "pending",
       course_id: catalogBody.items[0].id,
       term: "2025 秋",
-      clarity: 5,
-      knowledge: 4,
-      grading_score: 4,
-      workload_score: 3,
-      fairness: 5,
+      scheme_key: "major",
+      scheme_version: 1,
+      scores: JSON.stringify({
+        attendance: 3,
+        grading: 5,
+        teaching: 4,
+        workload: 2,
+      }),
     });
+  });
+
+  it("rejects an attached review that is missing an applicable dimension", async () => {
+    const response = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-MISSING-DIM",
+      courseName: "缺维度的申请课程",
+      category: "general",
+      department: "测试学院",
+      teacherSourceLabel: "缺维度的申请教师",
+      review: { overall: 5, comment: "只有推荐度" },
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("validates an attached review against an existing course scheme and tags", async () => {
+    const existing = await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department,scheme_key) VALUES('REQ-EXIST-MOOC','已存在网课','general','测试学院','ideology')",
+    ).run();
+    const courseId = Number(existing.meta.last_row_id);
+    await env.DB.prepare(
+      "INSERT INTO course_tags(course_id,tag) VALUES(?,'mooc')",
+    )
+      .bind(courseId)
+      .run();
+
+    const leftover = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-EXIST-MOOC",
+      courseName: "已存在网课申请名",
+      category: "general",
+      department: "测试学院",
+      teacherSourceLabel: "已存在网课教师",
+      review: {
+        overall: 4,
+        comment: "网课不应再交点名",
+        scores: OFFLINE_SCORES,
+      },
+    });
+    expect(leftover.status).toBe(400);
+
+    const submitted = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-EXIST-MOOC",
+      courseName: "已存在网课申请名",
+      category: "general",
+      department: "测试学院",
+      teacherSourceLabel: "已存在网课教师",
+      review: {
+        overall: 4,
+        comment: "沿用已有课程规则",
+        scores: MOOC_SCORES,
+      },
+    });
+    expect(submitted.status).toBe(200);
   });
 
   it("does not create catalog objects when a request is rejected", async () => {
@@ -425,7 +479,11 @@ describe("catalog addition requests", () => {
       courseName: "并发审批课程",
       category: "general",
       teacherSourceLabel: "并发审批教师",
-      review: { overall: 5, comment: "并发审批只应创建一次" },
+      review: {
+        overall: 5,
+        comment: "并发审批只应创建一次",
+        scores: OFFLINE_SCORES,
+      },
     });
     const { id } = await submitted.json<{ id: number }>();
     const headers = await login();

@@ -710,6 +710,12 @@ describe("review protection", () => {
           courseId: 1,
           teacherId: 1,
           overall: 5,
+          scores: {
+            teaching: 4,
+            attendance: 3,
+            grading: 5,
+            workload: 2,
+          },
           comment,
         }),
       });
