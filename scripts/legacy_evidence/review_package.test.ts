@@ -1,17 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { captureFormulaBarCell, type FormulaBarCellSource } from "./formula_bar";
+import { compileConfirmedLiveLayout, type LiveLayout } from "./live_layout";
+import { compileLiveLayoutContextIndex } from "./live_layout_context_index";
 import {
+  ISOLATED_SPORTS_SMOKE_REVIEW,
+  NO_REVIEWS_TO_PACKAGE,
   analysisPayload,
   applyAnalyses,
   applyApprovals,
   applyArbitration,
+  assertReviewOcrInputIsCellCrop,
+  assertReviewPackageOutputPath,
   batchSizeForCells,
   buildReviewBatches,
   buildReviewInventory,
+  classifyReviewOcrImage,
   compileReviewPackage,
   disagreements,
   eligibleForApproval,
+  markIsolatedSportsSmokeReviewPackage,
   parseContextDocument,
+  reviewPackageCountsAsPass,
   routeFormulaBarCell,
   validateAnalysisResponse,
   type CellAnalysis,
@@ -35,6 +44,13 @@ function source(address: string, formula: string, visible: string, extras: Parti
 
 async function origin(address = "D6", formula = "这门课很好", visible = "这门课很") {
   return captureFormulaBarCell({ worksheet: "体育课", address }, source(address, formula, visible));
+}
+
+function boundInventory(input: Parameters<typeof buildReviewInventory>[0]) {
+  return buildReviewInventory({
+    ...input,
+    layout: input.layout === undefined ? compileConfirmedLiveLayout() : input.layout,
+  });
 }
 
 function mapping(key: string, overrides: Partial<CellAnalysis> = {}): CellAnalysis {
@@ -153,7 +169,7 @@ describe("legacy review package batches", () => {
       ["体育课|6|F", "体育课|6|G"],
     ]);
 
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: await Promise.all(["D6", "E6"].map((address) => origin(address))),
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       ocr_by_key: { "体育课|6|D": { text: "这门课很好" }, "体育课|6|E": { text: "这门课很好" } },
@@ -171,7 +187,7 @@ describe("legacy review package batches", () => {
 
   it("re-queues a cell when only one side is complete", async () => {
     const evidence = await origin();
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: [evidence],
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
@@ -191,7 +207,7 @@ describe("legacy review package batches", () => {
 describe("legacy review package compile", () => {
   it("agrees on exact mapping, arbitrates a disagreement, and never marks approved", async () => {
     const evidence = await Promise.all(["D6", "E6"].map((address) => origin(address)));
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence,
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       ocr_by_key: { "体育课|6|D": { text: "这门课很好" }, "体育课|6|E": { text: "这门课很好" } },
@@ -229,7 +245,7 @@ describe("legacy review package compile", () => {
       { worksheet: "思政课", address: "G8" },
       source("G8", "系统冲突的公式栏全文", "画面对不上"),
     );
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: [evidence],
       context_index: [{ row: 8, course: "思想道德与法治", teacher: "乙" }],
       ocr_by_key: { "思政课|8|G": { text: "画面对不上" } },
@@ -254,7 +270,7 @@ describe("legacy review package compile", () => {
 
   it("omits OCR from analysis A payloads and requires it on B", async () => {
     const evidence = await origin();
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: [evidence],
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       ocr_by_key: { "体育课|6|D": { text: "这门课很好", confidence: 0.99 } },
@@ -267,7 +283,7 @@ describe("legacy review package compile", () => {
 
   it("blocks inventory when CUDA OCR is required and missing", async () => {
     const evidence = await origin();
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: [evidence],
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       inventory_path: "scripts/legacy_evidence/output/smoke/inventory.json",
@@ -279,7 +295,7 @@ describe("legacy review package compile", () => {
 
   it("keeps frozen context when A/B leave course or teacher blank", async () => {
     const evidence = await origin();
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: [evidence],
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
@@ -331,7 +347,7 @@ describe("frozen smoke context", () => {
 describe("verifier-gated auto-approval", () => {
   it("approves only when image-text flags and evidence are all present", async () => {
     const evidence = await origin();
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: [evidence],
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
@@ -359,7 +375,7 @@ describe("verifier-gated auto-approval", () => {
   it("keeps an approved cell approved on resume and does not re-queue it", async () => {
     const evidence = await origin();
     const agreed = mapping("体育课|6|D");
-    const inventory = buildReviewInventory({
+    const inventory = boundInventory({
       evidence: [evidence],
       context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
       ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
@@ -382,5 +398,165 @@ describe("verifier-gated auto-approval", () => {
     expect(inventory.cells[0].approved).toBe(true);
     expect(inventory.pending_verify).toEqual([]);
     expect(inventory.pending_batches).toEqual([]);
+  });
+});
+
+describe("legacy review package live-layout gate", () => {
+  it("fails inventory when no live layout is bound or teacher letters drifted", async () => {
+    const evidence = await origin();
+    const context = [{ row: 6, course: "太极拳", teacher: "甲" }];
+    expect(() => buildReviewInventory({
+      evidence: [evidence],
+      context_index: context,
+    })).toThrow(/live layout SHA/);
+    expect(() => boundInventory({
+      evidence: [evidence],
+      context_index: context,
+      layout: null,
+    })).toThrow(/live layout SHA/);
+
+    const layout = compileConfirmedLiveLayout();
+    const drifted = {
+      ...layout,
+      sheets: layout.sheets.map((sheet) => (
+        sheet.worksheet === "体育课" ? { ...sheet, teacher_column: "C" } : sheet
+      )),
+    };
+    expect(() => boundInventory({
+      evidence: [evidence],
+      context_index: context,
+      layout: drifted as LiveLayout,
+    })).toThrow(/体育课|unconfirmed|obsolete|hash/);
+
+    const accepted = boundInventory({
+      evidence: [evidence],
+      context_index: context,
+      ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
+      layout,
+    });
+    expect(accepted.layout_sha256).toBe(layout.layout_sha256);
+    expect(accepted.pending_batches.flatMap((batch) => batch.keys)).toEqual(["体育课|6|D"]);
+    expect(accepted.wrote_tencent_or_business_db).toBe(false);
+  });
+
+  it("does not route a live-layout row that is missing peer context into A/B", async () => {
+    const evidence = await origin();
+    const index = compileLiveLayoutContextIndex({
+      layout: compileConfirmedLiveLayout(),
+      reads: [{ worksheet: "体育课", row: 7, role: "course", address: "A7", nonempty: true }],
+    });
+    const inventory = boundInventory({
+      evidence: [evidence],
+      context_index: parseContextDocument(index),
+      ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
+    });
+    expect(inventory.cells[0]).toMatchObject({
+      routing: "unresolved",
+      unresolved_reason: "missing_context",
+    });
+    expect(inventory.pending_batches).toEqual([]);
+  });
+
+  it("rejects window chrome as OCR input and only accepts a cell crop", async () => {
+    expect(classifyReviewOcrImage({ path: "D6-cell.jpg", kind: "cell" })).toBe("cell_crop");
+    expect(classifyReviewOcrImage({ path: "D6-formula.jpg", kind: "conflict" })).toBe("window_chrome");
+    expect(classifyReviewOcrImage({ path: "window-chrome.png" })).toBe("window_chrome");
+    expect(() => assertReviewOcrInputIsCellCrop({ path: "D6-formula.jpg" })).toThrow(/window chrome/);
+    expect(() => assertReviewOcrInputIsCellCrop({ path: "D6-cell.jpg", kind: "cell" })).not.toThrow();
+
+    const evidence = await origin();
+    const chrome = boundInventory({
+      evidence: [evidence],
+      context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
+      image_overrides: { "体育课|6|D": { cell: "D:/packs/体育课/D6-formula.jpg" } },
+      ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
+    });
+    expect(chrome.cells[0]).toMatchObject({
+      routing: "unresolved",
+      unresolved_reason: "window_chrome_ocr_input",
+    });
+    expect(chrome.pending_batches).toEqual([]);
+  });
+
+  it("does not route in_production or packaged_not_imported cells", async () => {
+    const [production, packaged, fresh] = await Promise.all(["D6", "E6", "F6"].map((address) => origin(address)));
+    const inventory = boundInventory({
+      evidence: [production, packaged, fresh],
+      context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
+      ocr_by_key: {
+        "体育课|6|D": { text: "这门课很好" },
+        "体育课|6|E": { text: "这门课很好" },
+        "体育课|6|F": { text: "这门课很好" },
+      },
+      gap_by_key: {
+        "体育课|6|D": "in_production",
+        "体育课|6|E": "packaged_not_imported",
+        "体育课|6|F": "never_packaged",
+      },
+    });
+    expect(inventory.cells.find((cell) => cell.key === "体育课|6|D")).toMatchObject({
+      routing: "not_applicable",
+      unresolved_reason: "in_production",
+    });
+    expect(inventory.cells.find((cell) => cell.key === "体育课|6|E")).toMatchObject({
+      routing: "not_applicable",
+      unresolved_reason: "packaged_not_imported",
+    });
+    expect(inventory.pending_batches.flatMap((batch) => batch.keys)).toEqual(["体育课|6|F"]);
+    const missingGap = boundInventory({
+      evidence: [fresh],
+      context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
+      ocr_by_key: { "体育课|6|F": { text: "这门课很好" } },
+      gap_by_key: {},
+    });
+    expect(missingGap.cells[0]).toMatchObject({
+      routing: "not_applicable",
+      unresolved_reason: "not_never_packaged",
+    });
+    expect(missingGap.pending_batches).toEqual([]);
+  });
+
+  it("records 无评价可审 for 美育 smoke when nothing is never_packaged", async () => {
+    const blank = await captureFormulaBarCell(
+      { worksheet: "美育", address: "E8" },
+      source("E8", "", ""),
+    );
+    const inventory = boundInventory({
+      evidence: [blank],
+      context_index: [{ worksheet: "美育", row: 8, course: "素描", teacher: "甲" }],
+      worksheet: "美育",
+      first_row: 8,
+      last_row: 14,
+      gap_by_key: { "美育|8|E": "never_packaged" },
+    });
+    expect(inventory).toMatchObject({
+      status: "empty",
+      reason: NO_REVIEWS_TO_PACKAGE,
+      pending_batches: [],
+      pending_verify: [],
+    });
+  });
+
+  it("isolates the 体育 6-14 review package without changing its approved_cells", () => {
+    const pkg = {
+      contract_version: "legacy-review-package-v1" as const,
+      status: "completed" as const,
+      planned_cells: 72,
+      routed_cells: 47,
+      unresolved_cells: 0,
+      approved_cells: 47,
+      cells: [],
+      input_sha256: "a".repeat(64),
+    };
+    const isolated = markIsolatedSportsSmokeReviewPackage(pkg);
+    expect(isolated.approved_cells).toBe(47);
+    expect(isolated.isolation).toBe(ISOLATED_SPORTS_SMOKE_REVIEW.isolation);
+    expect(isolated.use_approved_count_as_pass).toBe(false);
+    expect(reviewPackageCountsAsPass(isolated)).toBe(false);
+    expect(reviewPackageCountsAsPass(pkg)).toBe(true);
+    expect(reviewPackageCountsAsPass(pkg, "scripts/legacy_evidence/output/review-package-smoke-sports-20260818/package.json")).toBe(false);
+    expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/review-package-smoke-sports-20260818/package.json")).toThrow(/isolated|wrong-layout|must not be rerun/i);
+    expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/review-package-smoke-sports-oneshot/package.json")).toThrow(/isolated|wrong-layout|must not be rerun/i);
+    expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/smoke-20260818-v1/package.json")).toThrow(/#180|#229|formula-bar|protected/i);
   });
 });

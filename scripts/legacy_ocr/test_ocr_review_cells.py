@@ -40,6 +40,31 @@ class OcrReviewCellsTest(unittest.TestCase):
             self.assertEqual(payload["体育课|6|D"]["text"], "这门课很好")
             self.assertEqual(payload["体育课|6|D"]["providers"]["text_det"], ["CUDAExecutionProvider"])
 
+    def test_rejects_window_chrome_as_ocr_input(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            chrome = root / "D6-formula.jpg"
+            chrome.write_bytes(b"fake-window")
+            inventory = root / "inventory.json"
+            inventory.write_text(json.dumps({
+                "cells": [{
+                    "key": "体育课|6|D",
+                    "routing": "pending_review",
+                    "cell_image": str(chrome),
+                }],
+            }), encoding="utf-8")
+            out = root / "ocr"
+
+            with patch.object(ocr_review_cells, "cuda_provider_evidence", return_value={"text_det": ["CUDAExecutionProvider"]}), \
+                    patch.object(ocr_review_cells, "ocr_cuda") as ocr:
+                summary = ocr_review_cells.run_cell_ocr(inventory, out)
+
+            ocr.assert_not_called()
+            self.assertEqual(summary["status"], "completed_with_exceptions")
+            self.assertEqual(summary["failed_keys"], ["体育课|6|D"])
+            self.assertFalse(ocr_review_cells.is_cell_crop_image(str(chrome)))
+            self.assertTrue(ocr_review_cells.is_cell_crop_image(str(root / "D6-cell.jpg")))
+
 
 if __name__ == "__main__":
     unittest.main()

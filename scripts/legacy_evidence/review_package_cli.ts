@@ -1,11 +1,14 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import type { LiveLayout } from "./live_layout";
+import type { ProductionGapPartition } from "./production_gap";
 import {
   analysisPayload,
   applyAnalyses,
   applyApprovals,
   applyArbitration,
   approvalPayload,
+  assertReviewPackageOutputPath,
   buildReviewInventory,
   compileReviewPackage,
   disagreements,
@@ -14,6 +17,7 @@ import {
   loadSmokeImageOverrides,
   parseContextDocument,
   readJsonIfExists,
+  requireReviewPackageLiveLayout,
   resolveSmokeEvidenceDir,
   validateAnalysisResponse,
   validateApprovalResponse,
@@ -49,7 +53,7 @@ function optionalInteger(name: string) {
 function usage() {
   return [
     "Usage:",
-    "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts inventory --evidence-dir <dir> --context <json> --out <dir> [--worksheet <name>] [--first-row N] [--last-row N] [--ocr-dir <dir>] [--max-batches N] [--smoke-root <dir>]",
+    "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts inventory --evidence-dir <dir> --context <json> --layout <live-layout.json> --gap <json> --out <dir> [--worksheet <name>] [--first-row N] [--last-row N] [--ocr-dir <dir>] [--max-batches N] [--smoke-root <dir>]",
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts compile --inventory <json> --analyses <json> --out <dir>",
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts approve --package <json> --verdicts <json> --out <dir>",
   ].join("\n");
@@ -81,10 +85,41 @@ async function loadOcr(ocrDir?: string): Promise<Record<string, OcrEvidence>> {
   return record;
 }
 
+async function loadLayout(): Promise<LiveLayout> {
+  return requireReviewPackageLiveLayout(JSON.parse(await readFile(resolve(option("--layout")), "utf8")));
+}
+
+async function loadGap(): Promise<Record<string, ProductionGapPartition>> {
+  const raw = JSON.parse(await readFile(resolve(option("--gap")), "utf8"));
+  if (isRecord(raw) && Array.isArray(raw.cells)) {
+    const gap: Record<string, ProductionGapPartition> = {};
+    for (const cell of raw.cells) {
+      if (!isRecord(cell) || typeof cell.key !== "string" || typeof cell.partition !== "string") continue;
+      gap[cell.key] = cell.partition as ProductionGapPartition;
+    }
+    return gap;
+  }
+  if (isRecord(raw)) {
+    const gap: Record<string, ProductionGapPartition> = {};
+    for (const [key, partition] of Object.entries(raw)) {
+      if (typeof partition === "string") gap[key] = partition as ProductionGapPartition;
+    }
+    return gap;
+  }
+  throw new Error("gap file must be a production-gap inventory or {key: partition}");
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function inventoryCommand() {
   const outDir = resolve(option("--out"));
+  assertReviewPackageOutputPath(outDir);
   const contextPath = option("--context");
   const requestedEvidence = option("--evidence-dir");
+  const layout = await loadLayout();
+  const gap_by_key = await loadGap();
   const smokeRoot = await detectSmokeRoot(contextPath, requestedEvidence);
   const evidenceDir = smokeRoot ? await resolveSmokeEvidenceDir(smokeRoot) : requestedEvidence;
   const loaded = await loadScopedEvidence({
@@ -100,6 +135,8 @@ async function inventoryCommand() {
   const inventory = buildReviewInventory({
     evidence: loaded.evidence,
     context_index: await loadContext(contextPath),
+    layout,
+    gap_by_key,
     ocr_by_key: await loadOcr(ocrDir),
     image_base_by_key: loaded.image_base_by_key,
     image_overrides: smokeRoot ? await loadSmokeImageOverrides(smokeRoot) : {},
@@ -154,6 +191,7 @@ async function inventoryCommand() {
 
 async function compileCommand() {
   const outDir = resolve(option("--out"));
+  assertReviewPackageOutputPath(outDir);
   const inventory = await readJsonIfExists(resolve(option("--inventory")));
   const analyses = await readJsonIfExists(resolve(option("--analyses")));
   if (!inventory || !Array.isArray(inventory.cells)) throw new Error("inventory is missing cells");
@@ -245,6 +283,7 @@ async function compileCommand() {
 
 async function approveCommand() {
   const outDir = resolve(option("--out"));
+  assertReviewPackageOutputPath(outDir);
   const compiled = await readJsonIfExists(resolve(option("--package")));
   const verdictsFile = await readJsonIfExists(resolve(option("--verdicts")));
   if (!compiled || !Array.isArray(compiled.cells)) throw new Error("package is missing cells");
