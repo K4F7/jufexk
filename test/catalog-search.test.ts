@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   andSearchTerms,
-  likeContains,
   likeEscape,
-  likePrefix,
   likeSql,
   parseSearchTerms,
+  prefixPattern,
 } from "../src/lib/catalog-search";
 
 describe("parseSearchTerms", () => {
@@ -46,8 +45,10 @@ describe("likeEscape", () => {
   });
 
   it("keeps escaped wildcards inside contains and prefix patterns", () => {
-    expect(likeContains("100%")).toBe("%100\\%%");
-    expect(likePrefix("100%")).toBe("100\\%%");
+    expect(andSearchTerms(["100%"], likeSql("c.name")).args).toEqual([
+      "%100\\%%",
+    ]);
+    expect(prefixPattern("100%")).toBe("100\\%%");
   });
 });
 
@@ -84,5 +85,23 @@ describe("andSearchTerms", () => {
       `c.name GLOB '?[0-9]*' OR ${likeSql("c.name")}`,
     );
     expect(filter.args).toEqual(["%张三%"]);
+  });
+
+  it("handles escaped single quotes inside literals", () => {
+    const filter = andSearchTerms(
+      ["张三"],
+      `c.name='it''s ?' OR ${likeSql("c.name")}`,
+    );
+    expect(filter.args).toEqual(["%张三%"]);
+  });
+
+  it("refuses fragments whose placeholders it cannot count reliably", () => {
+    // 数错占位符会让整条语句的绑定表错位，比语法错误难发现，所以宁可抛错。
+    expect(() => andSearchTerms(["张三"], `${likeSql("c.name")} -- ?`)).toThrow(
+      /无法可靠计数/,
+    );
+    expect(() =>
+      andSearchTerms(["张三"], `${likeSql('"quoted"')} `),
+    ).toThrow(/无法可靠计数/);
   });
 });
