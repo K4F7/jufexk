@@ -9,7 +9,6 @@ import {
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
-import { RouterAriaLink } from "../components/RouterAriaLink";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
@@ -109,14 +108,16 @@ function ProductionSummary({
   course,
   reviewCount,
   onBack,
+  backLabel,
 }: {
   course: Course & { teachers: Teacher[] };
   reviewCount: number;
   onBack: () => void;
+  backLabel: string;
 }) {
   return (
     <DetailSummary
-      backLabel="返回课程目录"
+      backLabel={backLabel}
       onBack={onBack}
       reviewCount={reviewCount}
       ariaLabel="课程摘要"
@@ -278,6 +279,9 @@ export function CourseDetailPage() {
     const q = sp.toString();
     return `/courses/${c.id}${q ? `?${q}` : ""}`;
   })();
+  const goBackToTeachers = () => {
+    navigate(clearTeacherHref);
+  };
   const comparingSummary =
     Boolean(summaryVariant) && Boolean(CourseDetailSummaryPrototypeLazy);
   const comparingReviews =
@@ -364,15 +368,13 @@ export function CourseDetailPage() {
         <ProductionSummary
           course={c}
           reviewCount={data.reviewCount}
-          onBack={goBack}
+          backLabel={selectedTeacherId ? "返回任课老师" : "返回课程目录"}
+          onBack={selectedTeacherId ? goBackToTeachers : goBack}
         />
       )}
 
       {selectedTeacherId ? (
         <div className="mb-6">
-          <p className="mb-2">
-            <RouterAriaLink to={clearTeacherHref}>返回任课教师</RouterAriaLink>
-          </p>
           {reviewArea}
         </div>
       ) : (
