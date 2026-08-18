@@ -18,6 +18,7 @@ import { CoursesPage } from "./pages/CoursesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LogoutPage } from "./pages/LogoutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { SubmitPage } from "./pages/SubmitPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
 
@@ -145,6 +146,7 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/logout" element={<LogoutPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/submit" element={<SubmitPage config={config} />} />
             {PrototypeGalleryPage ? (
               <Route
                 path="/prototype"

@@ -20,6 +20,20 @@ export type CourseOption = Pick<
   "id" | "code" | "name" | "category" | "department" | "teachers"
 >;
 
+export type ApplicableQuestion = {
+  id: string;
+  label: string;
+  prompt: string;
+  scale: string;
+};
+
+export type CourseReviewScheme = {
+  schemeKey: string;
+  schemeVersion: number;
+  tags: string[];
+  applicableQuestions: ApplicableQuestion[];
+};
+
 export type Teacher = {
   id: number;
   name: string;

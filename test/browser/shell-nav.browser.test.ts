@@ -34,19 +34,22 @@ test("main nav items are single links without nested buttons", async ({
   const nav = page.getByRole("navigation", { name: "主导航" });
   const courseLink = nav.getByRole("link", { name: "课程" });
   const teacherLink = nav.getByRole("link", { name: "教师" });
+  const submitLink = nav.getByRole("link", { name: "写评价" });
 
   await expect(courseLink).toBeVisible();
   await expect(teacherLink).toBeVisible();
-  await expect(nav.getByRole("link")).toHaveCount(2);
+  await expect(submitLink).toBeVisible();
+  await expect(nav.getByRole("link")).toHaveCount(3);
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
   await expect(courseLink).toHaveAttribute("aria-current", "page");
   await expect(teacherLink).not.toHaveAttribute("aria-current", "page");
+  await expect(submitLink).not.toHaveAttribute("aria-current", "page");
 
   const focusableCount = await nav
     .locator('a, button, [tabindex]:not([tabindex="-1"])')
     .count();
-  expect(focusableCount).toBe(2);
+  expect(focusableCount).toBe(3);
 
   await teacherLink.click();
   await expect(page).toHaveURL(/\/teachers$/);

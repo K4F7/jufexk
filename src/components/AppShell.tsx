@@ -8,6 +8,7 @@ import { ThemeToggle } from "./ThemeToggle";
 const links = [
   { id: "courses", to: "/courses", label: "课程" },
   { id: "teachers", to: "/teachers", label: "教师" },
+  { id: "submit", to: "/submit", label: "写评价" },
 ] as const;
 
 /** DEV-only: live shell-nav prototype shell (dynamic so production never ships it). */
@@ -33,6 +34,9 @@ function useShellNavPrototypeVariant(): "A" | "B" | "C" | null {
 function navSelectedKey(pathname: string): string {
   if (pathname === "/teachers" || pathname.startsWith("/teachers/")) {
     return "teachers";
+  }
+  if (pathname === "/submit" || pathname.startsWith("/submit/")) {
+    return "submit";
   }
   return "courses";
 }
