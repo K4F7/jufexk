@@ -176,13 +176,34 @@ async function openedUrls(page: Page) {
   );
 }
 
-test("guest nav offers a low-emphasis login entry that loops back", async ({
+test("guest nav disables the login entry while campus auth is closed", async ({
   page,
 }) => {
   await mockApi(page, state());
   await page.goto("/courses");
+  // 校园认证未开放：导航不出现可点「登录」，只有不可点的未开放指示（Issue #204）。
+  await expect(page.getByRole("link", { name: "登录" })).toHaveCount(0);
+  const disabled = page.getByRole("button", { name: "登录未开放" });
+  await expect(disabled).toBeVisible();
+  await expect(disabled).toBeDisabled();
+
+  // /login 直达仍保留说明与「返回继续浏览」（#147 出口不撤）。
+  await page.goto("/login");
+  await expect(page.getByText("校园 JWT 登录尚未开放")).toBeVisible();
+  await page.getByRole("link", { name: "返回继续浏览" }).click();
+  await expect(page).toHaveURL(/\/courses$/);
+});
+
+test("guest nav login entry restores automatically once campus auth is live", async ({
+  page,
+}) => {
+  await mockApi(page, state({ campusEnabled: true }));
+  await page.goto("/courses");
   const login = page.getByRole("link", { name: "登录" });
   await expect(login).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "登录未开放" }),
+  ).toHaveCount(0);
   await login.click();
   await expect(page).toHaveURL(/\/login\?from=%2Fcourses$/);
   await expect(
@@ -279,8 +300,10 @@ test("logout from the account menu clears the session and reports the result", a
   await page.getByRole("button", { name: "确认退出登录" }).click();
   await expect(page.getByText("已退出登录")).toBeVisible();
   expect(mock.logoutCalls).toBe(1);
+  // 退出后为游客态；校园认证未开放时导航只有不可点的未开放指示（Issue #204）。
+  await expect(page.getByRole("link", { name: "登录", exact: true })).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "登录", exact: true }),
+    page.getByRole("button", { name: "登录未开放" }),
   ).toBeVisible();
 
   await page.getByRole("link", { name: "返回继续浏览" }).click();
@@ -316,7 +339,10 @@ test("the logout guide page tells guests there is nothing to sign out of", async
 test("a 401 on a write clears the viewer state and shows the login guide", async ({
   page,
 }) => {
-  await mockApi(page, state({ authenticated: true, endorsement401: true }));
+  await mockApi(
+    page,
+    state({ authenticated: true, endorsement401: true, campusEnabled: true }),
+  );
   await page.goto("/courses/8?teacher=9");
   await expect(page.getByRole("button", { name: "账号" })).toBeVisible();
 
@@ -343,7 +369,11 @@ test("session outage degrades to guest browsing without blocking pages", async (
   await expect(
     page.getByRole("heading", { name: "中国传统文化导论" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
+  // 会话中断 + 校园认证未开放：导航只显示不可点的未开放指示（Issue #204）。
+  await expect(page.getByRole("link", { name: "登录" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "登录未开放" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "认可这条评价，还没有人认可" }),
   ).toBeEnabled();
@@ -381,7 +411,11 @@ test("account deletion requires acknowledgement and reports pending_deletion", a
     page.getByText("30 天恢复期", { exact: false }).first(),
   ).toBeVisible();
   expect(mock.deleteCalls).toBe(1);
-  await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
+  // 删除流程结束后为游客态；校园认证未开放时导航无可点「登录」（Issue #204）。
+  await expect(page.getByRole("link", { name: "登录" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "登录未开放" }),
+  ).toBeVisible();
 });
 
 test("account deletion can be cancelled without any request", async ({
