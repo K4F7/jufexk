@@ -143,6 +143,15 @@ describe("目录搜索按空格分词并 AND 组合", () => {
     ).toEqual([mathCourse]);
   });
 
+  it("词条数达到上限时语句仍在 D1 的绑定参数预算内", async () => {
+    // 课程列表是绑定参数最多的一条：18 + 9×词条数，上限 6 个词条即 72 个。
+    const body = await search(
+      "/api/courses",
+      `q=${mathCourse} ${department} 甲 乙 丙 丁&teacherId=${firstTeacherId}&sort=reviews`,
+    );
+    expect(body.items).toEqual([]);
+  });
+
   it("教师搜索支持姓名 + 院系", async () => {
     const matched = await search("/api/teachers", `q=${firstTeacher} ${department}`);
     expect(matched.items.map((item) => item.name)).toEqual([firstTeacher]);

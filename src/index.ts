@@ -19,9 +19,9 @@ import {
 } from "./catalog-baseline-import";
 import {
   andSearchTerms,
-  likePrefix,
   likeSql,
   parseSearchTerms,
+  prefixPattern,
 } from "./lib/catalog-search";
 import {
   isVirtualPeSportId,
@@ -354,6 +354,23 @@ const publicReviewBinding = `
              AND public_offering.course_id=r.course_id
          )
        )`;
+/**
+ * 课程 c 的任课教师里存在一位满足 `match` 的教师。
+ *
+ * `alias` 只用来给子查询的表起前缀，避免与外层查询撞名；`match` 收到教师表
+ * 别名，可同时约束姓名与院系。
+ */
+const courseTeacherExistsSql = (
+  alias: string,
+  match: (teacherAlias: string) => string,
+) =>
+  `EXISTS(SELECT 1 FROM course_teachers ${alias}_ct JOIN teachers ${alias}_t ON ${alias}_t.id=${alias}_ct.teacher_id WHERE ${alias}_ct.course_id=c.id AND (${match(`${alias}_t`)}))`;
+/** 课程 c 的课名变体里存在一个满足 `match` 的名称。 */
+const courseNameVariantExistsSql = (
+  alias: string,
+  match: (nameColumn: string) => string,
+) =>
+  `EXISTS(SELECT 1 FROM course_name_variants ${alias}_cnv WHERE ${alias}_cnv.course_id=c.id AND (${match(`${alias}_cnv.name`)}))`;
 const publicTextReviewCounts = `
   SELECT course_id,teacher_id,COUNT(*) review_count
   FROM (
@@ -595,21 +612,23 @@ app.get("/api/courses", async (c) => {
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  // 单个词条的命中面：课名 / 课号 / 院系 / 任课教师 / 课名变体 / 体育族名。
+  // 单个词条的命中面：课名 / 课号 / 院系 / 任课教师 / 课名变体 / 公开展示课名。
   // 任课教师走 EXISTS 而不是行级 JOIN，这样「课名 + 教师」这类多词查询里，
   // 不同词条可以由课程本身和它的某位教师分别满足。
-  const searchTermSql = `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("c.department")}
-       OR EXISTS(SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND ${likeSql("search_t.name")})
-       OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND ${likeSql("cnv.name")})
-       OR ${publicCourseFamilySearchSql("pcc")}`;
-  const searchGroup = andSearchTerms(searchTerms, searchTermSql);
-  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const searchFilter = andSearchTerms(
+    searchTerms,
+    `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("c.department")}
+       OR ${courseTeacherExistsSql("search", (teacher) => likeSql(`${teacher}.name`))}
+       OR ${courseNameVariantExistsSql("search", (variant) => likeSql(variant))}
+       OR ${publicCourseFamilySearchSql("pcc")}`,
+  );
+  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchFilter.sql ? ` AND ${searchFilter.sql}` : ""}`;
   const args = [
     cat,
     department,
     department,
     ...(teacherId === null ? [] : [teacherId]),
-    ...searchGroup.args,
+    ...searchFilter.args,
   ];
   const countJoins =
     teacherId === null
@@ -620,11 +639,12 @@ app.get("/api/courses", async (c) => {
   )
     .bind(...args)
     .first<{ n: number }>();
-  // 多词查询里所有词条都落在课名或课号上时最贴近意图，排在院系与教师命中之前。
-  const allTermsInTitle =
-    searchTerms.length > 1
-      ? andSearchTerms(searchTerms, `${likeSql("c.name")} OR ${likeSql("c.code")}`)
-      : { sql: "", args: [] };
+  // 其余档位比的是整串查询（精确、再前缀），多词查询永远到不了那些档：这一档
+  // 用包含匹配，让所有词条都落在课名或课号上的结果排在院系与教师命中之前。
+  const allTermsInTitle = andSearchTerms(
+    searchTerms.length > 1 ? searchTerms : [],
+    `${likeSql("c.name")} OR ${likeSql("c.code")}`,
+  );
   const relevanceOrder = `CASE
        WHEN ?='' THEN 0
        WHEN c.name=? OR c.code=? OR (${publicPeSkillFamilySql("c")})=? THEN 0
@@ -632,10 +652,10 @@ app.get("/api/courses", async (c) => {
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
        WHEN ${likeSql("c.department")} THEN 4
-       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name=?)
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name=?) THEN 5
-       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND ${likeSql("rank_t.name")})
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND ${likeSql("rank_cnv.name")}) THEN 6
+       WHEN ${courseTeacherExistsSql("rank", (teacher) => `${teacher}.name=?`)}
+         OR ${courseNameVariantExistsSql("rank", (variant) => `${variant}=?`)} THEN 5
+       WHEN ${courseTeacherExistsSql("rank", (teacher) => likeSql(`${teacher}.name`))}
+         OR ${courseNameVariantExistsSql("rank", (variant) => likeSql(variant))} THEN 6
        ELSE 7
      END,review_count DESC,c.name,c.code,c.id`;
   const searchRankArgs = [
@@ -643,15 +663,15 @@ app.get("/api/courses", async (c) => {
     search,
     search,
     search,
-    likePrefix(search),
-    likePrefix(search),
+    prefixPattern(search),
+    prefixPattern(search),
     ...allTermsInTitle.args,
     search,
-    likePrefix(search),
+    prefixPattern(search),
     search,
     search,
-    likePrefix(search),
-    likePrefix(search),
+    prefixPattern(search),
+    prefixPattern(search),
   ];
   const { results } = await c.env.DB.prepare(
     `SELECT c.*,
@@ -715,13 +735,12 @@ app.get("/api/teachers", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const searchTerms = parseSearchTerms(search);
-  const searchGroup = andSearchTerms(
-    searchTerms,
+  const searchFilter = andSearchTerms(
+    parseSearchTerms(search),
     `${likeSql("t.name")} OR ${likeSql("t.department")}`,
   );
-  const where = searchGroup.sql || "1=1";
-  const args = searchGroup.args;
+  const where = searchFilter.sql || "1=1";
+  const args = searchFilter.args;
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM teachers t WHERE ${where}`,
   )
@@ -749,9 +768,9 @@ app.get("/api/teachers", async (c) => {
       ...args,
       search,
       search,
-      likePrefix(search),
+      prefixPattern(search),
       search,
-      likePrefix(search),
+      prefixPattern(search),
       size,
       (page - 1) * size,
     )
@@ -848,14 +867,14 @@ app.get("/api/teachers/:id/reviews", async (c) => {
 app.get("/api/courses/options", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const searchGroup = andSearchTerms(
+  const searchFilter = andSearchTerms(
     parseSearchTerms(search),
     `${likeSql("c.name")} OR ${likeSql("c.code")}
-       OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (${likeSql("search_t.name")} OR ${likeSql("search_t.department")}))
+       OR ${courseTeacherExistsSql("search", (teacher) => `${likeSql(`${teacher}.name`)} OR ${likeSql(`${teacher}.department`)}`)}
        OR ${publicPeFamilySearchSql("c")}`,
   );
-  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
-  const args = searchGroup.args;
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchFilter.sql ? ` AND ${searchFilter.sql}` : ""}`;
+  const args = searchFilter.args;
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM courses c WHERE ${where}`,
   )
