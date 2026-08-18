@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { MOOC_SCORES, OFFLINE_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
 
@@ -240,6 +241,148 @@ describe("public course-teacher review projection", () => {
         ),
         env.DB.prepare("DELETE FROM legacy_import_batches WHERE id=?").bind(
           batchId,
+        ),
+        env.DB.prepare("DELETE FROM reviews WHERE course_id=?").bind(courseId),
+        env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(
+          courseId,
+        ),
+        env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId),
+        env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId),
+      ]);
+    }
+  });
+
+  it("returns a one-decimal dimension average only for scheme-snapshot text reviews", async () => {
+    const code = `AVG-${Date.now()}`;
+    const teacherName = `均分教师-${Date.now()}`;
+    const teacher = await env.DB.prepare(
+      "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+    )
+      .bind(teacherName, teacherName, "测试学院")
+      .run();
+    const teacherId = Number(teacher.meta.last_row_id);
+    const course = await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+    )
+      .bind(code, `均分课程-${code}`, "general", "测试学院")
+      .run();
+    const courseId = Number(course.meta.last_row_id);
+    await env.DB.prepare(
+      "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+    )
+      .bind(courseId, teacherId)
+      .run();
+
+    const insertTextReview = async (
+      comment: string,
+      extras: {
+        schemeKey?: string;
+        schemeVersion?: number;
+        scores?: Record<string, number>;
+        overall?: number;
+      } = {},
+    ) => {
+      await env.DB.prepare(
+        `INSERT INTO reviews(
+          course_id,teacher_id,category,overall,comment,term,status,submitter_hash,
+          scheme_key,scheme_version,scores
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+        .bind(
+          courseId,
+          teacherId,
+          "general",
+          extras.overall ?? 5,
+          comment,
+          "2026 春",
+          "approved",
+          `hash-${comment || "rating-only"}`,
+          extras.schemeKey ?? null,
+          extras.schemeVersion ?? null,
+          extras.scores ? JSON.stringify(extras.scores) : null,
+        )
+        .run();
+    };
+
+    await insertTextReview("线下课补充说明", {
+      schemeKey: "major",
+      schemeVersion: 1,
+      scores: OFFLINE_SCORES,
+    });
+    await insertTextReview("网课补充说明", {
+      schemeKey: "ideology",
+      schemeVersion: 1,
+      scores: MOOC_SCORES,
+    });
+    await insertTextReview("没有规则快照的旧评价");
+    await insertTextReview("", {
+      schemeKey: "major",
+      schemeVersion: 1,
+      scores: OFFLINE_SCORES,
+      overall: 1,
+    });
+
+    const historicalId = `${code}-historical`;
+    await env.DB.prepare(
+      `INSERT INTO public_historical_reviews(
+         id,course_id,teacher_id,comment,package_contract,
+         approved_package_manifest_sha256,approved_catalog_content_sha256
+       ) VALUES(?,?,?,?,?,?,?)`,
+    )
+      .bind(
+        historicalId,
+        courseId,
+        teacherId,
+        "冻结历史评价",
+        "legacy-historical-production-freeze-v1",
+        "a".repeat(64),
+        "b".repeat(64),
+      )
+      .run();
+
+    try {
+      const response = await SELF.fetch(
+        `${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`,
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json<{
+        items: Array<Record<string, unknown>>;
+      }>();
+      expect(body.items.map((item) => item.comment)).toEqual([
+        "冻结历史评价",
+        "线下课补充说明",
+        "网课补充说明",
+        "没有规则快照的旧评价",
+      ]);
+      expect(body.items[0]).not.toHaveProperty("dimensionAverage");
+      expect(body.items[1]).toMatchObject({
+        comment: "线下课补充说明",
+        dimensionAverage: 3.5,
+      });
+      expect(body.items[2]).toMatchObject({
+        comment: "网课补充说明",
+        dimensionAverage: 3.7,
+      });
+      expect(body.items[3]).not.toHaveProperty("dimensionAverage");
+      const publicJson = JSON.stringify(body.items);
+      expect(publicJson).not.toContain("teaching");
+      expect(publicJson).not.toContain("attendance");
+      expect(publicJson).not.toContain("scheme_key");
+      expect(publicJson).not.toContain("scores");
+
+      const courseDetail = await SELF.fetch(`${origin}/api/courses/${courseId}`);
+      expect(courseDetail.status).toBe(200);
+      const courseBody = await courseDetail.json<{
+        reviewCount: number;
+        course: { rating: number; teachers: Array<{ rating: number }> };
+      }>();
+      expect(courseBody.reviewCount).toBe(4);
+      expect(courseBody.course.rating).toBe(4);
+      expect(courseBody.course.teachers[0]?.rating).toBe(4);
+    } finally {
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(
+          courseId,
         ),
         env.DB.prepare("DELETE FROM reviews WHERE course_id=?").bind(courseId),
         env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(

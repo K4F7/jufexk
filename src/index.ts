@@ -57,6 +57,7 @@ import {
 } from "./review-endorsements";
 import {
   courseSchemeView,
+  publicDimensionAverage,
   snapshotReviewScores,
 } from "./lib/review-schemes";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
@@ -390,12 +391,14 @@ const getPublicReviewPage = async (
   const { results } = await db
     .prepare(
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,
-         course_name,course_code,teacher_name,endorsement_count
+         course_name,course_code,teacher_name,endorsement_count,
+         scheme_key,scheme_version,scores
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
            phr.course_id,phr.teacher_id,phr.comment,
            c.name course_name,c.code course_code,t.name teacher_name,
-           0 endorsement_count
+           0 endorsement_count,
+           NULL scheme_key,NULL scheme_version,NULL scores
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
          JOIN teachers t ON t.id=phr.teacher_id
@@ -404,7 +407,8 @@ const getPublicReviewPage = async (
          SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
            lr.course_id,lr.teacher_id,lr.comment,
            c.name course_name,c.code course_code,t.name teacher_name,
-           0 endorsement_count
+           0 endorsement_count,
+           NULL scheme_key,NULL scheme_version,NULL scores
          FROM legacy_reviews lr
          JOIN courses c ON c.id=lr.course_id
          JOIN teachers t ON t.id=lr.teacher_id
@@ -414,7 +418,8 @@ const getPublicReviewPage = async (
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,
            c.name course_name,c.code course_code,t.name teacher_name,
-           (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count
+           (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
+           r.scheme_key,r.scheme_version,r.scores
          FROM reviews r
          JOIN courses c ON c.id=r.course_id
          JOIN teachers t ON t.id=r.teacher_id
@@ -447,7 +452,25 @@ const getPublicReviewPage = async (
   return {
     items: await decoratePublicReviews(
       db,
-      page.map(({ source_order: _source, sort_key: _key, ...review }) => review),
+      page.map(
+        ({
+          source_order: _source,
+          sort_key: _key,
+          scheme_key: schemeKey,
+          scheme_version: schemeVersion,
+          scores,
+          ...review
+        }) => {
+          const dimensionAverage = publicDimensionAverage({
+            schemeKey,
+            schemeVersion,
+            scores,
+          });
+          return dimensionAverage == null
+            ? review
+            : { ...review, dimensionAverage };
+        },
+      ),
       viewerUserId,
     ),
     nextCursor:

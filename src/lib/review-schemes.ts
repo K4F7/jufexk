@@ -220,3 +220,52 @@ export function snapshotReviewScores(input: {
     scoresJson: serializeScores(validated.scores),
   };
 }
+
+export function parseStoredScores(raw: unknown): Record<string, number> | null {
+  if (raw == null || raw === "") return null;
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed))
+    return null;
+  const scores: Record<string, number> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    scores[key] = value;
+  }
+  return Object.keys(scores).length ? scores : null;
+}
+
+/** Arithmetic mean of a snapshot score map, one decimal. */
+export function dimensionAverage(scores: Record<string, number>): number | null {
+  const values = Object.values(scores);
+  if (!values.length) return null;
+  return (
+    Math.round(
+      (values.reduce((sum, value) => sum + value, 0) / values.length) * 10,
+    ) / 10
+  );
+}
+
+/**
+ * Public-feed average: only rows with a stored scheme snapshot.
+ * Averages the snapshot scores (the applicable set at submit time).
+ */
+export function publicDimensionAverage(input: {
+  schemeKey?: unknown;
+  schemeVersion?: unknown;
+  scores?: unknown;
+}): number | null {
+  if (typeof input.schemeKey !== "string" || !isSchemeKey(input.schemeKey))
+    return null;
+  const version = Number(input.schemeVersion);
+  if (!Number.isInteger(version) || version < 1) return null;
+  const scores = parseStoredScores(input.scores);
+  if (!scores) return null;
+  return dimensionAverage(scores);
+}
