@@ -96,9 +96,15 @@ export function LoginPage() {
                 正在等待认证结果…
               </p>
               {popupBlocked ? (
-                <p role="alert" className="m-0 text-sm text-danger">
-                  浏览器拦截了新标签页，请点击下方按钮重新打开认证页面。
-                </p>
+                <Alert role="alert" status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Title>无法打开认证页</Alert.Title>
+                    <Alert.Description>
+                      浏览器拦截了新标签页，请点击下方按钮重新打开认证页面。
+                    </Alert.Description>
+                  </Alert.Content>
+                </Alert>
               ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onPress={openAuth}>

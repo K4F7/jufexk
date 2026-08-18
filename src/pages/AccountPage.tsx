@@ -181,9 +181,13 @@ export function AccountPage() {
                 </Checkbox>
               </div>
               {error ? (
-                <p role="alert" className="mb-0 mt-3 text-sm text-danger">
-                  {error}
-                </p>
+                <Alert className="mt-3" role="alert" status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Title>删除失败</Alert.Title>
+                    <Alert.Description>{error}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
               ) : null}
             </AlertDialog.Body>
             <AlertDialog.Footer>
