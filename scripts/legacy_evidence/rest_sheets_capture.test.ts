@@ -295,6 +295,19 @@ describe("rest-sheets capture scaffolding", () => {
     expect(emptyAesthetic.status).toBe("recapture_required");
     expect(emptyAesthetic.aesthetic_empty_screenshots).toBe(1);
 
+    const dirty = buildRestSheetsCaptureQa({
+      inventory,
+      contextIndex,
+      captures: capturesFor(inventory.recapture_keys),
+      locatorNotes: [{ worksheet: "MOOC", target_address: "G46", active_address: "G46" }],
+      compositionFailures: [{
+        key: "外教|4|K",
+        issues: ["cell image looks like a terminal or other dark overlay, not a sheet grid"],
+      }],
+    });
+    expect(dirty.status).toBe("recapture_required");
+    expect(dirty.issues.some((issue) => issue.includes("composition rejected: 外教|4|K"))).toBe(true);
+
     const mismatched = buildRestSheetsCaptureQa({
       inventory,
       contextIndex,
@@ -346,6 +359,7 @@ describe("rest-sheets capture scaffolding", () => {
     expect(restSheetsCaptureUsage()).toMatch(/plan-row/);
     expect(restSheetsCaptureUsage()).toMatch(/plan-locator/);
     expect(restSheetsCaptureUsage()).toMatch(/qa/);
+    expect(restSheetsCaptureUsage()).toMatch(/composition-failures\.json/);
     expect(restSheetsCaptureUsage()).toMatch(/freeze-manifest/);
     expect(restSheetsCaptureUsage()).toMatch(/--allow-unbound-sha/);
 
