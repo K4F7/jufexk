@@ -264,12 +264,20 @@ export function CoursesPage() {
     };
   }, [teacherQuery, teacherId]);
 
+  /** 深链 teacherId 的解析状态：pending=按 id 拉取中；found=姓名可用；
+   *  missing=该 id 不存在（Issue #213，不再回退显示原始 id）。 */
+  const [teacherIdStatus, setTeacherIdStatus] = useState<
+    "pending" | "found" | "missing"
+  >("pending");
+
+  // 深链教师不在当前列表（默认前 50 / 当前搜索）时按 id 拉取并并入选项。
   useEffect(() => {
     if (!teacherId) {
       return;
     }
     const controller = new AbortController();
     let cancelled = false;
+    setTeacherIdStatus("pending");
     api<{ teacher: Teacher }>(`/api/teachers/${teacherId}`, {
       signal: controller.signal,
     })
@@ -280,14 +288,27 @@ export function CoursesPage() {
             ? current
             : [result.teacher, ...current],
         );
+        setTeacherIdStatus("found");
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setTeacherIdStatus("missing");
+      });
 
     return () => {
       cancelled = true;
       controller.abort();
     };
   }, [teacherId]);
+
+  // 教师本就在当前列表内（前 50 或搜索命中）时直接视为已解析，不等按 id 拉取。
+  useEffect(() => {
+    if (
+      teacherId &&
+      teachers.some((teacher) => String(teacher.id) === teacherId)
+    ) {
+      setTeacherIdStatus("found");
+    }
+  }, [teacherId, teachers]);
 
   // 院系筛选项：目录去重非空院系；拉取失败视为无选项（院系筛隐藏，Issue #203）。
   useEffect(() => {
@@ -402,6 +423,7 @@ export function CoursesPage() {
       departmentsLoading={departmentsLoading}
       teacherQueryDraft={teacherQueryDraft}
       teacherId={teacherId}
+      teacherIdStatus={teacherIdStatus}
       teachers={teachers}
       teacherLoading={teacherLoading}
       teacherError={teacherError}
@@ -506,6 +528,7 @@ export function CoursesPage() {
     departmentsLoading,
     teacherQueryDraft,
     teacherId,
+    teacherIdStatus,
     teachers,
     teacherLoading,
     teacherError,

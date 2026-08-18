@@ -40,13 +40,39 @@ const TEACHERS = [
   })),
 ];
 
+/** 深链教师：不在默认前 50 位列表内，只能按 id 拉到（Issue #213）。 */
+const DEEP_LINK_TEACHER = {
+  id: 999,
+  name: "深链教师",
+  department: "测试学院",
+  title: "讲师",
+};
+const DEEP_LINK_COURSE = {
+  id: 12,
+  code: "GEN0201",
+  name: "写作与沟通",
+  category: "general",
+  department: "人文学院",
+  teachers: "深链教师",
+  teacher_refs: "999:深链教师",
+  review_count: 0,
+  rating: null,
+};
+
 type MockOptions = {
   departments?: string[];
   delayCoursesMs?: number;
+  /** Register the deep-linked teacher (id 999) and their course. */
+  deepLinkTeacher?: boolean;
+  /** Delay the by-id teacher fetch to observe the resolving state. */
+  delayTeacherMs?: number;
 };
 
 async function mockCatalogApi(page: Page, options: MockOptions = {}) {
   const departments = options.departments ?? ["人文学院", "体育学院"];
+  const catalog = options.deepLinkTeacher
+    ? [...COURSES, DEEP_LINK_COURSE]
+    : COURSES;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config")
@@ -73,7 +99,7 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
       const sort = url.searchParams.get("sort") || "reviews";
       const department = url.searchParams.get("department") || "";
       const teacherId = url.searchParams.get("teacherId") || "";
-      let items = COURSES.filter(
+      let items = catalog.filter(
         (item) =>
           (!department || item.department === department) &&
           (!teacherId || item.teacher_refs?.startsWith(`${teacherId}:`)),
@@ -101,6 +127,13 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
       return route.fulfill({
         json: { items, page: 1, pageSize: 50, total: items.length, pages: 1 },
       });
+    }
+    if (url.pathname === "/api/teachers/999" && options.deepLinkTeacher) {
+      if (options.delayTeacherMs)
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.delayTeacherMs),
+        );
+      return route.fulfill({ json: { teacher: DEEP_LINK_TEACHER } });
     }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
@@ -224,6 +257,62 @@ test("department filter lists catalog departments and filters", async ({
       courseRequests.some((search) => search.includes("department=")),
     )
     .toBe(true);
+});
+
+test("deep-linked teacher outside the first page resolves to a name", async ({
+  page,
+}) => {
+  await mockCatalogApi(page, { deepLinkTeacher: true, delayTeacherMs: 600 });
+  await page.goto("/courses?teacherId=999");
+
+  const combo = page.getByRole("combobox", { name: "任课教师" });
+  // 按 id 拉取期间：筛选摘要不回退显示原始 id。
+  await expect(page.getByText("教师载入中…")).toBeVisible();
+  // 拉取完成：ComboBox 与摘要都显示姓名；列表按该教师过滤出写作与沟通。
+  await expect(combo).toHaveValue("深链教师");
+  await expect(page.getByText("教师“深链教师”")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "写作与沟通" }),
+  ).toBeVisible();
+  await expect(page.getByText(/教师“999”/)).toHaveCount(0);
+
+  // 教师搜索仍可用：输入其他关键词后放弃选择即清除教师筛选。
+  await combo.click();
+  await combo.fill("零");
+  await expect(page).not.toHaveURL(/teacherId=/);
+});
+
+test("deep-linked teacher already in the list resolves without a loading chip", async ({
+  page,
+}) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses?teacherId=9");
+  const combo = page.getByRole("combobox", { name: "任课教师" });
+  await expect(combo).toHaveValue("测试教师");
+  await expect(page.getByText("教师“测试教师”")).toBeVisible();
+  await expect(page.getByText("教师载入中…")).toHaveCount(0);
+});
+
+test("deep-linked teacher id that does not exist gets an honest missing label", async ({
+  page,
+}) => {
+  await mockCatalogApi(page);
+  // /api/teachers/99999 未 mock → 404 → missing。
+  await page.goto("/courses?teacherId=99999");
+  const combo = page.getByRole("combobox", { name: "任课教师" });
+  await expect(combo).toHaveValue("");
+  await expect(page.getByText("教师不存在（99999）")).toBeVisible();
+  await expect(page.getByText(/教师“99999”/)).toHaveCount(0);
+
+  // 空状态与清除筛选保持可用。
+  await expect(
+    page.getByText("没有符合筛选条件的课程"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "清空筛选" }).click();
+  await expect(page).not.toHaveURL(/teacherId=/);
+  await expect(
+    page.getByRole("link", { name: "中国传统文化导论" }),
+  ).toBeVisible();
 });
 
 test("first load shows skeleton rows and keeps the header height stable", async ({

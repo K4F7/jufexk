@@ -74,6 +74,7 @@ export type CatalogFollowupModel = {
   departmentsLoading: boolean;
   teacherQueryDraft: string;
   teacherId: string;
+  teacherIdStatus: "pending" | "found" | "missing";
   teachers: Teacher[];
   teacherLoading: boolean;
   teacherError: string;
@@ -629,6 +630,7 @@ function ProductionFilters(model: CatalogFollowupModel) {
       departmentsLoading={model.departmentsLoading}
       teacherQueryDraft={model.teacherQueryDraft}
       teacherId={model.teacherId}
+      teacherIdStatus={model.teacherIdStatus}
       teachers={model.teachers}
       teacherLoading={model.teacherLoading}
       teacherError={model.teacherError}

@@ -47,6 +47,10 @@ export type CatalogFiltersProps = {
   departmentsLoading: boolean;
   teacherQueryDraft: string;
   teacherId: string;
+  /** Deep-linked teacher resolution: while "pending" the summary chip shows a
+   *  loading label instead of the raw id; "missing" means the id does not
+   *  exist (Issue #213). */
+  teacherIdStatus: "pending" | "found" | "missing";
   teachers: Teacher[];
   teacherLoading: boolean;
   teacherError: string;
@@ -69,6 +73,7 @@ export function CatalogFilters({
   departmentsLoading,
   teacherQueryDraft,
   teacherId,
+  teacherIdStatus,
   teachers,
   teacherLoading,
   teacherError,
@@ -271,7 +276,13 @@ export function CatalogFilters({
             <span>院系“{departmentDraft.trim()}”</span>
           ) : null}
           {teacherId ? (
-            <span>教师“{selectedTeacher?.name || teacherId}”</span>
+            <span>
+              {selectedTeacher
+                ? `教师“${selectedTeacher.name}”`
+                : teacherIdStatus === "missing"
+                  ? `教师不存在（${teacherId}）`
+                  : "教师载入中…"}
+            </span>
           ) : teacherQueryDraft.trim() ? (
             <span>教师搜索“{teacherQueryDraft.trim()}”</span>
           ) : null}
