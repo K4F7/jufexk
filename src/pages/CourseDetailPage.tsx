@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/react";
+import { Chip, Typography } from "@heroui/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CourseTeacherTable } from "../components/CourseTeacherTable";
@@ -124,9 +124,12 @@ function ProductionSummary({
       <Chip size="sm" variant="soft">
         <Chip.Label>{categoryLabel(course.category)}</Chip.Label>
       </Chip>
-      <h1 className="mb-1 mt-2 text-[26px] font-bold leading-tight">
+      <Typography
+        className="mb-1 mt-2 text-[26px] font-bold leading-tight"
+        type="h1"
+      >
         {course.name}
-      </h1>
+      </Typography>
       <p className="m-0 text-muted">
         {course.code} · {course.department || "院系待补充"}
       </p>
@@ -375,12 +378,13 @@ export function CourseDetailPage() {
       ) : (
         <section className="mb-6" aria-labelledby="course-teachers-heading">
           <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-            <h2
-              id="course-teachers-heading"
+            <Typography
               className="m-0 text-[17px] font-bold leading-snug"
+              id="course-teachers-heading"
+              type="h2"
             >
               任课教师
-            </h2>
+            </Typography>
             {c.teachers?.length ? (
               <span className="text-[13px] text-muted">
                 {c.teachers.length} 位
