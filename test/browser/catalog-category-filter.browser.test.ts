@@ -57,6 +57,10 @@ async function mockCatalogApi(page: Page) {
   });
 }
 
+function catalogFirstRow(page: Page) {
+  return page.getByRole("grid", { name: "课程目录" }).getByRole("row").nth(1);
+}
+
 test.beforeEach(async ({ page }) => mockCatalogApi(page));
 
 test("course catalog only exposes the sports public category filter", async ({
@@ -72,7 +76,7 @@ test("course catalog only exposes the sports public category filter", async ({
 
   await categoryBar.getByRole("button", { name: "体育课" }).click();
   await expect(page).toHaveURL(/category=sports/);
-  await expect(page.getByRole("row").nth(1)).toContainText("篮球");
+  await expect(catalogFirstRow(page)).toContainText("篮球");
   await expect(page.getByRole("link", { name: "中国传统文化导论" })).toHaveCount(0);
   await expect(page.getByText("公开筛选仅支持 sports")).toHaveCount(0);
 });

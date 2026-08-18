@@ -217,6 +217,10 @@ function reviewItems(page: Page) {
   return page.getByRole("list", { name: "评价列表" }).getByRole("listitem");
 }
 
+function catalogFirstRow(page: Page, name: "课程目录" | "教师资料") {
+  return page.getByRole("grid", { name }).getByRole("row").nth(1);
+}
+
 /** 教师区是密表（`Table.Content aria-label="任课教师"`）。 */
 function teacherRegion(page: Page) {
   return page.getByRole("grid", { name: "任课教师" });
@@ -407,22 +411,22 @@ test("empty and mobile states remain accessible without overflow", async ({ page
 
 test("course and teacher catalogs preserve default and search result order", async ({ page }) => {
   await page.goto("/courses");
-  await expect(page.getByRole("row").nth(1)).toContainText("中国传统文化导论");
-  await expect(page.getByRole("row").nth(1)).toContainText(/23.*投/);
+  await expect(catalogFirstRow(page, "课程目录")).toContainText("中国传统文化导论");
+  await expect(catalogFirstRow(page, "课程目录")).toContainText(/23.*投/);
   await expect(page.getByRole("link", { name: "暂无文字评价课程" })).toBeVisible();
 
   await page.goto("/courses?q=暂无");
-  await expect(page.getByRole("row").nth(1)).toContainText("暂无文字评价课程");
+  await expect(catalogFirstRow(page, "课程目录")).toContainText("暂无文字评价课程");
   await page.getByRole("link", { name: "暂无文字评价课程" }).click();
   await expect(page).toHaveURL(/\/courses\/10/);
   await expect(page.getByRole("status").filter({ hasText: "教师待补充" })).toBeVisible();
 
   await page.goto("/teachers");
-  await expect(page.getByRole("row").nth(1)).toContainText("测试教师");
-  await expect(page.getByRole("row").nth(1)).toContainText(/21.*投/);
+  await expect(catalogFirstRow(page, "教师资料")).toContainText("测试教师");
+  await expect(catalogFirstRow(page, "教师资料")).toContainText(/21.*投/);
 
   await page.goto("/teachers?q=零评价");
-  await expect(page.getByRole("row").nth(1)).toContainText("零评价教师");
+  await expect(catalogFirstRow(page, "教师资料")).toContainText("零评价教师");
   await page.getByRole("link", { name: "零评价教师" }).click();
   await expect(page).toHaveURL(/\/teachers\/11/);
   await expect(page.getByText("暂无评价", { exact: true })).toBeVisible();
