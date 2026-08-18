@@ -16,6 +16,10 @@
  */
 import { Chip, Table } from "@heroui/react";
 import { Fragment } from "react";
+import {
+  HighlightSearchTerms,
+  highlightTermsFromSearch,
+} from "../lib/catalog-search-highlight";
 import { categoryLabel } from "../lib/labels";
 import type { Course } from "../lib/types";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -66,9 +70,11 @@ function teacherReviewHref(courseId: number, teacherId: number, search: string) 
 function TeacherLinks({
   course,
   search,
+  highlightTerms,
 }: {
   course: Course;
   search: string;
+  highlightTerms: string[];
 }) {
   const teachers = parseTeachers(course);
 
@@ -91,10 +97,12 @@ function TeacherLinks({
               to={teacherReviewHref(course.id, t.id, search)}
               className="text-sm"
             >
-              {t.name}
+              <HighlightSearchTerms text={t.name} terms={highlightTerms} />
             </RouterAriaLink>
           ) : (
-            <span>{t.name}</span>
+            <span>
+              <HighlightSearchTerms text={t.name} terms={highlightTerms} />
+            </span>
           )}
         </Fragment>
       ))}
@@ -108,6 +116,8 @@ export function CourseResultTable({
   emptyQuery,
   className,
 }: CourseResultTableProps) {
+  const highlightTerms = highlightTermsFromSearch(search);
+
   return (
     <Table className={className ? `dense-table ${className}` : "dense-table"}>
       <Table.ScrollContainer>
@@ -145,7 +155,10 @@ export function CourseResultTable({
                         to={`/courses/${course.id}${search}`}
                         className="font-semibold no-underline"
                       >
-                        {course.name}
+                        <HighlightSearchTerms
+                          text={course.name}
+                          terms={highlightTerms}
+                        />
                       </RouterAriaLink>
                       <Chip size="sm" variant="soft" className="w-fit shrink-0">
                         <Chip.Label>
@@ -154,16 +167,30 @@ export function CourseResultTable({
                       </Chip>
                     </div>
                     <span className="tabular text-[12px] text-muted">
-                      {course.code}
+                      <HighlightSearchTerms
+                        text={course.code}
+                        terms={highlightTerms}
+                      />
                     </span>
                   </div>
                 </Table.Cell>
                 <Table.Cell>
-                  <TeacherLinks course={course} search={search} />
+                  <TeacherLinks
+                    course={course}
+                    search={search}
+                    highlightTerms={highlightTerms}
+                  />
                 </Table.Cell>
                 <Table.Cell>
                   <span className="whitespace-nowrap text-[13px] text-muted">
-                    {course.department || "—"}
+                    {course.department ? (
+                      <HighlightSearchTerms
+                        text={course.department}
+                        terms={highlightTerms}
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </span>
                 </Table.Cell>
                 <Table.Cell>

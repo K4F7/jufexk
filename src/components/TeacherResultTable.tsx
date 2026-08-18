@@ -9,6 +9,10 @@
  */
 import { Table } from "@heroui/react";
 import type { ReactNode } from "react";
+import {
+  HighlightSearchTerms,
+  highlightTermsFromSearch,
+} from "../lib/catalog-search-highlight";
 import type { Teacher } from "../lib/types";
 import { RouterAriaLink } from "./RouterAriaLink";
 
@@ -42,6 +46,8 @@ export function TeacherResultTable({
   search,
   className,
 }: TeacherResultTableProps) {
+  const highlightTerms = highlightTermsFromSearch(search);
+
   return (
     <Table className={className ? `dense-table ${className}` : "dense-table"}>
       <Table.ScrollContainer>
@@ -76,12 +82,22 @@ export function TeacherResultTable({
                     search={search}
                     className="font-semibold no-underline"
                   >
-                    {teacher.name}
+                    <HighlightSearchTerms
+                      text={teacher.name}
+                      terms={highlightTerms}
+                    />
                   </TeacherNameLink>
                 </Table.Cell>
                 <Table.Cell>
                   <span className="text-[13px] text-muted">
-                    {teacher.department || "—"}
+                    {teacher.department ? (
+                      <HighlightSearchTerms
+                        text={teacher.department}
+                        terms={highlightTerms}
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </span>
                 </Table.Cell>
                 <Table.Cell>
