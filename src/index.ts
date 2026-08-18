@@ -512,7 +512,9 @@ app.get("/api/courses", async (c) => {
     prefix = `${search}%`,
     cat = clean(c.req.query("category"), 20),
     department = clean(c.req.query("department"), 80),
-    teacherId = integer(c.req.query("teacherId"));
+    teacherId = integer(c.req.query("teacherId")),
+    // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
+    sort = clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews";
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
   const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?)) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?) OR ${publicPeFamilySearchSql("c")})`;
@@ -550,6 +552,18 @@ app.get("/api/courses", async (c) => {
   )
     .bind(...args)
     .first<{ n: number }>();
+  const relevanceOrder = `CASE
+       WHEN ?='' THEN 0
+       WHEN c.name=? OR c.code=? OR (${publicPeSkillFamilySql("c")})=? THEN 0
+       WHEN c.name LIKE ? OR c.code LIKE ? THEN 1
+       WHEN c.department=? THEN 2
+       WHEN c.department LIKE ? THEN 3
+       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name=?)
+         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name=?) THEN 4
+       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name LIKE ?)
+         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name LIKE ?) THEN 5
+       ELSE 6
+     END,review_count DESC,c.name,c.code,c.id`;
   const { results } = await c.env.DB.prepare(
     `SELECT c.*,
        GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
@@ -563,21 +577,15 @@ app.get("/api/courses", async (c) => {
      LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM (${publicTextReviewCounts}) GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id
      WHERE ${where}
      GROUP BY c.id
-     ORDER BY CASE
-       WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? OR (${publicPeSkillFamilySql("c")})=? THEN 0
-       WHEN c.name LIKE ? OR c.code LIKE ? THEN 1
-       WHEN c.department=? THEN 2
-       WHEN c.department LIKE ? THEN 3
-       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name=?)
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name=?) THEN 4
-       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name LIKE ?)
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name LIKE ?) THEN 5
-       ELSE 6
-     END,review_count DESC,c.name,c.code,c.id
+     ORDER BY ${sort === "name" ? "c.name,c.code,c.id" : relevanceOrder}
      LIMIT ? OFFSET ?`,
   )
-    .bind(...args, ...searchRankArgs, size, (page - 1) * size)
+    .bind(
+      ...args,
+      ...(sort === "name" ? [] : searchRankArgs),
+      size,
+      (page - 1) * size,
+    )
     .all();
   const virtualItems = await loadVirtualPeSportItems(
     c.env.DB,
@@ -590,8 +598,25 @@ app.get("/api/courses", async (c) => {
     (item) => !listed.some((row) => row.name === item.name),
   );
   const totalCount = (total?.n || 0) + extras.length;
+  // 虚拟体育课项只落在第一页；课名排序时按同一次序并入，而不是追加在末尾。
+  const byNameCodeId = (
+    a: { id?: unknown; code?: unknown; name?: unknown },
+    b: { id?: unknown; code?: unknown; name?: unknown },
+  ) => {
+    const nameA = String(a.name ?? "");
+    const nameB = String(b.name ?? "");
+    if (nameA !== nameB) return nameA < nameB ? -1 : 1;
+    const codeA = String(a.code ?? "");
+    const codeB = String(b.code ?? "");
+    if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+    return Number(a.id ?? 0) - Number(b.id ?? 0);
+  };
+  const firstPage =
+    sort === "name"
+      ? [...listed, ...extras].sort(byNameCodeId)
+      : [...listed, ...extras];
   return c.json({
-    items: page === 1 ? [...listed, ...extras] : listed,
+    items: page === 1 ? firstPage : listed,
     page,
     pageSize: size,
     total: totalCount,
@@ -744,6 +769,7 @@ app.get("/api/courses/options", async (c) => {
     pages: Math.ceil(totalCount / size),
   });
 });
+// 院筛选项：公开可见课程的去重非空院系（trim 去重）；为空时前端隐藏院系筛（Issue #203）。
 app.get("/api/courses/departments", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT trim(c.department) department
@@ -825,8 +851,9 @@ app.get("/api/courses/:id", async (c) => {
 app.get("/api/courses/:id/reviews", async (c) => {
   const id = integer(c.req.param("id"));
   const teacherId = integer(c.req.query("teacherId"));
-  if (!teacherId) return fail(c, "课程评价需先指定任课教师（teacherId）", 400);
   if (id && isVirtualPeSportId(id)) {
+    // 虚拟体育课没有课程级评价行：未选教师时返回空页，选定教师后按其教师流展示。
+    if (!teacherId) return c.json({ items: [], nextCursor: null });
     const virtual = virtualPeSportById(id);
     const teacher = await c.env.DB.prepare(
       "SELECT id,name FROM teachers WHERE id=?",

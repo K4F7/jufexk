@@ -1,6 +1,9 @@
 /**
- * Catalog secondary filters — visually frozen: prototype D (A+C).
- * Row 1 under search: 院系 · 教师搜索 · 教师 Select · 清空
+ * Catalog secondary filters — visually frozen: prototype D (A+C), with the
+ * Issue #203 follow-ups:
+ * Row 1 under search: 院系 Select (hidden when the catalog has no department
+ * options) · 任课教师 ComboBox (single control: type to search all teachers,
+ * pick to filter) · 排序 Select · 清空
  * Row 2: 类别 Button secondary/ghost shortcuts
  *
  * Future: 收藏 / 本专业 chips can join the category bar trailing slot
@@ -8,11 +11,12 @@
  */
 import {
   Button,
+  ComboBox,
   Input,
   Label,
   ListBox,
-  SearchField,
   Select,
+  type Key,
 } from "@heroui/react";
 import { categoryLabel } from "../lib/labels";
 import type { Teacher } from "../lib/types";
@@ -24,6 +28,11 @@ const CATEGORY_OPTIONS = [
   { id: "sports", label: "体育课" },
 ] as const;
 
+const SORT_OPTIONS = [
+  { id: "reviews", label: "投稿数优先", defaultMark: "（默认）" },
+  { id: "name", label: "课名", defaultMark: "" },
+] as const;
+
 export function isPublicCategoryFilter(value: string) {
   return CATEGORY_OPTIONS.some((opt) => opt.id !== "" && opt.id === value);
 }
@@ -32,17 +41,27 @@ export type CatalogFiltersProps = {
   queryDraft: string;
   category: string;
   departmentDraft: string;
+  /** Distinct non-empty departments; the selected deep-linked value is
+   * merged in by the page when it is missing from the catalog list. */
+  departments: string[];
+  departmentsLoading: boolean;
   teacherQueryDraft: string;
   teacherId: string;
+  /** Deep-linked teacher resolution: while "pending" the summary chip shows a
+   *  loading label instead of the raw id; "missing" means the id does not
+   *  exist (Issue #213). */
+  teacherIdStatus: "pending" | "found" | "missing";
   teachers: Teacher[];
   teacherLoading: boolean;
   teacherError: string;
   teacherQuery: string;
+  sort: string;
   hasFilters: boolean;
   onCategoryChange: (value: string) => void;
   onDepartmentDraftChange: (value: string) => void;
   onTeacherQueryDraftChange: (value: string) => void;
   onTeacherIdChange: (value: string) => void;
+  onSortChange: (value: string) => void;
   onClear: () => void;
 };
 
@@ -50,20 +69,45 @@ export function CatalogFilters({
   queryDraft,
   category,
   departmentDraft,
+  departments,
+  departmentsLoading,
   teacherQueryDraft,
   teacherId,
+  teacherIdStatus,
   teachers,
   teacherLoading,
   teacherError,
   teacherQuery,
+  sort,
   hasFilters,
   onCategoryChange,
   onDepartmentDraftChange,
   onTeacherQueryDraftChange,
   onTeacherIdChange,
+  onSortChange,
   onClear,
 }: CatalogFiltersProps) {
   const selectedTeacher = teachers.find((t) => String(t.id) === teacherId);
+  const showDepartment = departmentsLoading || departments.length > 0;
+
+  const handleTeacherInputChange = (value: string) => {
+    onTeacherQueryDraftChange(value);
+    // 选中后继续输入（含清空）视为放弃当前教师筛选。
+    if (teacherId && value !== (selectedTeacher?.name ?? "")) {
+      onTeacherIdChange("");
+    }
+  };
+
+  const handleTeacherSelectionChange = (key: Key | null) => {
+    if (key == null || String(key) === ALL_VALUE) {
+      onTeacherIdChange("");
+      onTeacherQueryDraftChange("");
+      return;
+    }
+    const teacher = teachers.find((t) => String(t.id) === String(key));
+    onTeacherIdChange(String(key));
+    onTeacherQueryDraftChange(teacher?.name ?? "");
+  };
 
   return (
     <>
@@ -72,55 +116,75 @@ export function CatalogFilters({
         className="-mt-1 mb-2.5 grid gap-2"
         role="search"
       >
-        <div className="grid gap-2 sm:grid-cols-[minmax(150px,0.8fr)_minmax(190px,1fr)_minmax(190px,1fr)_auto] sm:items-end">
-          <div className="grid gap-1">
-            <Label className="text-sm">院系</Label>
-            <Input
-              aria-label="按院系筛选"
+        <div
+          className={
+            showDepartment
+              ? "grid gap-2 sm:grid-cols-[minmax(140px,0.8fr)_minmax(200px,1.1fr)_minmax(150px,0.8fr)_auto] sm:items-end"
+              : "grid gap-2 sm:grid-cols-[minmax(200px,1.1fr)_minmax(150px,0.8fr)_auto] sm:items-end"
+          }
+        >
+          {showDepartment ? (
+            <Select
               className="w-full"
-              placeholder="院系"
-              value={departmentDraft}
-              onChange={(event) => onDepartmentDraftChange(event.target.value)}
-            />
-          </div>
+              isDisabled={departmentsLoading && !departments.length}
+              name="course-department"
+              value={departmentDraft || ALL_VALUE}
+              onChange={(value) =>
+                onDepartmentDraftChange(
+                  value === ALL_VALUE ? "" : String(value || ""),
+                )
+              }
+            >
+              <Label>院系</Label>
+              <Select.Trigger>
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  <ListBox.Item id={ALL_VALUE} textValue="所有院系">
+                    所有院系
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                  {departments.map((department) => (
+                    <ListBox.Item
+                      key={department}
+                      id={department}
+                      textValue={department}
+                    >
+                      {department}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          ) : null}
 
-          <SearchField
-            fullWidth
-            name="teacher-search"
-            value={teacherQueryDraft}
-            onChange={onTeacherQueryDraftChange}
-          >
-            <Label className="sr-only">搜索任课教师</Label>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input
-                className="w-full"
-                placeholder="搜索任课教师姓名或院系"
-              />
-              <SearchField.ClearButton aria-label="清空教师搜索" />
-            </SearchField.Group>
-          </SearchField>
-
-          <Select
+          <ComboBox
             className="w-full"
-            isDisabled={
-              teacherLoading || (!teachers.length && Boolean(teacherError))
-            }
+            selectedKey={teacherId || null}
+            inputValue={teacherQueryDraft}
+            onInputChange={handleTeacherInputChange}
+            onSelectionChange={handleTeacherSelectionChange}
+            defaultFilter={() => true}
+            allowsEmptyCollection
+            isDisabled={!teachers.length && Boolean(teacherError)}
             name="course-teacher"
-            value={teacherId || ALL_VALUE}
-            onChange={(value) =>
-              onTeacherIdChange(
-                value === ALL_VALUE ? "" : String(value || ""),
-              )
-            }
           >
             <Label>任课教师</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
+            <ComboBox.InputGroup>
+              <Input placeholder="搜索并选择任课教师" />
+              <ComboBox.Trigger />
+            </ComboBox.InputGroup>
+            <ComboBox.Popover>
+              <ListBox
+                renderEmptyState={() => (
+                  <div className="py-4 text-center text-sm text-muted">
+                    {teacherLoading ? "搜索中…" : "没有匹配的教师"}
+                  </div>
+                )}
+              >
                 <ListBox.Item id={ALL_VALUE} textValue="所有教师">
                   所有教师
                   <ListBox.ItemIndicator />
@@ -129,9 +193,42 @@ export function CatalogFilters({
                   <ListBox.Item
                     key={teacher.id}
                     id={String(teacher.id)}
-                    textValue={`${teacher.name} ${teacher.department}`}
+                    textValue={teacher.name}
                   >
-                    {teacher.name} · {teacher.department}
+                    {teacher.name}
+                    {teacher.department ? (
+                      <span className="text-muted"> · {teacher.department}</span>
+                    ) : null}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </ComboBox.Popover>
+          </ComboBox>
+
+          <Select
+            className="w-full"
+            name="course-sort"
+            value={sort || "reviews"}
+            onChange={(value) => onSortChange(String(value || "reviews"))}
+          >
+            <Label>排序</Label>
+            <Select.Trigger>
+              <Select.Value>
+                {({ selectedText }) => selectedText}
+              </Select.Value>
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {SORT_OPTIONS.map((opt) => (
+                  <ListBox.Item
+                    key={opt.id}
+                    id={opt.id}
+                    textValue={opt.label}
+                  >
+                    {opt.label}
+                    {opt.defaultMark}
                     <ListBox.ItemIndicator />
                   </ListBox.Item>
                 ))}
@@ -178,11 +275,16 @@ export function CatalogFilters({
           {departmentDraft.trim() ? (
             <span>院系“{departmentDraft.trim()}”</span>
           ) : null}
-          {teacherQueryDraft.trim() ? (
-            <span>教师搜索“{teacherQueryDraft.trim()}”</span>
-          ) : null}
           {teacherId ? (
-            <span>教师“{selectedTeacher?.name || teacherId}”</span>
+            <span>
+              {selectedTeacher
+                ? `教师“${selectedTeacher.name}”`
+                : teacherIdStatus === "missing"
+                  ? `教师不存在（${teacherId}）`
+                  : "教师载入中…"}
+            </span>
+          ) : teacherQueryDraft.trim() ? (
+            <span>教师搜索“{teacherQueryDraft.trim()}”</span>
           ) : null}
         </div>
       ) : null}
@@ -194,7 +296,7 @@ export function CatalogFilters({
       ) : null}
       {!teacherError && !teacherQuery && teachers.length >= 50 ? (
         <p className="mb-2 text-sm text-muted" role="status">
-          教师筛选默认显示前 50 位，请输入姓名或院系搜索更多教师。
+          教师列表最多显示前 50 位；在任课教师框中输入姓名或院系，可搜索全部教师。
         </p>
       ) : null}
     </>

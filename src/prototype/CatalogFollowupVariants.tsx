@@ -70,17 +70,22 @@ export type CatalogFollowupModel = {
   queryDraft: string;
   category: string;
   departmentDraft: string;
+  departments: string[];
+  departmentsLoading: boolean;
   teacherQueryDraft: string;
   teacherId: string;
+  teacherIdStatus: "pending" | "found" | "missing";
   teachers: Teacher[];
   teacherLoading: boolean;
   teacherError: string;
   teacherQuery: string;
+  sort: string;
   hasFilters: boolean;
   onCategoryChange: (value: string) => void;
   onDepartmentDraftChange: (value: string) => void;
   onTeacherQueryDraftChange: (value: string) => void;
   onTeacherIdChange: (value: string) => void;
+  onSortChange: (value: string) => void;
   onClear: () => void;
 };
 
@@ -621,17 +626,22 @@ function ProductionFilters(model: CatalogFollowupModel) {
       queryDraft={model.queryDraft}
       category={model.category}
       departmentDraft={model.departmentDraft}
+      departments={model.departments}
+      departmentsLoading={model.departmentsLoading}
       teacherQueryDraft={model.teacherQueryDraft}
       teacherId={model.teacherId}
+      teacherIdStatus={model.teacherIdStatus}
       teachers={model.teachers}
       teacherLoading={model.teacherLoading}
       teacherError={model.teacherError}
       teacherQuery={model.teacherQuery}
+      sort={model.sort}
       hasFilters={model.hasFilters}
       onCategoryChange={model.onCategoryChange}
       onDepartmentDraftChange={model.onDepartmentDraftChange}
       onTeacherQueryDraftChange={model.onTeacherQueryDraftChange}
       onTeacherIdChange={model.onTeacherIdChange}
+      onSortChange={model.onSortChange}
       onClear={model.onClear}
     />
   );

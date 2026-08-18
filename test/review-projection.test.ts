@@ -149,14 +149,11 @@ describe("public course-teacher review projection", () => {
         reviews: Array<Record<string, unknown>>;
       }>();
 
-      // 课程详情只返回评价总数；评价流必须按 课程×教师 作用域获取。
+      // 课程详情只返回评价总数；评价流经 /reviews 获取，可按 课程×教师
+      // 作用域过滤，未指定 teacherId 时返回该课全部公开评价（Issue #201）。
       expect(courseBody.reviewCount).toBe(26);
       expect(courseBody).not.toHaveProperty("reviews");
       expect(courseBody).not.toHaveProperty("nextReviewCursor");
-      const unscoped = await SELF.fetch(
-        `${origin}/api/courses/${courseId}/reviews`,
-      );
-      expect(unscoped.status).toBe(400);
 
       const courseReviewsResponse = await SELF.fetch(
         `${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`,
@@ -166,6 +163,18 @@ describe("public course-teacher review projection", () => {
         items: Array<Record<string, unknown>>;
         nextCursor: string | null;
       }>();
+
+      const unscoped = await SELF.fetch(
+        `${origin}/api/courses/${courseId}/reviews`,
+      );
+      expect(unscoped.status).toBe(200);
+      const unscopedReviews = await unscoped.json<{
+        items: Array<Record<string, unknown>>;
+        nextCursor: string | null;
+      }>();
+      // 该课只有一位任课教师：未过滤的全部评价与 scoped 首页一致。
+      expect(unscopedReviews.items).toEqual(courseReviews.items);
+      expect(unscopedReviews.nextCursor).toBe(courseReviews.nextCursor);
 
       expect(teacherBody.reviewCount).toBe(courseBody.reviewCount);
       expect(courseReviews.items).toHaveLength(20);

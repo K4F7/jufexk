@@ -1,5 +1,13 @@
+import { RouterProvider } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useHref,
+  useNavigate,
+} from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
@@ -39,6 +47,20 @@ function DevPrototypeMount() {
   }, []);
 
   return <>{chrome}</>;
+}
+
+/**
+ * Routes React Aria link navigations (e.g. Table.Row href) through React
+ * Router instead of full-page reloads, so in-page state such as the course
+ * review cache and scroll position survives row toggles (Issue #202).
+ */
+function RacClientNavigation({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  return (
+    <RouterProvider navigate={navigate} useHref={useHref}>
+      {children}
+    </RouterProvider>
+  );
 }
 
 function applyColorScheme(mode: "light" | "dark") {
@@ -111,9 +133,10 @@ export function App() {
 
   return (
     <BrowserRouter>
-      <ViewerProvider>
-        <AppShell config={config}>
-          <Routes>
+      <RacClientNavigation>
+        <ViewerProvider>
+          <AppShell config={config}>
+            <Routes>
             <Route path="/" element={<Navigate to="/courses" replace />} />
             <Route path="/courses" element={<CoursesPage />} />
             <Route path="/courses/:id" element={<CourseDetailPage />} />
@@ -133,10 +156,11 @@ export function App() {
               />
             ) : null}
             <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-          {import.meta.env.DEV ? <DevPrototypeMount /> : null}
-        </AppShell>
-      </ViewerProvider>
+            </Routes>
+            {import.meta.env.DEV ? <DevPrototypeMount /> : null}
+          </AppShell>
+        </ViewerProvider>
+      </RacClientNavigation>
     </BrowserRouter>
   );
 }

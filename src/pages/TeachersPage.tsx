@@ -97,6 +97,7 @@ export function TeachersPage() {
       <CatalogSearchHeader
         title="教师资料"
         meta={teacherMeta}
+        metaLoading={loading && !data}
         value={queryDraft}
         onChange={setQueryDraft}
         placeholder="搜索教师姓名或院系"

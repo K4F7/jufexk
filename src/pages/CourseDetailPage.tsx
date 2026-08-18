@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CourseTeacherTable } from "../components/CourseTeacherTable";
 import { DetailSummary } from "../components/DetailSummary";
@@ -10,6 +10,7 @@ import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
 import type {
   Course,
+  PublicReview,
   PublicReviewPage,
   Review,
   Teacher,
@@ -142,7 +143,8 @@ export function CourseDetailPage() {
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
 
-  /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师。 */
+  /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师；
+   * 未选教师时展示该课全部评价（Issue #201）。 */
   const selectedTeacherId = useMemo(() => {
     const raw = new URLSearchParams(location.search).get("teacher");
     if (!raw || !/^-?(?:0|[1-9]\d*)$/.test(raw)) return null;
@@ -151,6 +153,12 @@ export function CourseDetailPage() {
   }, [location.search]);
   const teacherQuery = selectedTeacherId ? `teacherId=${selectedTeacherId}` : "";
   const reviewFeed = usePublicReviewPagination("courses", id, teacherQuery);
+  /** Session cache of first pages by teacher scope, so switching teachers
+   *  restores the previous list instantly instead of losing it (Issue #202).
+   *  In-flight promises are shared too, so StrictMode double-effects and the
+   *  course-payload arrival never issue a duplicate request. */
+  const reviewCacheRef = useRef(new Map<string, PublicReviewPage>());
+  const reviewInflightRef = useRef(new Map<string, Promise<PublicReviewPage>>());
 
   useEffect(() => {
     let cancelled = false;
@@ -172,30 +180,68 @@ export function CourseDetailPage() {
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
-    reviewFeed.reset([], null);
-    if (!selectedTeacherId) {
+    // 未选教师时需要课程总数判断是否有评价可加载；选定教师的深链不必等待。
+    if (!selectedTeacherId && !data) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const cacheKey = `${id}:${teacherQuery}`;
+    const cached = reviewCacheRef.current.get(cacheKey);
+    if (cached) {
+      reviewFeed.reset(cached.items, cached.nextCursor);
       setReviewsLoading(false);
       return () => {
         cancelled = true;
       };
     }
+    if (!selectedTeacherId && data && data.reviewCount === 0) {
+      reviewFeed.reset([], null);
+      setReviewsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    reviewFeed.reset([], null);
     setReviewsLoading(true);
-    (async () => {
-      try {
-        const page = await api<PublicReviewPage>(
-          `/api/courses/${id}/reviews?${teacherQuery}`,
-        );
+    let promise = reviewInflightRef.current.get(cacheKey);
+    if (!promise) {
+      promise = api<PublicReviewPage>(
+        `/api/courses/${id}/reviews${teacherQuery ? `?${teacherQuery}` : ""}`,
+      );
+      reviewInflightRef.current.set(cacheKey, promise);
+      promise
+        .then((page) => {
+          reviewCacheRef.current.set(cacheKey, page);
+          reviewInflightRef.current.delete(cacheKey);
+        })
+        .catch(() => {
+          reviewInflightRef.current.delete(cacheKey);
+        });
+    }
+    promise
+      .then((page) => {
         if (!cancelled) reviewFeed.reset(page.items, page.nextCursor);
-      } catch (e) {
+      })
+      .catch((e) => {
         if (!cancelled) setReviewsError((e as Error).message);
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) setReviewsLoading(false);
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
-  }, [id, selectedTeacherId, teacherQuery, reviewFeed.reset]);
+  }, [data, id, selectedTeacherId, teacherQuery, reviewFeed.reset]);
+
+  /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复
+   *  （含未选教师的「全部评价」视图，Issue #212）。 */
+  const handleLoadMore = useCallback(async () => {
+    const accumulated = await reviewFeed.loadMore();
+    if (accumulated) {
+      reviewCacheRef.current.set(`${id}:${teacherQuery}`, accumulated);
+    }
+  }, [reviewFeed.loadMore, id, teacherQuery]);
 
   if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
   if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
@@ -271,11 +317,15 @@ export function CourseDetailPage() {
       ) : (
         <PublicReviews
           rows={reviewFeed.reviews}
-          total={selectedTeacher?.review_count ?? 0}
+          total={
+            selectedTeacherId
+              ? (selectedTeacher?.review_count ?? 0)
+              : data.reviewCount
+          }
           hasMore={Boolean(reviewFeed.nextCursor)}
           isLoadingMore={reviewFeed.isLoadingMore}
           loadMoreError={reviewFeed.loadMoreError}
-          onLoadMore={reviewFeed.loadMore}
+          onLoadMore={handleLoadMore}
         />
       )}
     </>
@@ -318,6 +368,11 @@ export function CourseDetailPage() {
             </span>
           ) : null}
         </div>
+        {c.teachers?.length ? (
+          <p className="mb-2 break-keep wrap-break-word text-[13px] leading-relaxed text-muted">
+            选择一位任课教师，查看这位老师在这门课的评价；默认显示全部评价。
+          </p>
+        ) : null}
         <CourseTeacherTable
           items={c.teachers ?? []}
           courseId={c.id}
@@ -326,17 +381,7 @@ export function CourseDetailPage() {
         />
       </section>
 
-      {selectedTeacherId ? (
-        <div className="mb-6">{reviewArea}</div>
-      ) : data.reviewCount > 0 && c.teachers?.length ? (
-        <div className="mb-6">
-          <EmptyBox>选择一位任课教师，查看该老师在这门课的评价</EmptyBox>
-        </div>
-      ) : (
-        <div className="mb-6">
-          <EmptyBox>暂无评价</EmptyBox>
-        </div>
-      )}
+      <div className="mb-6">{reviewArea}</div>
     </section>
   );
 }
