@@ -86,6 +86,8 @@ export type PublicReview = {
   endorsement_count?: number;
   endorsable?: boolean;
   viewer_endorsed?: boolean;
+  /** Present only when the row has a stored scheme snapshot. */
+  dimensionAverage?: number;
 };
 
 export type EndorsementState = {

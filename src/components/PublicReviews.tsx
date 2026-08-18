@@ -1,4 +1,4 @@
-import { Alert, Button, Separator, Spinner, Typography } from "@heroui/react";
+import { Alert, Button, Chip, Separator, Spinner, Typography } from "@heroui/react";
 import { useViewer } from "../hooks/useViewer";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
@@ -76,6 +76,15 @@ export function PublicReviews({
                     <p className="m-0 break-words text-sm leading-relaxed">
                       {review.comment}
                     </p>
+                    {typeof review.dimensionAverage === "number" ? (
+                      <div className="mt-2">
+                        <Chip size="sm" variant="soft">
+                          <Chip.Label>
+                            维度均分 {review.dimensionAverage.toFixed(1)}
+                          </Chip.Label>
+                        </Chip>
+                      </div>
+                    ) : null}
                     {isEndorsableReview(review) ? (
                       <ReviewRecognitionControl
                         review={review}

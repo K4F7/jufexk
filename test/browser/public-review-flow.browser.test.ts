@@ -463,3 +463,44 @@ test("teacher detail keeps the unified text stream", async ({ page }) => {
     page.getByRole("link", { name: "中国传统文化导论（GEN0108）" }).first(),
   ).toBeVisible();
 });
+
+test("scheme snapshot reviews show one dimension-average chip", async ({
+  page,
+}) => {
+  await page.route("**/api/courses/8/reviews**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("teacherId") !== "9") return route.fallback();
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            id: "review:1",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "有规则快照的补充说明",
+            dimensionAverage: 3.5,
+            endorsement_count: 0,
+            endorsable: false,
+          },
+          {
+            id: "historical:old",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "没有规则版本的历史评价",
+            endorsement_count: 0,
+            endorsable: false,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+  });
+
+  await page.goto("/courses/8?teacher=9");
+  const items = reviewItems(page);
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0).getByText("维度均分 3.5")).toBeVisible();
+  await expect(items.nth(1).getByText("维度均分")).toHaveCount(0);
+  await expect(page.getByText("上课表现")).toHaveCount(0);
+  await expect(page.getByText("点名频率")).toHaveCount(0);
+});

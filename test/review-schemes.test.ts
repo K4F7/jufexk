@@ -3,6 +3,8 @@ import {
   applicableDimensions,
   courseSchemeView,
   defaultSchemeKey,
+  dimensionAverage,
+  publicDimensionAverage,
   REVIEW_SCHEMES,
   snapshotReviewScores,
   validateSubmittedScores,
@@ -102,5 +104,43 @@ describe("submitted score validation", () => {
       schemeKey: "ideology",
       schemeVersion: 1,
     });
+  });
+});
+
+describe("dimension average from a scheme snapshot", () => {
+  it("averages the snapshot scores to one decimal", () => {
+    expect(
+      dimensionAverage({ teaching: 4, attendance: 3, grading: 5, workload: 2 }),
+    ).toBe(3.5);
+    expect(dimensionAverage({ teaching: 4, grading: 5, workload: 2 })).toBe(3.7);
+  });
+
+  it("returns an average only when the row has a scheme snapshot", () => {
+    expect(
+      publicDimensionAverage({
+        schemeKey: "major",
+        schemeVersion: 1,
+        scores: JSON.stringify({
+          attendance: 3,
+          grading: 5,
+          teaching: 4,
+          workload: 2,
+        }),
+      }),
+    ).toBe(3.5);
+    expect(
+      publicDimensionAverage({
+        schemeKey: "ideology",
+        schemeVersion: 1,
+        scores: JSON.stringify({ teaching: 4, grading: 5, workload: 2 }),
+      }),
+    ).toBe(3.7);
+    expect(
+      publicDimensionAverage({
+        schemeKey: null,
+        schemeVersion: null,
+        scores: JSON.stringify({ teaching: 4, attendance: 3, grading: 5, workload: 2 }),
+      }),
+    ).toBeNull();
   });
 });
