@@ -57,7 +57,10 @@ const moocCourse = {
   applicableQuestions: MOOC_QUESTIONS,
 };
 
-async function mockSubmitApi(page: Page) {
+async function mockSubmitApi(
+  page: Page,
+  options: { campusEnabled?: boolean } = {},
+) {
   const posted: Record<string, unknown>[] = [];
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -74,7 +77,9 @@ async function mockSubmitApi(page: Page) {
         },
       });
     if (url.pathname === "/api/auth/campus")
-      return route.fulfill({ json: { enabled: false } });
+      return route.fulfill({
+        json: { enabled: Boolean(options.campusEnabled) },
+      });
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers")
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
@@ -142,8 +147,11 @@ async function pickTeacher(page: Page, name: string) {
   await page.getByRole("option", { name }).click();
 }
 
-test("site nav opens the write-review page", async ({ page }) => {
-  await mockSubmitApi(page);
+test("site nav opens the write-review page once campus auth is live", async ({
+  page,
+}) => {
+  // 「写评价」导航入口随校园认证开放自动恢复（Issue #277）。
+  await mockSubmitApi(page, { campusEnabled: true });
   await page.goto("/courses");
   await page
     .getByRole("navigation", { name: "主导航" })

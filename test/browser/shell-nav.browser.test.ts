@@ -1,11 +1,35 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function mockShellApi(page: Page) {
+async function mockShellApi(
+  page: Page,
+  options: { campusEnabled?: boolean } = {},
+) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
       return route.fulfill({
         json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+      });
+    }
+    if (url.pathname === "/api/auth/campus") {
+      return route.fulfill({
+        json: options.campusEnabled
+          ? {
+              enabled: true,
+              reason: "live",
+              loginPath: "/login",
+              logoutPath: "/logout",
+              callbackPath: "/api/auth/callback",
+              appId: "jufexk",
+              authBridgeBaseUrl: "https://authbridge.example",
+            }
+          : {
+              enabled: false,
+              reason: "not_whitelisted",
+              loginPath: "/login",
+              logoutPath: "/logout",
+              callbackPath: "/api/auth/callback",
+            },
       });
     }
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers") {
@@ -17,8 +41,6 @@ async function mockShellApi(page: Page) {
   });
 }
 
-test.beforeEach(async ({ page }) => mockShellApi(page));
-
 test("main nav items are single links without nested buttons", async ({
   page,
 }) => {
@@ -29,31 +51,47 @@ test("main nav items are single links without nested buttons", async ({
     }
   });
 
+  await mockShellApi(page);
   await page.goto("/courses");
 
   const nav = page.getByRole("navigation", { name: "主导航" });
   const courseLink = nav.getByRole("link", { name: "课程" });
   const teacherLink = nav.getByRole("link", { name: "教师" });
-  const submitLink = nav.getByRole("link", { name: "写评价" });
 
   await expect(courseLink).toBeVisible();
   await expect(teacherLink).toBeVisible();
-  await expect(submitLink).toBeVisible();
-  await expect(nav.getByRole("link")).toHaveCount(3);
+  // 校园认证未开放：「写评价」不进导航，而不是展示一个看似可点的入口（Issue #277）。
+  await expect(nav.getByRole("link", { name: "写评价" })).toHaveCount(0);
+  await expect(nav.getByText("写评价")).toHaveCount(0);
+  await expect(nav.getByRole("link")).toHaveCount(2);
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
   await expect(courseLink).toHaveAttribute("aria-current", "page");
   await expect(teacherLink).not.toHaveAttribute("aria-current", "page");
-  await expect(submitLink).not.toHaveAttribute("aria-current", "page");
 
   const focusableCount = await nav
     .locator('a, button, [tabindex]:not([tabindex="-1"])')
     .count();
-  expect(focusableCount).toBe(3);
+  expect(focusableCount).toBe(2);
 
   await teacherLink.click();
   await expect(page).toHaveURL(/\/teachers$/);
   await expect(teacherLink).toHaveAttribute("aria-current", "page");
   await expect(courseLink).not.toHaveAttribute("aria-current", "page");
   expect(renderWarnings).toEqual([]);
+});
+
+test("write-review nav entry restores automatically once campus auth is live", async ({
+  page,
+}) => {
+  await mockShellApi(page, { campusEnabled: true });
+  await page.goto("/courses");
+
+  const nav = page.getByRole("navigation", { name: "主导航" });
+  const submitLink = nav.getByRole("link", { name: "写评价" });
+  await expect(submitLink).toBeVisible();
+  await expect(nav.getByRole("link")).toHaveCount(3);
+
+  await submitLink.click();
+  await expect(page).toHaveURL(/\/submit$/);
 });
