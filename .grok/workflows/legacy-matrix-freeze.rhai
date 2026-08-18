@@ -93,7 +93,7 @@ fn cli_rules() {
 }
 
 fn default_sheets() {
-    ["主要课程", "数学课", "美育", "大英和视听说", "思政课", "MOOC", "体育课"]
+    ["主要课程", "数学课", "美育", "大英和视听说", "思政课", "外教", "MOOC", "体育课"]
 }
 
 fn sheet_list(worksheets, worksheet) {
@@ -106,9 +106,11 @@ fn sheet_list(worksheets, worksheet) {
     default_sheets()
 }
 
-fn scan_command(out_dir, sheets, first_row, last_row) {
+fn scan_command(out_dir, sheets, first_row, last_row, layout) {
     let command = "pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts scan-extent --out ";
     command += out_dir;
+    command += " --layout ";
+    command += layout;
     for sheet in sheets {
         if has_text(sheet) {
             command += " --worksheet ";
@@ -120,9 +122,11 @@ fn scan_command(out_dir, sheets, first_row, last_row) {
     command
 }
 
-fn locate_command(out_dir, worksheet, evidence_dir) {
+fn locate_command(out_dir, worksheet, evidence_dir, layout) {
     let command = "pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts locate --out ";
     command += out_dir;
+    command += " --layout ";
+    command += layout;
     command += " --worksheet ";
     command += worksheet;
     if has_text(evidence_dir) {
@@ -132,9 +136,11 @@ fn locate_command(out_dir, worksheet, evidence_dir) {
     command
 }
 
-fn qa_command(out_dir, evidence_dir) {
+fn qa_command(out_dir, evidence_dir, layout) {
     let command = "pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts qa --out ";
     command += out_dir;
+    command += " --layout ";
+    command += layout;
     if has_text(evidence_dir) {
         command += " --evidence-dir ";
         command += evidence_dir;
@@ -142,9 +148,11 @@ fn qa_command(out_dir, evidence_dir) {
     command
 }
 
-fn freeze_command(out_dir, evidence_dir) {
+fn freeze_command(out_dir, evidence_dir, layout) {
     let command = "pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts freeze-manifest --out ";
     command += out_dir;
+    command += " --layout ";
+    command += layout;
     if has_text(evidence_dir) {
         command += " --evidence-dir ";
         command += evidence_dir;
@@ -157,6 +165,7 @@ let view_only_ready = if args == () { () } else { args.view_only_ready };
 let evidence_dir = if args == () { () } else { args.evidence_dir };
 let first_row = if args == () { () } else { args.first_row };
 let last_row = if args == () { () } else { args.last_row };
+let layout = if args == () { () } else { args.layout };
 let run_review_package = if args == () { () } else { args.run_review_package };
 
 if !has_text(out_dir) {
@@ -165,13 +174,16 @@ if !has_text(out_dir) {
 if view_only_ready != true {
     pause("verification", "Declare args.view_only_ready=true after the Tencent sheet shows 只能查看. This workflow will not log in.");
 }
+if !has_text(layout) {
+    pause("verification", "Pass args.layout — the frozen live-layout JSON. Locate and freeze will not run without a bound layout SHA.");
+}
 
 let requested_worksheets = if args == () { () } else { args.worksheets };
 let requested_worksheet = if args == () { () } else { args.worksheet };
 let sheets = sheet_list(requested_worksheets, requested_worksheet);
 phase("Scan");
 let scan_prompt = cli_rules();
-scan_prompt += scan_command(out_dir, sheets, first_row, last_row);
+scan_prompt += scan_command(out_dir, sheets, first_row, last_row, layout);
 let scan_result = agent(scan_prompt, #{
     label: "scan-extent",
     capability_mode: "execute",
@@ -199,7 +211,7 @@ let recapture = false;
 for worksheet in locate_sheets {
     if !has_text(worksheet) { continue; }
     let locate_prompt = cli_rules();
-    locate_prompt += locate_command(out_dir, worksheet, evidence_dir);
+    locate_prompt += locate_command(out_dir, worksheet, evidence_dir, layout);
     let locate_result = agent(locate_prompt, #{
         label: "locate:" + worksheet,
         capability_mode: "execute",
@@ -216,7 +228,7 @@ for worksheet in locate_sheets {
 
 phase("QA");
 let qa_prompt = cli_rules();
-qa_prompt += qa_command(out_dir, evidence_dir);
+qa_prompt += qa_command(out_dir, evidence_dir, layout);
 let qa_result = agent(qa_prompt, #{
     label: "qa",
     capability_mode: "execute",
@@ -236,7 +248,7 @@ if recapture || qa_status == "recapture_required" || qa_status == "blocked" {
 
 phase("Freeze");
 let freeze_prompt = cli_rules();
-freeze_prompt += freeze_command(out_dir, evidence_dir);
+freeze_prompt += freeze_command(out_dir, evidence_dir, layout);
 let freeze_result = agent(freeze_prompt, #{
     label: "freeze",
     capability_mode: "execute",
