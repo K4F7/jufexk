@@ -156,12 +156,13 @@ describe("visible text review catalog ordering", () => {
   it("sorts teacher browsing by count while preserving name relevance in searches", async () => {
     const browse = await (
       await SELF.fetch(`${origin}/api/teachers?pageSize=50`)
-    ).json<{ items: Array<{ id: number; review_count: number }> }>();
+    ).json<{ items: Array<Record<string, unknown> & { id: number; review_count: number }> }>();
     const ids = browse.items.map((item) => item.id);
     expect(ids.indexOf(popularTeacherId)).toBeLessThan(ids.indexOf(exactTeacherId));
     expect(ids.indexOf(exactTeacherId)).toBeLessThan(ids.indexOf(zeroTeacherId));
     expect(browse.items.find((item) => item.id === popularTeacherId)?.review_count).toBe(3);
     expect(browse.items.find((item) => item.id === zeroTeacherId)?.review_count).toBe(0);
+    expect(browse.items.every((item) => !("rating" in item))).toBe(true);
 
     const search = await (
       await SELF.fetch(`${origin}/api/teachers?q=${encodeURIComponent(marker)}&pageSize=10`)

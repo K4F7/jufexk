@@ -1,36 +1,17 @@
-import { PE_SKILL_FAMILIES } from "./lib/public-course-presentation";
+import {
+  PE_SKILL_FAMILIES,
+  publicPeHasTextReviewSql,
+  publicPeSkillFamilySql,
+  publicCourseVisibleSql,
+} from "./lib/public-course-presentation";
 
 const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
-
-const skillFamilyCase = (alias: string) => {
-  const branches = PE_SKILL_FAMILIES.map((family) => {
-    const conditions = family.keys.flatMap((key) => [
-      `${alias}.name = ${sqlLiteral(key)}`,
-      `${alias}.name GLOB ${sqlLiteral(`${key}[0-9]*`)}`,
-      `${alias}.name LIKE ${sqlLiteral(`${key}专项理论与实践%`)}`,
-    ]);
-    return `WHEN ${conditions.join(" OR ")} THEN ${sqlLiteral(family.label)}`;
-  });
-  return `CASE ${branches.join(" ")} ELSE NULL END`;
-};
-
-const publicTextReviewExists = (alias: string) => `EXISTS(
-  SELECT 1 FROM public_historical_reviews phr WHERE phr.course_id=${alias}.id
-  UNION ALL
-  SELECT 1 FROM legacy_reviews lr
-   WHERE lr.course_id=${alias}.id AND lr.status='approved'
-     AND trim(COALESCE(lr.comment,''))<>''
-  UNION ALL
-  SELECT 1 FROM reviews r
-   WHERE r.course_id=${alias}.id AND r.status='approved'
-     AND trim(COALESCE(r.comment,''))<>''
-)`;
 
 const canonicalInsert = `
   WITH classified AS (
     SELECT c.id,c.name,c.code,
-      (${skillFamilyCase("c")}) family_label,
-      CASE WHEN ${publicTextReviewExists("c")} THEN 0 ELSE 1 END has_text,
+      (${publicPeSkillFamilySql("c")}) family_label,
+      CASE WHEN ${publicPeHasTextReviewSql("c")} THEN 0 ELSE 1 END has_text,
       CASE
         WHEN c.name IN (${PE_SKILL_FAMILIES.flatMap((f) => f.keys).map(sqlLiteral).join(",")}) THEN 0
         WHEN c.name IN (${PE_SKILL_FAMILIES.flatMap((f) => f.keys.flatMap((k) => [`${k}1`, `${k}专项理论与实践1`])).map(sqlLiteral).join(",")}) THEN 1
@@ -96,11 +77,44 @@ const aggregateInsert = `
   GROUP BY course_id,teacher_id;
 `;
 
+const teacherCourseCountInsert = `
+  INSERT INTO public_teacher_course_counts(teacher_id,course_count)
+  SELECT ct.teacher_id,COUNT(DISTINCT pcc.canonical_course_id)
+  FROM course_teachers ct
+  JOIN courses c ON c.id=ct.course_id
+  JOIN public_course_canonicals pcc ON pcc.course_id=c.id
+  WHERE ${publicCourseVisibleSql("c")}
+  GROUP BY ct.teacher_id;
+`;
+
 export const publicCourseCanonicalJoin =
   "JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id";
 
 export const publicCourseFamilySearchSql = (alias = "pcc") =>
   `(${alias}.family_label LIKE ? OR ${alias}.search_text LIKE ?)`;
+
+const publicListMutationRoutes: ReadonlyArray<readonly [string, RegExp]> = [
+  ["POST", /^\/api\/admin\/catalog-relation-additions$/],
+  ["POST", /^\/api\/admin\/import\/relations$/],
+  ["POST", /^\/api\/admin\/historical-review-batch-imports$/],
+  ["POST", /^\/api\/admin\/historical-review-imports$/],
+  ["POST", /^\/api\/admin\/offerings$/],
+  ["DELETE", /^\/api\/admin\/offerings\/[^/]+$/],
+  ["POST", /^\/api\/admin\/courses$/],
+  ["DELETE", /^\/api\/admin\/courses\/[^/]+$/],
+  ["POST", /^\/api\/admin\/teachers$/],
+  ["DELETE", /^\/api\/admin\/teachers\/[^/]+$/],
+  ["PUT", /^\/api\/admin\/courses\/[^/]+\/teachers$/],
+  ["POST", /^\/api\/admin\/catalog-baseline\/uploads\/[^/]+\/publish$/],
+];
+
+export function shouldRefreshPublicListPrecomputes(method: string, path: string) {
+  const normalizedMethod = method.toUpperCase();
+  return publicListMutationRoutes.some(
+    ([routeMethod, routePath]) =>
+      normalizedMethod === routeMethod && routePath.test(path),
+  );
+}
 
 export async function refreshPublicListPrecomputes(db: D1Database) {
   const fingerprint = await publicListSourceFingerprint(db);
@@ -109,6 +123,8 @@ export async function refreshPublicListPrecomputes(db: D1Database) {
     db.prepare(canonicalInsert),
     db.prepare("DELETE FROM public_review_counts"),
     db.prepare(aggregateInsert),
+    db.prepare("DELETE FROM public_teacher_course_counts"),
+    db.prepare(teacherCourseCountInsert),
     db.prepare("UPDATE public_precompute_state SET dirty=0,fingerprint=? WHERE id=1").bind(fingerprint),
   ]);
 }

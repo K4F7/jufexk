@@ -1076,4 +1076,60 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     await env.DB.prepare("DELETE FROM reviews WHERE id=?").bind(id).run();
   });
 
+  it("updates course and teacher list counts immediately after approving and rejecting text reviews", async () => {
+    const approvedComment = unique("批准计数");
+    const rejectedComment = unique("驳回计数");
+    const inserted = await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,status,submitter_hash)
+         VALUES(1,1,'general',4,?,'pending',?)`,
+      ).bind(approvedComment, unique("approve-hash")),
+      env.DB.prepare(
+        `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,status,submitter_hash)
+         VALUES(1,1,'general',4,?,'pending',?)`,
+      ).bind(rejectedComment, unique("reject-hash")),
+    ]);
+    const approvedId = Number(inserted[0].meta.last_row_id);
+    const rejectedId = Number(inserted[1].meta.last_row_id);
+    const listCounts = async () => {
+      const [courses, teachers] = await Promise.all([
+        SELF.fetch(`${origin}/api/courses?q=TEST101`).then((response) =>
+          response.json<{ items: Array<{ id: number; review_count: number }> }>(),
+        ),
+        SELF.fetch(`${origin}/api/teachers?q=${encodeURIComponent("测试教师")}`).then(
+          (response) =>
+            response.json<{ items: Array<{ id: number; review_count: number }> }>(),
+        ),
+      ]);
+      return {
+        course: courses.items.find((item) => item.id === 1)?.review_count,
+        teacher: teachers.items.find((item) => item.id === 1)?.review_count,
+      };
+    };
+
+    try {
+      const before = await listCounts();
+      const auth = await login();
+      const approved = await SELF.fetch(`${origin}/api/admin/reviews/${approvedId}`, {
+        method: "PATCH",
+        headers: auth,
+        body: JSON.stringify({ status: "approved", note: "公开" }),
+      });
+      const rejected = await SELF.fetch(`${origin}/api/admin/reviews/${rejectedId}`, {
+        method: "PATCH",
+        headers: auth,
+        body: JSON.stringify({ status: "rejected", note: "不公开" }),
+      });
+      expect([approved.status, rejected.status]).toEqual([200, 200]);
+
+      const after = await listCounts();
+      expect(after.course).toBe((before.course ?? 0) + 1);
+      expect(after.teacher).toBe((before.teacher ?? 0) + 1);
+    } finally {
+      await env.DB.prepare("DELETE FROM reviews WHERE id IN (?,?)")
+        .bind(approvedId, rejectedId)
+        .run();
+    }
+  });
+
 });
