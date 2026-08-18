@@ -129,6 +129,7 @@ export function CoursesPage() {
   const category = isPublicCategoryFilter(rawCategory) ? rawCategory : "";
   const department = params.get("department") || "";
   const teacherId = params.get("teacherId") || "";
+  const sort = params.get("sort") === "name" ? "name" : "reviews";
   const parsedPage = Number(params.get("page") || "1");
   const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
 
@@ -138,6 +139,8 @@ export function CoursesPage() {
   const [teacherQuery, setTeacherQuery] = useState("");
   const [data, setData] = useState<Paginated<Course> | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
   const [error, setError] = useState("");
   const [teacherError, setTeacherError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -169,9 +172,10 @@ export function CoursesPage() {
     if (category) sp.set("category", category);
     if (department) sp.set("department", department);
     if (teacherId) sp.set("teacherId", teacherId);
+    if (sort !== "reviews") sp.set("sort", sort);
     sp.set("page", String(page));
     return sp.toString();
-  }, [q, category, department, teacherId, page]);
+  }, [q, category, department, teacherId, sort, page]);
 
   useEffect(() => {
     const nextQ = queryDraft.trim();
@@ -285,6 +289,37 @@ export function CoursesPage() {
     };
   }, [teacherId]);
 
+  // 院系筛选项：目录去重非空院系；拉取失败视为无选项（院系筛隐藏，Issue #203）。
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    api<{ items: string[] }>("/api/courses/departments", {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!cancelled) setDepartments(result.items);
+      })
+      .catch(() => {
+        if (!cancelled) setDepartments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDepartmentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
+
+  // 深链 ?teacherId= 进入时，把选中教师姓名回填进教师 ComboBox 输入框。
+  useEffect(() => {
+    if (!teacherId || teacherQueryDraft) return;
+    const selected = teachers.find(
+      (teacher) => String(teacher.id) === teacherId,
+    );
+    if (selected) setTeacherQueryDraft(selected.name);
+  }, [teacherId, teachers, teacherQueryDraft]);
+
   function update(next: Record<string, string>, replace = false) {
     const sp = new URLSearchParams(params);
     for (const [key, value] of Object.entries(next)) {
@@ -319,6 +354,14 @@ export function CoursesPage() {
   }
 
   const courseMeta = data ? `${data.total} 门课程` : "";
+  /** 深链院系不在目录选项内时并入列表，保证 Select 能显示当前值。 */
+  const departmentOptions = useMemo(
+    () =>
+      department && !departments.includes(department)
+        ? [department, ...departments]
+        : departments,
+    [department, departments],
+  );
   const comparingSearch =
     Boolean(catalogSearchVariant) && Boolean(CatalogSearchPrototypeLazy);
   const comparingFilters =
@@ -355,17 +398,23 @@ export function CoursesPage() {
       queryDraft={queryDraft}
       category={category}
       departmentDraft={departmentDraft}
+      departments={departmentOptions}
+      departmentsLoading={departmentsLoading}
       teacherQueryDraft={teacherQueryDraft}
       teacherId={teacherId}
       teachers={teachers}
       teacherLoading={teacherLoading}
       teacherError={teacherError}
       teacherQuery={teacherQuery}
+      sort={sort}
       hasFilters={hasFilters}
       onCategoryChange={(value) => update({ category: value })}
       onDepartmentDraftChange={setDepartmentDraft}
       onTeacherQueryDraftChange={setTeacherQueryDraft}
       onTeacherIdChange={(value) => update({ teacherId: value })}
+      onSortChange={(value) =>
+        update({ sort: value === "reviews" ? "" : value })
+      }
       onClear={clearFilters}
     />
   );
@@ -453,17 +502,22 @@ export function CoursesPage() {
     queryDraft,
     category,
     departmentDraft,
+    departments: departmentOptions,
+    departmentsLoading,
     teacherQueryDraft,
     teacherId,
     teachers,
     teacherLoading,
     teacherError,
     teacherQuery,
+    sort,
     hasFilters,
     onCategoryChange: (value: string) => update({ category: value }),
     onDepartmentDraftChange: setDepartmentDraft,
     onTeacherQueryDraftChange: setTeacherQueryDraft,
     onTeacherIdChange: (value: string) => update({ teacherId: value }),
+    onSortChange: (value: string) =>
+      update({ sort: value === "reviews" ? "" : value }),
     onClear: clearFilters,
   };
 
@@ -511,6 +565,7 @@ export function CoursesPage() {
         <CatalogSearchHeader
           title="课程目录"
           meta={courseMeta}
+          metaLoading={loading && !data}
           value={queryDraft}
           onChange={setQueryDraft}
           placeholder="搜索课程、课号或教师"
