@@ -1,4 +1,4 @@
-import { Button, Separator, Spinner } from "@heroui/react";
+import { Alert, Button, Separator, Spinner } from "@heroui/react";
 import { useViewer } from "../hooks/useViewer";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
@@ -102,9 +102,13 @@ export function PublicReviews({
             </div>
           ) : null}
           {loadMoreError ? (
-            <p className="mb-0 mt-3 text-center text-sm text-danger" role="alert">
-              {loadMoreError}
-            </p>
+            <Alert className="mt-3" role="alert" status="danger">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>继续加载失败</Alert.Title>
+                <Alert.Description>{loadMoreError}</Alert.Description>
+              </Alert.Content>
+            </Alert>
           ) : null}
           <span className="sr-only" aria-live="polite">
             {isLoadingMore ? "正在加载更多评价" : `已显示 ${rows.length} 条评价`}

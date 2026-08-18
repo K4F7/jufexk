@@ -1,4 +1,4 @@
-import { Button, Spinner } from "@heroui/react";
+import { Alert, Button, Spinner } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ApiError, api } from "../lib/api";
@@ -109,9 +109,13 @@ export function ReviewRecognitionControl({
         )}
       </Button>
       {error ? (
-        <p role="alert" className="mb-0 mt-1.5 text-xs text-danger">
-          {error}
-        </p>
+        <Alert className="mt-1.5" role="alert" status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>认可失败</Alert.Title>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Content>
+        </Alert>
       ) : null}
       {loginPrompted ? (
         <p role="status" className="mb-0 mt-1.5 text-xs text-muted">
