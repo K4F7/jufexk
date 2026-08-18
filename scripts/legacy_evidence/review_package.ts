@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { type FormulaBarEvidence, readFormulaBarEvidence } from "./formula_bar";
 import { buildFrozenFormulaBarMatrixPlan } from "./formula_bar_locator";
@@ -13,7 +13,8 @@ export const LONG_TEXT_CHARS = 400;
 export const VERY_LONG_TEXT_CHARS = 800;
 export const DEFAULT_MAX_BATCHES = 8;
 
-export type ContextRow = { row: number; course: string; teacher: string };
+export type ContextRow = { row: number; course: string; teacher: string; worksheet?: string };
+export type ImageOverride = { cell?: string; conflict?: string };
 export type OcrEvidence = {
   text?: string;
   confidence?: number | null;
@@ -131,9 +132,53 @@ function resolveRef(path: string | null | undefined, baseDir?: string) {
   return resolve(baseDir, path);
 }
 
+export function parseContextDocument(raw: unknown): ContextRow[] {
+  if (Array.isArray(raw)) return raw.map((item) => normalizeContextRow(item));
+  if (!isRecord(raw)) throw new Error("context file must be an array or object");
+  if (Array.isArray(raw.context_index)) return raw.context_index.map((item) => normalizeContextRow(item));
+  if (raw.contract_version === "smoke-context-index-v1" && Array.isArray(raw.sheets)) {
+    return raw.sheets.flatMap((sheet) => {
+      if (!isRecord(sheet) || typeof sheet.worksheet !== "string" || !Array.isArray(sheet.rows)) {
+        throw new Error("invalid smoke context sheet");
+      }
+      return sheet.rows.map((item) => {
+        if (!isRecord(item) || !Number.isInteger(item.row)) throw new Error("invalid smoke context row");
+        return normalizeContextRow({
+          worksheet: sheet.worksheet,
+          row: item.row,
+          course: item.visible_course ?? item.course ?? "",
+          teacher: item.visible_teacher ?? item.teacher ?? "",
+        });
+      });
+    });
+  }
+  throw new Error("context file must be an array, {context_index:[]}, or smoke-context-index-v1");
+}
+
+function normalizeContextRow(item: unknown): ContextRow {
+  if (!isRecord(item) || !Number.isInteger(item.row) || typeof item.course !== "string" || typeof item.teacher !== "string") {
+    throw new Error("invalid context row");
+  }
+  return {
+    row: item.row,
+    course: item.course,
+    teacher: item.teacher,
+    ...(typeof item.worksheet === "string" && item.worksheet ? { worksheet: item.worksheet } : {}),
+  };
+}
+
+function contextFor(item: { worksheet: string; row: number }, rows: ContextRow[]): ContextRow | undefined {
+  return rows.find((row) => row.worksheet === item.worksheet && row.row === item.row)
+    ?? rows.find((row) => row.worksheet == null && row.row === item.row);
+}
+
+function nonemptyText(value: string | null | undefined) {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
 export function routeFormulaBarCell(
   evidence: FormulaBarEvidence | { key: string; worksheet: string; row: number; column: string; missing: true },
-  options: { context?: ContextRow; ocr?: OcrEvidence | null; image_base_dir?: string } = {},
+  options: { context?: ContextRow; ocr?: OcrEvidence | null; image_base_dir?: string; image_override?: ImageOverride } = {},
 ): RoutedCell {
   if ("missing" in evidence) {
     return baseCell(evidence, {
@@ -153,8 +198,8 @@ export function routeFormulaBarCell(
     formula_bar_visual_conflict: visualConflict,
     body_source: evidence.formula_bar_nonempty === true ? "formula_bar" : null,
     context,
-    cell_image: resolveRef(evidence.evidence.cell_image?.path, options.image_base_dir),
-    conflict_image: resolveRef(evidence.evidence.conflict_image?.path, options.image_base_dir),
+    cell_image: options.image_override?.cell ?? resolveRef(evidence.evidence.cell_image?.path, options.image_base_dir),
+    conflict_image: options.image_override?.conflict ?? resolveRef(evidence.evidence.conflict_image?.path, options.image_base_dir),
     ocr: options.ocr ?? null,
   });
 
@@ -243,6 +288,7 @@ export function buildReviewInventory(input: {
   context_index: ContextRow[];
   ocr_by_key?: Record<string, OcrEvidence>;
   image_base_by_key?: Record<string, string>;
+  image_overrides?: Record<string, ImageOverride>;
   worksheet?: string;
   first_row?: number;
   last_row?: number;
@@ -253,7 +299,6 @@ export function buildReviewInventory(input: {
   attempts?: ReviewAttempt[];
   prior_cells?: RoutedCell[];
 }): ReviewInventory {
-  const contextByRow = new Map(input.context_index.map((row) => [row.row, row]));
   const priorByKey = new Map((input.prior_cells ?? []).map((cell) => [cell.key, cell]));
   const scoped = input.evidence.filter((item) => inScope(item, input));
   if (scoped.length === 0) {
@@ -262,9 +307,10 @@ export function buildReviewInventory(input: {
 
   const cells = scoped.map((item) => {
     const routed = routeFormulaBarCell(item, {
-      context: contextByRow.get(item.row),
+      context: contextFor(item, input.context_index),
       ocr: input.ocr_by_key?.[item.key] ?? null,
       image_base_dir: input.image_base_by_key?.[item.key],
+      image_override: input.image_overrides?.[item.key],
     });
     const prior = priorByKey.get(routed.key);
     if (!prior) return routed;
@@ -475,8 +521,8 @@ export function compileReviewPackage(inventory: ReviewInventory, cells: RoutedCe
       conclusion: cell.conclusion ?? (cell.routing === "not_applicable" ? "not_applicable" : "unresolved"),
       selected: cell.selected ?? null,
       approved: false,
-      visible_course: selectedAnalysis?.visible_course ?? null,
-      visible_teacher: selectedAnalysis?.visible_teacher ?? null,
+      visible_course: nonemptyText(selectedAnalysis?.visible_course) ?? nonemptyText(cell.context?.course),
+      visible_teacher: nonemptyText(selectedAnalysis?.visible_teacher) ?? nonemptyText(cell.context?.teacher),
     };
   });
   const unresolved = compiled.filter((cell) => cell.conclusion === "unresolved").length;
@@ -531,6 +577,39 @@ export async function loadScopedEvidence(options: {
     }
   }
   return { evidence, image_base_by_key };
+}
+
+export async function loadSmokeImageOverrides(smokeRoot: string): Promise<Record<string, ImageOverride>> {
+  const root = resolve(smokeRoot);
+  const manifest = await readJsonIfExists(join(root, "smoke-manifest.json"));
+  const recapture = Array.isArray(manifest?.recapture_keys) ? manifest.recapture_keys as string[] : [];
+  const overrides: Record<string, ImageOverride> = {};
+  for (const key of recapture) {
+    const parts = key.split("|");
+    if (parts.length !== 3) continue;
+    const [worksheet, row, column] = parts;
+    const cell = join(root, "captures", worksheet, `${column}${row}-cell.jpg`);
+    const formula = join(root, "captures", worksheet, `${column}${row}-formula.jpg`);
+    if (!await fileExists(cell)) continue;
+    overrides[key] = { cell, ...(await fileExists(formula) ? { conflict: formula } : {}) };
+  }
+  return overrides;
+}
+
+export async function resolveSmokeEvidenceDir(smokeRoot: string) {
+  const inventory = await readJsonIfExists(join(resolve(smokeRoot), "reuse-recapture-inventory.json"));
+  const source = typeof inventory?.source_evidence_root === "string" ? inventory.source_evidence_root : "";
+  if (!source) return smokeRoot;
+  return source.replace(/[\\/]+evidence[\\/]*$/, "") || source;
+}
+
+async function fileExists(path: string) {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function writeReviewJson(path: string, value: unknown) {
