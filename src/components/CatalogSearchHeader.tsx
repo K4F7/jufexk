@@ -2,7 +2,7 @@
  * Catalog title + primary search — visually frozen: prototype C (同行工具条).
  * Title left · count under title · HeroUI SearchField secondary full-width right.
  */
-import { Label, SearchField, Skeleton } from "@heroui/react";
+import { Label, SearchField, Skeleton, Typography } from "@heroui/react";
 
 export type CatalogSearchHeaderProps = {
   title: string;
@@ -36,9 +36,12 @@ export function CatalogSearchHeader({
     <header className="mb-3" aria-label="目录标题与搜索">
       <div className="flex flex-wrap items-end gap-x-4 gap-y-2 sm:flex-nowrap">
         <div className="min-w-0 shrink-0">
-          <h1 className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground">
+          <Typography
+            className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
+            type="h1"
+          >
             {title}
-          </h1>
+          </Typography>
           {/* 计数行恒占一行高度：加载时骨架、到达后文字，避免布局跳动。 */}
           <div
             className="mt-0.5 flex min-h-4 items-center text-xs text-muted"
