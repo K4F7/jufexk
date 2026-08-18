@@ -17,6 +17,10 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import {
+  DetailErrorAlert,
+  DetailLoadingStatus,
+} from "../components/DetailFeedback";
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
@@ -128,8 +132,20 @@ export function TeacherDetailPage() {
     };
   }, [id, reviewFeed.reset]);
 
-  if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
-  if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
+  if (error) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailErrorAlert title="教师资料加载失败" message={error} />
+      </section>
+    );
+  }
+  if (!data) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailLoadingStatus label="教师资料加载中…" />
+      </section>
+    );
+  }
 
   const t = data.teacher;
   const courses = data.courses ?? [];
