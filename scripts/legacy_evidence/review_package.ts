@@ -46,10 +46,18 @@ export type CellArbitration = {
 
 export type ReviewAttempt = {
   task_id: string;
-  side: "analysis_a" | "analysis_b" | "arbitration";
+  side: "analysis_a" | "analysis_b" | "arbitration" | "approval";
   status: "completed" | "failed";
   cell_keys: string[];
   error?: string;
+};
+
+export type CellApproval = {
+  key: string;
+  approve: boolean;
+  body_matches_source: boolean;
+  mapping_supported: boolean;
+  evidence: string;
 };
 
 export type RoutedCell = {
@@ -74,7 +82,8 @@ export type RoutedCell = {
   arbitration?: CellArbitration | { unresolved: "agent_exhausted" } | null;
   conclusion?: "agreed" | "arbitrated" | "unresolved" | "not_applicable";
   selected?: "analysis_a" | "analysis_b" | null;
-  approved?: false;
+  approval?: CellApproval | { unresolved: "agent_exhausted" } | null;
+  approved?: boolean;
 };
 
 export type ReviewBatch = {
@@ -96,14 +105,16 @@ export type ReviewInventory = {
   unresolved_cells: number;
   not_applicable_cells: number;
   ocr_missing_cells: number;
+  pending_verify_cells: number;
   cells: RoutedCell[];
   pending_batches: ReviewBatch[];
+  pending_verify: ReviewBatch[];
 };
 
 export type CompiledCell = RoutedCell & {
   conclusion: NonNullable<RoutedCell["conclusion"]>;
   selected: RoutedCell["selected"];
-  approved: false;
+  approved: boolean;
   visible_course?: string | null;
   visible_teacher?: string | null;
 };
@@ -115,7 +126,7 @@ export type ReviewPackage = {
   planned_cells: number;
   routed_cells: number;
   unresolved_cells: number;
-  approved_cells: 0;
+  approved_cells: number;
   cells: CompiledCell[];
 };
 
@@ -321,7 +332,8 @@ export function buildReviewInventory(input: {
       arbitration: prior.arbitration,
       conclusion: prior.conclusion,
       selected: prior.selected,
-      approved: false as const,
+      approval: prior.approval,
+      approved: prior.approved === true,
     };
   });
 
@@ -344,17 +356,28 @@ export function buildReviewInventory(input: {
   const ocrMissing = pending.filter((cell) => cell.ocr == null).length;
   const requireOcr = input.require_ocr !== false;
   const pendingBatches = buildReviewBatches(pending, { max_batches: input.max_batches, attempts: input.attempts });
+  const pendingVerify = cells.filter((cell) => eligibleForApproval(cell) && cell.approved !== true);
+  const pendingVerifyBatches = buildReviewBatches(pendingVerify, {
+    max_batches: input.max_batches,
+    attempts: (input.attempts ?? []).filter((attempt) => attempt.side === "approval"),
+  });
   const inputSha = inputSha256(scoped, input.context_index, input);
   const ocrCommand = ocrMissing > 0
     ? `uv run --directory scripts/legacy_ocr python ocr_review_cells.py --inventory ${input.inventory_path ?? "<out>/inventory.json"} --out ${input.ocr_dir ?? "<ocr-dir>"}`
     : null;
 
-  let status: ReviewInventory["status"] = pendingBatches.length > 0 ? "ready" : pending.length > 0 ? "ready" : "empty";
+  let status: ReviewInventory["status"] = pendingBatches.length > 0 || pendingVerifyBatches.length > 0
+    ? "ready"
+    : pending.length > 0 || pendingVerify.length > 0
+      ? "ready"
+      : "empty";
   let reason = pendingBatches.length > 0
     ? `${pendingBatches.length} pending review batches`
-    : pending.length > 0
-      ? "pending cells remain but no batch was emitted"
-      : "no pending review cells";
+    : pendingVerifyBatches.length > 0
+      ? `${pendingVerifyBatches.length} pending image-text verification batches`
+      : pending.length > 0 || pendingVerify.length > 0
+        ? "pending cells remain but no batch was emitted"
+        : "no pending review cells";
   if (requireOcr && ocrMissing > 0 && pending.length > 0) {
     status = "needs_ocr";
     reason = `${ocrMissing} routed cells are missing CUDA RapidOCR evidence`;
@@ -372,8 +395,10 @@ export function buildReviewInventory(input: {
     unresolved_cells: cells.filter((cell) => cell.routing === "unresolved" || cell.conclusion === "unresolved").length,
     not_applicable_cells: cells.filter((cell) => cell.routing === "not_applicable").length,
     ocr_missing_cells: ocrMissing,
+    pending_verify_cells: pendingVerify.length,
     cells,
     pending_batches: status === "needs_ocr" ? [] : pendingBatches,
+    pending_verify: pendingVerifyBatches,
   };
 }
 
@@ -397,6 +422,76 @@ export function analysisPayload(batch: ReviewBatch, side: "analysis_a" | "analys
       return payload;
     }),
   };
+}
+
+export function eligibleForApproval(cell: RoutedCell) {
+  return (cell.conclusion === "agreed" || cell.conclusion === "arbitrated")
+    && cell.body_source === "formula_bar"
+    && nonemptyText(cell.formula_bar_value) != null
+    && nonemptyText(cell.cell_image) != null
+    && nonemptyText(cell.context?.course) != null
+    && cell.routing !== "unresolved";
+}
+
+export function approvalPayload(batch: ReviewBatch) {
+  return {
+    contract_version: REVIEW_PACKAGE_CONTRACT_VERSION,
+    task_id: batch.task_id,
+    side: "approval",
+    cells: batch.cells.map((cell) => ({
+      key: cell.key,
+      worksheet: cell.worksheet,
+      row: cell.row,
+      column: cell.column,
+      formula_bar_value: cell.formula_bar_value,
+      formula_bar_visual_conflict: cell.formula_bar_visual_conflict,
+      visible_course: nonemptyText(cell.visible_course) ?? nonemptyText(cell.context?.course),
+      visible_teacher: nonemptyText(cell.visible_teacher) ?? nonemptyText(cell.context?.teacher),
+      context: cell.context,
+      images: { cell: cell.cell_image, conflict: cell.conflict_image },
+    })),
+  };
+}
+
+export function validateApprovalResponse(keys: string[], response: unknown): CellApproval[] {
+  if (!isRecord(response) || !Array.isArray(response.cells)) throw new Error("approval response must contain cells");
+  const expected = new Set(keys);
+  const seen = new Set<string>();
+  const cells: CellApproval[] = [];
+  for (const item of response.cells) {
+    if (!isRecord(item) || typeof item.key !== "string") throw new Error("invalid approval cell");
+    if (!expected.has(item.key)) continue;
+    if (seen.has(item.key)) throw new Error(`duplicate approval key: ${item.key}`);
+    if (typeof item.approve !== "boolean" || typeof item.body_matches_source !== "boolean"
+      || typeof item.mapping_supported !== "boolean" || typeof item.evidence !== "string") {
+      throw new Error(`invalid approval cell: ${item.key}`);
+    }
+    seen.add(item.key);
+    cells.push(item as CellApproval);
+  }
+  return cells;
+}
+
+export function applyApprovals(cells: RoutedCell[], verdicts: Map<string, CellApproval | { unresolved: "agent_exhausted" }>): RoutedCell[] {
+  return cells.map((cell) => {
+    if (cell.approved === true) return { ...cell, approved: true };
+    const verdict = verdicts.get(cell.key);
+    if (!verdict) return { ...cell, approved: cell.approved === true };
+    if (isCompletedApproval(verdict) && verdict.approve === true && verdict.body_matches_source === true
+      && verdict.mapping_supported === true && nonemptyText(verdict.evidence) != null && eligibleForApproval(cell)) {
+      return { ...cell, approval: verdict, approved: true };
+    }
+    return { ...cell, approval: verdict, approved: false };
+  });
+}
+
+function isCompletedApproval(value: unknown): value is CellApproval {
+  return isRecord(value)
+    && typeof value.key === "string"
+    && typeof value.approve === "boolean"
+    && typeof value.body_matches_source === "boolean"
+    && typeof value.mapping_supported === "boolean"
+    && typeof value.evidence === "string";
 }
 
 export function validateAnalysisResponse(keys: string[], response: unknown): CellAnalysis[] {
@@ -472,14 +567,14 @@ export function applyAnalyses(
 ): RoutedCell[] {
   return cells.map((cell) => {
     if (cell.routing !== "pending_review" && cell.conclusion !== "agreed" && cell.conclusion !== "arbitrated") {
-      return { ...cell, approved: false as const, conclusion: cell.conclusion ?? (cell.routing === "not_applicable" ? "not_applicable" : "unresolved") };
+      return { ...cell, approved: cell.approved === true, conclusion: cell.conclusion ?? (cell.routing === "not_applicable" ? "not_applicable" : "unresolved") };
     }
     const nextA = analysisA.get(cell.key) ?? cell.analysis_a ?? { unresolved: "review_not_run" as const };
     const nextB = analysisB.get(cell.key) ?? cell.analysis_b ?? { unresolved: "review_not_run" as const };
     if (isStrictAgreement(nextA, nextB)) {
-      return { ...cell, analysis_a: nextA, analysis_b: nextB, conclusion: "agreed", selected: "analysis_a", approved: false };
+      return { ...cell, analysis_a: nextA, analysis_b: nextB, conclusion: "agreed", selected: "analysis_a", approved: cell.approved === true };
     }
-    return { ...cell, analysis_a: nextA, analysis_b: nextB, conclusion: cell.conclusion === "arbitrated" ? "arbitrated" : "unresolved", selected: cell.selected ?? null, approved: false };
+    return { ...cell, analysis_a: nextA, analysis_b: nextB, conclusion: cell.conclusion === "arbitrated" ? "arbitrated" : "unresolved", selected: cell.selected ?? null, approved: cell.approved === true };
   });
 }
 
@@ -499,16 +594,16 @@ export function applyArbitration(
 ): RoutedCell[] {
   return cells.map((cell) => {
     const verdict = verdicts.get(cell.key) ?? cell.arbitration ?? null;
-    if (!verdict) return { ...cell, approved: false as const };
+    if (!verdict) return { ...cell, approved: cell.approved === true };
     if (isCompletedArbitration(verdict) && verdict.selected && (verdict.selected === "analysis_a" || verdict.selected === "analysis_b")) {
-      return { ...cell, arbitration: verdict, conclusion: "arbitrated", selected: verdict.selected, approved: false };
+      return { ...cell, arbitration: verdict, conclusion: "arbitrated", selected: verdict.selected, approved: cell.approved === true };
     }
     return {
       ...cell,
       arbitration: verdict,
       conclusion: cell.conclusion === "agreed" ? "agreed" : "unresolved",
       unresolved_reason: cell.conclusion === "agreed" ? cell.unresolved_reason : cell.unresolved_reason ?? "arbitration_unresolved",
-      approved: false,
+      approved: cell.approved === true,
     };
   });
 }
@@ -520,12 +615,13 @@ export function compileReviewPackage(inventory: ReviewInventory, cells: RoutedCe
       ...cell,
       conclusion: cell.conclusion ?? (cell.routing === "not_applicable" ? "not_applicable" : "unresolved"),
       selected: cell.selected ?? null,
-      approved: false,
+      approved: cell.approved === true,
       visible_course: nonemptyText(selectedAnalysis?.visible_course) ?? nonemptyText(cell.context?.course),
       visible_teacher: nonemptyText(selectedAnalysis?.visible_teacher) ?? nonemptyText(cell.context?.teacher),
     };
   });
   const unresolved = compiled.filter((cell) => cell.conclusion === "unresolved").length;
+  const approvedCells = compiled.filter((cell) => cell.approved === true).length;
   return {
     contract_version: REVIEW_PACKAGE_CONTRACT_VERSION,
     input_sha256: inventory.input_sha256,
@@ -533,7 +629,7 @@ export function compileReviewPackage(inventory: ReviewInventory, cells: RoutedCe
     planned_cells: compiled.length,
     routed_cells: compiled.filter((cell) => cell.conclusion === "agreed" || cell.conclusion === "arbitrated").length,
     unresolved_cells: unresolved,
-    approved_cells: 0,
+    approved_cells: approvedCells,
     cells: compiled,
   };
 }
@@ -728,8 +824,10 @@ function emptyInventory(status: ReviewInventory["status"], reason: string, input
     unresolved_cells: 0,
     not_applicable_cells: 0,
     ocr_missing_cells: 0,
+    pending_verify_cells: 0,
     cells: [],
     pending_batches: [],
+    pending_verify: [],
   };
 }
 

@@ -1,13 +1,14 @@
 let meta = #{
     name: "legacy-review-package",
-    description: "Unattended post-freeze review: CUDA RapidOCR, isolated A/B, arbitration, and compile until the frozen context scope is empty. Never approves records.",
+    description: "Unattended post-freeze review: CUDA RapidOCR, isolated A/B, arbitration, then an independent image-versus-text agent that may auto-approve. Does not write the business database.",
     when_to_use: "A formula-bar / capture manifest is already frozen and you need the post-freeze review package. Do not use this for screenshots or locator work.",
     phases: [
         #{ title: "Inventory", detail: "route frozen cells into batches of at most 8" },
         #{ title: "OCR", detail: "local GPU RapidOCR only; no CPU fallback" },
         #{ title: "Analyze", detail: "isolated A/B on pending batches" },
         #{ title: "Arbitrate", detail: "choose A or B or unresolved; no third draft" },
-        #{ title: "Compile", detail: "write the unapproved review package" },
+        #{ title: "Compile", detail: "write the review package" },
+        #{ title: "Verify", detail: "independent image-versus-text approval" },
     ],
 };
 
@@ -24,6 +25,20 @@ let inventory_schema = #{
         "pending_cells": #{ "type": "number" },
         "unresolved_cells": #{ "type": "number" },
         "ocr_missing_cells": #{ "type": "number" },
+        "pending_verify_cells": #{ "type": "number" },
+        "pending_verify": #{
+            "type": "array",
+            "maxItems": 8,
+            "items": #{
+                "type": "object",
+                "properties": #{
+                    "task_id": #{ "type": "string" },
+                    "worksheet": #{ "type": "string" },
+                    "payload": #{ "type": "string" },
+                    "keys": #{ "type": "array", "items": #{ "type": "string" } },
+                },
+            },
+        },
         "pending_batches": #{
             "type": "array",
             "maxItems": 8,
@@ -74,6 +89,25 @@ let verdict_schema = #{
                     "key": #{ "type": "string" },
                     "selected": #{ "type": ["string", "null"] },
                     "reason": #{ "type": "string" },
+                },
+            },
+        },
+    },
+};
+let approval_schema = #{
+    "type": "object",
+    "properties": #{
+        "cells": #{
+            "type": "array",
+            "maxItems": 8,
+            "items": #{
+                "type": "object",
+                "properties": #{
+                    "key": #{ "type": "string" },
+                    "approve": #{ "type": "boolean" },
+                    "body_matches_source": #{ "type": "boolean" },
+                    "mapping_supported": #{ "type": "boolean" },
+                    "evidence": #{ "type": "string" },
                 },
             },
         },
@@ -163,6 +197,72 @@ fn analysis_prompt(side, payload_path, keys_json) {
     prompt += "teacher_status (clear|blank|unclear), overflow (none|extends_right|unreadable), ";
     prompt += "visual_correspondence (matches_formula|formula_truncated_visible|conflict|unreadable), ";
     prompt += "and uncertainty_markers. Empty uncertainty_markers is valid only after you have read the payload and images.";
+    prompt
+}
+
+fn verify_and_apply(out_dir, pending_verify, last_inventory, last_package, wave) {
+    phase("Verify");
+    let jobs = [];
+    for batch in pending_verify {
+        if batch == () || !has_text(batch.task_id) { continue; }
+        jobs.push(#{
+            prompt: approval_prompt(batch.payload, json_encode(batch.keys)),
+            label: "ok:" + batch.task_id,
+            capability_mode: "read-only",
+            output_schema: approval_schema,
+        });
+    }
+    if jobs.len() == 0 { return last_package; }
+    let results = parallel(jobs);
+    let batches = [];
+    let index = 0;
+    for batch in pending_verify {
+        if batch == () || !has_text(batch.task_id) { continue; }
+        let result = results[index];
+        index += 1;
+        if usable(result) && result.output.cells != () {
+            batches.push(#{ task_id: batch.task_id, keys: batch.keys, cells: result.output.cells });
+        } else {
+            batches.push(#{ task_id: batch.task_id, keys: batch.keys });
+        }
+    }
+    let verdicts_path = out_dir + "/wave-" + (wave + 1).to_string() + "-approvals.json";
+    let package_path = trimmed(last_inventory.inventory_path);
+    if last_package != () && has_text(last_package.package_path) { package_path = last_package.package_path; }
+    if !has_text(package_path) { package_path = out_dir + "/package.json"; }
+    let apply_prompt = "Write this JSON exactly to ";
+    apply_prompt += verdicts_path;
+    apply_prompt += " and run this command from the repository root. Do not write Tencent Docs, the business database, or Git.\n";
+    apply_prompt += "pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts approve --package ";
+    apply_prompt += package_path;
+    apply_prompt += " --verdicts ";
+    apply_prompt += verdicts_path;
+    apply_prompt += " --out ";
+    apply_prompt += out_dir;
+    apply_prompt += "\nJSON:\n";
+    apply_prompt += json_encode(#{ batches: batches });
+    let applied = agent(apply_prompt, #{
+        label: "approve",
+        capability_mode: "execute",
+        output_schema: compile_schema,
+    });
+    if usable(applied) { applied.output } else { last_package }
+}
+
+fn approval_prompt(payload_path, keys_json) {
+    let prompt = "You are an independent image-versus-text approval agent.\n";
+    prompt += "Do not inspect repository files, issues, ADRs, CONTEXT.md, Git state, or any path not listed in the payload. ";
+    prompt += "Use read_file on the payload JSON first, then on each listed image.\n";
+    prompt += "Payload file: ";
+    prompt += payload_path;
+    prompt += "\nRequired keys: ";
+    prompt += keys_json;
+    prompt += "\nThe formula_bar_value is the candidate body. Do not invent a third transcription. ";
+    prompt += "Set body_matches_source=true only if the images support that exact formula-bar text as the stored review (visible text may be truncated). ";
+    prompt += "A systematic crop/formula mismatch may still have body_matches_source=true when the formula-bar text is the stored source. ";
+    prompt += "Set mapping_supported=true only if the declared course and teacher are supported by the payload context or visible labels. ";
+    prompt += "Set approve=true only when both flags are true and you cite concrete image evidence. ";
+    prompt += "If you did not read the images, approve must be false. Empty evidence is not approval.";
     prompt
 }
 
@@ -285,8 +385,15 @@ while wave < 64 {
 
     let pending = last_inventory.pending_batches;
     let pending_cells = last_inventory.pending_cells;
+    let pending_verify = last_inventory.pending_verify;
+    let pending_verify_cells = last_inventory.pending_verify_cells;
     if pending == () || type_of(pending) != "array" || pending.len() == 0 {
-        if pending_cells != () && pending_cells > 0 {
+        if pending_verify != () && type_of(pending_verify) == "array" && pending_verify.len() > 0 {
+            last_package = verify_and_apply(out_dir, pending_verify, last_inventory, last_package, wave);
+            wave += 1;
+            continue;
+        }
+        if (pending_cells != () && pending_cells > 0) || (pending_verify_cells != () && pending_verify_cells > 0) {
             complete(#{
                 summary: "Pending cells remain but this wave could not emit batches. Rerun the same out_dir with a higher agent_budget.",
                 status: "budget_exhausted",
@@ -389,7 +496,7 @@ while wave < 64 {
     let compile_path = out_dir + "/wave-" + (wave + 1).to_string() + "-analyses.json";
     let compile_prompt = "Write this JSON exactly to ";
     compile_prompt += compile_path;
-    compile_prompt += " and then run this command from the repository root. Do not mark any cell approved. ";
+    compile_prompt += " and then run this command from the repository root. Do not write Tencent Docs or the business database. ";
     compile_prompt += "Do not write Tencent Docs, the business database, or Git.\n";
     compile_prompt += "pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts compile --inventory ";
     compile_prompt += trimmed(last_inventory.inventory_path);

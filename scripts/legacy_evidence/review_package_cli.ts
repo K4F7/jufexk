@@ -3,19 +3,24 @@ import { dirname, join, resolve } from "node:path";
 import {
   analysisPayload,
   applyAnalyses,
+  applyApprovals,
   applyArbitration,
+  approvalPayload,
   buildReviewInventory,
   compileReviewPackage,
   disagreements,
+  eligibleForApproval,
   loadScopedEvidence,
   loadSmokeImageOverrides,
   parseContextDocument,
   readJsonIfExists,
   resolveSmokeEvidenceDir,
   validateAnalysisResponse,
+  validateApprovalResponse,
   validateArbitrationResponse,
   writeReviewJson,
   type CellAnalysis,
+  type CellApproval,
   type CellArbitration,
   type OcrEvidence,
   type ReviewAttempt,
@@ -46,6 +51,7 @@ function usage() {
     "Usage:",
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts inventory --evidence-dir <dir> --context <json> --out <dir> [--worksheet <name>] [--first-row N] [--last-row N] [--ocr-dir <dir>] [--max-batches N] [--smoke-root <dir>]",
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts compile --inventory <json> --analyses <json> --out <dir>",
+    "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts approve --package <json> --verdicts <json> --out <dir>",
   ].join("\n");
 }
 
@@ -112,6 +118,9 @@ async function inventoryCommand() {
     await writeReviewJson(join(outDir, "batches", `${batch.task_id}-a.json`), analysisPayload(batch, "analysis_a"));
     await writeReviewJson(join(outDir, "batches", `${batch.task_id}-b.json`), analysisPayload(batch, "analysis_b"));
   }
+  for (const batch of inventory.pending_verify) {
+    await writeReviewJson(join(outDir, "batches", `${batch.task_id}-approval.json`), approvalPayload(batch));
+  }
   await writeReviewJson(join(outDir, "inventory.json"), inventory);
   const summary = {
     status: inventory.status,
@@ -124,12 +133,19 @@ async function inventoryCommand() {
     pending_cells: inventory.pending_cells,
     unresolved_cells: inventory.unresolved_cells,
     ocr_missing_cells: inventory.ocr_missing_cells,
+    pending_verify_cells: inventory.pending_verify_cells,
     pending_batches: inventory.pending_batches.map((batch) => ({
       task_id: batch.task_id,
       worksheet: batch.worksheet,
       keys: batch.keys,
       payload_a: join(outDir, "batches", `${batch.task_id}-a.json`),
       payload_b: join(outDir, "batches", `${batch.task_id}-b.json`),
+    })),
+    pending_verify: inventory.pending_verify.map((batch) => ({
+      task_id: batch.task_id,
+      worksheet: batch.worksheet,
+      keys: batch.keys,
+      payload: join(outDir, "batches", `${batch.task_id}-approval.json`),
     })),
   };
   await writeFile(join(outDir, "inventory-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
@@ -214,7 +230,7 @@ async function compileCommand() {
     planned_cells: compiled.planned_cells,
     routed_cells: compiled.routed_cells,
     unresolved_cells: compiled.unresolved_cells,
-    approved_cells: 0,
+    approved_cells: compiled.approved_cells,
   });
   await writeReviewJson(join(outDir, "package.json"), compiled);
   console.log(JSON.stringify({
@@ -223,7 +239,59 @@ async function compileCommand() {
     planned_cells: compiled.planned_cells,
     routed_cells: compiled.routed_cells,
     unresolved_cells: compiled.unresolved_cells,
-    approved_cells: 0,
+    approved_cells: compiled.approved_cells,
+  }));
+}
+
+async function approveCommand() {
+  const outDir = resolve(option("--out"));
+  const compiled = await readJsonIfExists(resolve(option("--package")));
+  const verdictsFile = await readJsonIfExists(resolve(option("--verdicts")));
+  if (!compiled || !Array.isArray(compiled.cells)) throw new Error("package is missing cells");
+  const verdicts = new Map<string, CellApproval | { unresolved: "agent_exhausted" }>();
+  const priorAttempts = await readJsonIfExists(join(outDir, "attempts.json"));
+  const attempts: ReviewAttempt[] = Array.isArray(priorAttempts) ? priorAttempts : [];
+  const groups = Array.isArray(verdictsFile?.batches) ? verdictsFile.batches : [{ task_id: "approval", keys: (compiled.cells as RoutedCell[]).filter(eligibleForApproval).map((cell) => cell.key), cells: verdictsFile?.cells }];
+  for (const group of groups) {
+    const keys = Array.isArray(group.keys) ? group.keys : [];
+    if (group == null || group.cells == null) {
+      attempts.push({ task_id: group.task_id ?? "approval", side: "approval", status: "failed", cell_keys: keys, error: "missing approval verdict" });
+      continue;
+    }
+    try {
+      for (const cell of validateApprovalResponse(keys.length ? keys : (group.cells as { key: string }[]).map((item) => item.key), group)) {
+        verdicts.set(cell.key, cell);
+      }
+      attempts.push({ task_id: group.task_id ?? "approval", side: "approval", status: "completed", cell_keys: keys });
+    } catch (error) {
+      attempts.push({
+        task_id: group.task_id ?? "approval",
+        side: "approval",
+        status: "failed",
+        cell_keys: keys,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  const cells = applyApprovals(compiled.cells, verdicts);
+  const next = compileReviewPackage({ ...compiled, cells, pending_batches: [], pending_verify: [] }, cells);
+  await writeReviewJson(join(outDir, "matrix.json"), { contract_version: next.contract_version, input_sha256: next.input_sha256, cells });
+  await writeReviewJson(join(outDir, "attempts.json"), attempts);
+  await writeReviewJson(join(outDir, "status.json"), {
+    status: next.status,
+    planned_cells: next.planned_cells,
+    routed_cells: next.routed_cells,
+    unresolved_cells: next.unresolved_cells,
+    approved_cells: next.approved_cells,
+  });
+  await writeReviewJson(join(outDir, "package.json"), next);
+  console.log(JSON.stringify({
+    status: next.status,
+    package_path: join(outDir, "package.json"),
+    planned_cells: next.planned_cells,
+    routed_cells: next.routed_cells,
+    unresolved_cells: next.unresolved_cells,
+    approved_cells: next.approved_cells,
   }));
 }
 
@@ -231,6 +299,7 @@ const command = process.argv[2];
 try {
   if (command === "inventory") await inventoryCommand();
   else if (command === "compile") await compileCommand();
+  else if (command === "approve") await approveCommand();
   else {
     console.error(usage());
     process.exit(2);
