@@ -4,8 +4,23 @@ import { dirname, join, resolve } from "node:path";
 import { type FormulaBarEvidence, readFormulaBarEvidence } from "./formula_bar";
 import { buildFrozenFormulaBarMatrixPlan } from "./formula_bar_locator";
 import { formulaBarEvidencePath } from "./formula_bar_locator_store";
+import { PROTECTED_LIVE_LAYOUT_OUTPUT_MARKERS, validateLiveLayout, type LiveLayout } from "./live_layout";
+import { LIVE_LAYOUT_CONTEXT_INDEX_VERSION, MISSING_CONTEXT, validateLiveLayoutContextIndex } from "./live_layout_context_index";
+import type { ProductionGapPartition } from "./production_gap";
 
 export const REVIEW_PACKAGE_CONTRACT_VERSION = "legacy-review-package-v1" as const;
+export const NO_REVIEWS_TO_PACKAGE = "无评价可审" as const;
+export const ISOLATED_SPORTS_SMOKE_REVIEW_OUTPUT_MARKERS = [
+  "/review-package-smoke-sports-20260818",
+  "/review-package-smoke-sports-oneshot",
+] as const;
+export const ISOLATED_SPORTS_SMOKE_REVIEW = {
+  worksheet: "体育课",
+  first_row: 6,
+  last_row: 14,
+  isolation: "wrong_layout_sample",
+  use_approved_count_as_pass: false,
+} as const;
 export const MAX_BATCH_CELLS = 8;
 export const LONG_TEXT_BATCH_CELLS = 4;
 export const VERY_LONG_TEXT_BATCH_CELLS = 1;
@@ -100,6 +115,7 @@ export type ReviewInventory = {
   status: "ready" | "empty" | "needs_ocr" | "blocked";
   reason: string;
   input_sha256: string;
+  layout_sha256: string;
   ocr_command: string | null;
   planned_cells: number;
   routed_cells: number;
@@ -111,6 +127,7 @@ export type ReviewInventory = {
   cells: RoutedCell[];
   pending_batches: ReviewBatch[];
   pending_verify: ReviewBatch[];
+  wrote_tencent_or_business_db: false;
 };
 
 export type CompiledCell = RoutedCell & {
@@ -132,7 +149,11 @@ export type ReviewPackage = {
   cells: CompiledCell[];
 };
 
+export type ReviewOcrImageKind = "cell_crop" | "window_chrome";
+
 const COURSE_STATUSES = new Set<CourseStatus>(["clear", "blank", "unclear", "inherited_anchor"]);
+const CHROME_OCR_PATH = /(?:^|[\\/._-])(?:formula|window|chrome|conflict|titlebar|只能查看)(?:[\\/._-]|$)/i;
+const CELL_CROP_PATH = /(?:^|[\\/])[^\\/]*-cell\.(?:jpe?g|png|webp)$/i;
 const TEACHER_STATUSES = new Set<TeacherStatus>(["clear", "blank", "unclear"]);
 const OVERFLOW_STATUSES = new Set<OverflowStatus>(["none", "extends_right", "unreadable"]);
 const VISUAL_STATUSES = new Set<VisualCorrespondence>([
@@ -143,6 +164,80 @@ function resolveRef(path: string | null | undefined, baseDir?: string) {
   if (!path) return null;
   if (!baseDir || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("/")) return path;
   return resolve(baseDir, path);
+}
+
+export function requireReviewPackageLiveLayout(layout: LiveLayout | null | undefined): LiveLayout {
+  if (layout == null) {
+    throw new Error("live layout SHA is required before compiling a review inventory");
+  }
+  validateLiveLayout(layout);
+  return layout;
+}
+
+export function assertReviewPackageSheetLayout(layout: LiveLayout, worksheet?: string) {
+  if (!worksheet) return;
+  const sheet = layout.sheets.find((item) => item.worksheet === worksheet);
+  if (!sheet) {
+    throw new Error(`review inventory rejected: ${worksheet} is not in the live layout`);
+  }
+  if (!sheet.teacher_column) {
+    throw new Error(`teacher column unconfirmed: ${worksheet}`);
+  }
+}
+
+export function classifyReviewOcrImage(input: { path?: string | null; kind?: string | null }): ReviewOcrImageKind {
+  const kind = input.kind ?? "";
+  if (kind === "conflict" || kind === "formula" || kind === "window" || kind === "chrome") {
+    return "window_chrome";
+  }
+  const path = (input.path ?? "").replaceAll("\\", "/");
+  if (!path) return "window_chrome";
+  if (CHROME_OCR_PATH.test(path) && !CELL_CROP_PATH.test(path)) return "window_chrome";
+  if (CELL_CROP_PATH.test(path)) return "cell_crop";
+  return "window_chrome";
+}
+
+export function assertReviewOcrInputIsCellCrop(input: { path?: string | null; kind?: string | null }) {
+  if (classifyReviewOcrImage(input) !== "cell_crop") {
+    throw new Error("window chrome images cannot be OCR input");
+  }
+}
+
+export function isIsolatedSportsSmokeReviewPath(path: string) {
+  const resolved = resolve(path).replaceAll("\\", "/");
+  return ISOLATED_SPORTS_SMOKE_REVIEW_OUTPUT_MARKERS.some((marker) => resolved.includes(marker));
+}
+
+export function assertReviewPackageOutputPath(path: string) {
+  const resolved = resolve(path).replaceAll("\\", "/");
+  if (isIsolatedSportsSmokeReviewPath(resolved)) {
+    throw new Error("isolated 体育课 6-14 review package is a wrong-layout sample and must not be rerun");
+  }
+  if (PROTECTED_LIVE_LAYOUT_OUTPUT_MARKERS.some((marker) => resolved.includes(marker))) {
+    throw new Error("review package output must not overwrite protected #180, #229, or formula-bar packs");
+  }
+}
+
+export function markIsolatedSportsSmokeReviewPackage<T extends { approved_cells?: number }>(pkg: T) {
+  return {
+    ...pkg,
+    isolation: ISOLATED_SPORTS_SMOKE_REVIEW.isolation,
+    isolated_sample: true as const,
+    use_approved_count_as_pass: ISOLATED_SPORTS_SMOKE_REVIEW.use_approved_count_as_pass,
+    wrote_tencent_or_business_db: false as const,
+  };
+}
+
+export function reviewPackageCountsAsPass<T extends object>(pkg: T, path?: string) {
+  if (path && isIsolatedSportsSmokeReviewPath(path)) return false;
+  const record = pkg as T & {
+    isolation?: string;
+    isolated_sample?: boolean;
+    use_approved_count_as_pass?: boolean;
+  };
+  return record.isolation !== "wrong_layout_sample"
+    && record.isolated_sample !== true
+    && record.use_approved_count_as_pass !== false;
 }
 
 export function parseContextDocument(raw: unknown): ContextRow[] {
@@ -165,7 +260,25 @@ export function parseContextDocument(raw: unknown): ContextRow[] {
       });
     });
   }
-  throw new Error("context file must be an array, {context_index:[]}, or smoke-context-index-v1");
+  if (raw.contract_version === LIVE_LAYOUT_CONTEXT_INDEX_VERSION && Array.isArray(raw.sheets)) {
+    validateLiveLayoutContextIndex(raw);
+    return raw.sheets.flatMap((sheet) => {
+      if (!isRecord(sheet) || typeof sheet.worksheet !== "string" || !Array.isArray(sheet.rows)) {
+        throw new Error("invalid live-layout context sheet");
+      }
+      return sheet.rows.flatMap((item) => {
+        if (!isRecord(item) || !Number.isInteger(item.row)) throw new Error("invalid live-layout context row");
+        if (item.course_cell === MISSING_CONTEXT || item.course_anchor_row === MISSING_CONTEXT) return [];
+        return [normalizeContextRow({
+          worksheet: sheet.worksheet,
+          row: item.row,
+          course: "",
+          teacher: "",
+        })];
+      });
+    });
+  }
+  throw new Error("context file must be an array, {context_index:[]}, smoke-context-index-v1, or live-layout-context-index-v1");
 }
 
 function normalizeContextRow(item: unknown): ContextRow {
@@ -251,6 +364,18 @@ export function routeFormulaBarCell(
       recovery_condition: "capture the origin cell image in a new frozen package",
     };
   }
+  const ocrImage = classifyReviewOcrImage({
+    path: cell.cell_image,
+    kind: options.image_override?.cell ? undefined : evidence.evidence.cell_image?.kind,
+  });
+  if (ocrImage !== "cell_crop") {
+    return {
+      ...cell,
+      routing: "unresolved",
+      unresolved_reason: "window_chrome_ocr_input",
+      recovery_condition: "recapture the origin cell crop; window chrome cannot be OCR input",
+    };
+  }
   return { ...cell, routing: "pending_review" };
 }
 
@@ -299,6 +424,8 @@ export function buildReviewBatches(pending: RoutedCell[], options: { max_batches
 export function buildReviewInventory(input: {
   evidence: Array<FormulaBarEvidence | { key: string; worksheet: string; row: number; column: string; missing: true }>;
   context_index: ContextRow[];
+  layout?: LiveLayout | null;
+  gap_by_key?: Record<string, ProductionGapPartition>;
   ocr_by_key?: Record<string, OcrEvidence>;
   image_base_by_key?: Record<string, string>;
   image_overrides?: Record<string, ImageOverride>;
@@ -312,10 +439,12 @@ export function buildReviewInventory(input: {
   attempts?: ReviewAttempt[];
   prior_cells?: RoutedCell[];
 }): ReviewInventory {
+  const layout = requireReviewPackageLiveLayout(input.layout);
+  assertReviewPackageSheetLayout(layout, input.worksheet);
   const priorByKey = new Map((input.prior_cells ?? []).map((cell) => [cell.key, cell]));
   const scoped = input.evidence.filter((item) => inScope(item, input));
   if (scoped.length === 0) {
-    return emptyInventory("blocked", "no formula-bar evidence in the requested scope", input);
+    return emptyInventory("blocked", "no formula-bar evidence in the requested scope", input, layout);
   }
 
   const cells = scoped.map((item) => {
@@ -326,17 +455,31 @@ export function buildReviewInventory(input: {
       image_override: input.image_overrides?.[item.key],
     });
     const prior = priorByKey.get(routed.key);
-    if (!prior) return routed;
-    return {
-      ...routed,
-      analysis_a: prior.analysis_a,
-      analysis_b: prior.analysis_b,
-      arbitration: prior.arbitration,
-      conclusion: prior.conclusion,
-      selected: prior.selected,
-      approval: prior.approval,
-      approved: prior.approved === true,
-    };
+    const merged = prior
+      ? {
+        ...routed,
+        analysis_a: prior.analysis_a,
+        analysis_b: prior.analysis_b,
+        arbitration: prior.arbitration,
+        conclusion: prior.conclusion,
+        selected: prior.selected,
+        approval: prior.approval,
+        approved: prior.approved === true,
+      }
+      : routed;
+    if (input.gap_by_key) {
+      const partition = input.gap_by_key[item.key];
+      if (partition !== "never_packaged") {
+        return {
+          ...merged,
+          routing: "not_applicable" as const,
+          conclusion: "not_applicable" as const,
+          unresolved_reason: partition ?? "not_never_packaged",
+          recovery_condition: null,
+        };
+      }
+    }
+    return merged;
   });
 
   const exhausted = exhaustedKeys(input.attempts ?? []);
@@ -363,7 +506,7 @@ export function buildReviewInventory(input: {
     max_batches: input.max_batches,
     attempts: (input.attempts ?? []).filter((attempt) => attempt.side === "approval"),
   });
-  const inputSha = inputSha256(scoped, input.context_index, input);
+  const inputSha = inputSha256(scoped, input.context_index, input, layout);
   const ocrCommand = ocrMissing > 0
     ? `uv run --directory scripts/legacy_ocr python ocr_review_cells.py --inventory ${input.inventory_path ?? "<out>/inventory.json"} --out ${input.ocr_dir ?? "<ocr-dir>"}`
     : null;
@@ -384,12 +527,36 @@ export function buildReviewInventory(input: {
     status = "needs_ocr";
     reason = `${ocrMissing} routed cells are missing CUDA RapidOCR evidence`;
   }
+  if (isMeiyuSmokeInventory(input, layout) && !cells.some((cell) => isNeverPackagedReview(cell, input.gap_by_key))) {
+    status = "empty";
+    reason = NO_REVIEWS_TO_PACKAGE;
+    return {
+      contract_version: REVIEW_PACKAGE_CONTRACT_VERSION,
+      status,
+      reason,
+      input_sha256: inputSha,
+      layout_sha256: layout.layout_sha256,
+      ocr_command: null,
+      planned_cells: cells.length,
+      routed_cells: 0,
+      pending_cells: 0,
+      unresolved_cells: cells.filter((cell) => cell.routing === "unresolved" || cell.conclusion === "unresolved").length,
+      not_applicable_cells: cells.filter((cell) => cell.routing === "not_applicable").length,
+      ocr_missing_cells: 0,
+      pending_verify_cells: 0,
+      cells,
+      pending_batches: [],
+      pending_verify: [],
+      wrote_tencent_or_business_db: false,
+    };
+  }
 
   return {
     contract_version: REVIEW_PACKAGE_CONTRACT_VERSION,
     status,
     reason,
     input_sha256: inputSha,
+    layout_sha256: layout.layout_sha256,
     ocr_command: ocrCommand,
     planned_cells: cells.length,
     routed_cells: cells.filter((cell) => cell.routing === "pending_review" || cell.conclusion === "agreed" || cell.conclusion === "arbitrated").length,
@@ -401,6 +568,7 @@ export function buildReviewInventory(input: {
     cells,
     pending_batches: status === "needs_ocr" ? [] : pendingBatches,
     pending_verify: pendingVerifyBatches,
+    wrote_tencent_or_business_db: false,
   };
 }
 
@@ -711,6 +879,7 @@ async function fileExists(path: string) {
 }
 
 export async function writeReviewJson(path: string, value: unknown) {
+  assertReviewPackageOutputPath(path);
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.tmp`;
   await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`);
@@ -804,21 +973,30 @@ function isCompletedArbitration(value: unknown): value is CellArbitration {
 function inputSha256(
   evidence: Array<{ record_sha256?: string; key: string }>,
   context: ContextRow[],
-  scope: { worksheet?: string; first_row?: number; last_row?: number; require_ocr?: boolean },
+  scope: { worksheet?: string; first_row?: number; last_row?: number; require_ocr?: boolean; gap_by_key?: Record<string, ProductionGapPartition> },
+  layout?: LiveLayout,
 ) {
   return createHash("sha256").update(JSON.stringify({
     evidence: evidence.map((item) => item.record_sha256 ?? `missing:${item.key}`).sort(),
     context,
+    layout_sha256: layout?.layout_sha256 ?? null,
+    gap: scope.gap_by_key ?? null,
     scope: { worksheet: scope.worksheet ?? null, first_row: scope.first_row ?? null, last_row: scope.last_row ?? null },
   })).digest("hex");
 }
 
-function emptyInventory(status: ReviewInventory["status"], reason: string, input: { context_index: ContextRow[] }): ReviewInventory {
+function emptyInventory(
+  status: ReviewInventory["status"],
+  reason: string,
+  input: { context_index: ContextRow[]; worksheet?: string; first_row?: number; last_row?: number; gap_by_key?: Record<string, ProductionGapPartition> },
+  layout: LiveLayout,
+): ReviewInventory {
   return {
     contract_version: REVIEW_PACKAGE_CONTRACT_VERSION,
     status,
     reason,
-    input_sha256: inputSha256([], input.context_index, {}),
+    input_sha256: inputSha256([], input.context_index, input, layout),
+    layout_sha256: layout.layout_sha256,
     ocr_command: null,
     planned_cells: 0,
     routed_cells: 0,
@@ -830,7 +1008,39 @@ function emptyInventory(status: ReviewInventory["status"], reason: string, input
     cells: [],
     pending_batches: [],
     pending_verify: [],
+    wrote_tencent_or_business_db: false,
   };
+}
+
+function isMeiyuSmokeInventory(
+  input: { evidence: Array<{ worksheet: string; row: number }>; worksheet?: string; first_row?: number; last_row?: number },
+  layout: LiveLayout,
+) {
+  const meiyu = layout.sheets.find((sheet) => sheet.worksheet === "美育");
+  if (!meiyu) return false;
+  if (input.worksheet && input.worksheet !== "美育") return false;
+  const scoped = input.evidence.filter((item) => inScope(item, input));
+  if (scoped.some((item) => item.worksheet !== "美育")) return false;
+  if (scoped.length === 0 && input.worksheet !== "美育") return false;
+  const [smokeFirst, smokeLast] = meiyu.smoke_rows;
+  if (input.first_row != null && input.first_row < smokeFirst) return false;
+  if (input.last_row != null && input.last_row > smokeLast) return false;
+  if (scoped.length > 0) {
+    return scoped.every((item) => item.row >= smokeFirst && item.row <= smokeLast);
+  }
+  return (input.first_row ?? smokeFirst) >= smokeFirst && (input.last_row ?? smokeLast) <= smokeLast;
+}
+
+function isNeverPackagedReview(cell: RoutedCell, gapByKey?: Record<string, ProductionGapPartition>) {
+  const partition = gapByKey?.[cell.key];
+  if (partition === "in_production" || partition === "packaged_not_imported" || partition === "not_a_review") {
+    return false;
+  }
+  if (cell.terminal_status === "ordinary_blank" || cell.terminal_status === "horizontal_overflow_blank") {
+    return false;
+  }
+  if (cell.terminal_status === "missing_evidence") return false;
+  return cell.routing !== "not_applicable";
 }
 
 async function resolveEvidenceRoot(evidenceDir: string) {

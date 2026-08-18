@@ -3,11 +3,24 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from ocr_manifest import cuda_provider_evidence, ocr_cuda
 from pipeline import Token
+
+CHROME_OCR_PATH = re.compile(r"(?:^|[\\/._-])(?:formula|window|chrome|conflict|titlebar|只能查看)(?:[\\/._-]|$)", re.I)
+CELL_CROP_PATH = re.compile(r"(?:^|[\\/])[^\\/]*-cell\.(?:jpe?g|png|webp)$", re.I)
+
+
+def is_cell_crop_image(path: str, kind: str | None = None) -> bool:
+    if kind in {"conflict", "formula", "window", "chrome"}:
+        return False
+    normalized = path.replace("\\", "/")
+    if CHROME_OCR_PATH.search(normalized) and not CELL_CROP_PATH.search(normalized):
+        return False
+    return bool(CELL_CROP_PATH.search(normalized))
 
 
 def sha256_file(path: Path) -> str:
@@ -44,8 +57,12 @@ def run_cell_ocr(inventory_path: Path, out_dir: Path) -> dict[str, Any]:
     for cell in load_cells(inventory):
         key = cell.get("key")
         image = cell.get("cell_image")
+        kind = cell.get("cell_image_kind")
         if not isinstance(key, str) or not isinstance(image, str) or not image:
             failed.append(str(key))
+            continue
+        if not is_cell_crop_image(image, kind if isinstance(kind, str) else None):
+            failed.append(key)
             continue
         if isinstance(cells.get(key), dict) and cells[key].get("image_sha256"):
             continue

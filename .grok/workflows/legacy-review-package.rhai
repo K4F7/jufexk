@@ -142,11 +142,13 @@ fn usable(result) {
     result != () && result.success && result.output != ()
 }
 
-fn inventory_command(out_dir, evidence_dir, context_path, manifest_path, ocr_dir, worksheet, first_row, last_row, max_batches) {
+fn inventory_command(out_dir, evidence_dir, context_path, layout, gap, manifest_path, ocr_dir, worksheet, first_row, last_row, max_batches) {
     let command = "pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts inventory --out ";
     command += out_dir;
     if has_text(evidence_dir) { command += " --evidence-dir "; command += evidence_dir; }
     if has_text(context_path) { command += " --context "; command += context_path; }
+    if has_text(layout) { command += " --layout "; command += layout; }
+    if has_text(gap) { command += " --gap "; command += gap; }
     if has_text(manifest_path) { command += " --manifest "; command += manifest_path; }
     if has_text(ocr_dir) { command += " --ocr-dir "; command += ocr_dir; }
     if has_text(worksheet) { command += " --worksheet "; command += worksheet; }
@@ -288,6 +290,8 @@ fn arbitration_prompt(payload_a, payload_b, keys_json, analysis_a_json, analysis
 let evidence_dir = if args == () { () } else { args.evidence_dir };
 let out_dir = if args == () { () } else { args.out_dir };
 let context_path = if args == () { () } else { args.context_path };
+let layout = if args == () { () } else { args.layout };
+let gap = if args == () { () } else { args.gap };
 let manifest_path = if args == () { () } else { args.manifest_path };
 let ocr_dir = if args == () { () } else { args.ocr_dir };
 let worksheet = if args == () { () } else { args.worksheet };
@@ -296,13 +300,19 @@ let last_row = if args == () { () } else { args.last_row };
 let max_batches = if args == () { () } else { args.max_batches };
 let inventory_path = if args == () { () } else { args.inventory_path };
 if !has_text(out_dir) {
-    pause("verification", "Pass args.out_dir — a gitignored directory for inventory, attempts, and the unapproved review package.");
+    pause("verification", "Pass args.out_dir — a gitignored directory for inventory, attempts, and the unapproved review package. Do not overwrite isolated 体育课 6-14 samples.");
 }
 if !has_text(inventory_path) && !has_text(evidence_dir) {
     pause("verification", "Pass args.evidence_dir or args.inventory_path. Capture and locator stay outside this workflow.");
 }
 if !has_text(inventory_path) && !has_text(context_path) {
     pause("verification", "Pass args.context_path — the frozen row context index JSON.");
+}
+if !has_text(inventory_path) && !has_text(layout) {
+    pause("verification", "Pass args.layout — the frozen live-layout JSON. Review inventory will not compile without a bound layout SHA and confirmed teacher column.");
+}
+if !has_text(inventory_path) && !has_text(gap) {
+    pause("verification", "Pass args.gap — the production-gap inventory. Only never_packaged origin cells are routed.");
 }
 
 let last_fingerprint = "";
@@ -327,7 +337,7 @@ while wave < 64 {
     let inventory_prompt = "Build or refresh the deterministic review-package inventory. ";
     inventory_prompt += "Do not screenshot, click grid cells, or write Tencent Docs / the business database. ";
     inventory_prompt += "Do not invent matrix keys. Run this exact command from the repository root and return its stdout JSON unchanged:\n";
-    inventory_prompt += inventory_command(out_dir, evidence_dir, context_path, manifest_path, ocr_dir, worksheet, first_row, last_row, this_wave);
+    inventory_prompt += inventory_command(out_dir, evidence_dir, context_path, layout, gap, manifest_path, ocr_dir, worksheet, first_row, last_row, this_wave);
     if has_text(inventory_path) {
         inventory_prompt = "Read ";
         inventory_prompt += inventory_path;
@@ -347,6 +357,15 @@ while wave < 64 {
     }
     last_inventory = inventory_result.output;
     let inv_status = last_inventory.status;
+    if last_inventory.reason == "无评价可审" {
+        complete(#{
+            summary: "无评价可审",
+            status: "empty",
+            reason: last_inventory.reason,
+            inventory_path: last_inventory.inventory_path,
+            out_dir: out_dir,
+        });
+    }
     if inv_status == "blocked" {
         complete(#{
             summary: "Inventory is blocked.",
