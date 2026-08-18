@@ -1,7 +1,7 @@
 import { buttonVariants, Link } from "@heroui/react";
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
-import { useCampusAuthEnabled } from "../hooks/useCampusAuthStatus";
+import { useCampusAuthEnabled } from "../hooks/useCampusAuthEnabled";
 import type { SiteConfig } from "../lib/types";
 import { AccountNavControl } from "./AccountNavControl";
 import { ThemeToggle } from "./ThemeToggle";

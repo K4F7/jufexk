@@ -66,6 +66,9 @@ type MockOptions = {
   deepLinkTeacher?: boolean;
   /** Delay the by-id teacher fetch to observe the resolving state. */
   delayTeacherMs?: number;
+  /** Pages beyond 1 return no rows but keep the total (deep-linked
+   *  out-of-range page; the real API does not clamp page). */
+  emptyBeyondFirstPage?: boolean;
 };
 
 async function mockCatalogApi(page: Page, options: MockOptions = {}) {
@@ -99,11 +102,18 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
       const sort = url.searchParams.get("sort") || "reviews";
       const department = url.searchParams.get("department") || "";
       const teacherId = url.searchParams.get("teacherId") || "";
+      const pageNum = Number(url.searchParams.get("page") || "1");
       let items = catalog.filter(
         (item) =>
           (!department || item.department === department) &&
           (!teacherId || item.teacher_refs?.startsWith(`${teacherId}:`)),
       );
+      const total = items.length;
+      if (options.emptyBeyondFirstPage && pageNum > 1) {
+        return route.fulfill({
+          json: { items: [], page: pageNum, pageSize: 20, total, pages: 1 },
+        });
+      }
       items =
         sort === "name"
           ? [...items].sort((a, b) => (a.name < b.name ? -1 : 1))
@@ -433,5 +443,21 @@ test("deep-linked sort survives a 0-result filter stack", async ({ page }) => {
     .click();
   await expect(page).toHaveURL(/sort=name/);
   await expect(sortTrigger).toBeEnabled();
+  await expect(catalogFirstRow(page)).toContainText("中国传统文化导论");
+});
+
+test("out-of-range deep-linked page keeps the sort control usable", async ({
+  page,
+}) => {
+  await mockCatalogApi(page, { emptyBeyondFirstPage: true });
+  await page.goto("/courses?page=2");
+
+  // 深链越界页：items 空但 total>0，排序仍是回到第 1 页的出口（Issue #278）。
+  const sortTrigger = page.getByRole("button", { name: /排序/ });
+  await expect(sortTrigger).toBeEnabled();
+  await sortTrigger.click();
+  await page.getByRole("option", { name: "课名", exact: true }).click();
+  await expect(page).toHaveURL(/sort=name/);
+  await expect(page).toHaveURL(/page=1/);
   await expect(catalogFirstRow(page)).toContainText("中国传统文化导论");
 });

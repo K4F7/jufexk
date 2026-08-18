@@ -364,8 +364,10 @@ export function CoursesPage() {
   );
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
-  /** 0 条结果时排序控件禁用（Issue #278）；已选 sort 深链保留。 */
-  const sortDisabled = data != null && data.items.length === 0;
+  /** 「0 门课程」时排序控件禁用（Issue #278）；已选 sort 深链保留。
+   *  按 total 而非当前页行数判定：深链越界页（items 空但 total>0）时
+   *  排序仍是回到第 1 页的出口，不能禁用。 */
+  const sortDisabled = data != null && data.total === 0;
   const selectedTeacherName = teacherId
     ? teachers.find((teacher) => String(teacher.id) === teacherId)?.name
     : undefined;
