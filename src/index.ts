@@ -515,7 +515,7 @@ app.get("/api/courses", async (c) => {
     teacherId = integer(c.req.query("teacherId"));
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
-  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR c.department=?) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?) OR ${publicPeFamilySearchSql("c")})`;
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?)) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?) OR ${publicPeFamilySearchSql("c")})`;
   const args = [
     cat,
     department,
@@ -743,6 +743,16 @@ app.get("/api/courses/options", async (c) => {
     total: totalCount,
     pages: Math.ceil(totalCount / size),
   });
+});
+app.get("/api/courses/departments", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT DISTINCT trim(c.department) department
+     FROM courses c
+     WHERE ${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}
+       AND trim(COALESCE(c.department,''))<>''
+     ORDER BY trim(c.department)`,
+  ).all<{ department: string }>();
+  return c.json({ items: results.map((row) => row.department) });
 });
 app.get("/api/courses/:id", async (c) => {
   const id = integer(c.req.param("id"));
