@@ -364,6 +364,8 @@ export function CoursesPage() {
   );
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
+  /** 0 条结果时排序控件禁用（Issue #278）；已选 sort 深链保留。 */
+  const sortDisabled = data != null && data.items.length === 0;
   const selectedTeacherName = teacherId
     ? teachers.find((teacher) => String(teacher.id) === teacherId)?.name
     : undefined;
@@ -443,6 +445,7 @@ export function CoursesPage() {
       teacherError={teacherError}
       teacherQuery={teacherQuery}
       sort={sort}
+      sortDisabled={sortDisabled}
       hasFilters={hasFilters}
       onCategoryChange={(value) => update({ category: value })}
       onDepartmentDraftChange={setDepartmentDraft}

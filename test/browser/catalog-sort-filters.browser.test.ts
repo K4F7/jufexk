@@ -385,3 +385,53 @@ test("filtered empty state names every active filter and both clear buttons shar
   ).toBeVisible();
 });
 
+test("sort select is disabled while the catalog shows 0 courses", async ({
+  page,
+}) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses?department=会计学院");
+
+  // 0 门课程：排序控件禁用，不会看似重排了空列表（Issue #278）。
+  const sortTrigger = page.getByRole("button", { name: /排序/ });
+  await expect(
+    page.getByText("没有符合筛选条件的课程"),
+  ).toBeVisible();
+  await expect(sortTrigger).toBeDisabled();
+
+  // 清空筛选回到有结果的目录后，排序控件恢复可用。
+  await page
+    .getByRole("search")
+    .getByRole("button", { name: "清空筛选" })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "中国传统文化导论" }),
+  ).toBeVisible();
+  await expect(sortTrigger).toBeEnabled();
+
+  await sortTrigger.click();
+  await page.getByRole("option", { name: "课名", exact: true }).click();
+  await expect(page).toHaveURL(/sort=name/);
+  await expect(catalogFirstRow(page)).toContainText("中国传统文化导论");
+});
+
+test("deep-linked sort survives a 0-result filter stack", async ({ page }) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses?sort=name&department=会计学院");
+
+  // 0 条时排序控件禁用但保留深链值，不丢已选的 sort（Issue #278）。
+  const sortTrigger = page.getByRole("button", { name: /排序/ });
+  await expect(
+    page.getByText("没有符合筛选条件的课程"),
+  ).toBeVisible();
+  await expect(sortTrigger).toBeDisabled();
+  await expect(sortTrigger).toContainText("课名");
+
+  // 清空筛选后结果按深链 sort=name 排序，控件恢复可用。
+  await page
+    .getByRole("search")
+    .getByRole("button", { name: "清空筛选" })
+    .click();
+  await expect(page).toHaveURL(/sort=name/);
+  await expect(sortTrigger).toBeEnabled();
+  await expect(catalogFirstRow(page)).toContainText("中国传统文化导论");
+});

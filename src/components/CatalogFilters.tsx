@@ -113,6 +113,10 @@ export type CatalogFiltersProps = {
   teacherError: string;
   teacherQuery: string;
   sort: string;
+  /** True when the result list is empty: sorting nothing reads as if the
+   *  empty list had been re-ordered, so the control is disabled (Issue #278).
+   *  The deep-linked sort value is kept and applies once results exist. */
+  sortDisabled?: boolean;
   hasFilters: boolean;
   onCategoryChange: (value: string) => void;
   onDepartmentDraftChange: (value: string) => void;
@@ -137,6 +141,7 @@ export function CatalogFilters({
   teacherError,
   teacherQuery,
   sort,
+  sortDisabled = false,
   hasFilters,
   onCategoryChange,
   onDepartmentDraftChange,
@@ -267,6 +272,7 @@ export function CatalogFilters({
 
           <Select
             className="w-full"
+            isDisabled={sortDisabled}
             name="course-sort"
             value={sort || "reviews"}
             onChange={(value) => onSortChange(String(value || "reviews"))}
