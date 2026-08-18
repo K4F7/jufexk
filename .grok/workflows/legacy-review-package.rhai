@@ -200,7 +200,7 @@ fn analysis_prompt(side, payload_path, keys_json) {
     prompt
 }
 
-fn verify_and_apply(out_dir, pending_verify, last_inventory, last_package, wave) {
+fn verify_and_apply(out_dir, pending_verify, last_inventory, last_package, wave, approval_schema, compile_schema) {
     phase("Verify");
     let jobs = [];
     for batch in pending_verify {
@@ -389,7 +389,7 @@ while wave < 64 {
     let pending_verify_cells = last_inventory.pending_verify_cells;
     if pending == () || type_of(pending) != "array" || pending.len() == 0 {
         if pending_verify != () && type_of(pending_verify) == "array" && pending_verify.len() > 0 {
-            last_package = verify_and_apply(out_dir, pending_verify, last_inventory, last_package, wave);
+            last_package = verify_and_apply(out_dir, pending_verify, last_inventory, last_package, wave, approval_schema, compile_schema);
             wave += 1;
             continue;
         }
