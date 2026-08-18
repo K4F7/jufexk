@@ -1,4 +1,4 @@
-import { Button, Separator, Spinner } from "@heroui/react";
+import { Button, Separator, Spinner, Typography } from "@heroui/react";
 import { useViewer } from "../hooks/useViewer";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
@@ -33,12 +33,13 @@ export function PublicReviews({
   return (
     <section className="mb-2" aria-labelledby="public-reviews-heading">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h2
-          id="public-reviews-heading"
+        <Typography
           className="m-0 text-[17px] font-bold leading-snug"
+          id="public-reviews-heading"
+          type="h2"
         >
           评价
-        </h2>
+        </Typography>
         {total ? (
           <span className="text-[13px] text-muted">{total} 条</span>
         ) : null}

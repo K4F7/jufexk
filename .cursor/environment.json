@@ -1,0 +1,5 @@
+{
+  "name": "jufexk",
+  "install": "pnpm install --frozen-lockfile\npnpm exec playwright install --with-deps chromium\npnpm run types\npnpm run db:local\npnpm run db:seed-preview\nif [ -f .dev.vars ]; then pnpm run secrets:sync-local; fi\npnpm run build\nbash scripts/install-mattpocock-skills.sh",
+  "start": "export PATH=\"$HOME/.local/bin:$PATH\"\npnpm exec wrangler dev --ip 127.0.0.1 --port 8787"
+}

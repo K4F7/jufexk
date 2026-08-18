@@ -231,7 +231,7 @@ async function selectTeacher(page: Page, name: string) {
     .click();
 }
 
-test("course detail shows all reviews by default and filters per teacher", async ({
+test("course detail shows teachers or reviews, never both", async ({
   page,
 }) => {
   const reviewRequests: string[] = [];
@@ -243,18 +243,14 @@ test("course detail shows all reviews by default and filters per teacher", async
 
   await page.goto("/courses/8");
 
-  // #201：未选教师时评价区直接展示该课全部评价，不再是空白引导。
-  await expect(reviewItems(page)).toHaveCount(20);
-  await expect(page.getByText("23 条", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("status").filter({ hasText: "选择上方一位任课教师" }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "继续加载" }).click();
-  await expect(reviewItems(page)).toHaveCount(23);
+  // 未选教师：只有任课表，不请求、不渲染评价流。
+  await expect(teacherRegion(page)).toBeVisible();
+  await expect(reviewItems(page)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "评价" })).toHaveCount(0);
+  expect(reviewRequests).toHaveLength(0);
 
-  // #201：提示在教师表上方、无乘号。
   const hint = page.getByText(
-    "选择一位任课教师，查看这位老师在这门课的评价；默认显示全部评价。",
+    "选择一位任课教师，查看这位老师在这门课的评价。",
   );
   await expect(hint).toBeVisible();
   const hintBox = await hint.boundingBox();
@@ -263,38 +259,28 @@ test("course detail shows all reviews by default and filters per teacher", async
     true,
   );
 
-  // 无评分但有投稿的教师行仍显示投稿数。
   const region = teacherRegion(page);
   await expect(region.getByRole("row", { name: /另一位教师/ })).toContainText(
     "2 投",
   );
 
-  // #201：点击教师行就地筛选，不离开当前课。
   await selectTeacher(page, "测试教师");
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await expect(teacherRegion(page)).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(20);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
 
-  // #202：切到另一位教师，评价替换为该教师的投稿。
+  await page.getByRole("link", { name: "返回任课教师" }).click();
+  await expect(page).toHaveURL(/\/courses\/8$/);
+  await expect(teacherRegion(page)).toBeVisible();
+  await expect(reviewItems(page)).toHaveCount(0);
+  expect(reviewRequests.filter((search) => search === "")).toHaveLength(0);
+
   await selectTeacher(page, "另一位教师");
   await expect(page).toHaveURL(/\/courses\/8\?teacher=10$/);
+  await expect(teacherRegion(page)).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(2);
   await expect(page.getByText("2 条", { exact: true })).toBeVisible();
-
-  // #202：切回第一位教师，缓存命中立即恢复，不再发起请求。
-  await selectTeacher(page, "测试教师");
-  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
-  await expect(reviewItems(page)).toHaveCount(20);
-  expect(
-    reviewRequests.filter((search) => search.includes("teacherId=9")),
-  ).toHaveLength(1);
-
-  // 取消选择回到全部评价（对照视图），命中缓存——且恢复的是已加载的全部
-  // 23 条（含此前「继续加载」的第二页，Issue #212）。
-  await selectTeacher(page, "测试教师");
-  await expect(page).toHaveURL(/\/courses\/8$/);
-  await expect(reviewItems(page)).toHaveCount(23);
-  expect(reviewRequests.filter((search) => search === "")).toHaveLength(1);
 });
 
 test("teacher switch restores fully loaded pages from cache", async ({
@@ -308,26 +294,20 @@ test("teacher switch restores fully loaded pages from cache", async ({
   });
 
   await page.goto("/courses/8");
-  await expect(reviewItems(page)).toHaveCount(20);
-
-  // 未选教师的「全部评价」视图：先加载第二页（共 23 条）。
-  await page.getByRole("button", { name: "继续加载" }).click();
-  await expect(reviewItems(page)).toHaveCount(23);
-
-  // 选测试教师：20 条，再加载第二页 → 21 条。
   await selectTeacher(page, "测试教师");
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(reviewItems(page)).toHaveCount(20);
-  // 课程×教师 流整流同属所选教师，条目不再重复教师身份「昵称」。
   const feed = page.getByRole("list", { name: "评价列表" });
   await expect(feed.getByRole("link")).toHaveCount(0);
   await expect(feed.getByRole("listitem").first()).toContainText("匿名评价 1");
   await page.getByRole("button", { name: "继续加载" }).click();
   await expect(reviewItems(page)).toHaveCount(21);
 
-  // 切到另一位教师再切回：21 条完整恢复，不再重新拉取。
+  await page.getByRole("link", { name: "返回任课教师" }).click();
   await selectTeacher(page, "另一位教师");
   await expect(reviewItems(page)).toHaveCount(2);
+
+  await page.getByRole("link", { name: "返回任课教师" }).click();
   await selectTeacher(page, "测试教师");
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(reviewItems(page)).toHaveCount(21);
@@ -335,21 +315,16 @@ test("teacher switch restores fully loaded pages from cache", async ({
   expect(
     reviewRequests.filter((search) => search.includes("teacherId=9")),
   ).toHaveLength(2);
-
-  // 取消选择回到全部评价：23 条（含第二页）完整恢复，同样不重拉。
-  await selectTeacher(page, "测试教师");
-  await expect(page).toHaveURL(/\/courses\/8$/);
-  await expect(reviewItems(page)).toHaveCount(23);
   expect(
     reviewRequests.filter((search) => !search.includes("teacherId")),
-  ).toHaveLength(2);
+  ).toHaveLength(0);
 });
 
 test("teacher home link is the only control that leaves the course page", async ({
   page,
 }) => {
   await page.goto("/courses/8");
-  await expect(reviewItems(page)).toHaveCount(20);
+  await expect(reviewItems(page)).toHaveCount(0);
 
   await teacherRegion(page).getByRole("link", { name: "测试教师" }).click();
   await expect(page).toHaveURL(/\/teachers\/9$/);
@@ -359,6 +334,8 @@ test("teacher home link is the only control that leaves the course page", async 
 
   // ?teacher= 深链与返回按钮仍可用（Issue #201 验收）。
   await page.goto("/courses/8?teacher=9");
+  await expect(teacherRegion(page)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "返回任课教师" })).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(20);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
   await expect(
@@ -415,9 +392,11 @@ test("teacher table shows review counts via RatingCell", async ({
 
 test("empty and mobile states remain accessible without overflow", async ({ page }) => {
   await page.goto("/courses/10");
-  await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "教师待补充" })).toBeVisible();
+  await expect(reviewItems(page)).toHaveCount(0);
 
   await page.goto("/courses/8?teacher=9");
+  await expect(teacherRegion(page)).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(20);
   const layout = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -436,7 +415,7 @@ test("course and teacher catalogs preserve default and search result order", asy
   await expect(page.getByRole("row").nth(1)).toContainText("暂无文字评价课程");
   await page.getByRole("link", { name: "暂无文字评价课程" }).click();
   await expect(page).toHaveURL(/\/courses\/10/);
-  await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "教师待补充" })).toBeVisible();
 
   await page.goto("/teachers");
   await expect(page.getByRole("row").nth(1)).toContainText("测试教师");

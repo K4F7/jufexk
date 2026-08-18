@@ -46,6 +46,13 @@ describe("public course catalog", () => {
     const filteredBody = await filtered.json<{ total: number }>();
     expect(filteredBody.total).toBe(bareBody.total);
   });
+
+  it("does not expose a list rating that is not rendered", async () => {
+    const response = await SELF.fetch(`${origin}/api/courses?pageSize=1`);
+    expect(response.status).toBe(200);
+    const body = await response.json<{ items: Array<Record<string, unknown>> }>();
+    expect(body.items[0]).not.toHaveProperty("rating");
+  });
 });
 
 describe("course department options", () => {
