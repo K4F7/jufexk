@@ -9,6 +9,10 @@
  */
 import { Table } from "@heroui/react";
 import type { ReactNode } from "react";
+import {
+  HighlightSearchTerms,
+  highlightTermsFromSearch,
+} from "../lib/catalog-search-highlight";
 import type { Teacher } from "../lib/types";
 import { RouterAriaLink } from "./RouterAriaLink";
 
@@ -24,14 +28,20 @@ function TeacherNameLink({
   search,
   children,
   className,
+  "aria-label": ariaLabel,
 }: {
   teacher: Teacher;
   search: string;
   children: ReactNode;
   className?: string;
+  "aria-label"?: string;
 }) {
   return (
-    <RouterAriaLink to={`/teachers/${teacher.id}${search}`} className={className}>
+    <RouterAriaLink
+      to={`/teachers/${teacher.id}${search}`}
+      className={className}
+      aria-label={ariaLabel}
+    >
       {children}
     </RouterAriaLink>
   );
@@ -42,6 +52,8 @@ export function TeacherResultTable({
   search,
   className,
 }: TeacherResultTableProps) {
+  const highlightTerms = highlightTermsFromSearch(search);
+
   return (
     <Table className={className ? `dense-table ${className}` : "dense-table"}>
       <Table.ScrollContainer>
@@ -75,13 +87,26 @@ export function TeacherResultTable({
                     teacher={teacher}
                     search={search}
                     className="font-semibold no-underline"
+                    aria-label={
+                      highlightTerms.length ? teacher.name : undefined
+                    }
                   >
-                    {teacher.name}
+                    <HighlightSearchTerms
+                      text={teacher.name}
+                      terms={highlightTerms}
+                    />
                   </TeacherNameLink>
                 </Table.Cell>
                 <Table.Cell>
                   <span className="text-[13px] text-muted">
-                    {teacher.department || "—"}
+                    {teacher.department ? (
+                      <HighlightSearchTerms
+                        text={teacher.department}
+                        terms={highlightTerms}
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </span>
                 </Table.Cell>
                 <Table.Cell>
