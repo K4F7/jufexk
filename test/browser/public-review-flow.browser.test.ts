@@ -188,7 +188,7 @@ test("course detail gates reviews behind teacher selection", async ({ page }) =>
   ).toBeVisible();
   await expect(page.getByText("21", { exact: true })).toBeVisible();
 
-  // 点击教师卡片选中该教师，加载 课程×教师 评价流。
+  // 点击 Footer「查看评价」选中该教师，加载 课程×教师 评价流。
   await page.getByRole("link", { name: "查看测试教师的评价" }).click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
@@ -200,7 +200,7 @@ test("course detail gates reviews behind teacher selection", async ({ page }) =>
   await expect(page.getByText("历史评价", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /认可/ })).toHaveCount(0);
 
-  // 再次点击已选教师卡片取消选择，回到引导空态。
+  // Footer「取消选择」去掉教师筛选，回到引导空态。
   await page.getByRole("link", { name: "取消选择测试教师（当前选中，正在展示其评价）" }).click();
   await expect(page).toHaveURL(/\/courses\/8$/);
   await expect(reviewItems(page)).toHaveCount(0);
