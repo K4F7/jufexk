@@ -317,7 +317,6 @@ export function CourseDetailPage() {
       ) : (
         <PublicReviews
           rows={reviewFeed.reviews}
-          identity="teacher"
           total={
             selectedTeacherId
               ? (selectedTeacher?.review_count ?? 0)

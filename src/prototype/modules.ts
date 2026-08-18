@@ -308,7 +308,7 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     livePath: "/teachers/650",
     winner: "课程语言迁移（摘要 B + 课程域表 + 模块 10 投稿/历史）",
     notes:
-      "Issue #62 · foundations 规定不单开 A/B/C。生产：摘要左身份/右评价数（DetailSummary，#115 落地评分 Surface，#153 改为仅评价数）；TeacherCourseTable 课程域折叠（评分按 教师×课程）；PublicReviews identity=course 统一文字流。",
+      "Issue #62 · foundations 规定不单开 A/B/C。生产：摘要左身份/右评价数（DetailSummary，#115 落地评分 Surface，#153 改为仅评价数）；TeacherCourseTable 课程域折叠（评分按 教师×课程）；PublicReviews counterpart=course 统一文字流。",
     variants: [
       {
         key: "A",

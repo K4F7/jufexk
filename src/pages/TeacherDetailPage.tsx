@@ -3,7 +3,7 @@
  *
  * 1. 摘要 B: left identity (name / dept / course count / bio) · right review-count Surface
  * 2. 任课课程 — TeacherCourseTable (course-domain dense fold, per-relation rating)
- * 3. 评价 — PublicReviews unified text stream (identity=course)
+ * 3. 评价 — PublicReviews unified text stream (counterpart=course)
  *
  * DEV-only: ?module=teaching-reviews-feed replaces section 3 with #71 prototype.
  *
@@ -190,7 +190,7 @@ export function TeacherDetailPage() {
       ) : (
         <PublicReviews
           rows={reviews}
-          identity="course"
+          counterpart="course"
           total={data.reviewCount}
           hasMore={Boolean(reviewFeed.nextCursor)}
           isLoadingMore={reviewFeed.isLoadingMore}
