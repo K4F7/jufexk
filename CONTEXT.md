@@ -181,6 +181,10 @@ _Avoid_: 历史评论、旧评价
 **冻结清单（Frozen manifest）**：
 Capture QA 通过后冻结的证据清单，记录来源图片、结构范围与 SHA-256。任何重截都产生新的清单版本，不覆盖既有证据。
 
+**冻结矩阵编排（Matrix freeze orchestration）**：
+Grok workflow `legacy-matrix-freeze` 只按工作表与行范围调用 locator / capture / 冻前构图 QA CLI，再冻新 manifest。未给末行时先扫到已记录的表尾。定位与抓图仍是确定性程序；模型不得点网格、不得把截图当正文、不得登录。人必须先打开只读会话。
+_Avoid_: 模型点格、桌面合成当证据、覆盖已冻包
+
 **逐行上下文索引（Context index）**：
 纵向组中以原始行号为键的课程与教师证据。每个原始行恰有一项；历史评价只引用其同行上下文，不自行重写课程或教师。
 

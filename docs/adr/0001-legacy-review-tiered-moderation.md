@@ -1,6 +1,6 @@
 # 历史评价采用 GPU OCR-first 分级审核流水线
 
-状态：已接受；单元格审核编排见 [ADR-0019](./0019-grok-workflow-legacy-review-package.md)（冻结后可用 Grok workflow；截图与矩阵冻结仍不得使用 Grok）
+状态：已接受；单元格审核与冻结编排见 [ADR-0019](./0019-grok-workflow-legacy-review-package.md)（编排可以走 Grok；定位与抓图仍是程序）
 
 日期：2026-07-28
 
