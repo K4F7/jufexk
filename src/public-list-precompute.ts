@@ -1,3 +1,4 @@
+import { likeSql } from "./lib/catalog-search";
 import {
   PE_SKILL_FAMILIES,
   publicPeHasTextReviewSql,
@@ -91,7 +92,7 @@ export const publicCourseCanonicalJoin =
   "JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id";
 
 export const publicCourseFamilySearchSql = (alias = "pcc") =>
-  `(${alias}.family_label LIKE ? OR ${alias}.search_text LIKE ?)`;
+  `(${likeSql(`${alias}.family_label`)} OR ${likeSql(`${alias}.search_text`)})`;
 
 const publicListMutationRoutes: ReadonlyArray<readonly [string, RegExp]> = [
   ["POST", /^\/api\/admin\/catalog-relation-additions$/],
