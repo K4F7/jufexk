@@ -228,21 +228,44 @@ describe("smoke matrix, inventory, and new-composition capture", () => {
     expect(evaluateSportsRow6(result, inventory).passed).toBe(true);
   });
 
-  it("expands a long formula bar and records DOM-authoritative truncation", async () => {
+  it("expands every nonempty formula bar, including short text", async () => {
     const inventory = tinyInventory();
     const plan = planSmokeRowCapture(inventory, "体育课", 6);
-    const long = "上了几个学期她的课，打分真的一般般，大一还有的同学90多的有几个，然而我80。。平时也跟着练习了。";
-    const source = fakeSource({
-      formulas: { A6: "篮球", C6: "甲老师", D6: long, E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
-    });
     const expanded: string[] = [];
+    const source = fakeSource({
+      formulas: { A6: "篮球", C6: "甲老师", D6: "给分好", E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
+    });
     source.expandFormulaBar = async () => { expanded.push("expanded"); };
-    source.isFormulaBarTruncated = async () => true;
+    const result = await runSmokeRowCapture(plan, source);
+    expect(result.status).toBe("completed");
+    expect(result.actions.filter((action) => action.startsWith("expand:"))).toEqual([
+      "expand:A6",
+      "expand:C6",
+      "expand:D6",
+      "expand:E6",
+      "expand:F6",
+      "expand:G6",
+    ]);
+    expect(expanded).toHaveLength(6);
+    expect(result.formula_truncated_isolated).toEqual([]);
+  });
+
+  it("isolates leftover formula-bar overflow after expand and still completes the row", async () => {
+    const inventory = tinyInventory();
+    const plan = planSmokeRowCapture(inventory, "体育课", 6);
+    const source = fakeSource({
+      formulas: { A6: "篮球", C6: "甲老师", D6: "给分好", E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
+    });
+    source.expandFormulaBar = async () => {};
+    source.isFormulaBarTruncated = async () => (await source.readActiveAddress()) === "D6";
     const result = await runSmokeRowCapture(plan, source);
     expect(result.status).toBe("completed");
     expect(result.actions).toContain("expand:D6");
+    expect(result.actions).toContain("truncated_isolated:D6");
     expect(result.captures.find((item) => item.address === "D6")?.formula_truncated_dom_authoritative).toBe(true);
-    expect(expanded).toEqual(["expanded"]);
+    expect(result.captures.find((item) => item.address === "E6")?.formula_truncated_dom_authoritative).toBe(false);
+    expect(result.formula_truncated_isolated).toEqual(["D6"]);
+    expect(evaluateSportsRow6(result, inventory).passed).toBe(true);
   });
 
   it("stops the row when the active address drifts instead of guessing the next cell", async () => {
@@ -478,7 +501,7 @@ function fakeSource(options: {
   mismatchAt?: string;
   collideHashes?: boolean;
   dirtyAt?: string;
-}): SmokeRowCaptureSource & { writes: string[]; formulaGrabs: string[] } {
+}): SmokeRowCaptureSource & { writes: string[]; formulaGrabs: string[]; readActiveAddress(): Promise<string> } {
   let address = "";
   const columns = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
   const writes: string[] = [];
@@ -513,6 +536,7 @@ function fakeSource(options: {
     },
     async captureContextGroup(name) { return { path: name, sha256: sha(name) }; },
     async captureConflictImage(name) { return { path: name, sha256: sha(name) }; },
+    async expandFormulaBar() {},
     now: () => "2026-08-18T00:00:00.000Z",
   };
 }

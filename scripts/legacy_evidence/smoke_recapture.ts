@@ -274,6 +274,7 @@ export type SmokeRowCaptureResult = {
   context_group: SmokeImageRef | null;
   conflict_image: SmokeImageRef | null;
   recapture_required_addresses: string[];
+  formula_truncated_isolated: string[];
 };
 
 export type SmokeCourseRead = {
@@ -605,6 +606,7 @@ export async function runSmokeRowCapture(
   const captures: SmokeCellCapture[] = [];
   const blanksConfirmed: string[] = [];
   const recaptureRequired: string[] = [];
+  const truncatedIsolated: string[] = [];
   let courseAnchorAddress: string | null = null;
   let contextGroup: SmokeImageRef | null = null;
   let activeAddress = "";
@@ -663,7 +665,7 @@ export async function runSmokeRowCapture(
       await source.locateByAddressBox(address);
       actions.push(`locate:${address}`);
       let reads = await doubleRead(address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, truncatedIsolated, courseAnchorAddress, reads);
       if (step.walk_up_if_empty && reads.value.length === 0) {
         const parsed = parseAddress(address);
         for (let row = parsed.row - 1; row >= 1; row -= 1) {
@@ -671,7 +673,7 @@ export async function runSmokeRowCapture(
           await source.locateByAddressBox(address);
           actions.push(`locate:${address}`);
           reads = await doubleRead(address);
-          if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
+          if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, truncatedIsolated, courseAnchorAddress, reads);
           if (reads.value.length > 0) break;
         }
       }
@@ -683,7 +685,7 @@ export async function runSmokeRowCapture(
       await source.moveRight();
       actions.push(`move:${step.address}`);
       const reads = await doubleRead(step.address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, truncatedIsolated, courseAnchorAddress, reads);
       activeAddress = step.address;
       continue;
     }
@@ -694,12 +696,17 @@ export async function runSmokeRowCapture(
         actions.push(`locate:${address}`);
       }
       const reads = await doubleRead(address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
-      if (reads.value.length > 40) {
-        await source.expandFormulaBar?.();
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, truncatedIsolated, courseAnchorAddress, reads);
+      if (reads.value.length > 0) {
+        if (!source.expandFormulaBar) throw new Error(`nonempty formula bar must be expanded before capture: ${address}`);
+        await source.expandFormulaBar();
         actions.push(`expand:${address}`);
       }
-      const truncated = await source.isFormulaBarTruncated?.() ?? false;
+      const truncated = reads.value.length > 0 && (await source.isFormulaBarTruncated?.() ?? false);
+      if (truncated) {
+        truncatedIsolated.push(address);
+        actions.push(`truncated_isolated:${address}`);
+      }
       const extra = await source.readCompositionObservation(address);
       const pair = await captureCompositionPair({
         observation: {
@@ -742,9 +749,9 @@ export async function runSmokeRowCapture(
     }
     if (step.type === "confirm_blank" || step.type === "confirm_overflow_blank") {
       const reads = await doubleRead(step.address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, truncatedIsolated, courseAnchorAddress, reads);
       if (reads.value.length > 0) {
-        return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, {
+        return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, truncatedIsolated, courseAnchorAddress, {
           reason: "expected_blank_had_formula",
           target: step.address,
           active: step.address,
@@ -775,6 +782,7 @@ export async function runSmokeRowCapture(
     context_group: contextGroup,
     conflict_image: null,
     recapture_required_addresses: recaptureRequired,
+    formula_truncated_isolated: truncatedIsolated,
   };
 }
 
@@ -1110,6 +1118,7 @@ function blockedResult(
   captures: SmokeCellCapture[],
   blanksConfirmed: string[],
   recaptureRequired: string[],
+  truncatedIsolated: string[],
   courseAnchorAddress: string | null,
   block: { reason: string; target: string; active: string; conflict: SmokeImageRef | null },
 ): SmokeRowCaptureResult {
@@ -1125,6 +1134,7 @@ function blockedResult(
     context_group: null,
     conflict_image: block.conflict,
     recapture_required_addresses: recaptureRequired,
+    formula_truncated_isolated: truncatedIsolated,
   };
 }
 
