@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CourseTeacherTable } from "../components/CourseTeacherTable";
 import { DetailSummary } from "../components/DetailSummary";
@@ -234,6 +234,15 @@ export function CourseDetailPage() {
     };
   }, [data, id, selectedTeacherId, teacherQuery, reviewFeed.reset]);
 
+  /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复
+   *  （含未选教师的「全部评价」视图，Issue #212）。 */
+  const handleLoadMore = useCallback(async () => {
+    const accumulated = await reviewFeed.loadMore();
+    if (accumulated) {
+      reviewCacheRef.current.set(`${id}:${teacherQuery}`, accumulated);
+    }
+  }, [reviewFeed.loadMore, id, teacherQuery]);
+
   if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
   if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
 
@@ -317,7 +326,7 @@ export function CourseDetailPage() {
           hasMore={Boolean(reviewFeed.nextCursor)}
           isLoadingMore={reviewFeed.isLoadingMore}
           loadMoreError={reviewFeed.loadMoreError}
-          onLoadMore={reviewFeed.loadMore}
+          onLoadMore={handleLoadMore}
         />
       )}
     </>

@@ -292,11 +292,56 @@ test("course detail shows all reviews by default and filters per teacher", async
     reviewRequests.filter((search) => search.includes("teacherId=9")),
   ).toHaveLength(1);
 
-  // 取消选择回到全部评价（对照视图），同样命中缓存。
+  // 取消选择回到全部评价（对照视图），命中缓存——且恢复的是已加载的全部
+  // 23 条（含此前「继续加载」的第二页，Issue #212）。
   await selectTeacher(page, "测试教师");
   await expect(page).toHaveURL(/\/courses\/8$/);
-  await expect(reviewItems(page)).toHaveCount(20);
+  await expect(reviewItems(page)).toHaveCount(23);
   expect(reviewRequests.filter((search) => search === "")).toHaveLength(1);
+});
+
+test("teacher switch restores fully loaded pages from cache", async ({
+  page,
+}) => {
+  const reviewRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/courses/8/reviews")
+      reviewRequests.push(url.search);
+  });
+
+  await page.goto("/courses/8");
+  await expect(reviewItems(page)).toHaveCount(20);
+
+  // 未选教师的「全部评价」视图：先加载第二页（共 23 条）。
+  await page.getByRole("button", { name: "继续加载" }).click();
+  await expect(reviewItems(page)).toHaveCount(23);
+
+  // 选测试教师：20 条，再加载第二页 → 21 条。
+  await selectTeacher(page, "测试教师");
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await expect(reviewItems(page)).toHaveCount(20);
+  await page.getByRole("button", { name: "继续加载" }).click();
+  await expect(reviewItems(page)).toHaveCount(21);
+
+  // 切到另一位教师再切回：21 条完整恢复，不再重新拉取。
+  await selectTeacher(page, "另一位教师");
+  await expect(reviewItems(page)).toHaveCount(2);
+  await selectTeacher(page, "测试教师");
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await expect(reviewItems(page)).toHaveCount(21);
+  await expect(page.getByRole("button", { name: "继续加载" })).toHaveCount(0);
+  expect(
+    reviewRequests.filter((search) => search.includes("teacherId=9")),
+  ).toHaveLength(2);
+
+  // 取消选择回到全部评价：23 条（含第二页）完整恢复，同样不重拉。
+  await selectTeacher(page, "测试教师");
+  await expect(page).toHaveURL(/\/courses\/8$/);
+  await expect(reviewItems(page)).toHaveCount(23);
+  expect(
+    reviewRequests.filter((search) => !search.includes("teacherId")),
+  ).toHaveLength(2);
 });
 
 test("teacher home link is the only control that leaves the course page", async ({
