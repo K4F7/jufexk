@@ -2,6 +2,10 @@ import { Chip } from "@heroui/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CourseTeacherTable } from "../components/CourseTeacherTable";
+import {
+  DetailErrorAlert,
+  DetailLoadingStatus,
+} from "../components/DetailFeedback";
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
@@ -243,8 +247,20 @@ export function CourseDetailPage() {
     }
   }, [reviewFeed.loadMore, id, teacherQuery]);
 
-  if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
-  if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
+  if (error) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailErrorAlert title="课程加载失败" message={error} />
+      </section>
+    );
+  }
+  if (!data) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailLoadingStatus label="课程加载中…" />
+      </section>
+    );
+  }
 
   const c = data.course;
   const selectedTeacher = (c.teachers ?? []).find(
@@ -311,9 +327,9 @@ export function CourseDetailPage() {
           />
         </Suspense>
       ) : reviewsError && reviewFeed.reviews.length === 0 ? (
-        <EmptyBox role="alert">{reviewsError}</EmptyBox>
+        <DetailErrorAlert title="评价加载失败" message={reviewsError} />
       ) : reviewsLoading && reviewFeed.reviews.length === 0 ? (
-        <EmptyBox role="status">评价加载中…</EmptyBox>
+        <DetailLoadingStatus label="评价加载中…" />
       ) : (
         <PublicReviews
           rows={reviewFeed.reviews}
