@@ -22,7 +22,7 @@ export type CatalogResultsCopy = {
   emptyFilteredDesc: string;
   emptyCatalogTitle: string;
   emptyCatalogDesc: string;
-  /** Button on filtered empty — 清除筛选 / 清空搜索 */
+  /** Button on filtered empty — 清空筛选 / 清空搜索 */
   clearLabel: string;
   /** Pagination unit after total — 门 / 位 */
   totalUnit: string;
@@ -38,7 +38,8 @@ export const COURSE_CATALOG_COPY: CatalogResultsCopy = {
   emptyFilteredDesc: "试试调整关键词、类别或教师筛选。",
   emptyCatalogTitle: "目录暂无课程数据",
   emptyCatalogDesc: "请稍后再来，或联系维护者导入公开目录。",
-  clearLabel: "清除筛选",
+  // 与筛选工具条按钮同文案（Issue #276）。
+  clearLabel: "清空筛选",
   totalUnit: "门",
 };
 
@@ -65,6 +66,10 @@ export type CatalogResultsStatesProps = {
   hasFilters: boolean;
   /** Active search keyword for empty-state copy */
   emptyQuery?: string;
+  /** Labels of every active filter (keyword/category/department/teacher) so
+   *  the filtered empty state names them all instead of only the keyword
+   *  (Issue #276). */
+  emptyFilters?: string[];
   currentPage: number;
   totalPages: number;
   total: number;
@@ -129,18 +134,25 @@ function ErrorPanel({
 function EmptyPanel({
   hasFilters,
   emptyQuery,
+  emptyFilters,
   onClearFilters,
   copy,
 }: {
   hasFilters: boolean;
   emptyQuery?: string;
+  emptyFilters?: string[];
   onClearFilters: () => void;
   copy: CatalogResultsCopy;
 }) {
   const title = hasFilters
     ? copy.emptyFilteredTitle(emptyQuery)
     : copy.emptyCatalogTitle;
-  const desc = hasFilters ? copy.emptyFilteredDesc : copy.emptyCatalogDesc;
+  // 叠了多个筛时空文案点名全部生效筛选，不只提关键词（Issue #276）。
+  const desc = hasFilters
+    ? emptyFilters?.length
+      ? `试试调整或清空当前筛选：${emptyFilters.join("、")}。`
+      : copy.emptyFilteredDesc
+    : copy.emptyCatalogDesc;
 
   return (
     <div
@@ -209,6 +221,7 @@ export function CatalogResultsStates({
   itemCount,
   hasFilters,
   emptyQuery,
+  emptyFilters,
   currentPage,
   totalPages,
   total,
@@ -237,6 +250,7 @@ export function CatalogResultsStates({
       <EmptyPanel
         hasFilters={hasFilters}
         emptyQuery={emptyQuery}
+        emptyFilters={emptyFilters}
         onClearFilters={onClearFilters}
         copy={copy}
       />

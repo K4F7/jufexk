@@ -305,14 +305,23 @@ test("deep-linked teacher id that does not exist gets an honest missing label", 
   await page.goto("/courses?teacherId=99999");
   const combo = page.getByRole("combobox", { name: "任课教师" });
   await expect(combo).toHaveValue("");
-  await expect(page.getByText("教师不存在（99999）")).toBeVisible();
+  // 摘要 chip 与空状态文案都会点名该筛选（Issue #276），断言限定在摘要内。
+  const summary = page.getByLabel("当前筛选");
+  await expect(summary.getByText("教师不存在（99999）")).toBeVisible();
   await expect(page.getByText(/教师“99999”/)).toHaveCount(0);
 
-  // 空状态与清除筛选保持可用。
+  // 空状态与清空筛选保持可用；工具条与空状态按钮同文案（Issue #276）。
   await expect(
     page.getByText("没有符合筛选条件的课程"),
   ).toBeVisible();
-  await page.getByRole("button", { name: "清空筛选" }).click();
+  await expect(
+    page.getByRole("button", { name: "清空筛选" }),
+  ).toHaveCount(2);
+  await page
+    .getByRole("status")
+    .filter({ hasText: "没有符合筛选条件的课程" })
+    .getByRole("button", { name: "清空筛选" })
+    .click();
   await expect(page).not.toHaveURL(/teacherId=/);
   await expect(
     page.getByRole("link", { name: "中国传统文化导论" }),
@@ -340,3 +349,39 @@ test("first load shows skeleton rows and keeps the header height stable", async 
   const after = await header.boundingBox();
   expect(before?.height).toBe(after?.height);
 });
+
+test("filtered empty state names every active filter and both clear buttons share one label", async ({
+  page,
+}) => {
+  await mockCatalogApi(page, { deepLinkTeacher: true });
+  // 关键词 + 类别 + 院系 + 教师叠到 0 条（mock 只按院系/教师过滤）。
+  await page.goto(
+    "/courses?q=网球&category=sports&department=体育学院&teacherId=999",
+  );
+
+  // 空文案点名全部生效筛选，不只提关键词（Issue #276）。
+  const empty = page
+    .getByRole("status")
+    .filter({ hasText: "没有找到匹配「网球」的课程" });
+  await expect(empty).toBeVisible();
+  await expect(empty).toContainText("关键词“网球”");
+  await expect(empty).toContainText("体育课");
+  await expect(empty).toContainText("院系“体育学院”");
+  await expect(empty).toContainText("教师“深链教师”");
+
+  // 工具条与空状态按钮同文案（Issue #276）。
+  await expect(
+    page.getByRole("button", { name: "清空筛选" }),
+  ).toHaveCount(2);
+
+  // 空状态按钮清空全部筛并回到有结果的目录。
+  await empty.getByRole("button", { name: "清空筛选" }).click();
+  await expect(page).not.toHaveURL(/[?&]q=/);
+  await expect(page).not.toHaveURL(/category=/);
+  await expect(page).not.toHaveURL(/department=/);
+  await expect(page).not.toHaveURL(/teacherId=/);
+  await expect(
+    page.getByRole("link", { name: "中国传统文化导论" }),
+  ).toBeVisible();
+});
+

@@ -39,6 +39,61 @@ export function isPublicCategoryFilter(value: string) {
   return CATEGORY_OPTIONS.some((opt) => opt.id !== "" && opt.id === value);
 }
 
+export type CatalogFilterTagId =
+  | "query"
+  | "category"
+  | "department"
+  | "teacher"
+  | "teacherQuery";
+
+export type CatalogActiveFilter = {
+  id: CatalogFilterTagId;
+  label: string;
+};
+
+/** Human-readable labels for the active filters, shared by the 当前筛选
+ * chips and the empty-state copy so both name the same filters (Issue #276). */
+export function catalogActiveFilters({
+  queryDraft,
+  category,
+  departmentDraft,
+  teacherId,
+  teacherIdStatus,
+  teacherQueryDraft,
+  selectedTeacherName,
+}: {
+  queryDraft: string;
+  category: string;
+  departmentDraft: string;
+  teacherId: string;
+  teacherIdStatus: "pending" | "found" | "missing";
+  teacherQueryDraft: string;
+  selectedTeacherName?: string;
+}): CatalogActiveFilter[] {
+  const tags: CatalogActiveFilter[] = [];
+  const query = queryDraft.trim();
+  if (query) tags.push({ id: "query", label: `关键词“${query}”` });
+  if (category) tags.push({ id: "category", label: categoryLabel(category) });
+  const department = departmentDraft.trim();
+  if (department) tags.push({ id: "department", label: `院系“${department}”` });
+  if (teacherId) {
+    tags.push({
+      id: "teacher",
+      label: selectedTeacherName
+        ? `教师“${selectedTeacherName}”`
+        : teacherIdStatus === "missing"
+          ? `教师不存在（${teacherId}）`
+          : "教师载入中…",
+    });
+  } else if (teacherQueryDraft.trim()) {
+    tags.push({
+      id: "teacherQuery",
+      label: `教师搜索“${teacherQueryDraft.trim()}”`,
+    });
+  }
+  return tags;
+}
+
 export type CatalogFiltersProps = {
   queryDraft: string;
   category: string;
@@ -305,8 +360,6 @@ export function CatalogFilters({
   );
 }
 
-type FilterTagId = "query" | "category" | "department" | "teacher" | "teacherQuery";
-
 function FilterSummary({
   queryDraft,
   category,
@@ -324,29 +377,17 @@ function FilterSummary({
   teacherIdStatus: "pending" | "found" | "missing";
   teacherQueryDraft: string;
   selectedTeacherName?: string;
-  onRemove: (key: FilterTagId) => void;
+  onRemove: (key: CatalogFilterTagId) => void;
 }) {
-  const tags: { id: FilterTagId; label: string }[] = [];
-  const query = queryDraft.trim();
-  if (query) tags.push({ id: "query", label: `关键词“${query}”` });
-  if (category) tags.push({ id: "category", label: categoryLabel(category) });
-  const department = departmentDraft.trim();
-  if (department) tags.push({ id: "department", label: `院系“${department}”` });
-  if (teacherId) {
-    tags.push({
-      id: "teacher",
-      label: selectedTeacherName
-        ? `教师“${selectedTeacherName}”`
-        : teacherIdStatus === "missing"
-          ? `教师不存在（${teacherId}）`
-          : "教师载入中…",
-    });
-  } else if (teacherQueryDraft.trim()) {
-    tags.push({
-      id: "teacherQuery",
-      label: `教师搜索“${teacherQueryDraft.trim()}”`,
-    });
-  }
+  const tags = catalogActiveFilters({
+    queryDraft,
+    category,
+    departmentDraft,
+    teacherId,
+    teacherIdStatus,
+    teacherQueryDraft,
+    selectedTeacherName,
+  });
 
   if (!tags.length) return null;
 
@@ -356,7 +397,7 @@ function FilterSummary({
       className="mb-2"
       size="sm"
       onRemove={(keys) => {
-        for (const key of keys) onRemove(String(key) as FilterTagId);
+        for (const key of keys) onRemove(String(key) as CatalogFilterTagId);
       }}
     >
       <Label>当前筛选</Label>

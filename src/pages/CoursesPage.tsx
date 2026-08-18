@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogFilters,
+  catalogActiveFilters,
   isPublicCategoryFilter,
 } from "../components/CatalogFilters";
 import {
@@ -363,6 +364,19 @@ export function CoursesPage() {
   );
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
+  const selectedTeacherName = teacherId
+    ? teachers.find((teacher) => String(teacher.id) === teacherId)?.name
+    : undefined;
+  /** 与「当前筛选」chips 同源的标签列表，供空状态文案点名全部生效筛选。 */
+  const activeFilterLabels = catalogActiveFilters({
+    queryDraft,
+    category,
+    departmentDraft,
+    teacherId,
+    teacherIdStatus,
+    teacherQueryDraft,
+    selectedTeacherName,
+  }).map((tag) => tag.label);
 
   function clearFilters() {
     setQueryDraft("");
@@ -470,6 +484,7 @@ export function CoursesPage() {
       itemCount={data?.items.length ?? 0}
       hasFilters={hasFilters}
       emptyQuery={q || undefined}
+      emptyFilters={activeFilterLabels}
       currentPage={currentPage}
       totalPages={totalPages}
       total={data?.total ?? 0}
