@@ -6,9 +6,14 @@ import { EmptyBox } from "./EmptyBox";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 import { RouterAriaLink } from "./RouterAriaLink";
 
+/**
+ * 统一匿名文字流。课程页评价按 课程×教师 收敛（选定教师后整流同属该
+ * 教师），条目不再重复对方身份「昵称」；只有跨课程流（教师页）通过
+ * counterpart="course" 保留课程身份行。
+ */
 export function PublicReviews({
   rows,
-  identity,
+  counterpart,
   total,
   hasMore,
   isLoadingMore,
@@ -16,7 +21,8 @@ export function PublicReviews({
   onLoadMore,
 }: {
   rows: PublicReview[];
-  identity: "teacher" | "course";
+  /** 跨课程流（教师页）展示课程身份行；课程×教师流省略。 */
+  counterpart?: "course";
   total: number;
   hasMore: boolean;
   isLoadingMore: boolean;
@@ -25,10 +31,10 @@ export function PublicReviews({
 }) {
   const { viewer, ready, clear } = useViewer();
   return (
-    <section className="mb-2" aria-labelledby={`${identity}-reviews-heading`}>
+    <section className="mb-2" aria-labelledby="public-reviews-heading">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h2
-          id={`${identity}-reviews-heading`}
+          id="public-reviews-heading"
           className="m-0 text-[17px] font-bold leading-snug"
         >
           评价
@@ -39,41 +45,50 @@ export function PublicReviews({
       </div>
       {rows.length ? (
         <div role="list" aria-label="评价列表" aria-busy={isLoadingMore}>
-          {rows.map((review, index) => {
-            const counterpart = identity === "course" ? review.course_name : review.teacher_name;
-            const href =
-              identity === "course"
-                ? `/courses/${review.course_id}`
-                : `/teachers/${review.teacher_id}`;
-            return (
-              <div key={review.id} role="listitem">
-                {index > 0 ? <Separator /> : null}
-                <article className="py-4">
+          {rows.map((review, index) => (
+            <div key={review.id} role="listitem">
+              {index > 0 ? <Separator /> : null}
+              <article className="py-4">
+                {counterpart === "course" ? (
                   <p className="m-0 min-w-0 text-sm font-semibold">
-                    <RouterAriaLink className="break-words" to={href}>
-                      {counterpart ||
-                        (identity === "course" ? "课程未标注" : "教师未标注")}
-                      {identity === "course" && review.course_code
-                        ? `（${review.course_code}）`
-                        : null}
+                    <RouterAriaLink
+                      className="break-words"
+                      to={`/courses/${review.course_id}`}
+                    >
+                      {review.course_name || "课程未标注"}
+                      {review.course_code ? `（${review.course_code}）` : null}
                     </RouterAriaLink>
                   </p>
-                  <p className="mb-0 mt-1.5 break-words text-sm leading-relaxed">
-                    {review.comment}
-                  </p>
-                  {isEndorsableReview(review) ? (
-                    <ReviewRecognitionControl
-                      review={review}
-                      ready={ready}
-                      authenticated={viewer.authenticated}
-                      loginPath={viewer.loginPath}
-                      onUnauthenticated={clear}
-                    />
-                  ) : null}
-                </article>
-              </div>
-            );
-          })}
+                ) : null}
+                <div
+                  className={`flex items-start gap-2 ${
+                    counterpart === "course" ? "mt-1.5" : ""
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className="shrink-0 select-none font-serif text-4xl leading-[0.6] text-accent/35"
+                  >
+                    “
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="m-0 break-words text-sm leading-relaxed">
+                      {review.comment}
+                    </p>
+                    {isEndorsableReview(review) ? (
+                      <ReviewRecognitionControl
+                        review={review}
+                        ready={ready}
+                        authenticated={viewer.authenticated}
+                        loginPath={viewer.loginPath}
+                        onUnauthenticated={clear}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              </article>
+            </div>
+          ))}
           {hasMore ? (
             <div className="flex justify-center border-t border-border pt-4">
               <Button variant="secondary" isPending={isLoadingMore} onPress={onLoadMore}>
