@@ -1710,13 +1710,17 @@ app.post("/api/admin/sessions/revoke-others", async (c) => {
 app.get("/api/admin/reviews", async (c) => {
   const { page, size } = pageArgs(c),
     status = clean(c.req.query("status"), 20) || "pending",
-    q = `%${clean(c.req.query("q"), 80)}%`;
+    searchGroup = andSearchTerms(
+      parseSearchTerms(clean(c.req.query("q"), 80)),
+      `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("t.name")} OR ${likeSql("r.comment")} OR ${likeSql("r.teaching")} OR ${likeSql("r.term")}`,
+    );
   if (!["pending", "approved", "rejected", "all"].includes(status))
     return fail(c, "无效审核状态");
+  const searchFilter = searchGroup.sql ? ` AND ${searchGroup.sql}` : "";
   const total = await c.env.DB.prepare(
-    `SELECT COUNT(*) n FROM reviews r JOIN courses c ON c.id=r.course_id LEFT JOIN teachers t ON t.id=r.teacher_id WHERE (?='all' OR r.status=?) AND(c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ? OR r.comment LIKE ? OR r.teaching LIKE ? OR r.term LIKE ?)`,
+    `SELECT COUNT(*) n FROM reviews r JOIN courses c ON c.id=r.course_id LEFT JOIN teachers t ON t.id=r.teacher_id WHERE (?='all' OR r.status=?)${searchFilter}`,
   )
-    .bind(status, status, q, q, q, q, q, q)
+    .bind(status, status, ...searchGroup.args)
     .first<{ n: number }>();
   const results = (
     await c.env.DB.prepare(
@@ -1729,11 +1733,10 @@ app.get("/api/admin/reviews", async (c) => {
         c.name course_name,c.code,t.name teacher_name
        FROM reviews r JOIN courses c ON c.id=r.course_id
        LEFT JOIN teachers t ON t.id=r.teacher_id
-       WHERE (?='all' OR r.status=?)
-         AND(c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ? OR r.comment LIKE ? OR r.teaching LIKE ? OR r.term LIKE ?)
+       WHERE (?='all' OR r.status=?)${searchFilter}
        ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
     )
-      .bind(status, status, q, q, q, q, q, q, size, (page - 1) * size)
+      .bind(status, status, ...searchGroup.args, size, (page - 1) * size)
       .all()
   ).results;
   return c.json({
@@ -2066,12 +2069,15 @@ app.get("/api/admin/legacy-reviews", async (c) => {
   const { page, size } = pageArgs(c),
     status = clean(c.req.query("status"), 20) || "pending",
     batchId = clean(c.req.query("batchId"), 80),
-    q = `%${clean(c.req.query("q"), 100)}%`;
+    searchGroup = andSearchTerms(
+      parseSearchTerms(clean(c.req.query("q"), 100)),
+      `${likeSql("lr.comment")} OR ${likeSql("lr.raw_ocr_text")} OR ${likeSql("lr.ocr_course_name")} OR ${likeSql("lr.ocr_teacher_name")} OR ${likeSql("lr.source_file")} OR ${likeSql("lr.term")} OR ${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("t.name")}`,
+    );
   if (!["pending", "approved", "rejected", "all"].includes(status))
     return fail(c, "无效历史审核状态");
-  const where = `(?='all' OR lr.status=?) AND (?='' OR lr.import_batch_id=?) AND
-    (lr.comment LIKE ? OR lr.raw_ocr_text LIKE ? OR lr.ocr_course_name LIKE ? OR lr.ocr_teacher_name LIKE ? OR lr.source_file LIKE ? OR lr.term LIKE ? OR c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ?)`;
-  const values = [status, status, batchId, batchId, q, q, q, q, q, q, q, q, q];
+  const searchFilter = searchGroup.sql ? ` AND ${searchGroup.sql}` : "";
+  const where = `(?='all' OR lr.status=?) AND (?='' OR lr.import_batch_id=?)${searchFilter}`;
+  const values = [status, status, batchId, batchId, ...searchGroup.args];
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id WHERE ${where}`,
   )
