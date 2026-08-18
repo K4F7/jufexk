@@ -11,7 +11,7 @@ export const FORMULA_BAR_MATRIX_PLAN_VERSION = "formula-bar-matrix-plan-v1" as c
 export const FORMULA_BAR_CHECKPOINT_VERSION = "formula-bar-locator-checkpoint-v1" as const;
 export const FORMULA_BAR_LOCATOR_REPORT_VERSION = "formula-bar-locator-report-v1" as const;
 
-const FROZEN_SHEETS = [
+export const FROZEN_SHEET_EXTENTS = [
   { worksheet: "主要课程", first_row: 19, last_row: 480, first_column: "F", last_column: "M" },
   { worksheet: "数学课", first_row: 8, last_row: 240, first_column: "D", last_column: "J" },
   { worksheet: "美育", first_row: 8, last_row: 201, first_column: "E", last_column: "M" },
@@ -87,7 +87,7 @@ export function validateFormulaBarLocatorCheckpoint(value: unknown): asserts val
 }
 
 export function buildFrozenFormulaBarMatrixPlan(): FormulaBarMatrixPlan {
-  return buildFormulaBarMatrixPlan(FROZEN_SHEETS.map((sheet) => ({
+  return buildFormulaBarMatrixPlan(FROZEN_SHEET_EXTENTS.map((sheet) => ({
     worksheet: sheet.worksheet,
     rows: range(sheet.first_row, sheet.last_row).map((row) => ({
       row,
