@@ -409,6 +409,30 @@ test("empty and mobile states remain accessible without overflow", async ({ page
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
 });
 
+test("catalog teacher link opens that course's teacher review page", async ({
+  page,
+}) => {
+  await page.goto("/courses");
+  await catalogFirstRow(page, "课程目录")
+    .getByRole("link", { name: "测试教师" })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await expect(teacherRegion(page)).toHaveCount(0);
+  await expect(reviewItems(page)).toHaveCount(20);
+
+  await page.goto("/courses?q=中国");
+  await page
+    .getByRole("grid", { name: "课程目录" })
+    .getByRole("row", { name: /中国传统文化导论/ })
+    .getByRole("link", { name: "测试教师" })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?/);
+  await expect(page).toHaveURL(/q=/);
+  await expect(page).toHaveURL(/teacher=9/);
+  await expect(teacherRegion(page)).toHaveCount(0);
+  await expect(reviewItems(page)).toHaveCount(20);
+});
+
 test("course and teacher catalogs preserve default and search result order", async ({ page }) => {
   await page.goto("/courses");
   await expect(catalogFirstRow(page, "课程目录")).toContainText("中国传统文化导论");

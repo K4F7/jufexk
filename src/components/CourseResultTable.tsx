@@ -3,7 +3,9 @@
  *
  * Four columns: 课程 (name + category Chip · code) · 教师 · 院系 · 投稿.
  * Whole row → course detail; course name + teacher names are real links
- * (keyboard / new-tab safe). Teacher pairs come from `teacher_refs`.
+ * (keyboard / new-tab safe). Teacher names go to that course×teacher
+ * review page (`/courses/:id?teacher=`). Teacher pairs come from
+ * `teacher_refs`.
  * The teacher cell is a single line clipped with an ellipsis so row heights
  * stay consistent; the full teacher list lives on the course detail page
  * (Issue #155). Ratings bind to 教师×课程 and are never shown on course rows
@@ -54,7 +56,20 @@ function parseTeachers(course: Course): TeacherRef[] {
     .map((name) => ({ id: null, name }));
 }
 
-function TeacherLinks({ course }: { course: Course }) {
+function teacherReviewHref(courseId: number, teacherId: number, search: string) {
+  const sp = new URLSearchParams(search);
+  sp.set("teacher", String(teacherId));
+  const q = sp.toString();
+  return `/courses/${courseId}${q ? `?${q}` : ""}`;
+}
+
+function TeacherLinks({
+  course,
+  search,
+}: {
+  course: Course;
+  search: string;
+}) {
   const teachers = parseTeachers(course);
 
   if (teachers.length === 0) {
@@ -72,7 +87,10 @@ function TeacherLinks({ course }: { course: Course }) {
         <Fragment key={t.id != null ? `${t.id}-${t.name}` : `${t.name}-${i}`}>
           {i > 0 ? " " : null}
           {t.id != null ? (
-            <RouterAriaLink to={`/teachers/${t.id}`} className="text-sm">
+            <RouterAriaLink
+              to={teacherReviewHref(course.id, t.id, search)}
+              className="text-sm"
+            >
               {t.name}
             </RouterAriaLink>
           ) : (
@@ -141,7 +159,7 @@ export function CourseResultTable({
                   </div>
                 </Table.Cell>
                 <Table.Cell>
-                  <TeacherLinks course={course} />
+                  <TeacherLinks course={course} search={search} />
                 </Table.Cell>
                 <Table.Cell>
                   <span className="whitespace-nowrap text-[13px] text-muted">
