@@ -51,7 +51,7 @@ async function createBoundCourse(
 
 async function insertedReview(courseId: number) {
   return env.DB.prepare(
-    "SELECT scheme_key,scheme_version,scores,overall,comment FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
+    "SELECT scheme_key,scheme_version,scores,overall,comment,status FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
   )
     .bind(courseId)
     .first<{
@@ -60,6 +60,7 @@ async function insertedReview(courseId: number) {
       scores: string | null;
       overall: number;
       comment: string;
+      status: string;
     }>();
 }
 
@@ -93,6 +94,7 @@ describe("review submission required scheme scores", () => {
         workload: 2,
       }),
       overall: 5,
+      status: "approved",
     });
   });
 
@@ -157,7 +159,41 @@ describe("review submission required scheme scores", () => {
       comment: "",
       overall: 3,
       scheme_key: "major",
+      status: "approved",
     });
+    const feed = await SELF.fetch(
+      `${origin}/api/courses/${courseId}/reviews?teacherId=1`,
+    );
+    expect(feed.status).toBe(200);
+    expect(
+      ((await feed.json()) as { items: Array<{ comment: string }> }).items,
+    ).toEqual([]);
+  });
+
+  it("puts a submitted note into the public course-teacher text feed immediately", async () => {
+    const courseId = await createBoundCourse("general", "REQ-LIVE");
+    const comment = "提交后立刻出现在评价流";
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 5,
+      scores: OFFLINE_SCORES,
+      comment,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      message: "评价已发布",
+    });
+    const feed = await SELF.fetch(
+      `${origin}/api/courses/${courseId}/reviews?teacherId=1`,
+    );
+    expect(feed.status).toBe(200);
+    expect(
+      ((await feed.json()) as { items: Array<{ comment: string }> }).items.map(
+        (item) => item.comment,
+      ),
+    ).toContain(comment);
   });
 
   it("uses pe for unclassified sports courses and the stored key when classified", async () => {

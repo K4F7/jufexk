@@ -10,6 +10,7 @@
  * Back restores teacher-catalog URL state (drops prototype params if any).
  * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
  */
+import { Typography } from "@heroui/react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   useLocation,
@@ -17,6 +18,10 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import {
+  DetailErrorAlert,
+  DetailLoadingStatus,
+} from "../components/DetailFeedback";
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
@@ -74,9 +79,12 @@ function TeacherSummary({
       reviewCount={reviewCount}
       ariaLabel="教师摘要"
     >
-      <h1 className="mb-2 mt-0 text-[26px] font-bold leading-tight tracking-tight">
+      <Typography
+        className="mb-2 mt-0 text-[26px] font-bold leading-tight tracking-tight"
+        type="h1"
+      >
         {teacher.name}
-      </h1>
+      </Typography>
       <dl className="m-0 grid gap-1.5 text-sm">
         <div className="flex flex-wrap gap-x-2">
           <dt className="shrink-0 text-muted">院系</dt>
@@ -128,8 +136,20 @@ export function TeacherDetailPage() {
     };
   }, [id, reviewFeed.reset]);
 
-  if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
-  if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
+  if (error) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailErrorAlert title="教师资料加载失败" message={error} />
+      </section>
+    );
+  }
+  if (!data) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailLoadingStatus label="教师资料加载中…" />
+      </section>
+    );
+  }
 
   const t = data.teacher;
   const courses = data.courses ?? [];
@@ -159,12 +179,13 @@ export function TeacherDetailPage() {
 
       <section className="mb-6" aria-labelledby="teacher-courses-heading">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h2
-            id="teacher-courses-heading"
+          <Typography
             className="m-0 text-[17px] font-bold leading-snug"
+            id="teacher-courses-heading"
+            type="h2"
           >
             任课课程
-          </h2>
+          </Typography>
           {courses.length ? (
             <span className="text-[13px] text-muted">{courses.length} 门</span>
           ) : null}

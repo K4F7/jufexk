@@ -1,16 +1,20 @@
-import { Chip } from "@heroui/react";
+import { Chip, Typography } from "@heroui/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CourseTeacherTable } from "../components/CourseTeacherTable";
+import {
+  DetailErrorAlert,
+  DetailLoadingStatus,
+} from "../components/DetailFeedback";
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
+import { RouterAriaLink } from "../components/RouterAriaLink";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
 import type {
   Course,
-  PublicReview,
   PublicReviewPage,
   Review,
   Teacher,
@@ -120,9 +124,12 @@ function ProductionSummary({
       <Chip size="sm" variant="soft">
         <Chip.Label>{categoryLabel(course.category)}</Chip.Label>
       </Chip>
-      <h1 className="mb-1 mt-2 text-[26px] font-bold leading-tight">
+      <Typography
+        className="mb-1 mt-2 text-[26px] font-bold leading-tight"
+        type="h1"
+      >
         {course.name}
-      </h1>
+      </Typography>
       <p className="m-0 text-muted">
         {course.code} · {course.department || "院系待补充"}
       </p>
@@ -143,8 +150,8 @@ export function CourseDetailPage() {
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
 
-  /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师；
-   * 未选教师时展示该课全部评价（Issue #201）。 */
+  /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师。
+   * 未选教师只显示任课表；选中后只显示该教师评价流（Issue #252）。 */
   const selectedTeacherId = useMemo(() => {
     const raw = new URLSearchParams(location.search).get("teacher");
     if (!raw || !/^-?(?:0|[1-9]\d*)$/.test(raw)) return null;
@@ -180,8 +187,9 @@ export function CourseDetailPage() {
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
-    // 未选教师时需要课程总数判断是否有评价可加载；选定教师的深链不必等待。
-    if (!selectedTeacherId && !data) {
+    if (!selectedTeacherId) {
+      reviewFeed.reset([], null);
+      setReviewsLoading(false);
       return () => {
         cancelled = true;
       };
@@ -195,19 +203,12 @@ export function CourseDetailPage() {
         cancelled = true;
       };
     }
-    if (!selectedTeacherId && data && data.reviewCount === 0) {
-      reviewFeed.reset([], null);
-      setReviewsLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
     reviewFeed.reset([], null);
     setReviewsLoading(true);
     let promise = reviewInflightRef.current.get(cacheKey);
     if (!promise) {
       promise = api<PublicReviewPage>(
-        `/api/courses/${id}/reviews${teacherQuery ? `?${teacherQuery}` : ""}`,
+        `/api/courses/${id}/reviews?${teacherQuery}`,
       );
       reviewInflightRef.current.set(cacheKey, promise);
       promise
@@ -232,10 +233,9 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [data, id, selectedTeacherId, teacherQuery, reviewFeed.reset]);
+  }, [id, selectedTeacherId, teacherQuery, reviewFeed.reset]);
 
-  /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复
-   *  （含未选教师的「全部评价」视图，Issue #212）。 */
+  /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复。 */
   const handleLoadMore = useCallback(async () => {
     const accumulated = await reviewFeed.loadMore();
     if (accumulated) {
@@ -243,8 +243,20 @@ export function CourseDetailPage() {
     }
   }, [reviewFeed.loadMore, id, teacherQuery]);
 
-  if (error) return <EmptyBox role="alert">{error}</EmptyBox>;
-  if (!data) return <EmptyBox role="status">加载中…</EmptyBox>;
+  if (error) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailErrorAlert title="课程加载失败" message={error} />
+      </section>
+    );
+  }
+  if (!data) {
+    return (
+      <section className="mx-auto w-full max-w-[880px]">
+        <DetailLoadingStatus label="课程加载中…" />
+      </section>
+    );
+  }
 
   const c = data.course;
   const selectedTeacher = (c.teachers ?? []).find(
@@ -260,6 +272,12 @@ export function CourseDetailPage() {
     const q = sp.toString();
     navigate(q ? `/courses?${q}` : "/courses");
   };
+  const clearTeacherHref = (() => {
+    const sp = new URLSearchParams(location.search);
+    sp.delete("teacher");
+    const q = sp.toString();
+    return `/courses/${c.id}${q ? `?${q}` : ""}`;
+  })();
   const comparingSummary =
     Boolean(summaryVariant) && Boolean(CourseDetailSummaryPrototypeLazy);
   const comparingReviews =
@@ -311,17 +329,13 @@ export function CourseDetailPage() {
           />
         </Suspense>
       ) : reviewsError && reviewFeed.reviews.length === 0 ? (
-        <EmptyBox role="alert">{reviewsError}</EmptyBox>
+        <DetailErrorAlert title="评价加载失败" message={reviewsError} />
       ) : reviewsLoading && reviewFeed.reviews.length === 0 ? (
-        <EmptyBox role="status">评价加载中…</EmptyBox>
+        <DetailLoadingStatus label="评价加载中…" />
       ) : (
         <PublicReviews
           rows={reviewFeed.reviews}
-          total={
-            selectedTeacherId
-              ? (selectedTeacher?.review_count ?? 0)
-              : data.reviewCount
-          }
+          total={selectedTeacher?.review_count ?? 0}
           hasMore={Boolean(reviewFeed.nextCursor)}
           isLoadingMore={reviewFeed.isLoadingMore}
           loadMoreError={reviewFeed.loadMoreError}
@@ -354,34 +368,42 @@ export function CourseDetailPage() {
         />
       )}
 
-      <section className="mb-6" aria-labelledby="course-teachers-heading">
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h2
-            id="course-teachers-heading"
-            className="m-0 text-[17px] font-bold leading-snug"
-          >
-            任课教师
-          </h2>
-          {c.teachers?.length ? (
-            <span className="text-[13px] text-muted">
-              {c.teachers.length} 位
-            </span>
-          ) : null}
-        </div>
-        {c.teachers?.length ? (
-          <p className="mb-2 break-keep wrap-break-word text-[13px] leading-relaxed text-muted">
-            选择一位任课教师，查看这位老师在这门课的评价；默认显示全部评价。
+      {selectedTeacherId ? (
+        <div className="mb-6">
+          <p className="mb-2">
+            <RouterAriaLink to={clearTeacherHref}>返回任课教师</RouterAriaLink>
           </p>
-        ) : null}
-        <CourseTeacherTable
-          items={c.teachers ?? []}
-          courseId={c.id}
-          search={location.search}
-          selectedId={selectedTeacherId}
-        />
-      </section>
-
-      <div className="mb-6">{reviewArea}</div>
+          {reviewArea}
+        </div>
+      ) : (
+        <section className="mb-6" aria-labelledby="course-teachers-heading">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <Typography
+              className="m-0 text-[17px] font-bold leading-snug"
+              id="course-teachers-heading"
+              type="h2"
+            >
+              任课教师
+            </Typography>
+            {c.teachers?.length ? (
+              <span className="text-[13px] text-muted">
+                {c.teachers.length} 位
+              </span>
+            ) : null}
+          </div>
+          {c.teachers?.length ? (
+            <p className="mb-2 break-keep wrap-break-word text-[13px] leading-relaxed text-muted">
+              选择一位任课教师，查看这位老师在这门课的评价。
+            </p>
+          ) : null}
+          <CourseTeacherTable
+            items={c.teachers ?? []}
+            courseId={c.id}
+            search={location.search}
+            selectedId={null}
+          />
+        </section>
+      )}
     </section>
   );
 }

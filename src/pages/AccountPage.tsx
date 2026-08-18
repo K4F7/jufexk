@@ -5,6 +5,7 @@ import {
   Card,
   Checkbox,
   Spinner,
+  Typography,
 } from "@heroui/react";
 import { useState } from "react";
 import { RouterAriaLink } from "../components/RouterAriaLink";
@@ -134,9 +135,12 @@ export function AccountPage() {
         <Card.Content>
           <div className="flex flex-col items-start gap-3">
             <div>
-              <h2 className="m-0 text-base font-semibold text-danger">
+              <Typography
+                className="m-0 text-base font-semibold text-danger"
+                type="h2"
+              >
                 删除账号
-              </h2>
+              </Typography>
               <p className="mb-0 mt-1.5 text-sm text-muted">
                 删除后账号进入 30 天恢复期：你的认可会被删除，未公开内容会被删除，已批准的任课评价匿名保留。
               </p>

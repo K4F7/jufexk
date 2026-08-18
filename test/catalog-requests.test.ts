@@ -255,7 +255,7 @@ describe("catalog addition requests", () => {
         scores: string;
       }>();
     expect(review).toMatchObject({
-      status: "pending",
+      status: "approved",
       course_id: catalogBody.items[0].id,
       term: "2025 秋",
       scheme_key: "major",

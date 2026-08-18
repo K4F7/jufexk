@@ -1,0 +1,136 @@
+import { PE_SKILL_FAMILIES } from "./lib/public-course-presentation";
+
+const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
+
+const skillFamilyCase = (alias: string) => {
+  const branches = PE_SKILL_FAMILIES.map((family) => {
+    const conditions = family.keys.flatMap((key) => [
+      `${alias}.name = ${sqlLiteral(key)}`,
+      `${alias}.name GLOB ${sqlLiteral(`${key}[0-9]*`)}`,
+      `${alias}.name LIKE ${sqlLiteral(`${key}专项理论与实践%`)}`,
+    ]);
+    return `WHEN ${conditions.join(" OR ")} THEN ${sqlLiteral(family.label)}`;
+  });
+  return `CASE ${branches.join(" ")} ELSE NULL END`;
+};
+
+const publicTextReviewExists = (alias: string) => `EXISTS(
+  SELECT 1 FROM public_historical_reviews phr WHERE phr.course_id=${alias}.id
+  UNION ALL
+  SELECT 1 FROM legacy_reviews lr
+   WHERE lr.course_id=${alias}.id AND lr.status='approved'
+     AND trim(COALESCE(lr.comment,''))<>''
+  UNION ALL
+  SELECT 1 FROM reviews r
+   WHERE r.course_id=${alias}.id AND r.status='approved'
+     AND trim(COALESCE(r.comment,''))<>''
+)`;
+
+const canonicalInsert = `
+  WITH classified AS (
+    SELECT c.id,c.name,c.code,
+      (${skillFamilyCase("c")}) family_label,
+      CASE WHEN ${publicTextReviewExists("c")} THEN 0 ELSE 1 END has_text,
+      CASE
+        WHEN c.name IN (${PE_SKILL_FAMILIES.flatMap((f) => f.keys).map(sqlLiteral).join(",")}) THEN 0
+        WHEN c.name IN (${PE_SKILL_FAMILIES.flatMap((f) => f.keys.flatMap((k) => [`${k}1`, `${k}专项理论与实践1`])).map(sqlLiteral).join(",")}) THEN 1
+        ELSE 2
+      END preference
+    FROM courses c
+  ), ranked AS (
+    SELECT id,family_label,
+      FIRST_VALUE(id) OVER (
+        PARTITION BY family_label
+        ORDER BY has_text,preference,id
+      ) canonical_id
+    FROM classified
+    WHERE family_label IS NOT NULL
+  ), family_search AS (
+    SELECT family_label,
+      GROUP_CONCAT(COALESCE(name,'') || ' ' || COALESCE(code,''),' ') search_text
+    FROM classified
+    WHERE family_label IS NOT NULL
+    GROUP BY family_label
+  )
+  INSERT INTO public_course_canonicals(course_id,canonical_course_id,family_label,search_text)
+  SELECT c.id,COALESCE(r.canonical_id,c.id),c.family_label,
+    COALESCE(fs.search_text,COALESCE(c.name,'') || ' ' || COALESCE(c.code,''))
+  FROM classified c
+  LEFT JOIN ranked r ON r.id=c.id
+  LEFT JOIN family_search fs ON fs.family_label=c.family_label;
+`;
+
+const aggregateInsert = `
+  INSERT INTO public_review_counts(course_id,teacher_id,review_count)
+  SELECT course_id,teacher_id,COUNT(*)
+  FROM (
+    SELECT r.course_id,r.teacher_id
+    FROM reviews r
+    WHERE r.status='approved'
+      AND trim(COALESCE(r.comment,''))<>''
+      AND EXISTS(
+        SELECT 1 FROM course_teachers public_relation
+        WHERE public_relation.course_id=r.course_id
+          AND public_relation.teacher_id=r.teacher_id
+      )
+      AND (
+        r.offering_id IS NULL OR EXISTS(
+          SELECT 1
+          FROM offerings public_offering
+          JOIN offering_teachers public_offering_teacher
+            ON public_offering_teacher.offering_id=public_offering.id
+           AND public_offering_teacher.teacher_id=r.teacher_id
+          WHERE public_offering.id=r.offering_id
+            AND public_offering.course_id=r.course_id
+        )
+      )
+    UNION ALL
+    SELECT phr.course_id,phr.teacher_id
+    FROM public_historical_reviews phr
+    UNION ALL
+    SELECT lr.course_id,lr.teacher_id
+    FROM legacy_reviews lr
+    WHERE lr.status='approved'
+      AND trim(COALESCE(lr.comment,''))<>''
+  ) visible_text_reviews
+  GROUP BY course_id,teacher_id;
+`;
+
+export const publicCourseCanonicalJoin =
+  "JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id";
+
+export const publicCourseFamilySearchSql = (alias = "pcc") =>
+  `(${alias}.family_label LIKE ? OR ${alias}.search_text LIKE ?)`;
+
+export async function refreshPublicListPrecomputes(db: D1Database) {
+  const fingerprint = await publicListSourceFingerprint(db);
+  await db.batch([
+    db.prepare("DELETE FROM public_course_canonicals"),
+    db.prepare(canonicalInsert),
+    db.prepare("DELETE FROM public_review_counts"),
+    db.prepare(aggregateInsert),
+    db.prepare("UPDATE public_precompute_state SET dirty=0,fingerprint=? WHERE id=1").bind(fingerprint),
+  ]);
+}
+
+async function publicListSourceFingerprint(db: D1Database) {
+  const row = await db.prepare(`
+    SELECT
+      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM courses) || '|' ||
+      (SELECT COUNT(*) FROM course_teachers) || '|' ||
+      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM reviews) || '|' ||
+      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM legacy_reviews) || '|' ||
+      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM public_historical_reviews) fingerprint
+  `).first<{ fingerprint: string }>();
+  return row?.fingerprint || "";
+}
+
+export async function ensurePublicListPrecomputes(db: D1Database) {
+  const state = await db
+    .prepare("SELECT dirty,fingerprint FROM public_precompute_state WHERE id=1")
+    .first<{ dirty: number; fingerprint: string }>();
+  if (!state) return refreshPublicListPrecomputes(db);
+  const fingerprint = await publicListSourceFingerprint(db);
+  if (state.dirty || state.fingerprint !== fingerprint)
+    await refreshPublicListPrecomputes(db);
+}
