@@ -4,15 +4,10 @@ import { shouldRefreshPublicListPrecomputes } from "../src/public-list-precomput
 
 describe("public list precompute invalidation", () => {
   it.each([
-    ["POST", "/api/reviews"],
     ["POST", "/api/admin/catalog-relation-additions"],
     ["POST", "/api/admin/import/relations"],
     ["POST", "/api/admin/historical-review-batch-imports"],
     ["POST", "/api/admin/historical-review-imports"],
-    ["PATCH", "/api/admin/catalog-requests/42"],
-    ["PATCH", "/api/admin/reviews/42"],
-    ["PATCH", "/api/admin/reviews/42/content"],
-    ["PATCH", "/api/admin/legacy-reviews/42"],
     ["POST", "/api/admin/offerings"],
     ["DELETE", "/api/admin/offerings/42"],
     ["POST", "/api/admin/courses"],
@@ -33,6 +28,11 @@ describe("public list precompute invalidation", () => {
     ["DELETE", "/api/reviews/42/endorsement"],
     ["POST", "/api/catalog-requests"],
     ["POST", "/api/admin/catalog-relation-additions/preview"],
+    ["POST", "/api/reviews"],
+    ["PATCH", "/api/admin/catalog-requests/42"],
+    ["PATCH", "/api/admin/reviews/42"],
+    ["PATCH", "/api/admin/reviews/42/content"],
+    ["PATCH", "/api/admin/legacy-reviews/42"],
     ["POST", "/api/admin/legacy-imports"],
     ["POST", "/api/admin/catalog-baseline/uploads"],
     ["PUT", "/api/admin/catalog-baseline/uploads/batch-42/chunks/0"],
@@ -51,6 +51,11 @@ describe("public list query shape", () => {
        VALUES(1,1,777)
        ON CONFLICT(course_id,teacher_id) DO UPDATE SET review_count=excluded.review_count`,
     ).run();
+    await env.DB.prepare(
+      `INSERT INTO public_teacher_course_counts(teacher_id,course_count)
+       VALUES(1,888)
+       ON CONFLICT(teacher_id) DO UPDATE SET course_count=excluded.course_count`,
+    ).run();
 
     try {
       const courseList = await SELF.fetch(
@@ -61,11 +66,14 @@ describe("public list query shape", () => {
       const teacherList = await SELF.fetch(
         `https://example.com/api/teachers?q=${encodeURIComponent("测试教师")}`,
       ).then((response) =>
-        response.json<{ items: Array<{ id: number; review_count: number }> }>(),
+        response.json<{
+          items: Array<{ id: number; review_count: number; course_count: number }>;
+        }>(),
       );
 
       expect(courseList.items.find((item) => item.id === 1)?.review_count).toBe(777);
       expect(teacherList.items.find((item) => item.id === 1)?.review_count).toBe(777);
+      expect(teacherList.items.find((item) => item.id === 1)?.course_count).toBe(888);
     } finally {
       await env.DB.prepare("UPDATE public_precompute_state SET dirty=1 WHERE id=1").run();
       await SELF.fetch("https://example.com/api/courses?q=TEST101");

@@ -96,6 +96,7 @@ type Vars = {
   adminSession?: string;
   adminSessionId?: string;
   adminCsrf?: string;
+  publicListPrecomputesChanged?: boolean;
 };
 type StashedReview = {
   scores: unknown;
@@ -118,6 +119,8 @@ const app = new Hono<{ Bindings: Bindings; Variables: Vars }>();
 type AppContext = Context<{ Bindings: Bindings; Variables: Vars }>;
 const clean = (v: unknown, n = 500) =>
   typeof v === "string" ? v.trim().slice(0, n) : "";
+const markPublicListPrecomputesChanged = (c: AppContext) =>
+  c.set("publicListPrecomputesChanged", true);
 const nullableClean = (v: unknown, n = 500) => clean(v, n) || null;
 const integer = (v: unknown) => {
   if (typeof v === "number") return Number.isSafeInteger(v) ? v : null;
@@ -502,7 +505,8 @@ app.use("/api/*", async (c, next) => {
   await next();
   if (
     c.res.status < 400 &&
-    shouldRefreshPublicListPrecomputes(c.req.method, c.req.path)
+    (c.get("publicListPrecomputesChanged") === true ||
+      shouldRefreshPublicListPrecomputes(c.req.method, c.req.path))
   ) {
     await refreshPublicListPrecomputes(c.env.DB);
   }
@@ -656,9 +660,10 @@ app.get("/api/teachers", async (c) => {
     .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
       `SELECT t.*,
-       (SELECT COUNT(DISTINCT pcc.canonical_course_id) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id JOIN public_course_canonicals pcc ON pcc.course_id=c.id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
+       COALESCE(public_teacher_course_counts.course_count,0) course_count,
        COALESCE(teacher_review_counts.review_count,0) review_count
       FROM teachers t
+      LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
       LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM public_review_counts GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
      WHERE ${where}
      ORDER BY CASE
@@ -1103,6 +1108,7 @@ app.post("/api/reviews", async (c) => {
       return fail(c, "近期已提交过这位教师的同一课程评价", 409);
     throw error;
   }
+  markPublicListPrecomputesChanged(c);
   return c.json({ ok: true, message: "评价已发布" });
 });
 app.post("/api/catalog-requests", async (c) => {
@@ -1841,6 +1847,7 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       teacherId: number | null;
       reviewId: number | null;
     }>();
+  markPublicListPrecomputesChanged(c);
   return c.json({ ok: true, ...approved });
 });
 app.get("/api/admin/catalog-requests/:id/events", async (c) => {
@@ -1893,14 +1900,15 @@ app.patch("/api/admin/reviews/:id", async (c) => {
       ? fail(c, "评价已经审核", 409)
       : fail(c, "评价不存在", 404);
   }
+  if (status === "approved") markPublicListPrecomputesChanged(c);
   return c.json({ ok: true });
 });
 app.patch("/api/admin/reviews/:id/content", async (c) => {
   const b = await c.req.json<Record<string, unknown>>(),
     id = integer(c.req.param("id"));
-  const current = await c.env.DB.prepare("SELECT id FROM reviews WHERE id=?")
+  const current = await c.env.DB.prepare("SELECT id,status FROM reviews WHERE id=?")
     .bind(id)
-    .first();
+    .first<{ id: number; status: string }>();
   if (!current) return fail(c, "评价不存在", 404);
   const scoreFields = [
     ["clarity", "clarity"],
@@ -1951,6 +1959,7 @@ app.patch("/api/admin/reviews/:id/content", async (c) => {
   ).bind(id, clean(b.note, 500), id);
   const results = await c.env.DB.batch([update, event]);
   if (!(results[0].meta.changes || 0)) return fail(c, "评价不存在", 404);
+  if (current.status === "approved") markPublicListPrecomputesChanged(c);
   return c.json({ ok: true });
 });
 app.get("/api/admin/reviews/:id/events", async (c) => {
@@ -2065,6 +2074,7 @@ app.patch("/api/admin/legacy-reviews/:id", async (c) => {
   ]);
   if (!(results[0].meta.changes || 0))
     return fail(c, "历史评价绑定已经失效，或评价已经审核", 409);
+  if (status === "approved") markPublicListPrecomputesChanged(c);
   return c.json({ ok: true, id, status });
 });
 app.get("/api/admin/legacy-reviews/:id/events", async (c) => {

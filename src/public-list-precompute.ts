@@ -2,6 +2,7 @@ import {
   PE_SKILL_FAMILIES,
   publicPeHasTextReviewSql,
   publicPeSkillFamilySql,
+  publicCourseVisibleSql,
 } from "./lib/public-course-presentation";
 
 const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -76,6 +77,16 @@ const aggregateInsert = `
   GROUP BY course_id,teacher_id;
 `;
 
+const teacherCourseCountInsert = `
+  INSERT INTO public_teacher_course_counts(teacher_id,course_count)
+  SELECT ct.teacher_id,COUNT(DISTINCT pcc.canonical_course_id)
+  FROM course_teachers ct
+  JOIN courses c ON c.id=ct.course_id
+  JOIN public_course_canonicals pcc ON pcc.course_id=c.id
+  WHERE ${publicCourseVisibleSql("c")}
+  GROUP BY ct.teacher_id;
+`;
+
 export const publicCourseCanonicalJoin =
   "JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id";
 
@@ -83,14 +94,10 @@ export const publicCourseFamilySearchSql = (alias = "pcc") =>
   `(${alias}.family_label LIKE ? OR ${alias}.search_text LIKE ?)`;
 
 const publicListMutationRoutes: ReadonlyArray<readonly [string, RegExp]> = [
-  ["POST", /^\/api\/reviews$/],
   ["POST", /^\/api\/admin\/catalog-relation-additions$/],
   ["POST", /^\/api\/admin\/import\/relations$/],
   ["POST", /^\/api\/admin\/historical-review-batch-imports$/],
   ["POST", /^\/api\/admin\/historical-review-imports$/],
-  ["PATCH", /^\/api\/admin\/catalog-requests\/[^/]+$/],
-  ["PATCH", /^\/api\/admin\/reviews\/[^/]+(?:\/content)?$/],
-  ["PATCH", /^\/api\/admin\/legacy-reviews\/[^/]+$/],
   ["POST", /^\/api\/admin\/offerings$/],
   ["DELETE", /^\/api\/admin\/offerings\/[^/]+$/],
   ["POST", /^\/api\/admin\/courses$/],
@@ -116,6 +123,8 @@ export async function refreshPublicListPrecomputes(db: D1Database) {
     db.prepare(canonicalInsert),
     db.prepare("DELETE FROM public_review_counts"),
     db.prepare(aggregateInsert),
+    db.prepare("DELETE FROM public_teacher_course_counts"),
+    db.prepare(teacherCourseCountInsert),
     db.prepare("UPDATE public_precompute_state SET dirty=0,fingerprint=? WHERE id=1").bind(fingerprint),
   ]);
 }
