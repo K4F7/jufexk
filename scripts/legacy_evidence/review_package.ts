@@ -84,6 +84,8 @@ export type RoutedCell = {
   selected?: "analysis_a" | "analysis_b" | null;
   approval?: CellApproval | { unresolved: "agent_exhausted" } | null;
   approved?: boolean;
+  visible_course?: string | null;
+  visible_teacher?: string | null;
 };
 
 export type ReviewBatch = {
@@ -474,11 +476,11 @@ export function validateApprovalResponse(keys: string[], response: unknown): Cel
 
 export function applyApprovals(cells: RoutedCell[], verdicts: Map<string, CellApproval | { unresolved: "agent_exhausted" }>): RoutedCell[] {
   return cells.map((cell) => {
-    if (cell.approved === true) return { ...cell, approved: true };
+    if (cell.approved) return { ...cell, approved: true };
     const verdict = verdicts.get(cell.key);
-    if (!verdict) return { ...cell, approved: cell.approved === true };
-    if (isCompletedApproval(verdict) && verdict.approve === true && verdict.body_matches_source === true
-      && verdict.mapping_supported === true && nonemptyText(verdict.evidence) != null && eligibleForApproval(cell)) {
+    if (!verdict) return { ...cell, approved: Boolean(cell.approved) };
+    if (isCompletedApproval(verdict) && verdict.approve && verdict.body_matches_source
+      && verdict.mapping_supported && nonemptyText(verdict.evidence) != null && eligibleForApproval(cell)) {
       return { ...cell, approval: verdict, approved: true };
     }
     return { ...cell, approval: verdict, approved: false };
