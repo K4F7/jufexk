@@ -15,21 +15,19 @@ import {
   type FormulaBarMatrixSource,
 } from "./formula_bar_locator";
 import { createFileFormulaBarLocatorStore } from "./formula_bar_locator_store";
+import {
+  LIVE_LAYOUT_WORKSHEETS,
+  validateLiveLayout,
+  type LiveLayout,
+} from "./live_layout";
 
 export const MATRIX_FREEZE_EXTENT_VERSION = "legacy-matrix-freeze-extent-v1" as const;
 export const MATRIX_FREEZE_LOCATE_VERSION = "legacy-matrix-freeze-locate-v1" as const;
 export const MATRIX_FREEZE_QA_VERSION = "legacy-matrix-freeze-qa-v1" as const;
 export const MATRIX_FREEZE_MANIFEST_VERSION = "legacy-matrix-freeze-manifest-v1" as const;
 
-export const MATRIX_FREEZE_DEFAULT_WORKSHEETS = [
-  "主要课程",
-  "数学课",
-  "美育",
-  "大英和视听说",
-  "思政课",
-  "MOOC",
-  "体育课",
-] as const;
+export const MATRIX_FREEZE_DEFAULT_WORKSHEETS = LIVE_LAYOUT_WORKSHEETS;
+export const MATRIX_FREEZE_REQUIRED_WINDOW = { width: 2560, height: 1440 } as const;
 
 export const PROTECTED_FREEZE_OUTPUT_MARKERS = [
   "/smoke-20260818-v1",
@@ -57,6 +55,7 @@ export type MatrixFreezeExtent = {
   sheets: MatrixFreezeExtentSheet[];
   planned_rows: number;
   planned_cells: number;
+  layout_sha256: string;
   click_grid: false;
   wrote_tencent_or_business_db: false;
   extent_sha256: string;
@@ -66,6 +65,15 @@ export type MatrixFreezeCompositionPair = {
   key: string;
   formula_sha256: string;
   cell_sha256: string;
+};
+
+export type MatrixFreezeWindowObservation = {
+  key: string;
+  width?: number;
+  height?: number;
+  minimized?: boolean;
+  method?: "print_window" | "playwright_page" | "copy_from_screen";
+  formula_truncated?: boolean;
 };
 
 export type MatrixFreezeLocateResult = {
@@ -79,6 +87,7 @@ export type MatrixFreezeLocateResult = {
   missing_keys: string[];
   stop_key: string | null;
   stop_reason: string | null;
+  layout_sha256: string;
   click_grid: false;
   locate_sha256: string;
 };
@@ -88,10 +97,13 @@ export type MatrixFreezeQa = {
   status: "accepted" | "recapture_required";
   issues: string[];
   recapture_keys: string[];
+  formula_truncated_isolated: string[];
   planned_cells: number;
   reused_cells: number;
+  layout_sha256: string;
   rewrite_source_json: false;
   click_grid: false;
+  wrote_tencent_or_business_db: false;
   qa_sha256: string;
 };
 
@@ -100,9 +112,11 @@ export type MatrixFreezeManifest = {
   plan_sha256: string;
   extent_sha256: string;
   qa_sha256: string;
+  layout_sha256: string;
   worksheets: string[];
   planned_cells: number;
   reused_record_sha256s: Record<string, string>;
+  formula_truncated_isolated: string[];
   click_grid: false;
   wrote_tencent_or_business_db: false;
   manifest_sha256: string;
@@ -112,6 +126,46 @@ export function frozenSheetExtent(worksheet: string) {
   const sheet = FROZEN_SHEET_EXTENTS.find((item) => item.worksheet === worksheet);
   if (!sheet) throw new Error(`unknown frozen worksheet: ${worksheet}`);
   return sheet;
+}
+
+export function requireMatrixFreezeLiveLayout(layout: LiveLayout | null | undefined): LiveLayout {
+  if (layout == null) {
+    throw new Error("live layout SHA is required before locate / freeze");
+  }
+  validateLiveLayout(layout);
+  return layout;
+}
+
+export function assertMatrixFreezeRangeAllowed(
+  sheets: readonly Pick<MatrixFreezeExtentSheet, "worksheet" | "first_row" | "last_row">[],
+  layout: LiveLayout,
+) {
+  const mooc = layout.sheets.find((sheet) => sheet.worksheet === "MOOC");
+  if (!mooc || mooc.g46_status !== "blocked_locator") return;
+  const [smokeFirst, smokeLast] = mooc.smoke_rows;
+  for (const sheet of sheets) {
+    if (sheet.worksheet !== "MOOC") continue;
+    if (sheet.first_row < smokeFirst || sheet.last_row > smokeLast) {
+      throw new Error(
+        `MOOC rows ${sheet.first_row}-${sheet.last_row} are rejected while G46 is blocked_locator; only smoke rows ${smokeFirst}-${smokeLast} are allowed`,
+      );
+    }
+  }
+}
+
+export function bindMatrixFreezeLayout(options: {
+  extent: Pick<MatrixFreezeExtent, "layout_sha256" | "sheets">;
+  layout?: LiveLayout | null;
+}): LiveLayout {
+  if (!options.extent.layout_sha256) {
+    throw new Error("live layout SHA is required before locate / freeze");
+  }
+  const layout = requireMatrixFreezeLiveLayout(options.layout);
+  if (layout.layout_sha256 !== options.extent.layout_sha256) {
+    throw new Error("live layout SHA does not match the bound extent");
+  }
+  assertMatrixFreezeRangeAllowed(options.extent.sheets, layout);
+  return layout;
 }
 
 export function normalizeMatrixFreezeWorksheets(worksheets?: readonly string[]) {
@@ -130,7 +184,9 @@ export function scanMatrixFreezeExtents(options: {
   worksheets?: readonly string[];
   first_row?: number;
   last_row?: number;
+  layout?: LiveLayout | null;
 } = {}): MatrixFreezeExtent {
+  const layout = requireMatrixFreezeLiveLayout(options.layout);
   const worksheets = normalizeMatrixFreezeWorksheets(options.worksheets);
   if (options.first_row != null && (!Number.isInteger(options.first_row) || options.first_row < 1)) {
     throw new Error("first_row must be a positive integer");
@@ -145,7 +201,11 @@ export function scanMatrixFreezeExtents(options: {
   const sheets = worksheets.map((worksheet) => {
     const frozen = frozenSheetExtent(worksheet);
     const firstRow = options.first_row ?? frozen.first_row;
-    const lastRow = options.last_row ?? frozen.last_row;
+    const clipped = clipBlockedMoocLastRow(worksheet, options.last_row ?? frozen.last_row, options.last_row == null, layout);
+    const lastRow = clipped.last_row;
+    if (lastRow < firstRow) {
+      throw new Error("last_row must be at or after first_row");
+    }
     if (firstRow < frozen.first_row || lastRow > frozen.last_row) {
       throw new Error(`row range is outside the scanned frozen extent: ${worksheet} ${firstRow}-${lastRow}`);
     }
@@ -159,18 +219,21 @@ export function scanMatrixFreezeExtents(options: {
       last_column: frozen.last_column,
       planned_rows: plannedRows,
       planned_cells: plannedCells,
-      scan_to_end: options.last_row == null,
+      scan_to_end: clipped.scan_to_end,
     };
   });
+  assertMatrixFreezeRangeAllowed(sheets, layout);
   const content = {
     contract_version: MATRIX_FREEZE_EXTENT_VERSION,
     worksheets,
     sheets,
     planned_rows: sheets.reduce((total, sheet) => total + sheet.planned_rows, 0),
     planned_cells: sheets.reduce((total, sheet) => total + sheet.planned_cells, 0),
+    layout_sha256: layout.layout_sha256,
     click_grid: false as const,
     wrote_tencent_or_business_db: false as const,
   };
+  assertNoReviewBodies(content);
   return { ...content, extent_sha256: sha256(stableJson(content)) };
 }
 
@@ -230,7 +293,9 @@ export async function locateMatrixFreezeRange(options: {
   worksheet: string;
   store: FormulaBarLocatorStore;
   source?: FormulaBarMatrixSource;
+  layout?: LiveLayout | null;
 }): Promise<MatrixFreezeLocateResult> {
+  bindMatrixFreezeLayout({ extent: options.extent, layout: options.layout });
   const sheet = options.extent.sheets.find((item) => item.worksheet === options.worksheet);
   if (!sheet) throw new Error(`extent is missing worksheet: ${options.worksheet}`);
   const plan = buildMatrixFreezePlan({
@@ -268,6 +333,7 @@ export async function locateMatrixFreezeRange(options: {
       missing_keys: missingKeys,
       stop_key: missingKeys[0]!,
       stop_reason: "recapture_required",
+      layout_sha256: options.extent.layout_sha256,
       click_grid: false,
     });
   }
@@ -288,6 +354,7 @@ export async function locateMatrixFreezeRange(options: {
     missing_keys: [],
     stop_key: report.stop_key,
     stop_reason: report.stop_reason,
+    layout_sha256: options.extent.layout_sha256,
     click_grid: false,
   });
 }
@@ -297,7 +364,10 @@ export function evaluateMatrixFreezeQa(options: {
   locates: readonly MatrixFreezeLocateResult[];
   evidence?: readonly FormulaBarEvidence[];
   pairs?: readonly MatrixFreezeCompositionPair[];
+  windows?: readonly MatrixFreezeWindowObservation[];
+  layout?: LiveLayout | null;
 }): MatrixFreezeQa {
+  bindMatrixFreezeLayout({ extent: options.extent, layout: options.layout });
   const issues: string[] = [];
   const recaptureKeys = new Set<string>();
   const locateBySheet = new Map(options.locates.map((item) => [item.worksheet, item]));
@@ -341,17 +411,41 @@ export function evaluateMatrixFreezeQa(options: {
       recaptureKeys.add(pair.key);
     }
   }
+  const truncated = new Set<string>();
+  for (const window of options.windows ?? []) {
+    if (window.formula_truncated) truncated.add(window.key);
+    if (window.minimized) {
+      issues.push(`window is minimized: ${window.key}`);
+      recaptureKeys.add(window.key);
+    }
+    if (
+      (window.width != null || window.height != null)
+      && (window.width !== MATRIX_FREEZE_REQUIRED_WINDOW.width
+        || window.height !== MATRIX_FREEZE_REQUIRED_WINDOW.height)
+    ) {
+      issues.push(`window is not 2K: ${window.key} ${window.width ?? "?"}x${window.height ?? "?"}`);
+      recaptureKeys.add(window.key);
+    }
+    if (window.method === "copy_from_screen") {
+      issues.push(`CopyFromScreen is not evidence: ${window.key}`);
+      recaptureKeys.add(window.key);
+    }
+  }
   const reusedCells = options.locates.reduce((total, item) => total + item.reused_cells, 0);
   const content = {
     contract_version: MATRIX_FREEZE_QA_VERSION,
     status: issues.length === 0 ? "accepted" as const : "recapture_required" as const,
     issues,
     recapture_keys: [...recaptureKeys].sort(),
+    formula_truncated_isolated: [...truncated].sort(),
     planned_cells: options.extent.planned_cells,
     reused_cells: reusedCells,
+    layout_sha256: options.extent.layout_sha256,
     rewrite_source_json: false as const,
     click_grid: false as const,
+    wrote_tencent_or_business_db: false as const,
   };
+  assertNoReviewBodies(content);
   return { ...content, qa_sha256: sha256(stableJson(content)) };
 }
 
@@ -359,7 +453,9 @@ export function freezeMatrixManifest(options: {
   extent: MatrixFreezeExtent;
   qa: MatrixFreezeQa;
   evidence: readonly FormulaBarEvidence[];
+  layout?: LiveLayout | null;
 }): MatrixFreezeManifest {
+  bindMatrixFreezeLayout({ extent: options.extent, layout: options.layout });
   if (options.qa.status !== "accepted") {
     throw new Error("cannot freeze a matrix whose composition QA is recapture_required");
   }
@@ -384,12 +480,15 @@ export function freezeMatrixManifest(options: {
     plan_sha256: plan.plan_sha256,
     extent_sha256: options.extent.extent_sha256,
     qa_sha256: options.qa.qa_sha256,
+    layout_sha256: options.extent.layout_sha256,
     worksheets: options.extent.worksheets,
     planned_cells: plan.planned_cells,
     reused_record_sha256s: reused,
+    formula_truncated_isolated: options.qa.formula_truncated_isolated,
     click_grid: false as const,
     wrote_tencent_or_business_db: false as const,
   };
+  assertNoReviewBodies(content);
   return { ...content, manifest_sha256: sha256(stableJson(content)) };
 }
 
@@ -422,10 +521,18 @@ export function validateMatrixFreezeExtent(value: unknown): asserts value is Mat
 }
 
 export function validateMatrixFreezeQa(value: unknown): asserts value is MatrixFreezeQa {
+  assertNoReviewBodies(value);
   if (!isRecord(value) || value.contract_version !== MATRIX_FREEZE_QA_VERSION
     || (value.status !== "accepted" && value.status !== "recapture_required")
     || typeof value.qa_sha256 !== "string") {
     throw new Error("invalid matrix freeze QA");
+  }
+  const { qa_sha256: hash, ...content } = value;
+  if (sha256(stableJson(content)) !== hash) {
+    throw new Error("matrix freeze QA hash mismatch");
+  }
+  if (value.wrote_tencent_or_business_db !== false) {
+    throw new Error("matrix freeze must not write Tencent sheets or the business database");
   }
 }
 
@@ -436,6 +543,30 @@ export function assertMatrixFreezeOutputPath(path: string) {
   }
   if (PROTECTED_FREEZE_OUTPUT_MARKERS.some((marker) => resolved.includes(marker))) {
     throw new Error("matrix freeze output must not overwrite #180 or an existing formula-bar pack");
+  }
+}
+
+function clipBlockedMoocLastRow(
+  worksheet: string,
+  lastRow: number,
+  scanToEnd: boolean,
+  layout: LiveLayout,
+): { last_row: number; scan_to_end: boolean } {
+  if (!scanToEnd || worksheet !== "MOOC") return { last_row: lastRow, scan_to_end: scanToEnd };
+  const mooc = layout.sheets.find((sheet) => sheet.worksheet === "MOOC");
+  if (mooc?.g46_status !== "blocked_locator") return { last_row: lastRow, scan_to_end: scanToEnd };
+  return { last_row: mooc.smoke_rows[1], scan_to_end: false };
+}
+
+function assertNoReviewBodies(value: unknown) {
+  const encoded = JSON.stringify(value);
+  if (
+    encoded.includes("formula_bar_value")
+    || encoded.includes("visible_cell_text")
+    || encoded.includes('"comment"')
+    || encoded.includes('"body"')
+  ) {
+    throw new Error("matrix freeze must not include formula text, visible-cell text, comments, or review body");
   }
 }
 

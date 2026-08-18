@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { writeJsonAtomic } from "./formula_bar_smoke";
+import type { LiveLayout } from "./live_layout";
 import {
   assertMatrixFreezeOutputPath,
   buildMatrixFreezePlan,
@@ -9,12 +10,14 @@ import {
   freezeMatrixManifest,
   loadPlanEvidence,
   locateMatrixFreezeRange,
+  requireMatrixFreezeLiveLayout,
   scanMatrixFreezeExtents,
   validateMatrixFreezeExtent,
   validateMatrixFreezeQa,
   type MatrixFreezeCompositionPair,
   type MatrixFreezeExtent,
   type MatrixFreezeLocateResult,
+  type MatrixFreezeWindowObservation,
 } from "./matrix_freeze";
 
 const [command, ...args] = process.argv.slice(2);
@@ -34,10 +37,12 @@ try {
 async function scanExtentCommand() {
   const outDir = resolve(option("--out"));
   assertMatrixFreezeOutputPath(outDir);
+  const layout = await loadLayout();
   const extent = scanMatrixFreezeExtents({
     worksheets: repeatable("--worksheet"),
     first_row: optionalInteger("--first-row"),
     last_row: optionalInteger("--last-row"),
+    layout,
   });
   await mkdir(outDir, { recursive: true });
   const outputPath = join(outDir, "extent.json");
@@ -54,6 +59,7 @@ async function scanExtentCommand() {
       first_row: sheet.first_row,
       last_row: sheet.last_row,
     })),
+    layout_sha256: extent.layout_sha256,
     extent_sha256: extent.extent_sha256,
   }));
 }
@@ -62,12 +68,13 @@ async function locateCommand() {
   const outDir = resolve(option("--out"));
   assertMatrixFreezeOutputPath(outDir);
   const worksheet = option("--worksheet");
-  const extent = await loadOrScanExtent(outDir);
+  const layout = await loadLayout();
+  const extent = await loadOrScanExtent(outDir, layout);
   const store = createMatrixFreezeLocatorStore({
     writeRoot: outDir,
     reuseRoot: optionalOption("--evidence-dir"),
   });
-  const locate = await locateMatrixFreezeRange({ extent, worksheet, store });
+  const locate = await locateMatrixFreezeRange({ extent, worksheet, store, layout });
   await mkdir(outDir, { recursive: true });
   const outputPath = join(outDir, locateFileName(worksheet));
   await writeJsonAtomic(outputPath, locate);
@@ -81,6 +88,7 @@ async function locateCommand() {
       stop_key: locate.stop_key,
       stop_reason: locate.stop_reason,
       missing_keys: locate.missing_keys,
+      layout_sha256: locate.layout_sha256,
       locate_sha256: locate.locate_sha256,
     });
   }
@@ -95,6 +103,7 @@ async function locateCommand() {
     missing_keys: locate.missing_keys,
     stop_key: locate.stop_key,
     stop_reason: locate.stop_reason,
+    layout_sha256: locate.layout_sha256,
     locate_sha256: locate.locate_sha256,
   }));
   if (locate.status !== "accepted") process.exitCode = 1;
@@ -103,6 +112,7 @@ async function locateCommand() {
 async function qaCommand() {
   const outDir = resolve(option("--out"));
   assertMatrixFreezeOutputPath(outDir);
+  const layout = await loadLayout();
   const extent = await loadExtent(outDir);
   const locates = await loadLocates(outDir, extent);
   const store = createMatrixFreezeLocatorStore({
@@ -114,17 +124,34 @@ async function qaCommand() {
   const pairs = pairsPath
     ? JSON.parse(await readFile(resolve(pairsPath), "utf8")) as MatrixFreezeCompositionPair[]
     : [];
-  const qa = evaluateMatrixFreezeQa({ extent, locates, evidence, pairs });
+  const windowsPath = optionalOption("--windows");
+  const windows = windowsPath
+    ? JSON.parse(await readFile(resolve(windowsPath), "utf8")) as MatrixFreezeWindowObservation[]
+    : [];
+  const qa = evaluateMatrixFreezeQa({ extent, locates, evidence, pairs, windows, layout });
   const outputPath = join(outDir, "qa.json");
   await writeJsonAtomic(outputPath, qa);
+  if (qa.status === "recapture_required") {
+    await writeJsonAtomic(join(outDir, "recapture-checkpoint.json"), {
+      contract_version: "legacy-matrix-freeze-checkpoint-v1",
+      status: qa.status,
+      recapture_keys: qa.recapture_keys,
+      formula_truncated_isolated: qa.formula_truncated_isolated,
+      issues: qa.issues,
+      layout_sha256: qa.layout_sha256,
+      qa_sha256: qa.qa_sha256,
+    });
+  }
   console.log(JSON.stringify({
     status: qa.status,
     output: outputPath,
     issues: qa.issues,
     recapture_keys: qa.recapture_keys,
+    formula_truncated_isolated: qa.formula_truncated_isolated,
     planned_cells: qa.planned_cells,
     reused_cells: qa.reused_cells,
     rewrite_source_json: qa.rewrite_source_json,
+    layout_sha256: qa.layout_sha256,
     qa_sha256: qa.qa_sha256,
   }));
   if (qa.status !== "accepted") process.exitCode = 1;
@@ -133,6 +160,7 @@ async function qaCommand() {
 async function freezeCommand() {
   const outDir = resolve(option("--out"));
   assertMatrixFreezeOutputPath(outDir);
+  const layout = await loadLayout();
   const extent = await loadExtent(outDir);
   const qa = JSON.parse(await readFile(join(outDir, "qa.json"), "utf8"));
   validateMatrixFreezeQa(qa);
@@ -141,7 +169,7 @@ async function freezeCommand() {
     reuseRoot: optionalOption("--evidence-dir"),
   });
   const evidence = await loadPlanEvidence(store, buildMatrixFreezePlan(extent));
-  const manifest = freezeMatrixManifest({ extent, qa, evidence });
+  const manifest = freezeMatrixManifest({ extent, qa, evidence, layout });
   const outputPath = join(outDir, "manifest.json");
   await writeJsonAtomic(outputPath, manifest);
   console.log(JSON.stringify({
@@ -150,11 +178,18 @@ async function freezeCommand() {
     planned_cells: manifest.planned_cells,
     worksheets: manifest.worksheets,
     plan_sha256: manifest.plan_sha256,
+    layout_sha256: manifest.layout_sha256,
     manifest_sha256: manifest.manifest_sha256,
   }));
 }
 
-async function loadOrScanExtent(outDir: string) {
+async function loadLayout(): Promise<LiveLayout> {
+  const layoutPath = option("--layout");
+  const layout = JSON.parse(await readFile(resolve(layoutPath), "utf8"));
+  return requireMatrixFreezeLiveLayout(layout);
+}
+
+async function loadOrScanExtent(outDir: string, layout: LiveLayout) {
   try {
     return await loadExtent(outDir);
   } catch (error) {
@@ -163,6 +198,7 @@ async function loadOrScanExtent(outDir: string) {
       worksheets: repeatable("--worksheet"),
       first_row: optionalInteger("--first-row"),
       last_row: optionalInteger("--last-row"),
+      layout,
     });
   }
 }
@@ -226,10 +262,10 @@ function usage(): never {
 function usageText() {
   return [
     "Usage:",
-    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts scan-extent --out <dir> [--worksheet name] [--first-row N] [--last-row N]",
-    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts locate --out <dir> --worksheet <name> [--evidence-dir <dir>] [--first-row N] [--last-row N]",
-    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts qa --out <dir> [--evidence-dir <dir>] [--pairs <json>]",
-    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts freeze-manifest --out <dir> [--evidence-dir <dir>]",
+    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts scan-extent --out <dir> --layout <live-layout.json> [--worksheet name] [--first-row N] [--last-row N]",
+    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts locate --out <dir> --layout <live-layout.json> --worksheet <name> [--evidence-dir <dir>] [--first-row N] [--last-row N]",
+    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts qa --out <dir> --layout <live-layout.json> [--evidence-dir <dir>] [--pairs <json>] [--windows <json>]",
+    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts freeze-manifest --out <dir> --layout <live-layout.json> [--evidence-dir <dir>]",
     "Do not click the grid. Do not treat screenshots as review body. Do not log in.",
   ].join("\n");
 }

@@ -107,6 +107,22 @@ export function compileLiveLayout(input: { sheets: readonly LiveLayoutSheetInput
   return { ...content, layout_sha256: sha256(stableJson(content)) };
 }
 
+export function compileConfirmedLiveLayout(): LiveLayout {
+  return compileLiveLayout({
+    sheets: LIVE_LAYOUT_WORKSHEETS.map((worksheet) => {
+      const confirmed = CONFIRMED_SHEETS[worksheet];
+      return {
+        worksheet,
+        course_column: confirmed.course_column,
+        teacher_column: confirmed.teacher_column,
+        extra_columns: confirmed.extra_columns,
+        smoke_rows: confirmed.smoke_rows,
+        g46_status: confirmed.g46_status,
+      };
+    }),
+  });
+}
+
 export function validateLiveLayout(value: unknown): asserts value is LiveLayout {
   assertNoReviewBodies(value);
   if (!isRecord(value) || value.contract_version !== LIVE_LAYOUT_VERSION || typeof value.layout_sha256 !== "string") {
