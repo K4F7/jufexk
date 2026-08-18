@@ -1,7 +1,7 @@
 /**
  * Catalog pagination + load/error/empty — visually frozen: prototype A.
  *
- * - First load: centered Spinner + copy
+ * - First load: skeleton rows mirroring the table (Issue #205)
  * - Refresh with data: compact Spinner line above table
  * - Error: dashed box + 重试
  * - Empty: distinct copy for filters vs true empty catalog; clear action when filtered
@@ -9,7 +9,7 @@
  *
  * Entity-specific wording via `copy` (courses vs teachers).
  */
-import { Button, Spinner } from "@heroui/react";
+import { Button, Skeleton, Spinner } from "@heroui/react";
 import type { ReactNode } from "react";
 
 export type CatalogResultsCopy = {
@@ -74,6 +74,34 @@ export type CatalogResultsStatesProps = {
   children: ReactNode;
   copy?: CatalogResultsCopy;
 };
+
+/** First-load placeholder: skeleton rows mirror the result table's shape so
+ * the list area does not jump when real rows land (Issue #205). */
+function CatalogSkeleton() {
+  return (
+    <div role="status" aria-label="加载中…">
+      <span className="sr-only">加载中…</span>
+      <div className="flex items-center gap-4 border-b border-separator py-2.5">
+        <Skeleton className="h-3 w-24 rounded" />
+        <Skeleton className="h-3 w-20 rounded" />
+        <Skeleton className="h-3 w-20 rounded" />
+        <Skeleton className="h-3 w-10 rounded" />
+      </div>
+      {Array.from({ length: 7 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex items-center gap-4 border-b border-separator py-3"
+          aria-hidden
+        >
+          <Skeleton className="h-4 w-2/5 rounded" />
+          <Skeleton className="h-4 w-1/5 rounded" />
+          <Skeleton className="h-4 w-1/6 rounded" />
+          <Skeleton className="h-4 w-10 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function ErrorPanel({
   title,
@@ -201,15 +229,7 @@ export function CatalogResultsStates({
   }
 
   if (loading && !hasPayload) {
-    return (
-      <div
-        className="flex items-center justify-center gap-2 py-10 text-sm text-muted"
-        role="status"
-      >
-        <Spinner size="sm" />
-        加载中…
-      </div>
-    );
+    return <CatalogSkeleton />;
   }
 
   if (hasPayload && itemCount === 0) {
@@ -224,15 +244,7 @@ export function CatalogResultsStates({
   }
 
   if (!hasPayload) {
-    return (
-      <div
-        className="flex items-center justify-center gap-2 py-10 text-sm text-muted"
-        role="status"
-      >
-        <Spinner size="sm" />
-        加载中…
-      </div>
-    );
+    return <CatalogSkeleton />;
   }
 
   return (

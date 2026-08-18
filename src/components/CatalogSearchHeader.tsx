@@ -2,12 +2,16 @@
  * Catalog title + primary search — visually frozen: prototype C (同行工具条).
  * Title left · count under title · HeroUI SearchField secondary full-width right.
  */
-import { Label, SearchField } from "@heroui/react";
+import { Label, SearchField, Skeleton } from "@heroui/react";
 
 export type CatalogSearchHeaderProps = {
   title: string;
   /** e.g. "12840 门课程" — empty while first load */
   meta?: string;
+  /** True during the first load: the meta line shows a skeleton bar instead
+   * of popping the count in later, keeping the header height stable
+   * (Issue #205). */
+  metaLoading?: boolean;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -20,6 +24,7 @@ export type CatalogSearchHeaderProps = {
 export function CatalogSearchHeader({
   title,
   meta,
+  metaLoading = false,
   value,
   onChange,
   placeholder,
@@ -34,11 +39,17 @@ export function CatalogSearchHeader({
           <h1 className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground">
             {title}
           </h1>
-          {meta ? (
-            <p className="m-0 mt-0.5 text-xs text-muted" aria-live="polite">
-              {meta}
-            </p>
-          ) : null}
+          {/* 计数行恒占一行高度：加载时骨架、到达后文字，避免布局跳动。 */}
+          <div
+            className="mt-0.5 flex min-h-4 items-center text-xs text-muted"
+            aria-live="polite"
+          >
+            {metaLoading ? (
+              <Skeleton className="h-3 w-20 rounded" aria-label="数量加载中" />
+            ) : (
+              meta || null
+            )}
+          </div>
         </div>
         <div className="min-w-0 flex-1 basis-[min(100%,18rem)]">
           <SearchField
