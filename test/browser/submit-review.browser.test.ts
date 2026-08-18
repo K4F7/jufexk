@@ -130,10 +130,11 @@ async function chooseCourse(page: Page, query: string, name: string) {
 }
 
 async function pickScore(page: Page, label: string, value: string) {
-  await page
-    .getByRole("radiogroup", { name: label })
-    .getByRole("radio", { name: value, exact: true })
-    .click({ force: true });
+  const group = page.getByRole("radiogroup", { name: label });
+  await group.getByText(value, { exact: true }).click();
+  await expect(
+    group.getByRole("radio", { name: value, exact: true }),
+  ).toBeChecked();
 }
 
 async function pickTeacher(page: Page, name: string) {
@@ -176,6 +177,7 @@ test("offline course requires the four dimensions plus overall", async ({
   expect(posted).toHaveLength(0);
 
   await pickScore(page, "考核压力", "2");
+  await expect(page.getByText("请选择考核压力")).toHaveCount(0);
   await page.getByRole("button", { name: "提交评价" }).click();
   await expect(page.getByRole("status")).toHaveText("评价已发布");
   expect(posted).toEqual([
