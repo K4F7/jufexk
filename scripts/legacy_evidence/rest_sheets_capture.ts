@@ -451,6 +451,7 @@ export function buildRestSheetsCaptureQa(options: {
   captures?: readonly RestSheetsSyntheticCapture[];
   locatorNotes?: readonly RestSheetsLocatorNote[];
   reusedRecordSha256s?: ReadonlyMap<string, string>;
+  compositionFailures?: readonly { key: string; issues: string[] }[];
 }): RestSheetsCaptureQa {
   validateRestSheetsCaptureInventory(options.inventory);
   validateRestSheetsContextIndex(options.contextIndex);
@@ -540,6 +541,10 @@ export function buildRestSheetsCaptureQa(options: {
         issues.push(`context index missing never_packaged row: ${sheet.worksheet}|${row}`);
       }
     }
+  }
+
+  for (const failure of options.compositionFailures ?? []) {
+    issues.push(`composition rejected: ${failure.key}: ${failure.issues.join("; ")}`);
   }
 
   const moocRecapture = recaptureKeys.some((key) => key.startsWith("MOOC|"));
@@ -679,7 +684,7 @@ export function restSheetsCaptureUsage() {
     "  pnpm run rest-sheets-capture context-index <inventory.json> <context-index.json>",
     "  pnpm run rest-sheets-capture plan-row <inventory.json> <worksheet> <row> [locator.json]",
     "  pnpm run rest-sheets-capture plan-locator <worksheet> <address>",
-    "  pnpm run rest-sheets-capture qa <inventory.json> <context-index.json> <qa.json> [captures.json] [locator-notes.json]",
+    "  pnpm run rest-sheets-capture qa <inventory.json> <context-index.json> <qa.json> [captures.json] [locator-notes.json] [composition-failures.json]",
     "  pnpm run rest-sheets-capture freeze-manifest <inventory.json> <context-index.json> <qa.json> <manifest.json>",
   ].join("\n");
 }
@@ -733,7 +738,7 @@ export async function runRestSheetsCaptureCli(argv: string[]) {
     return planRestSheetsLocator(worksheet, address);
   }
   if (command === "qa") {
-    const [inventoryPath, contextIndexPath, outputPath, capturesPath, locatorNotesPath] = rest;
+    const [inventoryPath, contextIndexPath, outputPath, capturesPath, locatorNotesPath, compositionFailuresPath] = rest;
     if (!inventoryPath || !contextIndexPath || !outputPath) throw new Error(restSheetsCaptureUsage());
     const inventory = readInventory(await readFile(resolve(inventoryPath), "utf8"));
     const contextIndex = JSON.parse(await readFile(resolve(contextIndexPath), "utf8"));
@@ -744,11 +749,15 @@ export async function runRestSheetsCaptureCli(argv: string[]) {
     const locatorNotes = locatorNotesPath
       ? JSON.parse(await readFile(resolve(locatorNotesPath), "utf8")) as RestSheetsLocatorNote[]
       : [];
+    const compositionFailures = compositionFailuresPath
+      ? JSON.parse(await readFile(resolve(compositionFailuresPath), "utf8")) as Array<{ key: string; issues: string[] }>
+      : [];
     const qa = buildRestSheetsCaptureQa({
       inventory,
       contextIndex,
       captures,
       locatorNotes,
+      compositionFailures,
       reusedRecordSha256s: new Map(Object.entries(inventory.reuse_record_sha256s)),
     });
     await writeRestSheetsJson(resolve(outputPath), qa);

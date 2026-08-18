@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { encodePng, type RgbaImage } from "./composition_qa";
 import { buildFrozenFormulaBarMatrixPlan } from "./formula_bar_locator";
 import {
   buildSmokeCaptureQa,
@@ -227,21 +228,44 @@ describe("smoke matrix, inventory, and new-composition capture", () => {
     expect(evaluateSportsRow6(result, inventory).passed).toBe(true);
   });
 
-  it("expands a long formula bar and records DOM-authoritative truncation", async () => {
+  it("expands every nonempty formula bar, including short text", async () => {
     const inventory = tinyInventory();
     const plan = planSmokeRowCapture(inventory, "体育课", 6);
-    const long = "上了几个学期她的课，打分真的一般般，大一还有的同学90多的有几个，然而我80。。平时也跟着练习了。";
-    const source = fakeSource({
-      formulas: { A6: "篮球", C6: "甲老师", D6: long, E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
-    });
     const expanded: string[] = [];
+    const source = fakeSource({
+      formulas: { A6: "篮球", C6: "甲老师", D6: "给分好", E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
+    });
     source.expandFormulaBar = async () => { expanded.push("expanded"); };
-    source.isFormulaBarTruncated = async () => true;
+    const result = await runSmokeRowCapture(plan, source);
+    expect(result.status).toBe("completed");
+    expect(result.actions.filter((action) => action.startsWith("expand:"))).toEqual([
+      "expand:A6",
+      "expand:C6",
+      "expand:D6",
+      "expand:E6",
+      "expand:F6",
+      "expand:G6",
+    ]);
+    expect(expanded).toHaveLength(6);
+    expect(result.formula_truncated_isolated).toEqual([]);
+  });
+
+  it("isolates leftover formula-bar overflow after expand and still completes the row", async () => {
+    const inventory = tinyInventory();
+    const plan = planSmokeRowCapture(inventory, "体育课", 6);
+    const source = fakeSource({
+      formulas: { A6: "篮球", C6: "甲老师", D6: "给分好", E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
+    });
+    source.expandFormulaBar = async () => {};
+    source.isFormulaBarTruncated = async () => (await source.readActiveAddress()) === "D6";
     const result = await runSmokeRowCapture(plan, source);
     expect(result.status).toBe("completed");
     expect(result.actions).toContain("expand:D6");
+    expect(result.actions).toContain("truncated_isolated:D6");
     expect(result.captures.find((item) => item.address === "D6")?.formula_truncated_dom_authoritative).toBe(true);
-    expect(expanded).toEqual(["expanded"]);
+    expect(result.captures.find((item) => item.address === "E6")?.formula_truncated_dom_authoritative).toBe(false);
+    expect(result.formula_truncated_isolated).toEqual(["D6"]);
+    expect(evaluateSportsRow6(result, inventory).passed).toBe(true);
   });
 
   it("stops the row when the active address drifts instead of guessing the next cell", async () => {
@@ -270,8 +294,17 @@ describe("smoke matrix, inventory, and new-composition capture", () => {
       collideHashes: true,
     });
     const blocked = await runSmokeRowCapture(planSmokeRowCapture(inventory, "体育课", 6), source);
-    expect(blocked.status).toBe("blocked");
-    expect(blocked.stop_reason).toBe("formula_cell_hash_collision");
+    expect(blocked.status).toBe("completed");
+    expect(blocked.captures).toEqual([]);
+    expect(blocked.recapture_required_addresses).toEqual(["A6", "C6", "D6", "E6", "F6", "G6"]);
+    expect(blocked.actions.filter((action) => action.startsWith("recapture_required:"))).toEqual([
+      "recapture_required:A6",
+      "recapture_required:C6",
+      "recapture_required:D6",
+      "recapture_required:E6",
+      "recapture_required:F6",
+      "recapture_required:G6",
+    ]);
 
     const qa = buildSmokeCaptureQa({
       inventory,
@@ -340,6 +373,46 @@ describe("smoke matrix, inventory, and new-composition capture", () => {
     expect(manifest.manifest_sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(manifest.recapture_keys).toEqual([]);
     expect(manifest.reuse_record_sha256s["体育课|6|D"]).toBe("rec-D6");
+  });
+
+  it("stops a dirty cell after limited same-address retries and continues the rest of the row", async () => {
+    const inventory = tinyInventory();
+    const source = fakeSource({
+      formulas: { A6: "篮球", C6: "甲老师", D6: "给分好", E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
+      dirtyAt: "D6",
+    });
+    const result = await runSmokeRowCapture(planSmokeRowCapture(inventory, "体育课", 6), source);
+
+    expect(result.status).toBe("completed");
+    expect(result.recapture_required_addresses).toEqual(["D6"]);
+    expect(result.captures.filter((item) => item.role === "review").map((item) => item.address)).toEqual(["E6", "F6", "G6"]);
+    expect(result.captures.some((item) => item.address === "D6")).toBe(false);
+    expect(source.writes).not.toContain("D6-formula.jpg");
+    expect(source.writes).toContain("E6-cell.jpg");
+    expect(source.formulaGrabs.filter((address) => address === "D6")).toHaveLength(3);
+    expect(evaluateSportsRow6(result, inventory).passed).toBe(false);
+
+    const qa = buildSmokeCaptureQa({
+      inventory,
+      contextIndex: buildSmokeContextIndex(inventory),
+      captures: result.captures,
+      sportsRow6: result,
+      compositionFailures: [{ address: "D6", issues: ["cell image looks like a terminal or other dark overlay, not a sheet grid"] }],
+    });
+    expect(qa.status).toBe("recapture_required");
+    expect(qa.issues.some((issue) => issue.includes("composition rejected: D6"))).toBe(true);
+  });
+
+  it("does not treat a missing 只能查看 observation as an accepted formula clip", async () => {
+    const inventory = tinyInventory();
+    const source = fakeSource({
+      formulas: { A6: "篮球", C6: "甲老师", D6: "给分好", E6: "一般", F6: "还行", G6: "可以", H6: "", I6: "", J6: "", K6: "" },
+    });
+    source.readCompositionObservation = async () => ({ view_only_visible: false, address_box_present: true });
+    const result = await runSmokeRowCapture(planSmokeRowCapture(inventory, "体育课", 6), source);
+    expect(result.captures).toEqual([]);
+    expect(result.recapture_required_addresses.length).toBeGreaterThan(0);
+    expect(source.writes).toEqual([]);
   });
 });
 
@@ -427,10 +500,15 @@ function fakeSource(options: {
   formulas: Record<string, string>;
   mismatchAt?: string;
   collideHashes?: boolean;
-}): SmokeRowCaptureSource {
+  dirtyAt?: string;
+}): SmokeRowCaptureSource & { writes: string[]; formulaGrabs: string[]; readActiveAddress(): Promise<string> } {
   let address = "";
   const columns = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+  const writes: string[] = [];
+  const formulaGrabs: string[] = [];
   return {
+    writes,
+    formulaGrabs,
     async assertViewOnly() {},
     async selectWorksheet() {},
     async locateByAddressBox(target) { address = target; },
@@ -440,19 +518,72 @@ function fakeSource(options: {
     },
     async readActiveAddress() { return address === options.mismatchAt ? "Z999" : address; },
     async readFormulaBar() { return options.formulas[address] ?? ""; },
-    async captureFormulaImage(target) {
-      return { path: `${target}-formula.jpg`, sha256: sha(`${target}-formula`) };
+    async grabFormulaImage(target) {
+      formulaGrabs.push(target);
+      if (options.dirtyAt === target) return { method: "playwright_page", bytes: encodePng(dirtyImage(0)) };
+      return { method: "playwright_page", bytes: encodePng(options.collideHashes ? collidingImage(target) : cleanFormulaImage(target)) };
     },
-    async captureCellImage(target) {
-      return {
-        path: `${target}-cell.jpg`,
-        sha256: options.collideHashes ? sha(`${target}-formula`) : sha(`${target}-cell`),
-      };
+    async grabCellImage(target) {
+      if (options.dirtyAt === target) return { method: "playwright_page", bytes: encodePng(dirtyImage(18)) };
+      return { method: "playwright_page", bytes: encodePng(options.collideHashes ? collidingImage(target) : cleanCellImage(target)) };
+    },
+    async writeFrozenImage({ filename, bytes }) {
+      writes.push(filename);
+      return { path: filename, sha256: createHash("sha256").update(bytes).digest("hex") };
+    },
+    async readCompositionObservation() {
+      return { view_only_visible: true, address_box_present: true };
     },
     async captureContextGroup(name) { return { path: name, sha256: sha(name) }; },
     async captureConflictImage(name) { return { path: name, sha256: sha(name) }; },
+    async expandFormulaBar() {},
     now: () => "2026-08-18T00:00:00.000Z",
   };
+}
+
+function paint(width: number, height: number, color: (x: number, y: number) => [number, number, number]): RgbaImage {
+  const rgba = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = color(x, y);
+      const index = (y * width + x) * 4;
+      rgba[index] = r;
+      rgba[index + 1] = g;
+      rgba[index + 2] = b;
+      rgba[index + 3] = 255;
+    }
+  }
+  return { width, height, rgba };
+}
+
+function cleanFormulaImage(seed: string): RgbaImage {
+  const tint = seed.charCodeAt(0) % 20;
+  return paint(240, 96, (x, y) => {
+    if (x >= 10 && x <= 56 && y >= 14 && y <= 34) return [255, 255, 255];
+    if (x >= 64 && x <= 180 && y >= 14 && y <= 38) return [250, 250, 252];
+    return [230 + tint, 232, 236];
+  });
+}
+
+function cleanCellImage(seed: string): RgbaImage {
+  const tint = seed.charCodeAt(seed.length - 1) % 12;
+  return paint(240, 160, (x, y) => {
+    if (x % 32 < 2 || y % 24 < 2) return [80, 86, 92];
+    return [255, 255 - tint, 255];
+  });
+}
+
+function collidingImage(seed: string): RgbaImage {
+  const tint = seed.charCodeAt(0) % 15;
+  return paint(240, 96, () => [240, 241, 242 + tint]);
+}
+
+function dirtyImage(shift: number): RgbaImage {
+  return paint(240, 160, (x, y) => {
+    if (x < 48) return [246, 246, 246];
+    if (x >= 60 + shift && x <= 180 + shift && y >= 20 && y <= 120) return [16, 16, 18];
+    return [252, 252, 252];
+  });
 }
 
 function sha(value: string) {
