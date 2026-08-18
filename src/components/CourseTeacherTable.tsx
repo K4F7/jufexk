@@ -1,10 +1,11 @@
 /**
  * Teachers of a course — dense fold aligned with TeacherCourseTable.
  * Columns: 教师 (name) · 院系 · 评分/投稿 (per course-teacher relation).
- * Row click selects the teacher on the course page (评价按 课程×教师 展示，
- * 再次点击已选行取消选择，回到该课全部评价); teacher name stays a real
- * link to the teacher detail page (keyboard / new-tab safe).
- * Issue #239 (revert #221/#223) · docs/ui/foundations.md §详情体验.
+ * Row click goes to `?teacher=` on the course page (评价按 课程×教师
+ * 展示). The course page hides this table once a teacher is selected
+ * (Issue #252); teacher name stays a real link to the teacher detail
+ * page (keyboard / new-tab safe).
+ * Issue #239 · #252 · docs/ui/foundations.md §详情体验.
  */
 import { Table } from "@heroui/react";
 import type { Teacher } from "../lib/types";
