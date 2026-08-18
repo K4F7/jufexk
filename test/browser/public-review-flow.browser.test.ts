@@ -217,22 +217,18 @@ function reviewItems(page: Page) {
   return page.getByRole("list", { name: "评价列表" }).getByRole("listitem");
 }
 
-/** 教师区是官方 Card 网格（`<ul aria-label="任课教师">`），桌面与窄屏同一结构。 */
+/** 教师区是密表（`Table.Content aria-label="任课教师"`）。 */
 function teacherRegion(page: Page) {
-  return page.getByRole("list", { name: "任课教师" });
+  return page.getByRole("grid", { name: "任课教师" });
 }
 
-/** Footer「查看评价」选中教师；已选中则点「取消选择」切回全部评价。 */
+/** 点击院系列切换 `?teacher=`，避免点到姓名链接离开课程页。 */
 async function selectTeacher(page: Page, name: string) {
-  const region = teacherRegion(page);
-  const cancel = region.getByRole("link", {
-    name: `取消选择${name}（当前选中，正在展示其评价）`,
-  });
-  if ((await cancel.count()) > 0) {
-    await cancel.click();
-    return;
-  }
-  await region.getByRole("link", { name: `查看${name}的评价` }).click();
+  await teacherRegion(page)
+    .getByRole("row", { name: new RegExp(name) })
+    .getByRole("gridcell")
+    .nth(1)
+    .click();
 }
 
 test("course detail shows all reviews by default and filters per teacher", async ({
@@ -256,7 +252,7 @@ test("course detail shows all reviews by default and filters per teacher", async
   await page.getByRole("button", { name: "继续加载" }).click();
   await expect(reviewItems(page)).toHaveCount(23);
 
-  // #201/#205：提示在教师网格上方、无乘号。
+  // #201：提示在教师表上方、无乘号。
   const hint = page.getByText(
     "选择一位任课教师，查看这位老师在这门课的评价；默认显示全部评价。",
   );
@@ -267,12 +263,13 @@ test("course detail shows all reviews by default and filters per teacher", async
     true,
   );
 
-  // #202：无评分的教师卡片不出现「—」，只有投稿数。
+  // 无评分但有投稿的教师行仍显示投稿数。
   const region = teacherRegion(page);
-  await expect(region.getByText("2 投", { exact: true })).toBeVisible();
-  await expect(region.getByText("—", { exact: true })).toHaveCount(0);
+  await expect(region.getByRole("row", { name: /另一位教师/ })).toContainText(
+    "2 投",
+  );
 
-  // #201：Footer「查看评价」就地筛选，不离开当前课。
+  // #201：点击教师行就地筛选，不离开当前课。
   await selectTeacher(page, "测试教师");
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(reviewItems(page)).toHaveCount(20);
@@ -354,7 +351,7 @@ test("teacher home link is the only control that leaves the course page", async 
   await page.goto("/courses/8");
   await expect(reviewItems(page)).toHaveCount(20);
 
-  await page.getByRole("link", { name: "测试教师的教师主页" }).click();
+  await teacherRegion(page).getByRole("link", { name: "测试教师" }).click();
   await expect(page).toHaveURL(/\/teachers\/9$/);
   await expect(
     page.getByRole("heading", { name: "测试教师" }),
@@ -371,7 +368,7 @@ test("teacher home link is the only control that leaves the course page", async 
   await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("teacher cards show review counts and omit empty ratings", async ({
+test("teacher table shows review counts via RatingCell", async ({
   page,
 }) => {
   await page.route("**/api/courses/8", (route) =>
@@ -406,10 +403,13 @@ test("teacher cards show review counts and omit empty ratings", async ({
   );
   await page.goto("/courses/8");
   const region = teacherRegion(page);
-  await expect(region.getByText("21 投", { exact: true })).toBeVisible();
-  await expect(region.getByText("2 投", { exact: true })).toBeVisible();
-  await expect(region.getByText("—", { exact: true })).toHaveCount(0);
-  // rating 为 null 时不发明评分 Chip（官方卡片直接省略）。
+  await expect(region.getByRole("row", { name: /测试教师/ })).toContainText(
+    "21 投",
+  );
+  await expect(region.getByRole("row", { name: /另一位教师/ })).toContainText(
+    "2 投",
+  );
+  // rating 为 null 时不发明评分数字（行无障碍名是「另一位教师…2 投」）。
   await expect(region.getByText("4.6", { exact: true })).toHaveCount(0);
 });
 
