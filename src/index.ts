@@ -61,6 +61,12 @@ import {
 } from "./lib/review-schemes";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
+import {
+  ensurePublicListPrecomputes,
+  publicCourseCanonicalJoin,
+  publicCourseFamilySearchSql,
+  refreshPublicListPrecomputes,
+} from "./public-list-precompute";
 
 type Bindings = {
   DB: D1Database;
@@ -493,6 +499,9 @@ const takeRateLimit = async (
 
 app.use("/api/*", async (c, next) => {
   await next();
+  if (c.req.method !== "GET" && c.res.status < 400) {
+    await refreshPublicListPrecomputes(c.env.DB);
+  }
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "same-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
@@ -512,6 +521,7 @@ app.get("/api/config", async (c) => {
   });
 });
 app.get("/api/courses", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c),
     search = clean(c.req.query("q"), 80),
     q = `%${search}%`,
@@ -523,21 +533,17 @@ app.get("/api/courses", async (c) => {
     sort = clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews";
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
-  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?)) AND (? IS NULL OR ct.teacher_id=?) AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?) OR ${publicPeFamilySearchSql("c")})`;
+  const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
+  const searchFilter = search
+    ? ` AND (c.name LIKE ? OR c.code LIKE ? OR c.department LIKE ? OR t.name LIKE ? OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND cnv.name LIKE ?) OR ${publicCourseFamilySearchSql("pcc")})`
+    : "";
+  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchFilter}`;
   const args = [
     cat,
     department,
     department,
-    teacherId,
-    teacherId,
-    q,
-    q,
-    q,
-    q,
-    q,
-    q,
-    q,
-    q,
+    ...(teacherId === null ? [] : [teacherId]),
+    ...(search ? [q, q, q, q, q, q, q] : []),
   ];
   const searchRankArgs = [
     search,
@@ -553,8 +559,11 @@ app.get("/api/courses", async (c) => {
     prefix,
     prefix,
   ];
+  const countJoins = teacherId === null && !search
+    ? `JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id`
+    : `JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id`;
   const total = await c.env.DB.prepare(
-    `SELECT COUNT(DISTINCT c.id) n FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id WHERE ${where}`,
+    `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
   )
     .bind(...args)
     .first<{ n: number }>();
@@ -574,13 +583,12 @@ app.get("/api/courses", async (c) => {
     `SELECT c.*,
        GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
        GROUP_CONCAT(DISTINCT t.name) teachers,
-       COALESCE(course_review_counts.review_count,0) review_count,
-       (SELECT ROUND(AVG(r.overall),1) FROM reviews r
-        WHERE r.course_id=c.id AND r.status='approved'${publicReviewBinding}) rating
-     FROM courses c
-     LEFT JOIN course_teachers ct ON ct.course_id=c.id
-     LEFT JOIN teachers t ON t.id=ct.teacher_id
-     LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM (${publicTextReviewCounts}) GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id
+       COALESCE(course_review_counts.review_count,0) review_count
+      FROM courses c
+      ${publicCourseCanonicalJoin}
+      LEFT JOIN course_teachers ct ON ct.course_id=c.id
+      LEFT JOIN teachers t ON t.id=ct.teacher_id
+      LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM public_review_counts GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id
      WHERE ${where}
      GROUP BY c.id
      ORDER BY ${sort === "name" ? "c.name,c.code,c.id" : relevanceOrder}
@@ -600,9 +608,9 @@ app.get("/api/courses", async (c) => {
     department,
   );
   const listed = results.map(withPublicCourseCategory);
-  const extras = virtualItems.filter(
-    (item) => !listed.some((row) => row.name === item.name),
-  );
+  const extras = virtualItems
+    .filter((item) => !listed.some((row) => row.name === item.name))
+    .map(({ rating: _rating, ...item }) => item);
   const totalCount = (total?.n || 0) + extras.length;
   // 虚拟体育课项只落在第一页；课名排序时按同一次序并入，而不是追加在末尾。
   const byNameCodeId = (
@@ -630,6 +638,7 @@ app.get("/api/courses", async (c) => {
   });
 });
 app.get("/api/teachers", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const q = `%${search}%`;
@@ -642,12 +651,11 @@ app.get("/api/teachers", async (c) => {
     .bind(...args)
     .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
-    `SELECT t.*,
-       (SELECT COUNT(DISTINCT ${publicPeResolveCanonicalIdSql("c")}) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
-       COALESCE(teacher_review_counts.review_count,0) review_count,
-       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
-     FROM teachers t
-     LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM (${publicTextReviewCounts}) GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
+      `SELECT t.*,
+       (SELECT COUNT(DISTINCT pcc.canonical_course_id) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id JOIN public_course_canonicals pcc ON pcc.course_id=c.id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
+       COALESCE(teacher_review_counts.review_count,0) review_count
+      FROM teachers t
+      LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM public_review_counts GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
      WHERE ${where}
      ORDER BY CASE
        WHEN ?='' THEN 0
