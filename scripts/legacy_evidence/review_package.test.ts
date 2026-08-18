@@ -3,12 +3,14 @@ import { captureFormulaBarCell, type FormulaBarCellSource } from "./formula_bar"
 import {
   analysisPayload,
   applyAnalyses,
+  applyApprovals,
   applyArbitration,
   batchSizeForCells,
   buildReviewBatches,
   buildReviewInventory,
   compileReviewPackage,
   disagreements,
+  eligibleForApproval,
   parseContextDocument,
   routeFormulaBarCell,
   validateAnalysisResponse,
@@ -323,5 +325,62 @@ describe("frozen smoke context", () => {
     expect(cell.cell_image).toBe("D:/smoke/captures/体育课/G7-cell.jpg");
     expect(cell.formula_bar_value).toBe("旧冲突正文");
     expect(cell.formula_bar_visual_conflict).toBe(true);
+  });
+});
+
+describe("verifier-gated auto-approval", () => {
+  it("approves only when image-text flags and evidence are all present", async () => {
+    const evidence = await origin();
+    const inventory = buildReviewInventory({
+      evidence: [evidence],
+      context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
+      ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
+    });
+    const agreed = mapping("体育课|6|D");
+    const compiled = compileReviewPackage(inventory, applyAnalyses(
+      inventory.cells,
+      new Map([["体育课|6|D", agreed]]),
+      new Map([["体育课|6|D", agreed]]),
+    ));
+    expect(eligibleForApproval(compiled.cells[0])).toBe(true);
+    const rejected = applyApprovals(compiled.cells, new Map([["体育课|6|D", {
+      key: "体育课|6|D", approve: true, body_matches_source: true, mapping_supported: true, evidence: "",
+    }]]));
+    expect(rejected[0].approved).toBe(false);
+    const missing = applyApprovals(compiled.cells, new Map());
+    expect(missing[0].approved).toBe(false);
+    const accepted = applyApprovals(compiled.cells, new Map([["体育课|6|D", {
+      key: "体育课|6|D", approve: true, body_matches_source: true, mapping_supported: true, evidence: "D6 crop shows the formula-bar sentence",
+    }]]));
+    expect(compileReviewPackage(inventory, accepted)).toMatchObject({ approved_cells: 1 });
+    expect(accepted[0].approved).toBe(true);
+  });
+
+  it("keeps an approved cell approved on resume and does not re-queue it", async () => {
+    const evidence = await origin();
+    const agreed = mapping("体育课|6|D");
+    const inventory = buildReviewInventory({
+      evidence: [evidence],
+      context_index: [{ row: 6, course: "太极拳", teacher: "甲" }],
+      ocr_by_key: { "体育课|6|D": { text: "这门课很好" } },
+      prior_cells: [{
+        key: "体育课|6|D",
+        worksheet: "体育课",
+        row: 6,
+        column: "D",
+        routing: "pending_review",
+        conclusion: "agreed",
+        approved: true,
+        analysis_a: agreed,
+        analysis_b: agreed,
+        body_source: "formula_bar",
+        formula_bar_value: "这门课很好",
+        cell_image: "D6-cell.jpg",
+        context: { row: 6, course: "太极拳", teacher: "甲" },
+      } as RoutedCell],
+    });
+    expect(inventory.cells[0].approved).toBe(true);
+    expect(inventory.pending_verify).toEqual([]);
+    expect(inventory.pending_batches).toEqual([]);
   });
 });

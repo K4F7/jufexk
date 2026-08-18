@@ -22,16 +22,16 @@
 4. **OCR**：仍强制本机 GPU RapidOCR（三个会话均为 `CUDAExecutionProvider`），workflow 只调用 `scripts/legacy_ocr/ocr_review_cells.py` 对已路由评价起始格的裁图做识别。CUDA 不可用必须停，不得回退 CPU。缺 OCR 时清单状态为 `needs_ocr`，不派发 A/B。
 5. **A/B 审什么**：正文权威是公式栏原值。分析 A 看裁图、行上下文和公式栏原值，不看 OCR；分析 B 额外看 OCR。双方输出课程/教师可见值、锚点继承、横向溢出和画面/公式栏对应关系，不得发明第三版通顺稿，也不得改写公式栏正文。
 6. **思政课系统性画面冲突**：公式栏非空且 `visible_text_conflicts_with_formula` 时，仍采用公式栏正文，标记 `formula_bar_visual_conflict`，A/B 只审映射与溢出。不得因为常见画面冲突把整表打成 `unresolved`。定位失败（`halt_batch`、地址错位、双读不一致）仍按格 `unresolved` 并要求重截。
-7. **人工门**：编译结果是未批准审核包，`approved` 恒为 false。任何机器结论都不能绕过人工批准，也不能写入业务数据库。
+7. **批准门**：A/B 与仲裁本身不批准。独立图文核验通过后可由 [ADR-0020](./0020-verifier-gated-auto-approval.md) 把该格标为 `approved=true`。核验失败或缺失则保持未批准。不得写入业务数据库。
 
 ## 被否决的方案
 
 - **继续只用 Luna/Sol 做正文转写**：公式栏已是正文权威，再让模型通顺化会制造第三版稿，否决。
 - **用 Grok workflow 截图或定位**：#180 已否决；旧 `navigation.jsonl` 点格会错位，否决。
 - **画面与公式栏冲突一律 unresolved**：思政课全表都会被倒进人工转写，否决。
-- **仲裁即批准**：违反公开内容必须人工确认，否决。
+- **仲裁即批准**：仲裁只选边；批准改走 [ADR-0020](./0020-verifier-gated-auto-approval.md) 的独立图文核验，否决把仲裁直接当批准。
 - **把证据或评价正文纳入 Git**：否决。
 
 ## 后果
 
-仓库增加项目级 workflow `.grok/workflows/legacy-review-package.rhai` 与确定性清单编译器。#180 冒烟包冻结后，workflow 可在该包的上下文覆盖范围内无人值守跑完机器审核包。没有逐行上下文的行、以及人工批准，仍不在本 workflow 内完成。
+仓库增加项目级 workflow `.grok/workflows/legacy-review-package.rhai` 与确定性清单编译器。#180 冒烟包冻结后，workflow 可在该包的上下文覆盖范围内无人值守跑完机器审核与图文核验。没有逐行上下文的行不得猜测。生产导入仍是后续独立授权。
