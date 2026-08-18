@@ -226,6 +226,10 @@ function teacherRegion(page: Page) {
   return page.getByRole("grid", { name: "任课教师" });
 }
 
+function courseSummary(page: Page) {
+  return page.locator("header[aria-label='课程摘要']");
+}
+
 /** 点击院系列切换 `?teacher=`，避免点到姓名链接离开课程页。 */
 async function selectTeacher(page: Page, name: string) {
   await teacherRegion(page)
@@ -273,11 +277,18 @@ test("course detail shows teachers or reviews, never both", async ({
   await expect(teacherRegion(page)).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(20);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
+  const summary = courseSummary(page);
+  await expect(summary.getByRole("link", { name: "测试教师" })).toBeVisible();
+  await expect(summary).toContainText("任课教师");
+  await expect(summary.locator("dd")).toContainText("人文学院");
+  await expect(page.getByLabel("评价数概览")).toContainText("21");
 
   await page.getByRole("button", { name: "返回任课老师" }).click();
   await expect(page).toHaveURL(/\/courses\/8$/);
   await expect(teacherRegion(page)).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(0);
+  await expect(summary.getByRole("link", { name: "测试教师" })).toHaveCount(0);
+  await expect(summary.getByText("任课教师")).toHaveCount(0);
   expect(reviewRequests.filter((search) => search === "")).toHaveLength(0);
 
   await selectTeacher(page, "另一位教师");
@@ -285,6 +296,9 @@ test("course detail shows teachers or reviews, never both", async ({
   await expect(teacherRegion(page)).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(2);
   await expect(page.getByText("2 条", { exact: true })).toBeVisible();
+  await expect(summary.getByRole("link", { name: "另一位教师" })).toBeVisible();
+  await expect(summary.locator("dd")).toContainText("信息学院");
+  await expect(page.getByLabel("评价数概览")).toContainText("2");
 });
 
 test("teacher switch restores fully loaded pages from cache", async ({
@@ -345,6 +359,9 @@ test("teacher home link is the only control that leaves the course page", async 
   await expect(
     page.getByRole("button", { name: /认可/ }),
   ).toHaveCount(0);
+  await courseSummary(page).getByRole("link", { name: "测试教师" }).click();
+  await expect(page).toHaveURL(/\/teachers\/9$/);
+  await page.goto("/courses/8?teacher=9");
   await page.getByRole("button", { name: "返回任课老师" }).click();
   await expect(page).toHaveURL(/\/courses\/8$/);
   await page.getByRole("button", { name: "返回课程目录" }).click();

@@ -9,6 +9,7 @@ import {
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
+import { RouterAriaLink } from "../components/RouterAriaLink";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
@@ -106,11 +107,14 @@ function useReviewRecognitionPrototypeVariant(): "A" | "B" | "C" | null {
  * rating (scores stay on the 教师×课程 rows below, Issue #140). */
 function ProductionSummary({
   course,
+  teacher,
   reviewCount,
   onBack,
   backLabel,
 }: {
   course: Course & { teachers: Teacher[] };
+  /** Selected 课程×教师 identity; omitted on the teacher-table view. */
+  teacher?: Teacher | null;
   reviewCount: number;
   onBack: () => void;
   backLabel: string;
@@ -134,6 +138,21 @@ function ProductionSummary({
       <p className="m-0 text-muted">
         {course.code} · {course.department || "院系待补充"}
       </p>
+      {teacher ? (
+        <dl className="mb-0 mt-2 grid gap-1 text-sm">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <dt className="shrink-0 text-muted">任课教师</dt>
+            <dd className="m-0">
+              <RouterAriaLink to={`/teachers/${teacher.id}`}>
+                {teacher.name}
+              </RouterAriaLink>
+              <span className="text-muted">
+                · {teacher.department || "院系未标注"}
+              </span>
+            </dd>
+          </div>
+        </dl>
+      ) : null}
     </DetailSummary>
   );
 }
@@ -367,7 +386,12 @@ export function CourseDetailPage() {
       ) : (
         <ProductionSummary
           course={c}
-          reviewCount={data.reviewCount}
+          teacher={selectedTeacher}
+          reviewCount={
+            selectedTeacherId
+              ? (selectedTeacher?.review_count ?? 0)
+              : data.reviewCount
+          }
           backLabel={selectedTeacherId ? "返回任课老师" : "返回课程目录"}
           onBack={selectedTeacherId ? goBackToTeachers : goBack}
         />
