@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { OFFLINE_SCORES, MOOC_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
 let ipSequence = 20;
@@ -16,11 +17,21 @@ function submit(body: Record<string, unknown>) {
   });
 }
 
-async function createBoundCourse(category: string, code: string) {
+async function createBoundCourse(
+  category: string,
+  code: string,
+  extras: { schemeKey?: string; mooc?: boolean } = {},
+) {
   const course = await env.DB.prepare(
-    "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,'测试学院')",
+    extras.schemeKey
+      ? "INSERT INTO courses(code,name,category,department,scheme_key) VALUES(?,?,?,'测试学院',?)"
+      : "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,'测试学院')",
   )
-    .bind(code, `${category} 测试课 ${code}`, category)
+    .bind(
+      ...(extras.schemeKey
+        ? [code, `${category} 测试课 ${code}`, category, extras.schemeKey]
+        : [code, `${category} 测试课 ${code}`, category]),
+    )
     .run();
   const courseId = Number(course.meta.last_row_id);
   await env.DB.prepare(
@@ -28,49 +39,192 @@ async function createBoundCourse(category: string, code: string) {
   )
     .bind(courseId)
     .run();
+  if (extras.mooc) {
+    await env.DB.prepare(
+      "INSERT INTO course_tags(course_id,tag) VALUES(?,'mooc')",
+    )
+      .bind(courseId)
+      .run();
+  }
   return courseId;
 }
 
-describe("review submission minimal required fields", () => {
-  it("accepts course + teacher + overall with nothing else", async () => {
+async function insertedReview(courseId: number) {
+  return env.DB.prepare(
+    "SELECT scheme_key,scheme_version,scores,overall,comment FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
+  )
+    .bind(courseId)
+    .first<{
+      scheme_key: string | null;
+      scheme_version: number | null;
+      scores: string | null;
+      overall: number;
+      comment: string;
+    }>();
+}
+
+describe("review submission required scheme scores", () => {
+  it("rejects overall-only submissions that omit applicable dimensions", async () => {
     const courseId = await createBoundCourse("general", "REQ001");
     const response = await submit({ courseId, teacherId: 1, overall: 4 });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "请答完本次适用的评分题" });
   });
 
-  it("accepts a public-elective review without the five dimension scores", async () => {
+  it("accepts the offline core plus overall and snapshots scheme fields", async () => {
     const courseId = await createBoundCourse("general", "REQ002");
-    const response = await submit({ courseId, teacherId: 1, overall: 5 });
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 5,
+      scores: OFFLINE_SCORES,
+      schemeKey: "pe",
+      schemeVersion: 99,
+    });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true });
+    expect(await insertedReview(courseId)).toMatchObject({
+      scheme_key: "major",
+      scheme_version: 1,
+      scores: JSON.stringify({
+        attendance: 3,
+        grading: 5,
+        teaching: 4,
+        workload: 2,
+      }),
+      overall: 5,
+    });
   });
 
-  it("accepts a submission without a term", async () => {
+  it("rejects a missing applicable dimension or a score outside 1-5", async () => {
     const courseId = await createBoundCourse("general", "REQ003");
+    const missing = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: { teaching: 4, attendance: 3, grading: 5 },
+    });
+    expect(missing.status).toBe(400);
+    const range = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: { ...OFFLINE_SCORES, workload: 9 },
+    });
+    expect(range.status).toBe(400);
+  });
+
+  it("accepts a mooc course without attendance and rejects leftover attendance", async () => {
+    const courseId = await createBoundCourse("general", "REQ-MOOC", {
+      mooc: true,
+    });
+    const accepted = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: MOOC_SCORES,
+    });
+    expect(accepted.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({
+      scheme_key: "major",
+      scheme_version: 1,
+      scores: JSON.stringify({
+        grading: 5,
+        teaching: 4,
+        workload: 2,
+      }),
+    });
+    const rejected = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: { ...MOOC_SCORES, attendance: 3 },
+      term: "2026 秋",
+    });
+    expect(rejected.status).toBe(400);
+  });
+
+  it("accepts an empty review note and still stores a valid rating", async () => {
+    const courseId = await createBoundCourse("general", "REQ004");
     const response = await submit({
       courseId,
       teacherId: 1,
       overall: 3,
-      comment: "没有学期也可以投稿",
+      scores: OFFLINE_SCORES,
     });
     expect(response.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({
+      comment: "",
+      overall: 3,
+      scheme_key: "major",
+    });
+  });
+
+  it("uses pe for unclassified sports courses and the stored key when classified", async () => {
+    const sportsId = await createBoundCourse("sports", "REQ-PE");
+    const sports = await submit({
+      courseId: sportsId,
+      teacherId: 1,
+      overall: 4,
+      scores: OFFLINE_SCORES,
+    });
+    expect(sports.status).toBe(200);
+    expect(await insertedReview(sportsId)).toMatchObject({
+      scheme_key: "pe",
+      scheme_version: 1,
+    });
+
+    const ideologyId = await createBoundCourse("general", "REQ-IDEO", {
+      schemeKey: "ideology",
+    });
+    const ideology = await submit({
+      courseId: ideologyId,
+      teacherId: 1,
+      overall: 5,
+      scores: OFFLINE_SCORES,
+    });
+    expect(ideology.status).toBe(200);
+    expect(await insertedReview(ideologyId)).toMatchObject({
+      scheme_key: "ideology",
+      scheme_version: 1,
+    });
+  });
+
+  it("does not backfill scheme fields on existing review rows", async () => {
+    const inserted = await env.DB.prepare(
+      "INSERT INTO reviews(course_id,teacher_id,category,overall,comment,submitter_hash) VALUES(1,1,'general',4,'旧评价','old-row')",
+    ).run();
+    const row = await env.DB.prepare(
+      "SELECT scheme_key,scheme_version,scores FROM reviews WHERE id=?",
+    )
+      .bind(Number(inserted.meta.last_row_id))
+      .first();
+    expect(row).toEqual({
+      scheme_key: null,
+      scheme_version: null,
+      scores: null,
+    });
   });
 
   it("rejects a submission without an overall rating", async () => {
-    const courseId = await createBoundCourse("general", "REQ004");
-    const response = await submit({ courseId, teacherId: 1 });
+    const courseId = await createBoundCourse("general", "REQ005");
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      scores: OFFLINE_SCORES,
+    });
     expect(response.status).toBe(400);
   });
 
   it("rejects a course-teacher pair that is not in the catalog", async () => {
     const course = await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department) VALUES('REQ005','未绑定课','general','测试学院')",
+      "INSERT INTO courses(code,name,category,department) VALUES('REQ006','未绑定课','general','测试学院')",
     ).run();
     const response = await submit({
       courseId: Number(course.meta.last_row_id),
       teacherId: 1,
       overall: 4,
+      scores: OFFLINE_SCORES,
     });
     expect(response.status).toBe(400);
   });
@@ -81,6 +235,7 @@ describe("review submission minimal required fields", () => {
       teacherId: 1,
       offeringId: 0,
       overall: 4,
+      scores: OFFLINE_SCORES,
     });
     expect(response.status).toBe(400);
   });
@@ -90,6 +245,7 @@ describe("review submission minimal required fields", () => {
       teacherId: 1,
       offeringId: 1,
       overall: 4,
+      scores: OFFLINE_SCORES,
     });
     expect(missingCourse.status).toBe(400);
 
@@ -98,6 +254,7 @@ describe("review submission minimal required fields", () => {
       teacherId: 1,
       offeringId: 1,
       overall: 4,
+      scores: OFFLINE_SCORES,
     });
     expect(mismatchedCourse.status).toBe(400);
   });
@@ -124,6 +281,7 @@ describe("review submission minimal required fields", () => {
         offeringId,
         teacherId: 1,
         overall: 4,
+        scores: OFFLINE_SCORES,
       });
       expect(response.status).toBe(400);
     } finally {
@@ -136,15 +294,54 @@ describe("review submission minimal required fields", () => {
       ]);
     }
   });
+});
 
-  it("still validates dimension ranges when provided", async () => {
-    const courseId = await createBoundCourse("general", "REQ006");
-    const response = await submit({
-      courseId,
-      teacherId: 1,
-      overall: 4,
-      workloadScore: 9,
+describe("course scheme reads for submit", () => {
+  it("returns resolved scheme, mooc tag and applicable questions on detail and options", async () => {
+    const courseId = await createBoundCourse("general", "OPT-MOOC", {
+      mooc: true,
     });
-    expect(response.status).toBe(400);
+    const detail = await SELF.fetch(`${origin}/api/courses/${courseId}`);
+    expect(detail.status).toBe(200);
+    const detailBody = await detail.json<{
+      course: {
+        schemeKey: string;
+        schemeVersion: number;
+        tags: string[];
+        applicableQuestions: Array<{ id: string; prompt: string }>;
+      };
+    }>();
+    expect(detailBody.course).toMatchObject({
+      schemeKey: "major",
+      schemeVersion: 1,
+      tags: ["mooc"],
+    });
+    expect(detailBody.course.applicableQuestions.map((item) => item.id)).toEqual([
+      "teaching",
+      "grading",
+      "workload",
+    ]);
+    expect(
+      detailBody.course.applicableQuestions.find((item) => item.id === "grading")
+        ?.prompt,
+    ).toBe("你感受到的给分");
+
+    const options = await SELF.fetch(
+      `${origin}/api/courses/options?q=${encodeURIComponent("OPT-MOOC")}`,
+    );
+    const optionsBody = await options.json<{
+      items: Array<{
+        schemeKey: string;
+        tags: string[];
+        applicableQuestions: Array<{ id: string }>;
+      }>;
+    }>();
+    expect(optionsBody.items[0]).toMatchObject({
+      schemeKey: "major",
+      tags: ["mooc"],
+    });
+    expect(optionsBody.items[0].applicableQuestions.map((item) => item.id)).toEqual(
+      ["teaching", "grading", "workload"],
+    );
   });
 });

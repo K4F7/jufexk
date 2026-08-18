@@ -55,6 +55,10 @@ import {
   handleCreateEndorsement,
   handleWithdrawEndorsement,
 } from "./review-endorsements";
+import {
+  courseSchemeView,
+  snapshotReviewScores,
+} from "./lib/review-schemes";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
 
@@ -87,17 +91,7 @@ type Vars = {
   adminCsrf?: string;
 };
 type StashedReview = {
-  attendance: string;
-  grading: string;
-  gradingScore: number | null;
-  workload: string;
-  rescue: string;
-  assessment: string;
-  teaching: string;
-  clarity: number | null;
-  knowledge: number | null;
-  workloadScore: number | null;
-  fairness: number | null;
+  scores: unknown;
   overall: number;
   comment: string;
   term: string;
@@ -138,41 +132,53 @@ const parseStashedReview = (json: string): StashedReview | null => {
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const object = value as Record<string, unknown>;
-  const scoreFields = [
-    "gradingScore",
-    "clarity",
-    "knowledge",
-    "workloadScore",
-    "fairness",
-  ] as const;
-  const scores = Object.fromEntries(
-    scoreFields.map((field) => [field, rating(object[field])]),
-  ) as Record<(typeof scoreFields)[number], number | null>;
-  if (
-    scoreFields.some((field) => {
-      const raw = object[field];
-      return raw !== undefined && raw !== null && raw !== "" && scores[field] === null;
-    })
-  )
-    return null;
   const overall = rating(object.overall);
   if (!overall) return null;
   return {
-    attendance: clean(object.attendance, 120),
-    grading: clean(object.grading, 120),
-    gradingScore: scores.gradingScore,
-    workload: clean(object.workload, 120),
-    rescue: clean(object.rescue, 120),
-    assessment: clean(object.assessment, 200),
-    teaching: clean(object.teaching, 600),
-    clarity: scores.clarity,
-    knowledge: scores.knowledge,
-    workloadScore: scores.workloadScore,
-    fairness: scores.fairness,
+    scores: object.scores,
     overall,
     comment: clean(object.comment, 1200),
     term: clean(object.term, 30),
   };
+};
+const parseTagCsv = (value: unknown) =>
+  typeof value === "string" && value
+    ? value.split(",").map((tag) => tag.trim()).filter(Boolean)
+    : [];
+const loadCourseSchemeInput = (
+  db: D1Database,
+  courseCode: string,
+) =>
+  db
+    .prepare(
+      `SELECT scheme_key, category,
+         (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=courses.id) tag_csv
+       FROM courses WHERE code=? LIMIT 1`,
+    )
+    .bind(courseCode)
+    .first<{
+      scheme_key: string | null;
+      category: string;
+      tag_csv: string | null;
+    }>();
+const withCourseReviewScheme = <
+  T extends {
+    scheme_key?: unknown;
+    category?: unknown;
+    tag_csv?: unknown;
+    name?: unknown;
+    course_name?: unknown;
+  },
+>(
+  row: T,
+) => {
+  const view = courseSchemeView(
+    typeof row.scheme_key === "string" ? row.scheme_key : null,
+    typeof row.category === "string" ? row.category : "",
+    parseTagCsv(row.tag_csv),
+  );
+  const { scheme_key: _schemeKey, tag_csv: _tagCsv, ...rest } = row;
+  return { ...withPublicCourseCategory(rest), ...view };
 };
 const digest = async (s: string) =>
   [
@@ -756,13 +762,17 @@ app.get("/api/courses/options", async (c) => {
     .bind(...args)
     .first<{ n: number }>();
   const { results } = await c.env.DB.prepare(
-    `SELECT c.id,c.code,c.name,c.category,c.department,GROUP_CONCAT(DISTINCT t.name) teachers FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
+    `SELECT c.id,c.code,c.name,c.category,c.department,c.scheme_key,
+       (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
+       GROUP_CONCAT(DISTINCT t.name) teachers
+     FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
+     WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
   )
     .bind(...args, size, (page - 1) * size)
     .all();
   const totalCount = total?.n || 0;
   return c.json({
-    items: results.map(withPublicCourseCategory),
+    items: results.map((row) => withCourseReviewScheme(row)),
     page,
     pageSize: size,
     total: totalCount,
@@ -803,6 +813,7 @@ app.get("/api/courses/:id", async (c) => {
         department: "",
         teachers,
         nameVariants: [],
+        ...courseSchemeView(null, "sports", []),
       },
       reviewCount: 0,
     });
@@ -842,9 +853,23 @@ app.get("/api/courses/:id", async (c) => {
       .bind(id)
       .all()
   ).results;
+  const tagRows = (
+    await c.env.DB.prepare(
+      "SELECT tag FROM course_tags WHERE course_id=? ORDER BY tag",
+    )
+      .bind(id)
+      .all<{ tag: string }>()
+  ).results;
   // 课程详情不再直接返回评价流：评价按 课程×教师 作用域经 /reviews?teacherId= 获取。
   return c.json({
-    course: { ...withPublicCourseCategory(course), teachers, nameVariants },
+    course: {
+      ...withCourseReviewScheme({
+        ...course,
+        tag_csv: tagRows.map((row) => row.tag).join(","),
+      }),
+      teachers,
+      nameVariants,
+    },
     reviewCount,
   });
 });
@@ -985,7 +1010,9 @@ app.post("/api/reviews", async (c) => {
     return fail(c, "请选择有效的课程、任课教师和总体评分");
   const course = offeringId
     ? await c.env.DB.prepare(
-        `SELECT c.id course_id,c.category,o.term offering_term
+        `SELECT c.id course_id,c.category,c.scheme_key,
+           (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
+           o.term offering_term
          FROM offerings o JOIN courses c ON c.id=o.course_id
          JOIN offering_teachers ot ON ot.offering_id=o.id
          JOIN course_teachers ct
@@ -993,34 +1020,37 @@ app.post("/api/reviews", async (c) => {
          WHERE o.id=? AND o.course_id=? AND o.status='active' AND ot.teacher_id=? LIMIT 1`,
       )
         .bind(offeringId, courseId, teacherId)
-        .first<{ course_id: number; category: string; offering_term: string }>()
+        .first<{
+          course_id: number;
+          category: string;
+          scheme_key: string | null;
+          tag_csv: string | null;
+          offering_term: string;
+        }>()
     : await c.env.DB.prepare(
-        `SELECT c.id course_id,c.category FROM courses c JOIN course_teachers ct ON ct.course_id=c.id WHERE c.id=? AND ct.teacher_id=? LIMIT 1`,
+        `SELECT c.id course_id,c.category,c.scheme_key,
+           (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv
+         FROM courses c JOIN course_teachers ct ON ct.course_id=c.id
+         WHERE c.id=? AND ct.teacher_id=? LIMIT 1`,
       )
         .bind(courseId, teacherId)
         .first<{
           course_id: number;
           category: string;
+          scheme_key: string | null;
+          tag_csv: string | null;
           offering_term?: string;
         }>();
   if (course) courseId = course.course_id;
   if (!course || !overall)
     return fail(c, "请选择有效的课程、任课教师和总体评分");
-  const clarity = rating(b.clarity),
-    knowledge = rating(b.knowledge),
-    gradingScore = rating(b.gradingScore),
-    workloadScore = rating(b.workloadScore),
-    fairness = rating(b.fairness);
-  const provided = (value: unknown) =>
-    value !== undefined && value !== null && value !== "";
-  if (
-    (provided(b.clarity) && !clarity) ||
-    (provided(b.knowledge) && !knowledge) ||
-    (provided(b.gradingScore) && !gradingScore) ||
-    (provided(b.workloadScore) && !workloadScore) ||
-    (provided(b.fairness) && !fairness)
-  )
-    return fail(c, "评分必须在 1 到 5 之间");
+  const snapshot = snapshotReviewScores({
+    schemeKey: course.scheme_key,
+    category: course.category,
+    tags: parseTagCsv(course.tag_csv),
+    scores: b.scores,
+  });
+  if (!snapshot.ok) return fail(c, snapshot.error);
   if (!(await takeRateLimit(c.env.DB, `review-submit:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
   const term = offeringId
@@ -1040,30 +1070,20 @@ app.post("/api/reviews", async (c) => {
         dedupeKey,
       ),
       c.env.DB.prepare(
-        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,attendance,grading,grading_score,workload,rescue,assessment,teaching,clarity,knowledge,interest,practicality,workload_score,fairness,organization,overall,comment,term,submitter_hash)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,term,submitter_hash,scheme_key,scheme_version,scores)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
       ).bind(
         courseId,
         teacherId,
         offeringId,
         course.category,
-        clean(b.attendance, 120),
-        clean(b.grading, 120),
-        gradingScore,
-        clean(b.workload, 120),
-        "",
-        clean(b.assessment, 200),
-        clean(b.teaching, 600),
-        clarity,
-        knowledge,
-        null,
-        null,
-        workloadScore,
-        fairness,
-        null,
         overall,
         clean(b.comment, 1200),
         term,
         ipHash,
+        snapshot.schemeKey,
+        snapshot.schemeVersion,
+        snapshot.scoresJson,
       ),
     ]);
   } catch (error) {
@@ -1115,48 +1135,25 @@ app.post("/api/catalog-requests", async (c) => {
     return fail(c, "随附评价必须同时填写课程和教师，以便绑定任课关系");
   const overall = review ? rating(review.overall) : null;
   if (review && !overall) return fail(c, "随附评价必须包含 1 到 5 的总体评分");
-  const reviewScores = review
-    ? {
-        clarity: rating(review.clarity),
-        knowledge: rating(review.knowledge),
-        gradingScore: rating(review.gradingScore),
-        workloadScore: rating(review.workloadScore),
-        fairness: rating(review.fairness),
-      }
-    : null;
-  if (
-    review &&
-    Object.entries({
-      clarity: review.clarity,
-      knowledge: review.knowledge,
-      gradingScore: review.gradingScore,
-      workloadScore: review.workloadScore,
-      fairness: review.fairness,
-    }).some(
-      ([field, value]) =>
-        value !== undefined && value !== null && value !== "" &&
-        !reviewScores?.[field as keyof typeof reviewScores],
-    )
-  )
-    return fail(c, "评分必须在 1 到 5 之间");
-  const stashedReview: StashedReview | null = review
-    ? {
-        attendance: clean(review.attendance, 120),
-        grading: clean(review.grading, 120),
-        gradingScore: reviewScores?.gradingScore || null,
-        workload: clean(review.workload, 120),
-        rescue: clean(review.rescue, 120),
-        assessment: clean(review.assessment, 200),
-        teaching: clean(review.teaching, 600),
-        clarity: reviewScores?.clarity || null,
-        knowledge: reviewScores?.knowledge || null,
-        workloadScore: reviewScores?.workloadScore || null,
-        fairness: reviewScores?.fairness || null,
-        overall: overall as number,
-        comment: clean(review.comment, 1200),
-        term: clean(review.term, 30),
-      }
-    : null;
+  let stashedReview: StashedReview | null = null;
+  if (review) {
+    const existingCourse = courseCode
+      ? await loadCourseSchemeInput(c.env.DB, courseCode)
+      : null;
+    const snapshot = snapshotReviewScores({
+      schemeKey: existingCourse?.scheme_key,
+      category: existingCourse?.category ?? category,
+      tags: parseTagCsv(existingCourse?.tag_csv),
+      scores: review.scores,
+    });
+    if (!snapshot.ok) return fail(c, snapshot.error);
+    stashedReview = {
+      scores: snapshot.scores,
+      overall: overall as number,
+      comment: clean(review.comment, 1200),
+      term: clean(review.term, 30),
+    };
+  }
   if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
   const result = await c.env.DB.prepare(
@@ -1756,34 +1753,34 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
   if (createsReview) {
     const stashed = parseStashedReview(request.pending_review_json);
     if (!stashed) return fail(c, "暂存评价数据无效", 409);
+    const existingCourse = request.course_code
+      ? await loadCourseSchemeInput(c.env.DB, request.course_code)
+      : null;
+    const snapshot = snapshotReviewScores({
+      schemeKey: existingCourse?.scheme_key,
+      category: existingCourse?.category ?? request.category,
+      tags: parseTagCsv(existingCourse?.tag_csv),
+      scores: stashed.scores,
+    });
+    if (!snapshot.ok) return fail(c, "暂存评价数据无效", 409);
     statements.push(
       c.env.DB.prepare(
         `INSERT INTO reviews(
-           course_id,teacher_id,category,attendance,grading,grading_score,
-           workload,rescue,assessment,teaching,clarity,knowledge,
-           workload_score,fairness,overall,comment,
-           term,submitter_hash
+           course_id,teacher_id,category,overall,comment,
+           term,submitter_hash,scheme_key,scheme_version,scores
          )
-         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?
          FROM courses c,teachers t
          WHERE c.code=? AND t.source_teacher_label=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
-        stashed.attendance || "",
-        stashed.grading || "",
-        stashed.gradingScore ?? null,
-        stashed.workload || "",
-        stashed.rescue || "",
-        stashed.assessment || "",
-        stashed.teaching || "",
-        stashed.clarity ?? null,
-        stashed.knowledge ?? null,
-        stashed.workloadScore ?? null,
-        stashed.fairness ?? null,
         stashed.overall,
         stashed.comment || "",
         stashed.term || "",
         request.submitter_hash,
+        snapshot.schemeKey,
+        snapshot.schemeVersion,
+        snapshot.scoresJson,
         request.course_code,
         request.teacher_source_label,
         id,

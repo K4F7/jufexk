@@ -25,8 +25,12 @@ describe("review template kind migration", () => {
       "SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('courses','reviews','legacy_reviews','catalog_requests') ORDER BY name",
     ).all<{ sql: string }>();
     const sql = schema.results.map((row) => row.sql).join("\n");
-    expect(sql).toContain("'general','sports'");
-    expect(sql).not.toMatch(/'major'|'pe'|'required'|'elective'/);
+    const categoryChecks = sql.match(/category TEXT[^,]*CHECK\([^)]+\)/g) ?? [];
+    expect(categoryChecks.length).toBeGreaterThan(0);
+    for (const check of categoryChecks) {
+      expect(check).toContain("'general','sports'");
+      expect(check).not.toMatch(/'major'|'pe'|'required'|'elective'/);
+    }
     expect(
       await env.DB.prepare(
         `SELECT COUNT(*) n FROM (

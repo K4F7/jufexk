@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { OFFLINE_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
 let loginSequence = 180;
@@ -209,6 +210,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
       offeringId,
       teacherId: 1,
       overall: 4,
+      scores: OFFLINE_SCORES,
       term: "伪造但应被覆盖",
     });
     expect(submitted.status).toBe(200);
@@ -248,7 +250,12 @@ describe("backend regression fixes: fields and catalog relations", () => {
     )
       .bind(courseId)
       .run();
-    const submitted = await submitReview({ courseId, teacherId: 1, overall: 5 });
+    const submitted = await submitReview({
+      courseId,
+      teacherId: 1,
+      overall: 5,
+      scores: OFFLINE_SCORES,
+    });
     expect(submitted.status).toBe(200);
     const auth = await login();
     const put = await SELF.fetch(`${origin}/api/admin/courses/${courseId}/teachers`, {
@@ -318,7 +325,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
     const ip = "203.0.113.250";
     const comment = unique("IP-HMAC");
     const response = await submitReviewFromIp(
-      { courseId: 1, teacherId: 1, overall: 4, comment },
+      { courseId: 1, teacherId: 1, overall: 4, scores: OFFLINE_SCORES, comment },
       ip,
     );
     expect(response.status).toBe(200);
@@ -355,7 +362,11 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         category: "general",
         department: "测试学院",
         teacherSourceLabel: `${code} 申请教师`,
-        review: { overall: 5, comment: `${code} 附带评价` },
+        review: {
+          overall: 5,
+          comment: `${code} 附带评价`,
+          scores: OFFLINE_SCORES,
+        },
       }),
     });
     expect(submitted.status).toBe(200);
@@ -753,11 +764,25 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       .run();
     const ip = `203.0.113.${ipSequence++}`;
     const first = await submitReviewFromIp(
-      { courseId, offeringId, teacherId: 1, overall: 4, term: "伪造学期 A" },
+      {
+        courseId,
+        offeringId,
+        teacherId: 1,
+        overall: 4,
+        scores: OFFLINE_SCORES,
+        term: "伪造学期 A",
+      },
       ip,
     );
     const second = await submitReviewFromIp(
-      { courseId, offeringId, teacherId: 1, overall: 5, term: "伪造学期 B" },
+      {
+        courseId,
+        offeringId,
+        teacherId: 1,
+        overall: 5,
+        scores: OFFLINE_SCORES,
+        term: "伪造学期 B",
+      },
       ip,
     );
     expect(first.status).toBe(200);
@@ -785,6 +810,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       courseId,
       teacherId: 1,
       overall: 4,
+      scores: OFFLINE_SCORES,
       term: "2026 秋",
       comment: unique("30天后重投"),
     };
@@ -821,7 +847,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       courseId,
       teacherId: 1,
       overall: 4,
-      clarity: 0,
+      scores: { ...OFFLINE_SCORES, teaching: 0 },
     });
     expect(response.status).toBe(400);
     await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();
@@ -841,6 +867,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       courseId: 1,
       teacherId: 1,
       overall: "4",
+      scores: OFFLINE_SCORES,
       comment: unique("字符串评分"),
     });
     expect(validString.status).toBe(200);
