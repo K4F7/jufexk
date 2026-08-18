@@ -103,8 +103,13 @@ function assertOtherSmokeOutputPath(path: string) {
   if (!resolved.includes("/other-smoke")) {
     throw new Error("other-smoke output must stay under scripts/legacy_evidence/output/other-smoke*");
   }
-  if (resolved.includes("/smoke-20260818-v1") || resolved.includes("/formula-bar-full-") || resolved.includes("/formula-bar-rebuild-")) {
-    throw new Error("other-smoke output must not overwrite the #180 smoke pack or formula-bar packs");
+  if (
+    resolved.includes("/smoke-20260818-v1")
+    || resolved.includes("/smoke-rest-20260818-v1")
+    || resolved.includes("/formula-bar-full-")
+    || resolved.includes("/formula-bar-rebuild-")
+  ) {
+    throw new Error("other-smoke output must not overwrite the #180 smoke pack, smoke-rest pack, or formula-bar packs");
   }
 }
 

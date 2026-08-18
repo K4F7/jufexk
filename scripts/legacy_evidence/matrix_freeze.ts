@@ -31,6 +31,7 @@ export const MATRIX_FREEZE_REQUIRED_WINDOW = { width: 2560, height: 1440 } as co
 
 export const PROTECTED_FREEZE_OUTPUT_MARKERS = [
   "/smoke-20260818-v1",
+  "/smoke-rest-20260818-v1",
   "/formula-bar-full-",
   "/formula-bar-rebuild-",
   "/other-smoke-20260819-v1",
@@ -542,7 +543,7 @@ export function assertMatrixFreezeOutputPath(path: string) {
     throw new Error("matrix freeze output must stay inside scripts/legacy_evidence/output");
   }
   if (PROTECTED_FREEZE_OUTPUT_MARKERS.some((marker) => resolved.includes(marker))) {
-    throw new Error("matrix freeze output must not overwrite #180 or an existing formula-bar pack");
+    throw new Error("matrix freeze output must not overwrite #180, smoke-rest, or an existing formula-bar pack");
   }
 }
 

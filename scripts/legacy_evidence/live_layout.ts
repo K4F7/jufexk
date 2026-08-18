@@ -18,6 +18,7 @@ export const LIVE_LAYOUT_WORKSHEETS = [
 
 export const PROTECTED_LIVE_LAYOUT_OUTPUT_MARKERS = [
   "/smoke-20260818-v1",
+  "/smoke-rest-20260818-v1",
   "/other-smoke-20260819-v1",
   "/formula-bar-full-",
   "/formula-bar-rebuild-",
@@ -141,7 +142,7 @@ export function validateLiveLayout(value: unknown): asserts value is LiveLayout 
 export function assertLiveLayoutOutputPath(path: string) {
   const resolved = resolve(path).replaceAll("\\", "/");
   if (PROTECTED_LIVE_LAYOUT_OUTPUT_MARKERS.some((marker) => resolved.includes(marker))) {
-    throw new Error("live layout output must not overwrite protected #180, #229, or formula-bar packs");
+    throw new Error("live layout output must not overwrite protected #180, #229, smoke-rest, or formula-bar packs");
   }
   if (!resolved.includes(LIVE_LAYOUT_OUTPUT_RELATIVE)) {
     throw new Error(`live layout output must stay inside ${LIVE_LAYOUT_OUTPUT_RELATIVE}`);

@@ -312,14 +312,16 @@ describe("legacy matrix freeze locate and QA", () => {
     expect(manifest.wrote_tencent_or_business_db).toBe(false);
     const protectedPaths = [
       "scripts/legacy_evidence/output/smoke-20260818-v1/manifest.json",
+      "scripts/legacy_evidence/output/smoke-rest-20260818-v1/manifest.json",
       "scripts/legacy_evidence/output/other-smoke-20260819-v1/manifest.json",
       "scripts/legacy_evidence/output/formula-bar-full-20260729-v1/audit.json",
     ];
     const before = await Promise.all(protectedPaths.map(fileSha256IfPresent));
     expect(() => assertMatrixFreezeOutputPath("scripts/legacy_evidence/output/matrix-freeze-20260819-v1/manifest.json")).not.toThrow();
     expect(() => assertMatrixFreezeOutputPath(protectedPaths[0]!)).toThrow(/#180/);
-    expect(() => assertMatrixFreezeOutputPath(protectedPaths[1]!)).toThrow(/#180|formula-bar/);
-    expect(() => assertMatrixFreezeOutputPath(protectedPaths[2]!)).toThrow(/formula-bar/);
+    expect(() => assertMatrixFreezeOutputPath(protectedPaths[1]!)).toThrow(/#180|smoke-rest|formula-bar/);
+    expect(() => assertMatrixFreezeOutputPath(protectedPaths[2]!)).toThrow(/#180|smoke-rest|formula-bar/);
+    expect(() => assertMatrixFreezeOutputPath(protectedPaths[3]!)).toThrow(/formula-bar/);
     expect(await Promise.all(protectedPaths.map(fileSha256IfPresent))).toEqual(before);
   });
 
