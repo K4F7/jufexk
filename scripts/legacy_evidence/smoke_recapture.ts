@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import {
+  captureCompositionPair,
+  type CompositionDomObservation,
+  type CompositionFrame,
+} from "./composition_qa";
 import { buildFrozenFormulaBarMatrixPlan, buildFormulaBarMatrixPlan, type FormulaBarMatrixPlan } from "./formula_bar_locator";
 
 export const SMOKE_REUSE_RECAPTURE_VERSION = "smoke-reuse-recapture-v1" as const;
@@ -246,10 +251,12 @@ export interface SmokeRowCaptureSource {
   moveRight(): Promise<void>;
   readActiveAddress(): Promise<string>;
   readFormulaBar(): Promise<string>;
-  captureFormulaImage(address: string): Promise<SmokeImageRef>;
-  captureCellImage(address: string): Promise<SmokeImageRef>;
+  grabFormulaImage(address: string): Promise<CompositionFrame>;
+  grabCellImage(address: string): Promise<CompositionFrame>;
+  writeFrozenImage(input: { filename: string; bytes: Uint8Array }): Promise<SmokeImageRef>;
   captureContextGroup(name: string): Promise<SmokeImageRef>;
   captureConflictImage(name: string): Promise<SmokeImageRef>;
+  readCompositionObservation(address: string): Promise<Partial<CompositionDomObservation>>;
   expandFormulaBar?(): Promise<void>;
   isFormulaBarTruncated?(): Promise<boolean>;
   now(): string;
@@ -266,6 +273,7 @@ export type SmokeRowCaptureResult = {
   course_anchor_address: string | null;
   context_group: SmokeImageRef | null;
   conflict_image: SmokeImageRef | null;
+  recapture_required_addresses: string[];
 };
 
 export type SmokeCourseRead = {
@@ -596,6 +604,7 @@ export async function runSmokeRowCapture(
   const actions: string[] = [];
   const captures: SmokeCellCapture[] = [];
   const blanksConfirmed: string[] = [];
+  const recaptureRequired: string[] = [];
   let courseAnchorAddress: string | null = null;
   let contextGroup: SmokeImageRef | null = null;
   let activeAddress = "";
@@ -615,6 +624,7 @@ export async function runSmokeRowCapture(
     return {
       blocked: false as const,
       active_addresses: [firstAddress, secondAddress] as const,
+      formula_bar_reads: [firstValue, secondValue] as const,
       value: firstValue,
     };
   };
@@ -653,7 +663,7 @@ export async function runSmokeRowCapture(
       await source.locateByAddressBox(address);
       actions.push(`locate:${address}`);
       let reads = await doubleRead(address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, courseAnchorAddress, reads);
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
       if (step.walk_up_if_empty && reads.value.length === 0) {
         const parsed = parseAddress(address);
         for (let row = parsed.row - 1; row >= 1; row -= 1) {
@@ -661,7 +671,7 @@ export async function runSmokeRowCapture(
           await source.locateByAddressBox(address);
           actions.push(`locate:${address}`);
           reads = await doubleRead(address);
-          if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, courseAnchorAddress, reads);
+          if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
           if (reads.value.length > 0) break;
         }
       }
@@ -673,7 +683,7 @@ export async function runSmokeRowCapture(
       await source.moveRight();
       actions.push(`move:${step.address}`);
       const reads = await doubleRead(step.address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, courseAnchorAddress, reads);
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
       activeAddress = step.address;
       continue;
     }
@@ -684,22 +694,37 @@ export async function runSmokeRowCapture(
         actions.push(`locate:${address}`);
       }
       const reads = await doubleRead(address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, courseAnchorAddress, reads);
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
       if (reads.value.length > 40) {
         await source.expandFormulaBar?.();
         actions.push(`expand:${address}`);
       }
       const truncated = await source.isFormulaBarTruncated?.() ?? false;
-      const formulaImage = await source.captureFormulaImage(address);
-      const cellImage = await source.captureCellImage(address);
+      const extra = await source.readCompositionObservation(address);
+      const pair = await captureCompositionPair({
+        observation: {
+          target_address: address,
+          active_address: reads.active_addresses[1],
+          view_only_visible: extra.view_only_visible === true,
+          address_box_present: extra.address_box_present === true,
+          formula_bar_reads: reads.formula_bar_reads,
+          formula_bar_record_sha256: step.bind_reuse_sha256,
+          formula_clip: extra.formula_clip,
+          chrome_rects: extra.chrome_rects,
+        },
+        grabFormula: () => source.grabFormulaImage(address),
+        grabCell: () => source.grabCellImage(address),
+      });
       actions.push(`formula:${address}`, `cell:${address}`);
-      if (formulaImage.sha256 === cellImage.sha256) {
-        return blockedResult(actions, captures, blanksConfirmed, courseAnchorAddress, {
-          reason: "formula_cell_hash_collision",
-          target: address,
-          active: address,
-          conflict: null,
-        });
+      if (pair.status === "recapture_required") {
+        recaptureRequired.push(address);
+        actions.push(`recapture_required:${address}`);
+        continue;
+      }
+      const formulaImage = await source.writeFrozenImage({ filename: `${address}-formula.jpg`, bytes: pair.formula.bytes });
+      const cellImage = await source.writeFrozenImage({ filename: `${address}-cell.jpg`, bytes: pair.cell.bytes });
+      if (formulaImage.sha256 !== pair.formula.sha256 || cellImage.sha256 !== pair.cell.sha256) {
+        throw new Error(`smoke screenshot hash mismatch: ${address}`);
       }
       captures.push(buildCaptureRecord({
         worksheet: plan.worksheet,
@@ -717,9 +742,9 @@ export async function runSmokeRowCapture(
     }
     if (step.type === "confirm_blank" || step.type === "confirm_overflow_blank") {
       const reads = await doubleRead(step.address);
-      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, courseAnchorAddress, reads);
+      if (reads.blocked) return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, reads);
       if (reads.value.length > 0) {
-        return blockedResult(actions, captures, blanksConfirmed, courseAnchorAddress, {
+        return blockedResult(actions, captures, blanksConfirmed, recaptureRequired, courseAnchorAddress, {
           reason: "expected_blank_had_formula",
           target: step.address,
           active: step.address,
@@ -749,6 +774,7 @@ export async function runSmokeRowCapture(
     course_anchor_address: courseAnchorAddress,
     context_group: contextGroup,
     conflict_image: null,
+    recapture_required_addresses: recaptureRequired,
   };
 }
 
@@ -780,6 +806,9 @@ export function evaluateSportsRow6(result: SmokeRowCaptureResult, inventory: Smo
   if (!result.captures.some((item) => item.role === "course") || !result.captures.some((item) => item.role === "teacher")) {
     issues.push("sports row 6 is missing course or teacher formula/cell captures");
   }
+  if (result.recapture_required_addresses.length > 0) {
+    issues.push(`composition recapture required: ${result.recapture_required_addresses.join(",")}`);
+  }
   if (!result.context_group) issues.push("sports row 6 is missing the A-C context group image");
   return { passed: issues.length === 0, issues };
 }
@@ -791,6 +820,7 @@ export function buildSmokeCaptureQa(options: {
   sportsRow6: SmokeRowCaptureResult | null;
   probeNotes?: readonly SmokeProbeNote[];
   reusedRecordSha256s?: ReadonlyMap<string, string>;
+  compositionFailures?: readonly { key?: string; address?: string; issues: string[] }[];
 }): SmokeCaptureQa {
   const issues: string[] = [];
   const reviews = options.inventory.sheets.flatMap((sheet) => sheet.rows.flatMap((row) => row.reviews));
@@ -822,6 +852,10 @@ export function buildSmokeCaptureQa(options: {
   }
   const sportsRow6 = options.sportsRow6 ? evaluateSportsRow6(options.sportsRow6, options.inventory) : { passed: false, issues: ["sports row 6 has not been captured"] };
   issues.push(...sportsRow6.issues);
+  for (const failure of options.compositionFailures ?? []) {
+    const label = failure.key ?? failure.address ?? "cell";
+    issues.push(`composition rejected: ${label}: ${failure.issues.join("; ")}`);
+  }
   if (options.contextIndex.pending_walk_up_rows > 0) {
     issues.push(`context index still has ${options.contextIndex.pending_walk_up_rows} unresolved course spans`);
   }
@@ -1075,6 +1109,7 @@ function blockedResult(
   actions: string[],
   captures: SmokeCellCapture[],
   blanksConfirmed: string[],
+  recaptureRequired: string[],
   courseAnchorAddress: string | null,
   block: { reason: string; target: string; active: string; conflict: SmokeImageRef | null },
 ): SmokeRowCaptureResult {
@@ -1089,6 +1124,7 @@ function blockedResult(
     course_anchor_address: courseAnchorAddress,
     context_group: null,
     conflict_image: block.conflict,
+    recapture_required_addresses: recaptureRequired,
   };
 }
 

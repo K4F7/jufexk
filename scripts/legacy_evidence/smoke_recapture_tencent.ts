@@ -1,6 +1,18 @@
 import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  cropRgba,
+  decodePng,
+  encodePng,
+  windowCompositionBands,
+  type CompositionDomObservation,
+  type CompositionFrame,
+} from "./composition_qa";
 import { TENCENT_SHEET_SELECTORS } from "./formula_bar_tencent";
 import type { SmokeImageRef, SmokeRowCaptureSource } from "./smoke_recapture";
+import { captureSheetWindowPng } from "./window_capture";
 
 type Locator = {
   count(): Promise<number>;
@@ -30,6 +42,8 @@ export function createTencentSmokeRowCaptureSource(options: {
   selectWorksheet?(worksheet: string): Promise<void>;
   settle?(): Promise<void>;
   viewport(): Promise<{ width: number; height: number }>;
+  hwnd?: string;
+  grabWindow?(): Promise<{ method: "print_window"; png: Uint8Array; width: number; height: number }>;
 }): SmokeRowCaptureSource {
   const addressBox = options.tab.playwright.locator(TENCENT_SHEET_SELECTORS.addressBox);
   const formulaBar = options.tab.playwright.locator(TENCENT_SHEET_SELECTORS.formulaBar);
@@ -79,11 +93,43 @@ export function createTencentSmokeRowCaptureSource(options: {
     return { x: left, y: top, width: Math.max(1, right - left), height: Math.max(1, formulaBottom - top) };
   };
 
-  const take = async (filename: string, kind: "formula" | "cell" | "full") => {
+  const grabWindow = options.grabWindow ?? (options.hwnd
+    ? async () => {
+      const directory = await mkdtemp(join(tmpdir(), "jufexk-print-window-"));
+      const outPng = join(directory, "window.png");
+      try {
+        const captured = await captureSheetWindowPng({ hwnd: options.hwnd!, outPng });
+        return {
+          method: "print_window" as const,
+          png: new Uint8Array(await readFile(captured.path)),
+          width: captured.width,
+          height: captured.height,
+        };
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+    : undefined);
+
+  const grab = async (kind: "formula" | "cell" | "full"): Promise<CompositionFrame> => {
+    if (grabWindow && kind !== "full") {
+      const window = await grabWindow();
+      if (window.method !== "print_window") {
+        throw new Error("sheet window grab must use PrintWindow");
+      }
+      const image = decodePng(window.png);
+      const bands = windowCompositionBands(image.width, image.height);
+      return { method: "print_window", bytes: encodePng(cropRgba(image, bands[kind])) };
+    }
     const clip = kind === "full" ? undefined : await clipUnion(kind);
     const bytes = await options.tab.screenshot({ fullPage: false, ...(clip ? { clip } : {}) });
-    const reference = await options.writeScreenshot({ filename, bytes });
-    if (reference.sha256 !== createHash("sha256").update(bytes).digest("hex")) {
+    return { method: "playwright_page", bytes };
+  };
+
+  const take = async (filename: string, kind: "formula" | "cell" | "full") => {
+    const frame = await grab(kind);
+    const reference = await options.writeScreenshot({ filename, bytes: frame.bytes });
+    if (reference.sha256 !== createHash("sha256").update(frame.bytes).digest("hex")) {
       throw new Error(`smoke screenshot hash mismatch: ${filename}`);
     }
     return reference;
@@ -116,11 +162,43 @@ export function createTencentSmokeRowCaptureSource(options: {
       if (!formulaBar.textContent) throw new Error("Tencent sheet formula bar cannot be read");
       return (await formulaBar.textContent()) ?? "";
     },
-    async captureFormulaImage(address) {
-      return take(`${address}-formula.jpg`, "formula");
+    async grabFormulaImage() {
+      return grab("formula");
     },
-    async captureCellImage(address) {
-      return take(`${address}-cell.jpg`, "cell");
+    async grabCellImage() {
+      return grab("cell");
+    },
+    async writeFrozenImage(input) {
+      const reference = await options.writeScreenshot(input);
+      if (reference.sha256 !== createHash("sha256").update(input.bytes).digest("hex")) {
+        throw new Error(`smoke screenshot hash mismatch: ${input.filename}`);
+      }
+      return reference;
+    },
+    async readCompositionObservation(): Promise<Partial<CompositionDomObservation>> {
+      const viewOnlyVisible = await viewOnly.count() === 1 && !!viewOnly.isVisible && await viewOnly.isVisible();
+      const addressBoxPresent = await addressBox.count() === 1;
+      if (grabWindow) {
+        return {
+          view_only_visible: viewOnlyVisible,
+          address_box_present: addressBoxPresent,
+        };
+      }
+      const [addressRect, formulaRect, viewOnlyRect] = await Promise.all([
+        addressBox.boundingBox?.() ?? Promise.resolve(null),
+        formulaBar.boundingBox?.() ?? Promise.resolve(null),
+        viewOnly.boundingBox?.() ?? Promise.resolve(null),
+      ]);
+      return {
+        view_only_visible: viewOnlyVisible,
+        address_box_present: addressBoxPresent,
+        formula_clip: await clipUnion("formula"),
+        chrome_rects: {
+          view_only: viewOnlyRect,
+          address_box: addressRect,
+          formula_bar: formulaRect,
+        },
+      };
     },
     async captureContextGroup(name) {
       return take(name, "cell");
