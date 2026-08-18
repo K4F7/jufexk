@@ -33,3 +33,14 @@ npx --yes skills@latest add https://github.com/mattpocock/skills.git \
   to-questionnaire \
   wait-what \
   writing-for-agents
+
+# Slash menus often scan ~/.cursor/skills, while the installer writes ~/.agents/skills.
+if [ -d "${HOME}/.agents/skills" ]; then
+  mkdir -p "${HOME}/.cursor/skills"
+  for skill_dir in "${HOME}/.agents/skills"/*/; do
+    [ -f "${skill_dir}SKILL.md" ] || continue
+    name="$(basename "${skill_dir}")"
+    rm -rf "${HOME}/.cursor/skills/${name}"
+    cp -a "${skill_dir}" "${HOME}/.cursor/skills/${name}"
+  done
+fi

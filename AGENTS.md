@@ -31,6 +31,10 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 
 单上下文布局：根目录 `CONTEXT.md` + `docs/adr/`。见 `docs/agents/domain.md`。
 
+### Matt Pocock skills
+
+官方推荐集在 `.agents/skills/`（与 `heroui-react` 并列）。`/grill-me`、`/implement`、`/triage` 等带 `disable-model-invocation` 的 skill 必须用 `/skill-name` 显式调用；Cloud Agent 对话开始时才会扫描仓库 skill，已在跑的会话不会自动出现。
+
 ### HeroUI React (v3)
 
 本仓库 UI 使用 HeroUI v3（`@heroui/react` + `@heroui/styles` + Tailwind CSS v4）。
