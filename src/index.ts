@@ -57,8 +57,12 @@ import {
 } from "./review-endorsements";
 import {
   courseSchemeView,
+  isCourseTag,
+  isSchemeKey,
   publicDimensionAverage,
   snapshotReviewScores,
+  type CourseTag,
+  type SchemeKey,
 } from "./lib/review-schemes";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
@@ -156,6 +160,24 @@ const parseTagCsv = (value: unknown) =>
   typeof value === "string" && value
     ? value.split(",").map((tag) => tag.trim()).filter(Boolean)
     : [];
+const parseAdminSchemeKey = (raw: unknown) => {
+  if (raw === undefined) return { provided: false as const };
+  if (typeof raw !== "string" || !isSchemeKey(raw))
+    return { provided: true as const, error: "评价规则无效" };
+  return { provided: true as const, value: raw as SchemeKey };
+};
+const parseAdminTags = (raw: unknown) => {
+  if (raw === undefined) return { provided: false as const };
+  if (!Array.isArray(raw))
+    return { provided: true as const, error: "课程标签无效" };
+  const tags: CourseTag[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string" || !isCourseTag(item))
+      return { provided: true as const, error: "未知课程标签" };
+    if (!tags.includes(item)) tags.push(item);
+  }
+  return { provided: true as const, value: tags };
+};
 const loadCourseSchemeInput = (
   db: D1Database,
   courseCode: string,
@@ -1665,6 +1687,7 @@ app.get("/api/admin/reviews", async (c) => {
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
         r.comment,r.term,r.status,r.moderator_note,r.created_at,r.reviewed_at,
+        r.scheme_key,r.scheme_version,
         c.name course_name,c.code,t.name teacher_name
        FROM reviews r JOIN courses c ON c.id=r.course_id
        LEFT JOIN teachers t ON t.id=r.teacher_id
@@ -2256,15 +2279,23 @@ app.delete("/api/admin/offerings/:id", async (c) => {
   await c.env.DB.prepare("DELETE FROM offerings WHERE id=?").bind(id).run();
   return c.json({ ok: true });
 });
-app.get("/api/admin/courses", async (c) =>
-  c.json(
-    (
-      await c.env.DB.prepare(
-        `SELECT c.*,GROUP_CONCAT(t.id) teacher_ids,GROUP_CONCAT(t.name) teachers FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id GROUP BY c.id ORDER BY c.name`,
-      ).all()
-    ).results,
-  ),
-);
+app.get("/api/admin/courses", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT c.*,
+       (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
+       GROUP_CONCAT(t.id) teacher_ids,GROUP_CONCAT(t.name) teachers
+     FROM courses c
+     LEFT JOIN course_teachers ct ON ct.course_id=c.id
+     LEFT JOIN teachers t ON t.id=ct.teacher_id
+     GROUP BY c.id ORDER BY c.name`,
+  ).all();
+  return c.json(
+    results.map((row) => {
+      const { tag_csv: tagCsv, ...rest } = row as Record<string, unknown>;
+      return { ...rest, tags: parseTagCsv(tagCsv) };
+    }),
+  );
+});
 app.post("/api/admin/courses", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
   const name = clean(b.name, 120),
@@ -2273,6 +2304,10 @@ app.post("/api/admin/courses", async (c) => {
     department = clean(b.department, 80),
     description = clean(b.description, 500),
     teacherIdsProvided = Object.hasOwn(b, "teacherIds");
+  const scheme = parseAdminSchemeKey(b.schemeKey);
+  if (scheme.provided && "error" in scheme) return fail(c, scheme.error);
+  const tags = parseAdminTags(b.tags);
+  if (tags.provided && "error" in tags) return fail(c, tags.error);
   if (!code || !name || !["general", "sports"].includes(category))
     return fail(c, "课号、课程名称和类别无效");
   let id = integer(b.id);
@@ -2369,9 +2404,22 @@ app.post("/api/admin/courses", async (c) => {
       }
     }
     const statements: D1PreparedStatement[] = [
-      c.env.DB.prepare(
-        "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=? WHERE id=?",
-      ).bind(code, name, category, department, credits, description, id),
+      scheme.provided
+        ? c.env.DB.prepare(
+            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,scheme_key=? WHERE id=?",
+          ).bind(
+            code,
+            name,
+            category,
+            department,
+            credits,
+            description,
+            scheme.value,
+            id,
+          )
+        : c.env.DB.prepare(
+            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=? WHERE id=?",
+          ).bind(code, name, category, department, credits, description, id),
     ];
     if (teacherIdsProvided) {
       statements.push(
@@ -2385,12 +2433,34 @@ app.post("/api/admin/courses", async (c) => {
         ),
       );
     }
+    if (tags.provided) {
+      statements.push(
+        c.env.DB.prepare("DELETE FROM course_tags WHERE course_id=?").bind(id),
+        ...tags.value.map((tag) =>
+          c.env.DB.prepare(
+            "INSERT INTO course_tags(course_id,tag) VALUES(?,?)",
+          ).bind(id, tag),
+        ),
+      );
+    }
     await c.env.DB.batch(statements);
   } else {
     const statements: D1PreparedStatement[] = [
-      c.env.DB.prepare(
-        "INSERT INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?)",
-      ).bind(code, name, category, department, credits, description),
+      scheme.provided
+        ? c.env.DB.prepare(
+            "INSERT INTO courses(code,name,category,department,credits,description,scheme_key) VALUES(?,?,?,?,?,?,?)",
+          ).bind(
+            code,
+            name,
+            category,
+            department,
+            credits,
+            description,
+            scheme.value,
+          )
+        : c.env.DB.prepare(
+            "INSERT INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?)",
+          ).bind(code, name, category, department, credits, description),
     ];
     if (teacherIds?.length) {
       statements.push(
@@ -2404,6 +2474,16 @@ app.post("/api/admin/courses", async (c) => {
     }
     const results = await c.env.DB.batch(statements);
     id = Number(results[0].meta.last_row_id);
+    if (tags.provided) {
+      await c.env.DB.batch([
+        c.env.DB.prepare("DELETE FROM course_tags WHERE course_id=?").bind(id),
+        ...tags.value.map((tag) =>
+          c.env.DB.prepare(
+            "INSERT INTO course_tags(course_id,tag) VALUES(?,?)",
+          ).bind(id, tag),
+        ),
+      ]);
+    }
   }
   return c.json({ ok: true, id });
 });
