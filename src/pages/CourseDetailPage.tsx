@@ -331,7 +331,7 @@ export function CourseDetailPage() {
         <div className="mb-6">{reviewArea}</div>
       ) : data.reviewCount > 0 && c.teachers?.length ? (
         <div className="mb-6">
-          <EmptyBox>选择上方一位任课教师，查看该课程 × 教师的评价</EmptyBox>
+          <EmptyBox>选择一位任课教师，查看该老师在这门课的评价</EmptyBox>
         </div>
       ) : (
         <div className="mb-6">

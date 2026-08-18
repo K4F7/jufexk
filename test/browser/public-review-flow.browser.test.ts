@@ -175,43 +175,39 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockApi(page));
 
+function reviewItems(page: Page) {
+  return page.getByRole("list", { name: "评价列表" }).getByRole("listitem");
+}
+
 test("course detail gates reviews behind teacher selection", async ({ page }) => {
   await page.goto("/courses/8");
   // 未选教师：评价流不出现，显示引导空态；摘要仍展示评价总数。
-  await expect(page.getByRole("listitem")).toHaveCount(0);
+  await expect(reviewItems(page)).toHaveCount(0);
   await expect(
-    page.getByRole("status").filter({ hasText: "选择上方一位任课教师" }),
+    page.getByRole("status").filter({ hasText: "选择一位任课教师" }),
   ).toBeVisible();
   await expect(page.getByText("21", { exact: true })).toBeVisible();
 
-  // 点击教师行选中该教师，加载 课程×教师 评价流。
-  await page
-    .getByRole("row", { name: /测试教师/ })
-    .getByRole("gridcell")
-    .first()
-    .click();
+  // 点击教师卡片选中该教师，加载 课程×教师 评价流。
+  await page.getByRole("link", { name: "查看测试教师的评价" }).click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
-  await expect(page.getByRole("listitem")).toHaveCount(20);
+  await expect(reviewItems(page)).toHaveCount(20);
   await page.getByRole("button", { name: "继续加载" }).click();
-  await expect(page.getByRole("listitem")).toHaveCount(21);
+  await expect(reviewItems(page)).toHaveCount(21);
   await expect(page.getByRole("button", { name: "继续加载" })).toHaveCount(0);
   await expect(page.getByText("来源", { exact: true })).toHaveCount(0);
   await expect(page.getByText("历史评价", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /认可/ })).toHaveCount(0);
 
-  // 再次点击已选教师行取消选择，回到引导空态。
-  await page
-    .getByRole("row", { name: /测试教师/ })
-    .getByRole("gridcell")
-    .first()
-    .click();
+  // 再次点击已选教师卡片取消选择，回到引导空态。
+  await page.getByRole("link", { name: "取消选择测试教师（当前选中，正在展示其评价）" }).click();
   await expect(page).toHaveURL(/\/courses\/8$/);
-  await expect(page.getByRole("listitem")).toHaveCount(0);
+  await expect(reviewItems(page)).toHaveCount(0);
 
   // 教师详情页保持原有统一文字流。
   await page.goto("/teachers/9");
-  await expect(page.getByRole("listitem")).toHaveCount(20);
+  await expect(reviewItems(page)).toHaveCount(20);
   await expect(page.getByRole("link", { name: "中国传统文化导论（GEN0108）" }).first()).toBeVisible();
 });
 
@@ -220,7 +216,7 @@ test("empty and mobile states remain accessible without overflow", async ({ page
   await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
 
   await page.goto("/courses/8?teacher=9");
-  await expect(page.getByRole("listitem")).toHaveCount(20);
+  await expect(reviewItems(page)).toHaveCount(20);
   const layout = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
