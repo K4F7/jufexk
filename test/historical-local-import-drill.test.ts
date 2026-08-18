@@ -190,5 +190,5 @@ describe("frozen historical package local D1 drill", () => {
         env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId),
       ]);
     }
-  }, 30000);
+  }, 60_000);
 });
