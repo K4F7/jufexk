@@ -66,6 +66,7 @@ import {
   publicCourseCanonicalJoin,
   publicCourseFamilySearchSql,
   refreshPublicListPrecomputes,
+  shouldRefreshPublicListPrecomputes,
 } from "./public-list-precompute";
 
 type Bindings = {
@@ -499,7 +500,10 @@ const takeRateLimit = async (
 
 app.use("/api/*", async (c, next) => {
   await next();
-  if (c.req.method !== "GET" && c.res.status < 400) {
+  if (
+    c.res.status < 400 &&
+    shouldRefreshPublicListPrecomputes(c.req.method, c.req.path)
+  ) {
     await refreshPublicListPrecomputes(c.env.DB);
   }
   c.header("X-Content-Type-Options", "nosniff");

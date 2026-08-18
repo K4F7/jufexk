@@ -141,7 +141,7 @@ export function publicPeSkillFamilySql(alias = "c"): string {
   return `CASE ${branches.join(" ")} ELSE NULL END`;
 }
 
-function publicPeHasTextReviewSql(alias: string): string {
+export function publicPeHasTextReviewSql(alias: string): string {
   return `EXISTS(
     SELECT 1 FROM public_historical_reviews phr WHERE phr.course_id=${alias}.id
     UNION ALL
