@@ -274,7 +274,7 @@ test("course detail shows teachers or reviews, never both", async ({
   await expect(reviewItems(page)).toHaveCount(20);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "返回任课教师" }).click();
+  await page.getByRole("button", { name: "返回任课老师" }).click();
   await expect(page).toHaveURL(/\/courses\/8$/);
   await expect(teacherRegion(page)).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(0);
@@ -307,11 +307,11 @@ test("teacher switch restores fully loaded pages from cache", async ({
   await page.getByRole("button", { name: "继续加载" }).click();
   await expect(reviewItems(page)).toHaveCount(21);
 
-  await page.getByRole("link", { name: "返回任课教师" }).click();
+  await page.getByRole("button", { name: "返回任课老师" }).click();
   await selectTeacher(page, "另一位教师");
   await expect(reviewItems(page)).toHaveCount(2);
 
-  await page.getByRole("link", { name: "返回任课教师" }).click();
+  await page.getByRole("button", { name: "返回任课老师" }).click();
   await selectTeacher(page, "测试教师");
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(reviewItems(page)).toHaveCount(21);
@@ -339,12 +339,14 @@ test("teacher home link is the only control that leaves the course page", async 
   // ?teacher= 深链与返回按钮仍可用（Issue #201 验收）。
   await page.goto("/courses/8?teacher=9");
   await expect(teacherRegion(page)).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "返回任课教师" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "返回任课老师" })).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(20);
   await expect(page.getByText("21 条", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: /认可/ }),
   ).toHaveCount(0);
+  await page.getByRole("button", { name: "返回任课老师" }).click();
+  await expect(page).toHaveURL(/\/courses\/8$/);
   await page.getByRole("button", { name: "返回课程目录" }).click();
   await expect(page).toHaveURL(/\/courses$/);
 });
