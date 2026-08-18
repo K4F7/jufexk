@@ -16,6 +16,8 @@ import {
   Label,
   ListBox,
   Select,
+  Tag,
+  TagGroup,
   type Key,
 } from "@heroui/react";
 import { categoryLabel } from "../lib/labels";
@@ -62,6 +64,7 @@ export type CatalogFiltersProps = {
   onTeacherQueryDraftChange: (value: string) => void;
   onTeacherIdChange: (value: string) => void;
   onSortChange: (value: string) => void;
+  onQueryClear: () => void;
   onClear: () => void;
 };
 
@@ -85,6 +88,7 @@ export function CatalogFilters({
   onTeacherQueryDraftChange,
   onTeacherIdChange,
   onSortChange,
+  onQueryClear,
   onClear,
 }: CatalogFiltersProps) {
   const selectedTeacher = teachers.find((t) => String(t.id) === teacherId);
@@ -266,27 +270,25 @@ export function CatalogFilters({
       </div>
 
       {hasFilters ? (
-        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-          <span>当前筛选：</span>
-          {queryDraft.trim() ? (
-            <span>关键词“{queryDraft.trim()}”</span>
-          ) : null}
-          {category ? <span>{categoryLabel(category)}</span> : null}
-          {departmentDraft.trim() ? (
-            <span>院系“{departmentDraft.trim()}”</span>
-          ) : null}
-          {teacherId ? (
-            <span>
-              {selectedTeacher
-                ? `教师“${selectedTeacher.name}”`
-                : teacherIdStatus === "missing"
-                  ? `教师不存在（${teacherId}）`
-                  : "教师载入中…"}
-            </span>
-          ) : teacherQueryDraft.trim() ? (
-            <span>教师搜索“{teacherQueryDraft.trim()}”</span>
-          ) : null}
-        </div>
+        <FilterSummary
+          queryDraft={queryDraft}
+          category={category}
+          departmentDraft={departmentDraft}
+          teacherId={teacherId}
+          teacherIdStatus={teacherIdStatus}
+          teacherQueryDraft={teacherQueryDraft}
+          selectedTeacherName={selectedTeacher?.name}
+          onRemove={(key) => {
+            if (key === "query") onQueryClear();
+            if (key === "category") onCategoryChange("");
+            if (key === "department") onDepartmentDraftChange("");
+            if (key === "teacher") {
+              onTeacherIdChange("");
+              onTeacherQueryDraftChange("");
+            }
+            if (key === "teacherQuery") onTeacherQueryDraftChange("");
+          }}
+        />
       ) : null}
 
       {teacherError ? (
@@ -300,5 +302,72 @@ export function CatalogFilters({
         </p>
       ) : null}
     </>
+  );
+}
+
+type FilterTagId = "query" | "category" | "department" | "teacher" | "teacherQuery";
+
+function FilterSummary({
+  queryDraft,
+  category,
+  departmentDraft,
+  teacherId,
+  teacherIdStatus,
+  teacherQueryDraft,
+  selectedTeacherName,
+  onRemove,
+}: {
+  queryDraft: string;
+  category: string;
+  departmentDraft: string;
+  teacherId: string;
+  teacherIdStatus: "pending" | "found" | "missing";
+  teacherQueryDraft: string;
+  selectedTeacherName?: string;
+  onRemove: (key: FilterTagId) => void;
+}) {
+  const tags: { id: FilterTagId; label: string }[] = [];
+  const query = queryDraft.trim();
+  if (query) tags.push({ id: "query", label: `关键词“${query}”` });
+  if (category) tags.push({ id: "category", label: categoryLabel(category) });
+  const department = departmentDraft.trim();
+  if (department) tags.push({ id: "department", label: `院系“${department}”` });
+  if (teacherId) {
+    tags.push({
+      id: "teacher",
+      label: selectedTeacherName
+        ? `教师“${selectedTeacherName}”`
+        : teacherIdStatus === "missing"
+          ? `教师不存在（${teacherId}）`
+          : "教师载入中…",
+    });
+  } else if (teacherQueryDraft.trim()) {
+    tags.push({
+      id: "teacherQuery",
+      label: `教师搜索“${teacherQueryDraft.trim()}”`,
+    });
+  }
+
+  if (!tags.length) return null;
+
+  return (
+    <TagGroup
+      aria-label="当前筛选"
+      className="mb-2"
+      size="sm"
+      onRemove={(keys) => {
+        for (const key of keys) onRemove(String(key) as FilterTagId);
+      }}
+    >
+      <Label>当前筛选</Label>
+      <TagGroup.List>
+        {tags.map((tag) => (
+          <Tag key={tag.id} id={tag.id} textValue={tag.label}>
+            {tag.label}
+            <Tag.RemoveButton aria-label={`移除${tag.label}`} />
+          </Tag>
+        ))}
+      </TagGroup.List>
+    </TagGroup>
   );
 }

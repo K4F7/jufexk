@@ -86,6 +86,7 @@ export type CatalogFollowupModel = {
   onTeacherQueryDraftChange: (value: string) => void;
   onTeacherIdChange: (value: string) => void;
   onSortChange: (value: string) => void;
+  onQueryClear: () => void;
   onClear: () => void;
 };
 
@@ -642,6 +643,7 @@ function ProductionFilters(model: CatalogFollowupModel) {
       onTeacherQueryDraftChange={model.onTeacherQueryDraftChange}
       onTeacherIdChange={model.onTeacherIdChange}
       onSortChange={model.onSortChange}
+      onQueryClear={model.onQueryClear}
       onClear={model.onClear}
     />
   );

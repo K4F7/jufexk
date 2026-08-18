@@ -437,6 +437,10 @@ export function CoursesPage() {
       onSortChange={(value) =>
         update({ sort: value === "reviews" ? "" : value })
       }
+      onQueryClear={() => {
+        setQueryDraft("");
+        update({ q: "" }, true);
+      }}
       onClear={clearFilters}
     />
   );
@@ -541,6 +545,10 @@ export function CoursesPage() {
     onTeacherIdChange: (value: string) => update({ teacherId: value }),
     onSortChange: (value: string) =>
       update({ sort: value === "reviews" ? "" : value }),
+    onQueryClear: () => {
+      setQueryDraft("");
+      update({ q: "" }, true);
+    },
     onClear: clearFilters,
   };
 
