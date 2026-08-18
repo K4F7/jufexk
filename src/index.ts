@@ -825,8 +825,9 @@ app.get("/api/courses/:id", async (c) => {
 app.get("/api/courses/:id/reviews", async (c) => {
   const id = integer(c.req.param("id"));
   const teacherId = integer(c.req.query("teacherId"));
-  if (!teacherId) return fail(c, "课程评价需先指定任课教师（teacherId）", 400);
   if (id && isVirtualPeSportId(id)) {
+    // 虚拟体育课没有课程级评价行：未选教师时返回空页，选定教师后按其教师流展示。
+    if (!teacherId) return c.json({ items: [], nextCursor: null });
     const virtual = virtualPeSportById(id);
     const teacher = await c.env.DB.prepare(
       "SELECT id,name FROM teachers WHERE id=?",

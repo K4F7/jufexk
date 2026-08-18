@@ -54,6 +54,9 @@ export function TeacherResultTable({
           </Table.Header>
           <Table.Body
             items={items}
+            /* Row hrefs embed the catalog query; dependencies keep them fresh
+             * under client-side row navigation. */
+            dependencies={[search]}
             renderEmptyState={() => (
               <div className="py-8 text-center text-muted" role="status">
                 暂无教师资料
