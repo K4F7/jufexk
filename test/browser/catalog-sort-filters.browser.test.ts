@@ -139,6 +139,10 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
   });
 }
 
+function catalogFirstRow(page: Page) {
+  return page.getByRole("grid", { name: "课程目录" }).getByRole("row").nth(1);
+}
+
 function trackCourseRequests(page: Page) {
   const courseRequests: string[] = [];
   page.on("request", (request) => {
@@ -156,7 +160,7 @@ test("sort control marks the default and re-orders the catalog", async ({
   await page.goto("/courses");
 
   // 默认按投稿数：篮球（2 投）在前；排序控件标明默认项。
-  await expect(page.getByRole("row").nth(1)).toContainText("篮球");
+  await expect(catalogFirstRow(page)).toContainText("篮球");
   const sortTrigger = page.getByRole("button", { name: /排序/ });
   await expect(sortTrigger).toBeVisible();
   await expect(sortTrigger).toContainText("投稿数优先");
@@ -170,7 +174,7 @@ test("sort control marks the default and re-orders the catalog", async ({
 
   await expect(page).toHaveURL(/sort=name/);
   await expect(sortTrigger).toHaveText("课名");
-  await expect(page.getByRole("row").nth(1)).toContainText("中国传统文化导论");
+  await expect(catalogFirstRow(page)).toContainText("中国传统文化导论");
   await expect
     .poll(() => courseRequests.some((search) => search.includes("sort=name")))
     .toBe(true);
@@ -178,7 +182,7 @@ test("sort control marks the default and re-orders the catalog", async ({
   // 深链刷新后排序控件仍显示当前项。
   await page.reload();
   await expect(sortTrigger).toHaveText("课名");
-  await expect(page.getByRole("row").nth(1)).toContainText("中国传统文化导论");
+  await expect(catalogFirstRow(page)).toContainText("中国传统文化导论");
 });
 
 test("teacher filter is a single searchable combobox", async ({ page }) => {
@@ -250,7 +254,7 @@ test("department filter lists catalog departments and filters", async ({
   await page.getByRole("option", { name: "人文学院" }).click();
 
   await expect(page).toHaveURL(/department=/);
-  await expect(page.getByRole("row").nth(1)).toContainText("中国传统文化导论");
+  await expect(catalogFirstRow(page)).toContainText("中国传统文化导论");
   await expect(page.getByRole("link", { name: "篮球" })).toHaveCount(0);
   await expect
     .poll(() =>
