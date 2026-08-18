@@ -75,10 +75,12 @@ test("course review feed error uses official Alert", async ({ page }) => {
       json: { course: COURSE, reviewCount: 3 },
     }),
   );
-  await page.route("**/api/courses/8/reviews", (route) =>
-    route.fulfill({ status: 500, json: { error: "评价接口失败" } }),
+  await page.route(
+    (url) => url.pathname === "/api/courses/8/reviews",
+    (route) =>
+      route.fulfill({ status: 500, json: { error: "评价接口失败" } }),
   );
-  await page.goto("/courses/8");
+  await page.goto("/courses/8?teacher=9");
   await expect(page.getByRole("heading", { name: "中国传统文化导论" })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("评价加载失败");
   await expect(page.getByRole("alert")).toContainText("评价接口失败");
@@ -107,7 +109,11 @@ test("empty review stream still uses the frozen empty copy", async ({ page }) =>
       json: { course: COURSE, reviewCount: 0 },
     }),
   );
-  await page.goto("/courses/8");
+  await page.route(
+    (url) => url.pathname === "/api/courses/8/reviews",
+    (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
+  );
+  await page.goto("/courses/8?teacher=9");
   await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
