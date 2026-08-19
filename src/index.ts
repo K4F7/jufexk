@@ -366,6 +366,9 @@ const originOk = (c: any) => {
   const origin = c.req.header("Origin");
   return origin === new URL(c.req.url).origin;
 };
+const LOCAL_UNUSED_TURNSTILE_SECRET = "local-unused-turnstile";
+const skipTurnstile = (secret: string) =>
+  secret === LOCAL_UNUSED_TURNSTILE_SECRET;
 const publicReviewBinding = `
        AND EXISTS(
          SELECT 1 FROM course_teachers public_relation
@@ -610,7 +613,9 @@ app.get("/api/config", async (c) => {
     universityName: c.env.UNIVERSITY_NAME,
     admin: false,
     turnstileSiteKey:
-      c.env.TURNSTILE_SITE_KEY && turnstileSecret
+      !skipTurnstile(turnstileSecret) &&
+      c.env.TURNSTILE_SITE_KEY &&
+      turnstileSecret
         ? c.env.TURNSTILE_SITE_KEY
         : "",
   });
@@ -1096,6 +1101,7 @@ app.delete("/api/reviews/:id/endorsement", handleWithdrawEndorsement);
 
 async function verifyTurnstile(c: any, response: string, ip: string) {
   const secret = await readSecret(c.env.TURNSTILE_SECRET);
+  if (skipTurnstile(secret)) return true;
   const mode = turnstileMode(c.env.TURNSTILE_SITE_KEY, secret);
   if (mode !== "enabled") return mode !== "secret-only";
   if (!response) return false;
