@@ -21,11 +21,11 @@ import { isAsciiLetterTerm } from "./lib/catalog-pinyin";
 import {
   andSearchTerms,
   andSearchTermsWithPinyin,
+  containsPattern,
   delimitedExactSql,
-  likeContains,
-  likePrefix,
   likeSql,
   parseSearchTerms,
+  prefixPattern,
 } from "./lib/catalog-search";
 import {
   isVirtualPeSportId,
@@ -652,7 +652,8 @@ app.get("/api/courses", async (c) => {
       .bind(...args)
       .first<{ n: number }>()
       .then((row) => row?.n || 0);
-  // 多词查询里所有词条都落在课名或课号上时最贴近意图，排在院系与教师命中之前。
+  // 其余档位比的是整串查询（精确、再前缀），多词查询永远到不了那些档：这一档
+  // 用包含匹配，让所有词条都落在课名或课号上的结果排在院系与教师命中之前。
   const allTermsInTitle =
     searchTerms.length > 1
       ? andSearchTerms(searchTerms, `${likeSql("c.name")} OR ${likeSql("c.code")}`)
@@ -674,14 +675,14 @@ app.get("/api/courses", async (c) => {
     search,
     search,
     search,
-    likePrefix(search),
-    likePrefix(search),
+    prefixPattern(search),
+    prefixPattern(search),
     ...allTermsInTitle.args,
     search,
-    likePrefix(search),
+    prefixPattern(search),
     search,
-    likePrefix(search),
-    likeContains(search),
+    prefixPattern(search),
+    containsPattern(search),
   ];
   const { results } = await c.env.DB.prepare(
     `SELECT c.*,
@@ -793,10 +794,10 @@ app.get("/api/teachers", async (c) => {
       ...args,
       search,
       search,
-      likePrefix(search),
+      prefixPattern(search),
       search,
-      likePrefix(search),
-      likeContains(search),
+      prefixPattern(search),
+      containsPattern(search),
       size,
       (page - 1) * size,
     )
