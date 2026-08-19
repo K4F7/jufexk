@@ -19,6 +19,7 @@ import {
 } from "./catalog-baseline-import";
 import {
   andSearchTerms,
+  delimitedExactSql,
   likePrefix,
   likeSql,
   parseSearchTerms,
@@ -29,7 +30,6 @@ import {
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicPeCanonicalCourseSql,
-  publicPeFamilySearchSql,
   publicPeResolveCanonicalIdSql,
   publicPeSkillFamilySql,
   publicSportsMatchSql,
@@ -75,7 +75,8 @@ import { readSecret, turnstileMode } from "./secrets";
 import {
   ensurePublicListPrecomputes,
   publicCourseCanonicalJoin,
-  publicCourseFamilySearchSql,
+  publicCourseMatchJoin,
+  publicTeacherSearchJoin,
   refreshPublicListPrecomputes,
   shouldRefreshPublicListPrecomputes,
 } from "./public-list-precompute";
@@ -613,14 +614,8 @@ app.get("/api/courses", async (c) => {
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  // 单个词条的命中面：课名 / 课号 / 院系 / 任课教师 / 课名变体 / 体育族名。
-  // 任课教师走 EXISTS 而不是行级 JOIN，这样「课名 + 教师」这类多词查询里，
-  // 不同词条可以由课程本身和它的某位教师分别满足。
-  const searchTermSql = `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("c.department")}
-       OR EXISTS(SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND ${likeSql("search_t.name")})
-       OR EXISTS(SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND ${likeSql("cnv.name")})
-       OR ${publicCourseFamilySearchSql("pcc")}`;
-  const searchGroup = andSearchTerms(searchTerms, searchTermSql);
+  // 单个词条打预计算 match_text（课名/课号/院系/教师/变体/族名已拼好）。
+  const searchGroup = andSearchTerms(searchTerms, likeSql("pcc.match_text"));
   const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = [
     cat,
@@ -652,10 +647,8 @@ app.get("/api/courses", async (c) => {
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
        WHEN ${likeSql("c.department")} THEN 4
-       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND rank_t.name=?)
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND rank_cnv.name=?) THEN 5
-       WHEN EXISTS(SELECT 1 FROM course_teachers rank_ct JOIN teachers rank_t ON rank_t.id=rank_ct.teacher_id WHERE rank_ct.course_id=c.id AND ${likeSql("rank_t.name")})
-         OR EXISTS(SELECT 1 FROM course_name_variants rank_cnv WHERE rank_cnv.course_id=c.id AND ${likeSql("rank_cnv.name")}) THEN 6
+       WHEN ${delimitedExactSql("pcc.teacher_variant_text")} THEN 5
+       WHEN ${likeSql("pcc.teacher_variant_text")} THEN 6
        ELSE 7
      END,review_count DESC,c.name,c.code,c.id`;
   const searchRankArgs = [
@@ -669,8 +662,6 @@ app.get("/api/courses", async (c) => {
     search,
     likePrefix(search),
     search,
-    search,
-    likePrefix(search),
     likePrefix(search),
   ];
   const { results } = await c.env.DB.prepare(
@@ -742,14 +733,13 @@ app.get("/api/teachers", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const searchTerms = parseSearchTerms(search);
-  const searchGroup = andSearchTerms(
-    searchTerms,
-    `${likeSql("t.name")} OR ${likeSql("t.department")}`,
-  );
+  const searchGroup = andSearchTerms(searchTerms, likeSql("pts.match_text"));
   const where = searchGroup.sql || "1=1";
   const args = searchGroup.args;
   const teacherCount = () =>
-    c.env.DB.prepare(`SELECT COUNT(*) n FROM teachers t WHERE ${where}`)
+    c.env.DB.prepare(
+      `SELECT COUNT(*) n FROM teachers t ${publicTeacherSearchJoin} WHERE ${where}`,
+    )
       .bind(...args)
       .first<{ n: number }>()
       .then((row) => row?.n || 0);
@@ -759,6 +749,7 @@ app.get("/api/teachers", async (c) => {
        COALESCE(teacher_review_counts.review_count,0) review_count,
        COUNT(*) OVER() window_total
       FROM teachers t
+      ${publicTeacherSearchJoin}
       LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
       LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM public_review_counts GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
      WHERE ${where}
@@ -878,18 +869,19 @@ app.get("/api/teachers/:id/reviews", async (c) => {
   return c.json(page);
 });
 app.get("/api/courses/options", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const searchGroup = andSearchTerms(
     parseSearchTerms(search),
-    `${likeSql("c.name")} OR ${likeSql("c.code")}
-       OR EXISTS (SELECT 1 FROM course_teachers search_ct JOIN teachers search_t ON search_t.id=search_ct.teacher_id WHERE search_ct.course_id=c.id AND (${likeSql("search_t.name")} OR ${likeSql("search_t.department")}))
-       OR ${publicPeFamilySearchSql("c")}`,
+    likeSql("pcc.match_text"),
   );
   const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = searchGroup.args;
   const optionCount = () =>
-    c.env.DB.prepare(`SELECT COUNT(*) n FROM courses c WHERE ${where}`)
+    c.env.DB.prepare(
+      `SELECT COUNT(*) n FROM courses c ${publicCourseMatchJoin} WHERE ${where}`,
+    )
       .bind(...args)
       .first<{ n: number }>()
       .then((row) => row?.n || 0);
@@ -898,7 +890,7 @@ app.get("/api/courses/options", async (c) => {
        (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
        GROUP_CONCAT(DISTINCT t.name) teachers,
        COUNT(*) OVER() window_total
-     FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
+     FROM courses c ${publicCourseMatchJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
      WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
   )
     .bind(...args, size, (page - 1) * size)

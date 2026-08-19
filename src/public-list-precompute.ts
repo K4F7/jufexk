@@ -1,4 +1,3 @@
-import { likeSql } from "./lib/catalog-search";
 import {
   PE_SKILL_FAMILIES,
   publicPeHasTextReviewSql,
@@ -10,7 +9,7 @@ const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
 const canonicalInsert = `
   WITH classified AS (
-    SELECT c.id,c.name,c.code,
+    SELECT c.id,c.name,c.code,c.department,
       (${publicPeSkillFamilySql("c")}) family_label,
       CASE WHEN ${publicPeHasTextReviewSql("c")} THEN 0 ELSE 1 END has_text,
       CASE
@@ -33,13 +32,46 @@ const canonicalInsert = `
     FROM classified
     WHERE family_label IS NOT NULL
     GROUP BY family_label
+  ), teacher_text AS (
+    SELECT ct.course_id,
+      GROUP_CONCAT(COALESCE(t.name,''), ' ') names,
+      GROUP_CONCAT(char(31) || t.name || char(31), '') delimited
+    FROM course_teachers ct
+    JOIN teachers t ON t.id=ct.teacher_id
+    GROUP BY ct.course_id
+  ), variant_text AS (
+    SELECT course_id,
+      GROUP_CONCAT(COALESCE(name,''), ' ') names,
+      GROUP_CONCAT(char(31) || name || char(31), '') delimited
+    FROM course_name_variants
+    GROUP BY course_id
   )
-  INSERT INTO public_course_canonicals(course_id,canonical_course_id,family_label,search_text)
+  INSERT INTO public_course_canonicals(
+    course_id,canonical_course_id,family_label,search_text,match_text,teacher_variant_text
+  )
   SELECT c.id,COALESCE(r.canonical_id,c.id),c.family_label,
-    COALESCE(fs.search_text,COALESCE(c.name,'') || ' ' || COALESCE(c.code,''))
+    COALESCE(fs.search_text,COALESCE(c.name,'') || ' ' || COALESCE(c.code,'')),
+    trim(
+      COALESCE(c.name,'') || ' ' ||
+      COALESCE(c.code,'') || ' ' ||
+      COALESCE(c.department,'') || ' ' ||
+      COALESCE(c.family_label,'') || ' ' ||
+      COALESCE(fs.search_text,'') || ' ' ||
+      COALESCE(tt.names,'') || ' ' ||
+      COALESCE(vt.names,'')
+    ),
+    COALESCE(tt.delimited,'') || COALESCE(vt.delimited,'')
   FROM classified c
   LEFT JOIN ranked r ON r.id=c.id
-  LEFT JOIN family_search fs ON fs.family_label=c.family_label;
+  LEFT JOIN family_search fs ON fs.family_label=c.family_label
+  LEFT JOIN teacher_text tt ON tt.course_id=c.id
+  LEFT JOIN variant_text vt ON vt.course_id=c.id;
+`;
+
+const teacherSearchInsert = `
+  INSERT INTO public_teacher_search(teacher_id,match_text)
+  SELECT id, trim(COALESCE(name,'') || ' ' || COALESCE(department,''))
+  FROM teachers;
 `;
 
 const aggregateInsert = `
@@ -91,8 +123,11 @@ const teacherCourseCountInsert = `
 export const publicCourseCanonicalJoin =
   "JOIN public_course_canonicals pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id";
 
-export const publicCourseFamilySearchSql = (alias = "pcc") =>
-  `(${likeSql(`${alias}.family_label`)} OR ${likeSql(`${alias}.search_text`)})`;
+export const publicCourseMatchJoin =
+  "JOIN public_course_canonicals pcc ON pcc.course_id=c.id";
+
+export const publicTeacherSearchJoin =
+  "JOIN public_teacher_search pts ON pts.teacher_id=t.id";
 
 const publicListMutationRoutes: ReadonlyArray<readonly [string, RegExp]> = [
   ["POST", /^\/api\/admin\/catalog-relation-additions$/],
@@ -126,6 +161,8 @@ export async function refreshPublicListPrecomputes(db: D1Database) {
     db.prepare(aggregateInsert),
     db.prepare("DELETE FROM public_teacher_course_counts"),
     db.prepare(teacherCourseCountInsert),
+    db.prepare("DELETE FROM public_teacher_search"),
+    db.prepare(teacherSearchInsert),
     db.prepare("UPDATE public_precompute_state SET dirty=0,fingerprint=? WHERE id=1").bind(fingerprint),
   ]);
 }
@@ -133,8 +170,10 @@ export async function refreshPublicListPrecomputes(db: D1Database) {
 async function publicListSourceFingerprint(db: D1Database) {
   const row = await db.prepare(`
     SELECT
-      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM courses) || '|' ||
+      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) || ':' || COALESCE(SUM(length(name)+length(COALESCE(code,''))+length(COALESCE(department,''))),0) FROM courses) || '|' ||
+      (SELECT COUNT(*) || ':' || COALESCE(SUM(length(name)),0) FROM course_name_variants) || '|' ||
       (SELECT COUNT(*) FROM course_teachers) || '|' ||
+      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) || ':' || COALESCE(SUM(length(name)+length(COALESCE(department,''))),0) FROM teachers) || '|' ||
       (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM reviews) || '|' ||
       (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM legacy_reviews) || '|' ||
       (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM public_historical_reviews) fingerprint

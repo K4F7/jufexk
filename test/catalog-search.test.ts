@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   andSearchTerms,
+  delimitedExactSql,
   likeContains,
   likeEscape,
   likePrefix,
@@ -54,6 +55,14 @@ describe("likeEscape", () => {
 describe("likeSql", () => {
   it("always pairs LIKE with an ESCAPE clause", () => {
     expect(likeSql("c.name")).toBe("c.name LIKE ? ESCAPE '\\'");
+  });
+});
+
+describe("delimitedExactSql", () => {
+  it("matches a unit-separator wrapped value", () => {
+    expect(delimitedExactSql("pcc.teacher_variant_text")).toBe(
+      "instr(pcc.teacher_variant_text, char(31) || ? || char(31)) > 0",
+    );
   });
 });
 

@@ -53,6 +53,11 @@ export function likeSql(expr: string): string {
   return `${expr} LIKE ? ESCAPE '${LIKE_ESCAPE}'`;
 }
 
+/** 预计算教师名 / 课名变体字段上的整段精确命中。分隔符是 ASCII unit separator。 */
+export function delimitedExactSql(expr: string): string {
+  return `instr(${expr}, char(31) || ? || char(31)) > 0`;
+}
+
 /**
  * 把「单个词条的 OR 组」按词条数展开成 AND 组。
  *

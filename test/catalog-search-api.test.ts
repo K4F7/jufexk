@@ -172,3 +172,43 @@ describe("按教师命中的课程行", () => {
     );
   });
 });
+
+describe("预计算 match_text", () => {
+  const staleFingerprint = () =>
+    env.DB.prepare(
+      "UPDATE public_precompute_state SET fingerprint='stale' WHERE id=1",
+    ).run();
+
+  it("课名变体写入后能搜到该课", async () => {
+    const linear = await env.DB.prepare(
+      "SELECT id FROM courses WHERE name=?",
+    )
+      .bind(linearCourse)
+      .first<{ id: number }>();
+    expect(linear?.id).toBeTruthy();
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO course_name_variants(course_id,name) VALUES(?,?)",
+    )
+      .bind(linear!.id, "搜索线代别名")
+      .run();
+    await staleFingerprint();
+    expect(await courseNames("q=搜索线代别名")).toEqual([linearCourse]);
+  });
+
+  it("改课名后下一次公开列表能搜到新名字", async () => {
+    const renamed = "搜索高数改名";
+    await env.DB.prepare("UPDATE courses SET name=? WHERE name=?")
+      .bind(renamed, mathCourse)
+      .run();
+    await staleFingerprint();
+    try {
+      expect(await courseNames(`q=${renamed}`)).toEqual([renamed]);
+    } finally {
+      await env.DB.prepare("UPDATE courses SET name=? WHERE name=?")
+        .bind(mathCourse, renamed)
+        .run();
+      await staleFingerprint();
+      await courseNames(`q=${mathCourse}`);
+    }
+  });
+});
