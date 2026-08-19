@@ -106,7 +106,7 @@ fn sheet_list(worksheets, worksheet) {
     default_sheets()
 }
 
-fn scan_command(out_dir, sheets, first_row, last_row, layout) {
+fn scan_command(out_dir, sheets, first_row, last_row, last_row_spec, layout) {
     let command = "pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts scan-extent --out ";
     command += out_dir;
     command += " --layout ";
@@ -119,6 +119,10 @@ fn scan_command(out_dir, sheets, first_row, last_row, layout) {
     }
     if first_row != () { command += " --first-row "; command += first_row.to_string(); }
     if last_row != () { command += " --last-row "; command += last_row.to_string(); }
+    if has_text(last_row_spec) {
+        command += " --last-row-spec ";
+        command += last_row_spec;
+    }
     command
 }
 
@@ -165,6 +169,7 @@ let view_only_ready = if args == () { () } else { args.view_only_ready };
 let evidence_dir = if args == () { () } else { args.evidence_dir };
 let first_row = if args == () { () } else { args.first_row };
 let last_row = if args == () { () } else { args.last_row };
+let last_row_spec = if args == () { () } else { args.last_row_spec };
 let layout = if args == () { () } else { args.layout };
 let run_review_package = if args == () { () } else { args.run_review_package };
 
@@ -183,7 +188,7 @@ let requested_worksheet = if args == () { () } else { args.worksheet };
 let sheets = sheet_list(requested_worksheets, requested_worksheet);
 phase("Scan");
 let scan_prompt = cli_rules();
-scan_prompt += scan_command(out_dir, sheets, first_row, last_row, layout);
+scan_prompt += scan_command(out_dir, sheets, first_row, last_row, last_row_spec, layout);
 let scan_result = agent(scan_prompt, #{
     label: "scan-extent",
     capability_mode: "execute",

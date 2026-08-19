@@ -41,7 +41,7 @@ describe("legacy matrix freeze extents", () => {
       planned_cells: frozenForeign?.planned_cells,
       scan_to_end: true,
     });
-    expect(mooc).toMatchObject({ first_row: 8, last_row: 14, scan_to_end: false });
+    expect(mooc).toMatchObject({ first_row: 8, last_row: 20, scan_to_end: false });
     expect(extent.layout_sha256).toBe(layout.layout_sha256);
     expect(extent.click_grid).toBe(false);
     expect(JSON.stringify(extent)).not.toMatch(/click the grid|page\.click|locator\.click/);
@@ -102,16 +102,48 @@ describe("legacy matrix freeze extents", () => {
     })).toThrow(/体育课|unconfirmed|obsolete|hash/);
   });
 
-  it("rejects MOOC ranges past smoke rows while G46 is blocked_locator", () => {
+  it("allows MOOC 8-20 while G46 is blocked_locator and rejects row 46", () => {
     const layout = compileConfirmedLiveLayout();
     expect(layout.sheets.find((sheet) => sheet.worksheet === "MOOC")?.g46_status).toBe("blocked_locator");
     const clipped = scanBound({ worksheets: ["MOOC"] });
-    expect(clipped.sheets[0]).toMatchObject({ first_row: 8, last_row: 14, scan_to_end: false });
-    expect(() => scanBound({ worksheets: ["MOOC"], last_row: 15 })).toThrow(/blocked_locator|smoke rows 8-14/);
-    expect(() => scanBound({ worksheets: ["MOOC"], first_row: 8, last_row: 46 })).toThrow(/blocked_locator|smoke rows 8-14/);
+    expect(clipped.sheets[0]).toMatchObject({ first_row: 8, last_row: 20, scan_to_end: false });
+    const live = scanBound({ worksheets: ["MOOC"], last_row: 20 });
+    expect(live.sheets[0]).toMatchObject({ first_row: 8, last_row: 20, scan_to_end: false });
+    expect(scanBound({ worksheets: ["MOOC"], first_row: 8, last_row: 15 }).sheets[0]).toMatchObject({
+      first_row: 8,
+      last_row: 15,
+    });
+    expect(() => scanBound({ worksheets: ["MOOC"], last_row: 21 })).toThrow(/G46|live table is 8-20/);
+    expect(() => scanBound({ worksheets: ["MOOC"], first_row: 8, last_row: 46 })).toThrow(/G46|live table is 8-20/);
     const smoke = scanBound({ worksheets: ["MOOC"], first_row: 8, last_row: 14 });
     expect(smoke.sheets[0]).toMatchObject({ first_row: 8, last_row: 14, scan_to_end: false });
     expect(smoke.layout_sha256).toBe(layout.layout_sha256);
+  });
+
+  it("applies per-sheet last rows from a last-row spec", () => {
+    const extent = scanMatrixFreezeExtents({
+      layout: compileConfirmedLiveLayout(),
+      sheet_last_rows: {
+        主要课程: 478,
+        数学课: 101,
+        美育: 14,
+        大英和视听说: 72,
+        思政课: 62,
+        外教: 7,
+        MOOC: 20,
+        体育课: 55,
+      },
+    });
+    expect(extent.sheets.map((sheet) => [sheet.worksheet, sheet.last_row, sheet.scan_to_end])).toEqual([
+      ["主要课程", 478, false],
+      ["数学课", 101, false],
+      ["美育", 14, false],
+      ["大英和视听说", 72, false],
+      ["思政课", 62, false],
+      ["外教", 7, false],
+      ["MOOC", 20, false],
+      ["体育课", 55, false],
+    ]);
   });
 });
 
