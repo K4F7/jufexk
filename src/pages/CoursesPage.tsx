@@ -69,6 +69,15 @@ const CatalogFollowupPrototypeLazy = import.meta.env.DEV
     )
   : null;
 
+/** DEV-only: issue #303 C-variant opposite-catalog hint. */
+const GlobalSearchHintLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/GlobalSearchVariants").then((m) => ({
+        default: m.GlobalSearchCrossCatalogHint,
+      })),
+    )
+  : null;
+
 function useCatalogSearchPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
   return useMemo(() => {
@@ -124,6 +133,17 @@ function useCatalogFollowupPrototypeVariant(): "A" | "B" | "C" | null {
   }, [params]);
 }
 
+function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "global-search") return null;
+    const key = (params.get("variant") || "A").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "A";
+  }, [params]);
+}
+
 export function CoursesPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -132,6 +152,7 @@ export function CoursesPage() {
   const courseTableVariant = useCourseTablePrototypeVariant();
   const catalogStatesVariant = useCatalogStatesPrototypeVariant();
   const catalogFollowupVariant = useCatalogFollowupPrototypeVariant();
+  const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const q = params.get("q") || "";
   const rawCategory = params.get("category") || "";
   const category = isPublicCategoryFilter(rawCategory) ? rawCategory : "";
@@ -730,6 +751,11 @@ export function CoursesPage() {
       ) : (
         <>
           {defaultFilters}
+          {globalSearchVariant === "C" && q && GlobalSearchHintLazy ? (
+            <Suspense fallback={null}>
+              <GlobalSearchHintLazy catalog="courses" query={q} />
+            </Suspense>
+          ) : null}
           {results}
         </>
       )}
