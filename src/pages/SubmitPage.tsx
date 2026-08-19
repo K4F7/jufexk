@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   ComboBox,
   Description,
@@ -13,11 +14,15 @@ import {
   TextArea,
   TextField,
   Typography,
+  buttonVariants,
   type Key,
 } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { RouterAriaLink } from "../components/RouterAriaLink";
 import { TurnstileBox } from "../components/TurnstileBox";
+import { useCampusAuthEnabled } from "../hooks/useCampusAuthEnabled";
+import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import type {
   ApplicableQuestion,
@@ -77,6 +82,9 @@ function ScaleRadios({
 
 export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const { viewer, ready: viewerReady } = useViewer();
+  const campusEnabled = useCampusAuthEnabled();
   const [courseQueryDraft, setCourseQueryDraft] = useState("");
   const [courseQuery, setCourseQuery] = useState("");
   const [courseOptions, setCourseOptions] = useState<CourseOption[]>([]);
@@ -234,6 +242,8 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }
 
   const relationReady = Boolean(selectedCourse && teacherId);
+  const needsLogin = viewerReady && !viewer.authenticated;
+  const loginFrom = `${location.pathname}${location.search}`;
 
   return (
     <section className="mx-auto max-w-[720px]">
@@ -243,6 +253,27 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
       <p className="mb-4 mt-0 text-muted">
         评价必须绑定已有任课关系。选好课程和教师后，按该课本次适用的评价规则答题；补充说明选填。
       </p>
+      {needsLogin ? (
+        <Alert className="mb-5" status="warning">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>需要登录</Alert.Title>
+            <Alert.Description>
+              {campusEnabled
+                ? "投稿需要校园统一身份认证。先登录，再提交这条评价。"
+                : "投稿需要校园统一身份认证。登录尚未开放，问卷可先预览。"}
+            </Alert.Description>
+          </Alert.Content>
+          {campusEnabled ? (
+            <RouterAriaLink
+              className={`${buttonVariants({ size: "sm", variant: "primary" })} no-underline`}
+              to={`${viewer.loginPath}?from=${encodeURIComponent(loginFrom)}`}
+            >
+              去登录
+            </RouterAriaLink>
+          ) : null}
+        </Alert>
+      ) : null}
 
       <Form
         aria-labelledby="submit-review-heading"

@@ -1,7 +1,8 @@
-import { buttonVariants, Link } from "@heroui/react";
+import { buttonVariants, Chip, Link } from "@heroui/react";
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
 import { useCampusAuthEnabled } from "../hooks/useCampusAuthEnabled";
+import { useViewer } from "../hooks/useViewer";
 import type { SiteConfig } from "../lib/types";
 import { AccountNavControl } from "./AccountNavControl";
 import { ThemeToggle } from "./ThemeToggle";
@@ -64,10 +65,10 @@ function navSelectedKey(pathname: string): string {
 
 /**
  * Production shell — visually frozen: left-cluster + button-styled Link nav (prototype C).
- * Brand wordmark · Button secondary/ghost 课程/教师 · university + ThemeToggle.
+ * Brand wordmark · Button secondary/ghost 课程/教师/写评价 · university + ThemeToggle.
  *
- * 「写评价」只在校园认证开放后进入导航（foundations: 不展示不可用或
- * “即将开放”的入口；Issue #277）；未开放期间 /submit 直达路由不受影响。
+ * 「写评价」始终在导航中。未登录时入口带官方 Chip「需要登录」，不因校园认证
+ * 未开放而隐藏；问卷页可预览，提交仍走登录说明。
  */
 function withGlobalSearchParams(path: string, params: URLSearchParams) {
   if (params.get("module") !== "global-search") return path;
@@ -89,12 +90,11 @@ function DefaultShell({
   const [params] = useSearchParams();
   const selectedKey = navSelectedKey(location.pathname);
   const campusEnabled = useCampusAuthEnabled();
+  const { viewer, ready } = useViewer();
+  const showLoginHint = ready && !viewer.authenticated;
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const siteName = config?.siteName || "江财选课参考";
   const universityName = config?.universityName || "江西财经大学";
-  const visibleLinks = links.filter(
-    (link) => link.id !== "submit" || campusEnabled === true,
-  );
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);
 
@@ -114,7 +114,7 @@ function DefaultShell({
           </NavLink>
 
           <nav aria-label="主导航" className="flex min-w-0 items-center gap-1">
-            {visibleLinks.map((link) => {
+            {links.map((link) => {
               const active = selectedKey === link.id;
               const to = import.meta.env.DEV
                 ? withGlobalSearchParams(link.to, params)
@@ -140,6 +140,11 @@ function DefaultShell({
                   )}
                 >
                   {link.label}
+                  {link.id === "submit" && showLoginHint ? (
+                    <Chip size="sm" variant="soft">
+                      <Chip.Label>需要登录</Chip.Label>
+                    </Chip>
+                  ) : null}
                 </Link>
               );
             })}

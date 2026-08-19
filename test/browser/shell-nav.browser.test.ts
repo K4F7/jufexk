@@ -2,13 +2,22 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function mockShellApi(
   page: Page,
-  options: { campusEnabled?: boolean } = {},
+  options: { campusEnabled?: boolean; authenticated?: boolean } = {},
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
       return route.fulfill({
         json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+      });
+    }
+    if (url.pathname === "/api/user/session") {
+      return route.fulfill({
+        json: {
+          authenticated: Boolean(options.authenticated),
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
       });
     }
     if (url.pathname === "/api/auth/campus") {
@@ -60,10 +69,10 @@ test("main nav items are single links without nested buttons", async ({
 
   await expect(courseLink).toBeVisible();
   await expect(teacherLink).toBeVisible();
-  // 校园认证未开放：「写评价」不进导航，而不是展示一个看似可点的入口（Issue #277）。
-  await expect(nav.getByRole("link", { name: "写评价" })).toHaveCount(0);
-  await expect(nav.getByText("写评价")).toHaveCount(0);
-  await expect(nav.getByRole("link")).toHaveCount(2);
+  const submitLink = nav.getByRole("link", { name: /写评价/ });
+  await expect(submitLink).toBeVisible();
+  await expect(submitLink.getByText("需要登录")).toBeVisible();
+  await expect(nav.getByRole("link")).toHaveCount(3);
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
   await expect(courseLink).toHaveAttribute("aria-current", "page");
@@ -72,7 +81,7 @@ test("main nav items are single links without nested buttons", async ({
   const focusableCount = await nav
     .locator('a, button, [tabindex]:not([tabindex="-1"])')
     .count();
-  expect(focusableCount).toBe(2);
+  expect(focusableCount).toBe(3);
 
   await teacherLink.click();
   await expect(page).toHaveURL(/\/teachers$/);
@@ -81,15 +90,16 @@ test("main nav items are single links without nested buttons", async ({
   expect(renderWarnings).toEqual([]);
 });
 
-test("write-review nav entry restores automatically once campus auth is live", async ({
+test("write-review nav stays visible and drops the login hint after sign-in", async ({
   page,
 }) => {
-  await mockShellApi(page, { campusEnabled: true });
+  await mockShellApi(page, { authenticated: true });
   await page.goto("/courses");
 
   const nav = page.getByRole("navigation", { name: "主导航" });
-  const submitLink = nav.getByRole("link", { name: "写评价" });
+  const submitLink = nav.getByRole("link", { name: "写评价", exact: true });
   await expect(submitLink).toBeVisible();
+  await expect(submitLink.getByText("需要登录")).toHaveCount(0);
   await expect(nav.getByRole("link")).toHaveCount(3);
 
   await submitLink.click();
