@@ -206,20 +206,14 @@ test("teacher filter is a single searchable combobox", async ({ page }) => {
   await expect(
     page.getByRole("searchbox", { name: "搜索任课教师" }),
   ).toHaveCount(0);
-  // 前 50 位说明改写为可搜索补全的指引。
   await expect(
-    page.getByText(
-      "教师列表最多显示前 50 位；在任课教师框中输入姓名或院系，可搜索全部教师。",
-    ),
-  ).toBeVisible();
+    page.getByText(/教师列表最多显示前 50 位/),
+  ).toHaveCount(0);
 
   await combo.click();
   await combo.fill("测试");
   const option = page.getByRole("option", { name: /测试教师/ });
   await expect(option).toBeVisible();
-  await expect(
-    page.getByText(/教师列表最多显示前 50 位/),
-  ).toHaveCount(0);
   await option.click();
 
   await expect(page).toHaveURL(/teacherId=9/);

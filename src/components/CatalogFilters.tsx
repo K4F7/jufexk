@@ -111,7 +111,6 @@ export type CatalogFiltersProps = {
   teachers: Teacher[];
   teacherLoading: boolean;
   teacherError: string;
-  teacherQuery: string;
   sort: string;
   /** True when the result list is empty: sorting nothing reads as if the
    *  empty list had been re-ordered, so the control is disabled (Issue #278).
@@ -139,7 +138,6 @@ export function CatalogFilters({
   teachers,
   teacherLoading,
   teacherError,
-  teacherQuery,
   sort,
   sortDisabled = false,
   hasFilters,
@@ -355,11 +353,6 @@ export function CatalogFilters({
       {teacherError ? (
         <p className="mb-2 text-sm text-muted" role="status">
           {teacherError}，可先使用关键词或院系筛选。
-        </p>
-      ) : null}
-      {!teacherError && !teacherQuery && teachers.length >= 50 ? (
-        <p className="mb-2 text-sm text-muted" role="status">
-          教师列表最多显示前 50 位；在任课教师框中输入姓名或院系，可搜索全部教师。
         </p>
       ) : null}
     </>

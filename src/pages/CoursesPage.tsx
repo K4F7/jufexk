@@ -547,7 +547,6 @@ export function CoursesPage() {
       teachers={teachers}
       teacherLoading={teacherLoading}
       teacherError={teacherError}
-      teacherQuery={teacherQuery}
       sort={sort}
       sortDisabled={sortDisabled}
       hasFilters={hasFilters}

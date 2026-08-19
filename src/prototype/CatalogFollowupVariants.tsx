@@ -635,7 +635,6 @@ function ProductionFilters(model: CatalogFollowupModel) {
       teachers={model.teachers}
       teacherLoading={model.teacherLoading}
       teacherError={model.teacherError}
-      teacherQuery={model.teacherQuery}
       sort={model.sort}
       hasFilters={model.hasFilters}
       onCategoryChange={model.onCategoryChange}
