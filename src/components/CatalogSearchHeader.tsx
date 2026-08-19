@@ -12,6 +12,7 @@ import {
   Skeleton,
   Typography,
 } from "@heroui/react";
+import { useState } from "react";
 
 export type CatalogSearchSuggestion = {
   id: string;
@@ -55,8 +56,15 @@ export function CatalogSearchHeader({
   suggestionsFailed = false,
   onSelectSuggestion,
 }: CatalogSearchHeaderProps) {
+  const [searchFocused, setSearchFocused] = useState(false);
   const open =
-    Boolean(value.trim()) && suggestionsReady && !suggestionsFailed;
+    searchFocused && suggestions.length > 0 && !suggestionsFailed;
+  const showEmptySuggest =
+    searchFocused &&
+    Boolean(value.trim()) &&
+    suggestionsReady &&
+    !suggestionsFailed &&
+    suggestions.length === 0;
 
   return (
     <header className="mb-3" aria-label="目录标题与搜索">
@@ -88,6 +96,9 @@ export function CatalogSearchHeader({
             selectionMode="single"
             value={null}
             isOpen={open}
+            onOpenChange={(next) => {
+              if (!next) setSearchFocused(false);
+            }}
             onChange={(key) => {
               const selected = suggestions.find((item) => item.id === String(key));
               if (selected) onSelectSuggestion?.(selected.title);
@@ -106,6 +117,7 @@ export function CatalogSearchHeader({
                   <SearchField.Input
                     className="w-full"
                     placeholder={placeholder}
+                    onFocus={() => setSearchFocused(true)}
                   />
                   <SearchField.ClearButton aria-label={clearAriaLabel} />
                 </SearchField.Group>
@@ -132,6 +144,9 @@ export function CatalogSearchHeader({
               </Autocomplete.Popover>
             </Autocomplete.Filter>
           </Autocomplete>
+          {showEmptySuggest ? (
+            <EmptyState className="mt-1">没有匹配的建议</EmptyState>
+          ) : null}
         </div>
       </div>
     </header>
