@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
 import { SELF, env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
+import seedSql from "../scripts/prototype-local-seed.sql?raw";
 
 const origin = "https://example.com";
-const seedSql = readFileSync("scripts/prototype-local-seed.sql", "utf8");
 
 const PREVIEW_TEACHERS = [
   "林晓雯",
