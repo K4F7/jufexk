@@ -6,13 +6,15 @@
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
+  CatalogEmptyRescueLink,
   CatalogResultsStates,
   TEACHER_CATALOG_COPY,
 } from "../components/CatalogResultsStates";
 import { CatalogSearchHeader } from "../components/CatalogSearchHeader";
 import { TeacherResultTable } from "../components/TeacherResultTable";
 import { api } from "../lib/api";
-import type { Paginated, Teacher } from "../lib/types";
+import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
+import type { Course, Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
 
@@ -27,6 +29,7 @@ export function TeachersPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [reloadToken, setReloadToken] = useState(0);
+  const [rescueTotal, setRescueTotal] = useState<number | null>(null);
 
   useEffect(() => setQueryDraft(q), [q]);
 
@@ -72,6 +75,43 @@ export function TeachersPage() {
       controller.abort();
     };
   }, [q, page, reloadToken]);
+
+  const offerRescue =
+    data != null &&
+    shouldOfferCatalogRescue({
+      itemCount: data.items.length,
+      query: q,
+    });
+
+  useEffect(() => {
+    if (!offerRescue) {
+      setRescueTotal(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+    const query = new URLSearchParams({
+      q,
+      page: "1",
+      pageSize: "1",
+    });
+
+    api<Paginated<Course>>(`/api/courses?${query}`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!cancelled) setRescueTotal(result.total);
+      })
+      .catch(() => {
+        if (!cancelled) setRescueTotal(null);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [offerRescue, q]);
 
   const hasFilters = Boolean(queryDraft.trim() || q);
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
@@ -120,6 +160,13 @@ export function TeachersPage() {
         onRetry={() => setReloadToken((n) => n + 1)}
         onClearFilters={clearSearch}
         copy={TEACHER_CATALOG_COPY}
+        rescue={
+          rescueTotal && rescueTotal > 0 ? (
+            <CatalogEmptyRescueLink to={`/courses?q=${encodeURIComponent(q)}`}>
+              课程目录有 {rescueTotal} 门匹配，去查看
+            </CatalogEmptyRescueLink>
+          ) : undefined
+        }
       >
         {data ? (
           <TeacherResultTable items={data.items} search={location.search} />
