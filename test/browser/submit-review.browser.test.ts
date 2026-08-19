@@ -159,7 +159,7 @@ test("site nav always opens the write-review page and marks login required", asy
   await submitLink.click();
   await expect(page).toHaveURL(/\/submit$/);
   await expect(page.getByRole("heading", { name: "写评价" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("需要登录");
+  await expect(page.getByText("投稿需要校园统一身份认证。登录尚未开放，问卷可先预览。")).toBeVisible();
   await expect(page.getByRole("link", { name: "提交补充申请" })).toHaveCount(0);
 });
 
