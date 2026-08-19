@@ -147,18 +147,20 @@ async function pickTeacher(page: Page, name: string) {
   await page.getByRole("option", { name }).click();
 }
 
-test("site nav opens the write-review page once campus auth is live", async ({
+test("site nav always opens the write-review page without a login gate", async ({
   page,
 }) => {
-  // 「写评价」导航入口随校园认证开放自动恢复（Issue #277）。
-  await mockSubmitApi(page, { campusEnabled: true });
+  await mockSubmitApi(page);
   await page.goto("/courses");
-  await page
+  const submitLink = page
     .getByRole("navigation", { name: "主导航" })
-    .getByRole("link", { name: "写评价" })
-    .click();
+    .getByRole("link", { name: "写评价", exact: true });
+  await expect(submitLink).toBeVisible();
+  await expect(submitLink.getByText("需要登录")).toHaveCount(0);
+  await submitLink.click();
   await expect(page).toHaveURL(/\/submit$/);
   await expect(page.getByRole("heading", { name: "写评价" })).toBeVisible();
+  await expect(page.getByText("需要登录")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "提交补充申请" })).toHaveCount(0);
 });
 

@@ -11,6 +11,16 @@ describe("readSecret", () => {
   it("reads Secrets Store bindings via get()", async () => {
     expect(await readSecret({ get: async () => "from-store" })).toBe("from-store");
   });
+
+  it("treats a missing Secrets Store value as empty", async () => {
+    expect(
+      await readSecret({
+        get: async () => {
+          throw new Error('Secret "TURNSTILE_SECRET" not found');
+        },
+      }),
+    ).toBe("");
+  });
 });
 
 describe("turnstileMode", () => {

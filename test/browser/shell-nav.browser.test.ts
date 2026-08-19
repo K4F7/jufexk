@@ -11,6 +11,15 @@ async function mockShellApi(
         json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
       });
     }
+    if (url.pathname === "/api/user/session") {
+      return route.fulfill({
+        json: {
+          authenticated: false,
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
+    }
     if (url.pathname === "/api/auth/campus") {
       return route.fulfill({
         json: options.campusEnabled
@@ -60,10 +69,10 @@ test("main nav items are single links without nested buttons", async ({
 
   await expect(courseLink).toBeVisible();
   await expect(teacherLink).toBeVisible();
-  // 校园认证未开放：「写评价」不进导航，而不是展示一个看似可点的入口（Issue #277）。
-  await expect(nav.getByRole("link", { name: "写评价" })).toHaveCount(0);
-  await expect(nav.getByText("写评价")).toHaveCount(0);
-  await expect(nav.getByRole("link")).toHaveCount(2);
+  const submitLink = nav.getByRole("link", { name: "写评价", exact: true });
+  await expect(submitLink).toBeVisible();
+  await expect(nav.getByText("需要登录")).toHaveCount(0);
+  await expect(nav.getByRole("link")).toHaveCount(3);
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
   await expect(courseLink).toHaveAttribute("aria-current", "page");
@@ -72,7 +81,7 @@ test("main nav items are single links without nested buttons", async ({
   const focusableCount = await nav
     .locator('a, button, [tabindex]:not([tabindex="-1"])')
     .count();
-  expect(focusableCount).toBe(2);
+  expect(focusableCount).toBe(3);
 
   await teacherLink.click();
   await expect(page).toHaveURL(/\/teachers$/);
@@ -81,14 +90,14 @@ test("main nav items are single links without nested buttons", async ({
   expect(renderWarnings).toEqual([]);
 });
 
-test("write-review nav entry restores automatically once campus auth is live", async ({
+test("write-review nav stays visible without a login gate", async ({
   page,
 }) => {
-  await mockShellApi(page, { campusEnabled: true });
+  await mockShellApi(page);
   await page.goto("/courses");
 
   const nav = page.getByRole("navigation", { name: "主导航" });
-  const submitLink = nav.getByRole("link", { name: "写评价" });
+  const submitLink = nav.getByRole("link", { name: "写评价", exact: true });
   await expect(submitLink).toBeVisible();
   await expect(nav.getByRole("link")).toHaveCount(3);
 
