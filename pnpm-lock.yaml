@@ -7,6 +7,9 @@ settings:
 overrides:
   postcss: 8.5.25
 
+patchedDependencies:
+  pinyin-pro@3.29.2: afd2038b9bdf1b02ea7b9b0607702efa791983804ffd8c3bda02f4595cb330e2
+
 importers:
 
   .:
@@ -22,7 +25,7 @@ importers:
         version: 4.13.1
       pinyin-pro:
         specifier: ^3.29.2
-        version: 3.29.2
+        version: 3.29.2(patch_hash=afd2038b9bdf1b02ea7b9b0607702efa791983804ffd8c3bda02f4595cb330e2)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -2723,7 +2726,7 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  pinyin-pro@3.29.2: {}
+  pinyin-pro@3.29.2(patch_hash=afd2038b9bdf1b02ea7b9b0607702efa791983804ffd8c3bda02f4595cb330e2): {}
 
   playwright-core@1.62.1: {}
 

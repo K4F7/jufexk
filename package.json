@@ -14,7 +14,7 @@
     "prototype": "vite",
     "prototype:course-reviews": "vite --config prototypes/course-review-ui/vite.config.ts --host 127.0.0.1",
     "build": "vite build",
-    "test": "vitest run && vitest run --config vitest.legacy-evidence.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
+    "test": "vitest run && vitest run --config vitest.node.config.ts && vitest run --config vitest.legacy-evidence.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
     "test:legacy-evidence": "vitest run --config vitest.legacy-evidence.config.ts",
     "test:catalog-baseline": "vitest run --config vitest.catalog-baseline.config.ts",
     "test:browser": "playwright test",

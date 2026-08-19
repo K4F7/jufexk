@@ -3,3 +3,5 @@ allowBuilds:
   workerd: true
 overrides:
   postcss: 8.5.25
+patchedDependencies:
+  pinyin-pro@3.29.2: patches/pinyin-pro@3.29.2.patch
