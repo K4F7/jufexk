@@ -33,6 +33,15 @@ import {
   type ReviewAttempt,
   type RoutedCell,
 } from "./review_package";
+import {
+  buildHumanQueue,
+  compileApprovedFromDecisions,
+  csvToDecisionItems,
+  discoverLaneSources,
+  parseDecisionRecords,
+  writeApprovedPackageArtifacts,
+  writeHumanQueueArtifacts,
+} from "./human_queue";
 
 function option(name: string) {
   const index = process.argv.indexOf(name);
@@ -59,6 +68,8 @@ function usage() {
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts inventory --evidence-dir <dir> --context <json> --layout <live-layout.json> --gap <json> --out <dir> [--worksheet <name>] [--first-row N] [--last-row N] [--ocr-dir <dir>] [--max-batches N] [--smoke-root <dir>]",
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts compile --inventory <json> --analyses <json> --out <dir>",
     "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts approve --package <json> --verdicts <json> --out <dir>",
+    "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts human-queue --packages-root <dir> --out <dir>",
+    "  pnpm exec tsx scripts/legacy_evidence/review_package_cli.ts compile-approved --packages-root <dir> --out <dir> [--decisions <json|csv>]",
   ].join("\n");
 }
 
@@ -357,11 +368,55 @@ async function approveCommand() {
   }));
 }
 
+async function humanQueueCommand() {
+  const outDir = resolve(option("--out"));
+  const lanes = await discoverLaneSources(option("--packages-root"));
+  const queue = buildHumanQueue(lanes);
+  await writeHumanQueueArtifacts(outDir, queue);
+  console.log(JSON.stringify({
+    status: queue.status,
+    queue_path: join(outDir, "human-queue.json"),
+    table_path: join(outDir, "human-queue.csv"),
+    html_path: join(outDir, "human-queue.html"),
+    queue_cells: queue.queue_cells,
+    auto_approved_cells: queue.auto_approved_cells,
+    incomplete_cells: queue.incomplete_cells,
+    included_worksheets: queue.included_worksheets,
+    excluded_open_worksheets: queue.excluded_open_worksheets,
+    empty_worksheets: queue.empty_worksheets,
+  }));
+}
+
+async function compileApprovedCommand() {
+  const outDir = resolve(option("--out"));
+  const lanes = await discoverLaneSources(option("--packages-root"));
+  const decisionsPath = optionalOption("--decisions");
+  let decisions: ReturnType<typeof parseDecisionRecords> = [];
+  if (decisionsPath) {
+    const raw = await readFile(resolve(decisionsPath), "utf8");
+    const parsed = decisionsPath.endsWith(".csv") ? csvToDecisionItems(raw) : JSON.parse(raw);
+    decisions = parseDecisionRecords(parsed);
+  }
+  const compiled = compileApprovedFromDecisions(lanes, decisions);
+  const manifest = await writeApprovedPackageArtifacts(outDir, compiled);
+  console.log(JSON.stringify({
+    status: compiled.status,
+    manifest_path: join(outDir, "manifest.json"),
+    auto_approved_cells: compiled.auto_approved_cells,
+    human_passed_cells: compiled.human_passed_cells,
+    excluded_cells: compiled.excluded_cells,
+    undecided_cells: compiled.undecided_cells,
+    files: manifest.files,
+  }));
+}
+
 const command = process.argv[2];
 try {
   if (command === "inventory") await inventoryCommand();
   else if (command === "compile") await compileCommand();
   else if (command === "approve") await approveCommand();
+  else if (command === "human-queue") await humanQueueCommand();
+  else if (command === "compile-approved") await compileApprovedCommand();
   else {
     console.error(usage());
     process.exit(2);
