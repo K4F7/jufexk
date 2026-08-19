@@ -338,6 +338,24 @@ const pageArgs = (c: any) => ({
   page: Math.max(1, integer(c.req.query("page")) || 1),
   size: Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20)),
 });
+type WindowedRow = { window_total?: number };
+const stripWindowTotal = <T extends WindowedRow>(row: T) => {
+  const { window_total: _total, ...rest } = row;
+  return rest;
+};
+/** 列表查询用 COUNT(*) OVER() 带出总数；越界空页没有行可读窗口值，才回退 COUNT。 */
+const windowedPage = async <T extends WindowedRow>(
+  rows: T[],
+  page: number,
+  fallbackTotal: () => Promise<number>,
+) => ({
+  items: rows.map(stripWindowTotal),
+  total: rows.length
+    ? Number(rows[0].window_total) || 0
+    : page > 1
+      ? await fallbackTotal()
+      : 0,
+});
 const originOk = (c: any) => {
   const origin = c.req.header("Origin");
   return origin === new URL(c.req.url).origin;
@@ -624,11 +642,13 @@ app.get("/api/courses", async (c) => {
     teacherId === null
       ? publicCourseCanonicalJoin
       : `${publicCourseCanonicalJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id`;
-  const total = await c.env.DB.prepare(
-    `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
-  )
-    .bind(...args)
-    .first<{ n: number }>();
+  const courseCount = () =>
+    c.env.DB.prepare(
+      `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
+    )
+      .bind(...args)
+      .first<{ n: number }>()
+      .then((row) => row?.n || 0);
   // 多词查询里所有词条都落在课名或课号上时最贴近意图，排在院系与教师命中之前。
   const allTermsInTitle =
     searchTerms.length > 1
@@ -666,7 +686,8 @@ app.get("/api/courses", async (c) => {
     `SELECT c.*,
        GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
        GROUP_CONCAT(DISTINCT t.name) teachers,
-       COALESCE(course_review_counts.review_count,0) review_count
+       COALESCE(course_review_counts.review_count,0) review_count,
+       COUNT(*) OVER() window_total
       FROM courses c
       ${publicCourseCanonicalJoin}
       LEFT JOIN course_teachers ct ON ct.course_id=c.id
@@ -684,17 +705,22 @@ app.get("/api/courses", async (c) => {
       (page - 1) * size,
     )
     .all();
+  const pageRows = await windowedPage(
+    results as WindowedRow[],
+    page,
+    courseCount,
+  );
   const virtualItems = await loadVirtualPeSportItems(
     c.env.DB,
     searchTerms,
     teacherId,
     department,
   );
-  const listed = results.map(withPublicCourseCategory);
+  const listed = pageRows.items.map(withPublicCourseCategory);
   const extras = virtualItems
     .filter((item) => !listed.some((row) => row.name === item.name))
     .map(({ rating: _rating, ...item }) => item);
-  const totalCount = (total?.n || 0) + extras.length;
+  const totalCount = pageRows.total + extras.length;
   // 虚拟体育课项只落在第一页；课名排序时按同一次序并入，而不是追加在末尾。
   const byNameCodeId = (
     a: { id?: unknown; code?: unknown; name?: unknown },
@@ -732,15 +758,16 @@ app.get("/api/teachers", async (c) => {
   );
   const where = searchGroup.sql || "1=1";
   const args = searchGroup.args;
-  const total = await c.env.DB.prepare(
-    `SELECT COUNT(*) n FROM teachers t WHERE ${where}`,
-  )
-    .bind(...args)
-    .first<{ n: number }>();
+  const teacherCount = () =>
+    c.env.DB.prepare(`SELECT COUNT(*) n FROM teachers t WHERE ${where}`)
+      .bind(...args)
+      .first<{ n: number }>()
+      .then((row) => row?.n || 0);
   const { results } = await c.env.DB.prepare(
       `SELECT t.*,
        COALESCE(public_teacher_course_counts.course_count,0) course_count,
-       COALESCE(teacher_review_counts.review_count,0) review_count
+       COALESCE(teacher_review_counts.review_count,0) review_count,
+       COUNT(*) OVER() window_total
       FROM teachers t
       LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
       LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM public_review_counts GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
@@ -766,10 +793,15 @@ app.get("/api/teachers", async (c) => {
       (page - 1) * size,
     )
     .all();
-  const totalCount = total?.n || 0;
+  const pageRows = await windowedPage(
+    results as WindowedRow[],
+    page,
+    teacherCount,
+  );
+  const totalCount = pageRows.total;
   setPublicCatalogCacheHeaders(c);
   return c.json({
-    items: results.map((row: { name?: string; course_count?: number }) => {
+    items: pageRows.items.map((row: { name?: string; course_count?: number }) => {
       const sport = virtualPeSportForTeacherName(
         typeof row.name === "string" ? row.name : "",
       );
@@ -867,24 +899,30 @@ app.get("/api/courses/options", async (c) => {
   );
   const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = searchGroup.args;
-  const total = await c.env.DB.prepare(
-    `SELECT COUNT(*) n FROM courses c WHERE ${where}`,
-  )
-    .bind(...args)
-    .first<{ n: number }>();
+  const optionCount = () =>
+    c.env.DB.prepare(`SELECT COUNT(*) n FROM courses c WHERE ${where}`)
+      .bind(...args)
+      .first<{ n: number }>()
+      .then((row) => row?.n || 0);
   const { results } = await c.env.DB.prepare(
     `SELECT c.id,c.code,c.name,c.category,c.department,c.scheme_key,
        (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
-       GROUP_CONCAT(DISTINCT t.name) teachers
+       GROUP_CONCAT(DISTINCT t.name) teachers,
+       COUNT(*) OVER() window_total
      FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
      WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
   )
     .bind(...args, size, (page - 1) * size)
     .all();
-  const totalCount = total?.n || 0;
+  const pageRows = await windowedPage(
+    results as WindowedRow[],
+    page,
+    optionCount,
+  );
+  const totalCount = pageRows.total;
   setPublicCatalogCacheHeaders(c);
   return c.json({
-    items: results.map((row) => withCourseReviewScheme(row)),
+    items: pageRows.items.map((row) => withCourseReviewScheme(row)),
     page,
     pageSize: size,
     total: totalCount,
