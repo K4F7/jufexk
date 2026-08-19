@@ -1,0 +1,21 @@
+diff --git a/dist/esm/common/segmentit/index.mjs b/dist/esm/common/segmentit/index.mjs
+index 439a29348540392180965b7e20e94d0bff9a08e8..f90eb146f79deb110db0e43d1cf8450a240a0a10 100644
+--- a/dist/esm/common/segmentit/index.mjs
++++ b/dist/esm/common/segmentit/index.mjs
+@@ -184,13 +184,9 @@ function ensureAcBuilt() {
+     }
+ }
+ function scheduleAcBuild() {
+-    if (typeof requestIdleCallback === "function") {
+-        requestIdleCallback(() => ensureAcBuilt());
+-    }
+-    else {
+-        setTimeout(ensureAcBuilt, 0);
+-    }
++    // Cloudflare Workers forbid setTimeout/requestIdleCallback at module scope
++    // (error 10021). getPinyin() already calls ensureAcBuilt() on first use.
+ }
+-scheduleAcBuild();
++
+ 
+ export { AC, TokenizationAlgorithm, acTree, ensureAcBuilt, scheduleAcBuild };

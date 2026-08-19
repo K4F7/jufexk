@@ -1,3 +1,5 @@
+// pinyin-pro 3.29.2 会在模块顶层 setTimeout 预热分词树，Workers 部署会报 10021。
+// 仓库用 patches/pinyin-pro@3.29.2.patch 去掉预热；首次 pinyin() 仍同步建树。
 import { pinyin } from "pinyin-pro";
 
 /** ASCII 字母词条才走拼音面；汉字、纯数字、纯通配符仍只打字面 match_text。 */
