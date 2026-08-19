@@ -1,7 +1,11 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { captureFormulaBarCell, type FormulaBarCellSource } from "./formula_bar";
 import { compileConfirmedLiveLayout, type LiveLayout } from "./live_layout";
 import { compileLiveLayoutContextIndex } from "./live_layout_context_index";
+import { OTHER_SMOKE_INVENTORY_VERSION, OTHER_SMOKE_MANIFEST_VERSION } from "./other_smoke";
 import {
   ISOLATED_SPORTS_SMOKE_REVIEW,
   NO_REVIEWS_TO_PACKAGE,
@@ -16,16 +20,22 @@ import {
   buildReviewInventory,
   classifyReviewOcrImage,
   compileReviewPackage,
+  detectSmokeCaptureRoot,
   disagreements,
   eligibleForApproval,
+  loadSmokeImageOverrides,
+  loadSmokeInventoryScopes,
+  resolveReviewEvidenceScopes,
   markIsolatedSportsSmokeReviewPackage,
   parseContextDocument,
   reviewPackageCountsAsPass,
+  resolveSmokeEvidenceDir,
   routeFormulaBarCell,
   validateAnalysisResponse,
   type CellAnalysis,
   type RoutedCell,
 } from "./review_package";
+import { SMOKE_MANIFEST_VERSION } from "./smoke_recapture";
 
 const CELL_IMAGE = { kind: "cell" as const, path: "G8-cell.jpg", sha256: "1".repeat(64) };
 const CONFLICT_IMAGE = { kind: "conflict" as const, path: "G8-conflict.jpg", sha256: "2".repeat(64) };
@@ -558,5 +568,129 @@ describe("legacy review package live-layout gate", () => {
     expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/review-package-smoke-sports-20260818/package.json")).toThrow(/isolated|wrong-layout|must not be rerun/i);
     expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/review-package-smoke-sports-oneshot/package.json")).toThrow(/isolated|wrong-layout|must not be rerun/i);
     expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/smoke-20260818-v1/package.json")).toThrow(/#180|#229|formula-bar|protected/i);
+    expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/other-smoke-20260819-v1/package.json")).toThrow(/#180|#229|formula-bar|protected/i);
+    expect(() => assertReviewPackageOutputPath("scripts/legacy_evidence/output/review-other-smoke-20260819-v1/package.json")).not.toThrow();
+  });
+});
+
+describe("other-smoke capture handoff", () => {
+  it("reads other-smoke manifest recapture overlays and formula-bar source root without rewriting the pack", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jufexk-other-smoke-handoff-"));
+    try {
+      const captureDir = join(root, "captures", "外教");
+      await mkdir(captureDir, { recursive: true });
+      const cell = join(captureDir, "K4-cell.jpg");
+      const formula = join(captureDir, "K4-formula.jpg");
+      await writeFile(cell, "cell");
+      await writeFile(formula, "formula");
+      await writeFile(join(root, "manifest.json"), `${JSON.stringify({
+        contract_version: OTHER_SMOKE_MANIFEST_VERSION,
+        recapture_keys: ["外教|4|K", "外教|4|L"],
+      })}\n`);
+      await writeFile(join(root, "inventory.json"), `${JSON.stringify({
+        contract_version: OTHER_SMOKE_INVENTORY_VERSION,
+        source_evidence_root: "scripts/legacy_evidence/output/formula-bar-full-20260729-v1/evidence",
+        sheets: [
+          { worksheet: "外教", smoke_rows: [3, 6] },
+          { worksheet: "MOOC", smoke_rows: [8, 14] },
+          { worksheet: "美育", smoke_rows: [8, 14] },
+        ],
+      })}\n`);
+
+      const overrides = await loadSmokeImageOverrides(root);
+      expect(overrides["外教|4|K"]).toEqual({ cell, conflict: formula });
+      expect(overrides["外教|4|L"]).toBeUndefined();
+      expect(await resolveSmokeEvidenceDir(root)).toBe("scripts/legacy_evidence/output/formula-bar-full-20260729-v1");
+      expect(await detectSmokeCaptureRoot([root])).toBe(root);
+      expect(await loadSmokeInventoryScopes(root)).toEqual([
+        { worksheet: "外教", first_row: 3, last_row: 6 },
+        { worksheet: "MOOC", first_row: 8, last_row: 14 },
+        { worksheet: "美育", first_row: 8, last_row: 14 },
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("still reads #180 smoke-manifest.json and reuse-recapture inventory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jufexk-smoke-handoff-"));
+    try {
+      const captureDir = join(root, "captures", "体育课");
+      await mkdir(captureDir, { recursive: true });
+      const cell = join(captureDir, "D13-cell.jpg");
+      await writeFile(cell, "cell");
+      await writeFile(join(root, "smoke-manifest.json"), `${JSON.stringify({
+        contract_version: SMOKE_MANIFEST_VERSION,
+        recapture_keys: ["体育课|13|D"],
+      })}\n`);
+      await writeFile(join(root, "reuse-recapture-inventory.json"), `${JSON.stringify({
+        contract_version: "smoke-reuse-recapture-v1",
+        source_evidence_root: "D:/evidence/formula-bar-full-20260729-v1/evidence",
+        sheets: [{ worksheet: "体育课", smoke_rows: [6, 14] }],
+      })}\n`);
+
+      expect(await loadSmokeImageOverrides(root)).toEqual({ "体育课|13|D": { cell } });
+      expect(await resolveSmokeEvidenceDir(root)).toBe("D:/evidence/formula-bar-full-20260729-v1");
+      expect(await detectSmokeCaptureRoot([join(root, "missing"), root])).toBe(root);
+      expect(await loadSmokeInventoryScopes(root)).toEqual([
+        { worksheet: "体育课", first_row: 6, last_row: 14 },
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("clips --worksheet / row flags to the frozen smoke pack so leftover #198 rows stay out", () => {
+    const pack = [
+      { worksheet: "外教", first_row: 3, last_row: 6 },
+      { worksheet: "主要课程", first_row: 19, last_row: 26 },
+      { worksheet: "MOOC", first_row: 8, last_row: 14 },
+    ];
+    expect(resolveReviewEvidenceScopes({ pack_scopes: pack })).toEqual(pack);
+    expect(resolveReviewEvidenceScopes({
+      worksheet: "主要课程",
+      pack_scopes: pack,
+    })).toEqual([{ worksheet: "主要课程", first_row: 19, last_row: 26 }]);
+    expect(resolveReviewEvidenceScopes({
+      worksheet: "主要课程",
+      first_row: 19,
+      last_row: 480,
+      pack_scopes: pack,
+    })).toEqual([{ worksheet: "主要课程", first_row: 19, last_row: 26 }]);
+    expect(resolveReviewEvidenceScopes({
+      first_row: 20,
+      last_row: 24,
+      pack_scopes: pack,
+    })).toEqual([
+      { worksheet: "主要课程", first_row: 20, last_row: 24 },
+    ]);
+    expect(resolveReviewEvidenceScopes({
+      worksheet: "主要课程",
+      first_row: 56,
+      last_row: 472,
+      pack_scopes: pack,
+    })).toEqual([]);
+    expect(resolveReviewEvidenceScopes({
+      worksheet: "思政课",
+      first_row: 15,
+      last_row: 40,
+      pack_scopes: pack,
+    })).toEqual([{ worksheet: "思政课", first_row: 15, last_row: 40 }]);
+  });
+
+  it("does not treat an unrelated inventory.json as a capture pack", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jufexk-not-smoke-"));
+    try {
+      await writeFile(join(root, "inventory.json"), `${JSON.stringify({
+        contract_version: "legacy-review-package-v1",
+        source_evidence_root: "scripts/legacy_evidence/output/formula-bar-full-20260729-v1/evidence",
+      })}\n`);
+      expect(await detectSmokeCaptureRoot([root])).toBeUndefined();
+      expect(await loadSmokeImageOverrides(root)).toEqual({});
+      expect(await resolveSmokeEvidenceDir(root)).toBe(root);
+      expect(await loadSmokeInventoryScopes(root)).toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

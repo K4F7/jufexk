@@ -11,10 +11,13 @@ import {
   assertReviewPackageOutputPath,
   buildReviewInventory,
   compileReviewPackage,
+  detectSmokeCaptureRoot,
   disagreements,
   eligibleForApproval,
   loadScopedEvidence,
   loadSmokeImageOverrides,
+  loadSmokeInventoryScopes,
+  resolveReviewEvidenceScopes,
   parseContextDocument,
   readJsonIfExists,
   requireReviewPackageLiveLayout,
@@ -66,15 +69,40 @@ async function loadContext(path: string) {
 async function detectSmokeRoot(contextPath: string, evidenceDir: string) {
   const explicit = optionalOption("--smoke-root");
   if (explicit) return resolve(explicit);
-  for (const candidate of [dirname(resolve(contextPath)), resolve(evidenceDir)]) {
-    try {
-      await readFile(join(candidate, "smoke-manifest.json"), "utf8");
-      return candidate;
-    } catch {
-      continue;
-    }
+  return detectSmokeCaptureRoot([dirname(resolve(contextPath)), resolve(evidenceDir)]);
+}
+
+async function loadEvidence(evidenceDir: string, smokeRoot: string | undefined) {
+  const worksheet = optionalOption("--worksheet");
+  const firstRow = optionalInteger("--first-row");
+  const lastRow = optionalInteger("--last-row");
+  const scopes = resolveReviewEvidenceScopes({
+    worksheet,
+    first_row: firstRow,
+    last_row: lastRow,
+    pack_scopes: smokeRoot ? await loadSmokeInventoryScopes(smokeRoot) : null,
+  });
+  if (!scopes) {
+    return loadScopedEvidence({
+      evidence_dir: evidenceDir,
+      worksheet,
+      first_row: firstRow,
+      last_row: lastRow,
+    });
   }
-  return undefined;
+  const evidence: Awaited<ReturnType<typeof loadScopedEvidence>>["evidence"] = [];
+  const image_base_by_key: Record<string, string> = {};
+  for (const scope of scopes) {
+    const loaded = await loadScopedEvidence({
+      evidence_dir: evidenceDir,
+      worksheet: scope.worksheet,
+      first_row: scope.first_row,
+      last_row: scope.last_row,
+    });
+    evidence.push(...loaded.evidence);
+    Object.assign(image_base_by_key, loaded.image_base_by_key);
+  }
+  return { evidence, image_base_by_key };
 }
 
 async function loadOcr(ocrDir?: string): Promise<Record<string, OcrEvidence>> {
@@ -122,12 +150,7 @@ async function inventoryCommand() {
   const gap_by_key = await loadGap();
   const smokeRoot = await detectSmokeRoot(contextPath, requestedEvidence);
   const evidenceDir = smokeRoot ? await resolveSmokeEvidenceDir(smokeRoot) : requestedEvidence;
-  const loaded = await loadScopedEvidence({
-    evidence_dir: evidenceDir,
-    worksheet: optionalOption("--worksheet"),
-    first_row: optionalInteger("--first-row"),
-    last_row: optionalInteger("--last-row"),
-  });
+  const loaded = await loadEvidence(evidenceDir, smokeRoot);
   const prior = await readJsonIfExists(join(outDir, "matrix.json"));
   const attempts = await readJsonIfExists(join(outDir, "attempts.json"));
   const inventoryPath = join(outDir, "inventory.json");
