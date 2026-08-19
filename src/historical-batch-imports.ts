@@ -23,6 +23,35 @@ export type HistoricalBatchImportResult = {
   existing: number;
 };
 
+export type HistoricalBatchLookupRow = {
+  reviewId: string;
+  courseCode: string;
+  teacherLabel: string;
+  comment: string;
+};
+
+export type HistoricalBatchResolvedRow = HistoricalBatchLookupRow & {
+  courseId: number;
+  teacherId: number;
+  existing: {
+    course_id: number;
+    teacher_id: number;
+    comment: string;
+  } | null;
+};
+
+type HistoricalBatchIdentity = {
+  course_id: number;
+  teacher_id: number;
+  relation_exists: number;
+};
+
+type HistoricalBatchExisting = {
+  course_id: number;
+  teacher_id: number;
+  comment: string;
+};
+
 const REQUIRED_FIELDS = new Set([
   "catalog_course_code",
   "catalog_teacher_label",
@@ -63,6 +92,77 @@ const canonicalJson = (value: unknown): string => {
 
 const clean = (value: unknown, limit = 500) =>
   typeof value === "string" ? value.trim().slice(0, limit) : "";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const isHistoricalBatchIdentity = (
+  value: unknown,
+): value is HistoricalBatchIdentity =>
+  isRecord(value) &&
+  typeof value.course_id === "number" &&
+  typeof value.teacher_id === "number" &&
+  typeof value.relation_exists === "number";
+
+const isHistoricalBatchExisting = (
+  value: unknown,
+): value is HistoricalBatchExisting =>
+  isRecord(value) &&
+  typeof value.course_id === "number" &&
+  typeof value.teacher_id === "number" &&
+  typeof value.comment === "string";
+
+/**
+ * Resolve a bounded import batch with two D1 round trips instead of two
+ * sequential queries per record. D1 batch preserves statement order, so the
+ * result index remains aligned with the validated input row.
+ */
+export async function resolveHistoricalBatchRows(
+  db: D1Database,
+  rows: HistoricalBatchLookupRow[],
+): Promise<HistoricalBatchResolvedRow[]> {
+  const identityResults = await db.batch(
+    rows.map(({ courseCode, teacherLabel }) =>
+      db
+        .prepare(
+          `SELECT c.id course_id,t.id teacher_id,
+             EXISTS(
+               SELECT 1 FROM course_teachers ct
+               WHERE ct.course_id=c.id AND ct.teacher_id=t.id
+             ) relation_exists
+           FROM courses c CROSS JOIN teachers t
+           WHERE c.code=? AND t.source_teacher_label=?`,
+        )
+        .bind(courseCode, teacherLabel),
+    ),
+  );
+  const identities = rows.map((_, index) => {
+    const result = identityResults[index]?.results?.[0];
+    if (!isHistoricalBatchIdentity(result) || !result.relation_exists)
+      throw new HistoricalBatchImportError(
+        "历史评价引用的课程、教师或任课关系不存在",
+      );
+    return result;
+  });
+
+  const existingResults = await db.batch(
+    rows.map(({ reviewId }) =>
+      db
+        .prepare(
+          "SELECT course_id,teacher_id,comment FROM public_historical_reviews WHERE id=?",
+        )
+        .bind(reviewId),
+    ),
+  );
+  return rows.map((row, index) => ({
+    ...row,
+    courseId: identities[index].course_id,
+    teacherId: identities[index].teacher_id,
+    existing: isHistoricalBatchExisting(existingResults[index]?.results?.[0])
+      ? existingResults[index].results[0]
+      : null,
+  }));
+}
 
 type Issue111Manifest = {
   contractVersion?: unknown;
@@ -171,6 +271,7 @@ export async function importIssue111HistoricalBatch(
     comment: string;
   }> = [];
   let existingCount = 0;
+  const lookupRows: HistoricalBatchLookupRow[] = [];
   for (const record of selectedRecords) {
     if (
       !record ||
@@ -192,33 +293,16 @@ export async function importIssue111HistoricalBatch(
       throw new HistoricalBatchImportError("历史评价批次包含重复稳定身份");
     seen.add(reviewId);
 
-    const identity = await db
-      .prepare(
-        `SELECT c.id course_id,t.id teacher_id,
-           EXISTS(
-             SELECT 1 FROM course_teachers ct
-             WHERE ct.course_id=c.id AND ct.teacher_id=t.id
-           ) relation_exists
-         FROM courses c CROSS JOIN teachers t
-         WHERE c.code=? AND t.source_teacher_label=?`,
-      )
-      .bind(courseCode, teacherLabel)
-      .first<{ course_id: number; teacher_id: number; relation_exists: number }>();
-    if (!identity || !identity.relation_exists)
-      throw new HistoricalBatchImportError(
-        "历史评价引用的课程、教师或任课关系不存在",
-      );
+    lookupRows.push({ reviewId, courseCode, teacherLabel, comment });
+  }
 
-    const existing = await db
-      .prepare(
-        "SELECT course_id,teacher_id,comment FROM public_historical_reviews WHERE id=?",
-      )
-      .bind(reviewId)
-      .first<{ course_id: number; teacher_id: number; comment: string }>();
+  const resolvedRows = await resolveHistoricalBatchRows(db, lookupRows);
+  for (const resolved of resolvedRows) {
+    const { reviewId, comment, courseId, teacherId, existing } = resolved;
     if (existing) {
       if (
-        existing.course_id !== identity.course_id ||
-        existing.teacher_id !== identity.teacher_id ||
+        existing.course_id !== courseId ||
+        existing.teacher_id !== teacherId ||
         existing.comment !== comment
       )
         throw new HistoricalBatchImportError(
@@ -230,8 +314,8 @@ export async function importIssue111HistoricalBatch(
     }
     pending.push({
       reviewId,
-      courseId: identity.course_id,
-      teacherId: identity.teacher_id,
+      courseId,
+      teacherId,
       comment,
     });
   }
