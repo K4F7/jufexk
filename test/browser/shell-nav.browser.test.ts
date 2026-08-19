@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function mockShellApi(
   page: Page,
-  options: { campusEnabled?: boolean; authenticated?: boolean } = {},
+  options: { campusEnabled?: boolean } = {},
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -14,7 +14,7 @@ async function mockShellApi(
     if (url.pathname === "/api/user/session") {
       return route.fulfill({
         json: {
-          authenticated: Boolean(options.authenticated),
+          authenticated: false,
           loginPath: "/login",
           logoutPath: "/logout",
         },
@@ -69,9 +69,9 @@ test("main nav items are single links without nested buttons", async ({
 
   await expect(courseLink).toBeVisible();
   await expect(teacherLink).toBeVisible();
-  const submitLink = nav.getByRole("link", { name: /写评价/ });
+  const submitLink = nav.getByRole("link", { name: "写评价", exact: true });
   await expect(submitLink).toBeVisible();
-  await expect(submitLink.getByText("需要登录")).toBeVisible();
+  await expect(nav.getByText("需要登录")).toHaveCount(0);
   await expect(nav.getByRole("link")).toHaveCount(3);
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
@@ -90,16 +90,15 @@ test("main nav items are single links without nested buttons", async ({
   expect(renderWarnings).toEqual([]);
 });
 
-test("write-review nav stays visible and drops the login hint after sign-in", async ({
+test("write-review nav stays visible without a login gate", async ({
   page,
 }) => {
-  await mockShellApi(page, { authenticated: true });
+  await mockShellApi(page);
   await page.goto("/courses");
 
   const nav = page.getByRole("navigation", { name: "主导航" });
   const submitLink = nav.getByRole("link", { name: "写评价", exact: true });
   await expect(submitLink).toBeVisible();
-  await expect(submitLink.getByText("需要登录")).toHaveCount(0);
   await expect(nav.getByRole("link")).toHaveCount(3);
 
   await submitLink.click();

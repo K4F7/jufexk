@@ -3,7 +3,12 @@ export type SecretBinding = string | { get(): Promise<string> } | undefined | nu
 export async function readSecret(value: SecretBinding): Promise<string> {
   if (value == null) return "";
   if (typeof value === "string") return value;
-  return (await value.get()) ?? "";
+  try {
+    return (await value.get()) ?? "";
+  } catch {
+    // Local preview often has the binding but no seeded value.
+    return "";
+  }
 }
 
 export function turnstileMode(
