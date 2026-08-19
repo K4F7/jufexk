@@ -2,49 +2,48 @@
 -- Seeds a realistic JUFE-shaped catalog so /courses and shell-nav variants
 -- render against real API data (not mock components).
 -- Apply: pnpm db:seed-preview
--- Safe-ish to re-run: skips when a marker course already exists.
+-- Safe to re-run: unique keys + INSERT OR IGNORE / NOT EXISTS, not a marker-course skip.
 
 PRAGMA foreign_keys=ON;
 
--- Idempotent guard: if preview catalog already present, do nothing.
--- (Wrangler D1 file exec is one script; we use a temp check via conditional inserts.)
-
-INSERT OR IGNORE INTO teachers(name, department, title, bio) VALUES
-  ('林晓雯', '会计学院', '副教授', '本地预览数据'),
-  ('陈启明', '金融学院', '教授', '本地预览数据'),
-  ('王若舟', '经济学院', '讲师', '本地预览数据'),
-  ('赵敏', '法学院', '副教授', '本地预览数据'),
-  ('刘洋', '信息管理学院', '讲师', '本地预览数据'),
-  ('周慧', '体育部', '讲师', '本地预览数据'),
-  ('黄志远', '统计学院', '教授', '本地预览数据'),
-  ('吴桐', '工商管理学院', '副教授', '本地预览数据');
+-- Schema notes (keep this file aligned with current migrations):
+-- teachers require source_teacher_label (UNIQUE); courses.category is general|sports.
+INSERT OR IGNORE INTO teachers(source_teacher_label, name, department, title, bio) VALUES
+  ('林晓雯', '林晓雯', '会计学院', '副教授', '本地预览数据'),
+  ('陈启明', '陈启明', '金融学院', '教授', '本地预览数据'),
+  ('王若舟', '王若舟', '经济学院', '讲师', '本地预览数据'),
+  ('赵敏', '赵敏', '法学院', '副教授', '本地预览数据'),
+  ('刘洋', '刘洋', '信息管理学院', '讲师', '本地预览数据'),
+  ('周慧', '周慧', '体育部', '讲师', '本地预览数据'),
+  ('黄志远', '黄志远', '统计学院', '教授', '本地预览数据'),
+  ('吴桐', '吴桐', '工商管理学院', '副教授', '本地预览数据');
 
 INSERT OR IGNORE INTO courses(code, name, category, department, credits, description) VALUES
-  ('ACC2101', '中级财务会计', 'major', '会计学院', 3, '本地预览'),
-  ('FIN1203', '货币金融学', 'major', '金融学院', 3, '本地预览'),
-  ('ECO1101', '微观经济学', 'major', '经济学院', 3, '本地预览'),
-  ('LAW1002', '法理学', 'major', '法学院', 2, '本地预览'),
-  ('MIS2205', '管理信息系统', 'major', '信息管理学院', 3, '本地预览'),
-  ('STA1301', '概率论与数理统计', 'major', '统计学院', 3, '本地预览'),
-  ('MGT2001', '管理学原理', 'major', '工商管理学院', 2, '本地预览'),
+  ('ACC2101', '中级财务会计', 'general', '会计学院', 3, '本地预览'),
+  ('FIN1203', '货币金融学', 'general', '金融学院', 3, '本地预览'),
+  ('ECO1101', '微观经济学', 'general', '经济学院', 3, '本地预览'),
+  ('LAW1002', '法理学', 'general', '法学院', 2, '本地预览'),
+  ('MIS2205', '管理信息系统', 'general', '信息管理学院', 3, '本地预览'),
+  ('STA1301', '概率论与数理统计', 'general', '统计学院', 3, '本地预览'),
+  ('MGT2001', '管理学原理', 'general', '工商管理学院', 2, '本地预览'),
   ('GEN0108', '中国传统文化导论', 'general', '人文学院', 2, '本地预览'),
   ('GEN0215', '批判性思维', 'general', '人文学院', 2, '本地预览'),
-  ('PE0120', '羽毛球', 'pe', '体育部', 1, '本地预览'),
-  ('PE0142', '乒乓球', 'pe', '体育部', 1, '本地预览'),
-  ('ACC3108', '审计学', 'major', '会计学院', 3, '本地预览'),
-  ('FIN2306', '投资学', 'major', '金融学院', 3, '本地预览'),
-  ('ECO2104', '宏观经济学', 'major', '经济学院', 3, '本地预览'),
-  ('LAW2201', '民法总论', 'major', '法学院', 3, '本地预览'),
-  ('MIS3102', '数据分析基础', 'major', '信息管理学院', 2, '本地预览'),
-  ('STA2204', '应用回归分析', 'major', '统计学院', 3, '本地预览'),
-  ('MGT3105', '战略管理', 'major', '工商管理学院', 2, '本地预览'),
+  ('PE0120', '羽毛球', 'sports', '体育部', 1, '本地预览'),
+  ('PE0142', '乒乓球', 'sports', '体育部', 1, '本地预览'),
+  ('ACC3108', '审计学', 'general', '会计学院', 3, '本地预览'),
+  ('FIN2306', '投资学', 'general', '金融学院', 3, '本地预览'),
+  ('ECO2104', '宏观经济学', 'general', '经济学院', 3, '本地预览'),
+  ('LAW2201', '民法总论', 'general', '法学院', 3, '本地预览'),
+  ('MIS3102', '数据分析基础', 'general', '信息管理学院', 2, '本地预览'),
+  ('STA2204', '应用回归分析', 'general', '统计学院', 3, '本地预览'),
+  ('MGT3105', '战略管理', 'general', '工商管理学院', 2, '本地预览'),
   ('GEN0302', '心理学与生活', 'general', '人文学院', 2, '本地预览'),
-  ('ACC1101', '会计学原理', 'major', '会计学院', 3, '本地预览'),
-  ('FIN1101', '金融学导论', 'major', '金融学院', 2, '本地预览'),
-  ('ECO1001', '经济学原理', 'major', '经济学院', 3, '本地预览'),
-  ('LAW1105', '宪法学', 'major', '法学院', 2, '本地预览'),
-  ('MIS1101', '计算机应用基础', 'major', '信息管理学院', 2, '本地预览'),
-  ('PE0160', '游泳', 'pe', '体育部', 1, '本地预览');
+  ('ACC1101', '会计学原理', 'general', '会计学院', 3, '本地预览'),
+  ('FIN1101', '金融学导论', 'general', '金融学院', 2, '本地预览'),
+  ('ECO1001', '经济学原理', 'general', '经济学院', 3, '本地预览'),
+  ('LAW1105', '宪法学', 'general', '法学院', 2, '本地预览'),
+  ('MIS1101', '计算机应用基础', 'general', '信息管理学院', 2, '本地预览'),
+  ('PE0160', '游泳', 'sports', '体育部', 1, '本地预览');
 
 INSERT OR IGNORE INTO course_teachers(course_id, teacher_id)
 SELECT c.id, t.id FROM courses c JOIN teachers t
