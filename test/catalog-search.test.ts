@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { isAsciiLetterTerm } from "../src/lib/catalog-pinyin";
 import {
   andSearchTerms,
+  andSearchTermsWithPinyin,
+  delimitedExactSql,
   likeEscape,
   likeSql,
   parseSearchTerms,
@@ -58,6 +61,14 @@ describe("likeSql", () => {
   });
 });
 
+describe("delimitedExactSql", () => {
+  it("matches a unit-separator wrapped value", () => {
+    expect(delimitedExactSql("pcc.teacher_variant_text")).toBe(
+      "instr(pcc.teacher_variant_text, char(31) || ? || char(31)) > 0",
+    );
+  });
+});
+
 describe("andSearchTerms", () => {
   it("returns an empty filter when there are no terms", () => {
     expect(andSearchTerms([], likeSql("c.name"))).toEqual({ sql: "", args: [] });
@@ -103,5 +114,29 @@ describe("andSearchTerms", () => {
     expect(() =>
       andSearchTerms(["张三"], `${likeSql('"quoted"')} `),
     ).toThrow(/无法可靠计数/);
+  });
+});
+
+describe("andSearchTermsWithPinyin", () => {
+  it("only ORs the pinyin column for ASCII letter terms", () => {
+    const ascii = andSearchTermsWithPinyin(
+      ["gaoshu"],
+      likeSql("pcc.match_text"),
+      likeSql("pcc.pinyin_text"),
+      isAsciiLetterTerm,
+    );
+    expect(ascii.sql).toBe(
+      "(pcc.match_text LIKE ? ESCAPE '\\' OR pcc.pinyin_text LIKE ? ESCAPE '\\')",
+    );
+    expect(ascii.args).toEqual(["%gaoshu%", "%gaoshu%"]);
+
+    const chinese = andSearchTermsWithPinyin(
+      ["高等数学"],
+      likeSql("pcc.match_text"),
+      likeSql("pcc.pinyin_text"),
+      isAsciiLetterTerm,
+    );
+    expect(chinese.sql).toBe("(pcc.match_text LIKE ? ESCAPE '\\')");
+    expect(chinese.args).toEqual(["%高等数学%"]);
   });
 });

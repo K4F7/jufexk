@@ -1,9 +1,6 @@
-import { Button, Dropdown, Label, buttonVariants } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { Button, Chip, Dropdown, Label, buttonVariants } from "@heroui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
-import { api } from "../lib/api";
-import type { CampusAuthStatus } from "../lib/campus-auth";
 import { RouterAriaLink } from "./RouterAriaLink";
 
 /**
@@ -11,29 +8,20 @@ import { RouterAriaLink } from "./RouterAriaLink";
  * The session payload carries no email, sub or users.id, so the authenticated
  * entry is a generic account menu — nothing identifying is ever rendered.
  *
- * While campus auth reports `enabled: false`, guests get a disabled
- * 「登录未开放」indicator instead of a link into a formless page (Issue #204);
- * the entry becomes a real link again automatically once it is enabled.
+ * While campus auth reports `enabled: false`, guests get a non-interactive
+ * 「登录未开放」status chip instead of a link into a formless page (Issues
+ * #204/#277: a disabled ghost button reads as plain text at link weight, so
+ * the closed state is a status label, not a control); the entry becomes a
+ * real link again automatically once campus auth is enabled.
  */
-export function AccountNavControl() {
+export function AccountNavControl({
+  campusEnabled,
+}: {
+  campusEnabled: boolean | null;
+}) {
   const { viewer, ready } = useViewer();
   const location = useLocation();
   const navigate = useNavigate();
-  const [campusEnabled, setCampusEnabled] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api<CampusAuthStatus>("/api/auth/campus")
-      .then((status) => {
-        if (!cancelled) setCampusEnabled(Boolean(status.enabled));
-      })
-      .catch(() => {
-        if (!cancelled) setCampusEnabled(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   if (!ready) return null;
 
@@ -42,9 +30,9 @@ export function AccountNavControl() {
     if (campusEnabled === null) return null;
     if (!campusEnabled) {
       return (
-        <Button size="sm" variant="ghost" isDisabled>
+        <Chip size="sm" variant="soft">
           登录未开放
-        </Button>
+        </Chip>
       );
     }
     const from = `${location.pathname}${location.search}`;

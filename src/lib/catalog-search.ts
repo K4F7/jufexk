@@ -1,5 +1,5 @@
 /**
- * 公开目录搜索的关键词解析与 LIKE 片段拼装。
+ * 目录与管理后台评价搜索的关键词解析与 LIKE 片段拼装。
  *
  * 两条不变量：
  * - 用户输入里的 `%` 和 `_` 是字面量，不是通配符：一律转义并配 ESCAPE 子句。
@@ -15,9 +15,10 @@ const LIKE_ESCAPE = "\\";
 const TERM_SEPARATOR = /[\s\u3000]+/;
 
 /**
- * 词条上限。每个词条都会把整个命中面片段复制一遍，而 D1 单条语句的绑定参数
- * 有上限；课程列表最长的那条语句是 18 + 9×词条数，取 6 留足余量。超出的词条
- * 被丢弃（结果偏宽而不是报错）；`q` 本身只有 80 字符，正常查询到不了这里。
+ * 词条上限。每个词条都会把命中面片段复制一遍，而 D1 单条语句的绑定参数有上限。
+ * 公开课程列表走预计算列：固定参数 + 每词 1～2 个包含绑定（拼音词条翻倍），
+ * 再加上相关度排序的整串参数；取 6 留足余量。超出的词条被丢弃（结果偏宽而
+ * 不是报错）；`q` 本身只有 80 字符，正常查询到不了这里。
  */
 const MAX_TERMS = 6;
 
@@ -47,14 +48,19 @@ export function prefixPattern(term: string): string {
   return `${likeEscape(term)}%`;
 }
 
-/** 包含匹配模式：`%词条%`。 */
-function containsPattern(term: string): string {
+/** 包含匹配模式：`%词条%`。相关度排序的拼音档会直接绑定这个模式。 */
+export function containsPattern(term: string): string {
   return `%${likeEscape(term)}%`;
 }
 
 /** `expr LIKE ? ESCAPE '\'`——所有用户输入的 LIKE 都要走这里。 */
 export function likeSql(expr: string): string {
   return `${expr} LIKE ? ESCAPE '${LIKE_ESCAPE}'`;
+}
+
+/** 预计算教师名 / 课名变体字段上的整段精确命中。分隔符是 ASCII unit separator。 */
+export function delimitedExactSql(expr: string): string {
+  return `instr(${expr}, char(31) || ? || char(31)) > 0`;
 }
 
 /**
@@ -70,6 +76,31 @@ export function andSearchTerms(terms: string[], termSql: string): SearchFilter {
     sql: terms.map(() => `(${termSql})`).join(" AND "),
     args: terms.flatMap((term) =>
       Array.from({ length: placeholders }, () => containsPattern(term)),
+    ),
+  };
+}
+
+/**
+ * 公开目录：汉字词条只打字面列；ASCII 字母词条再 OR 预计算拼音列。
+ * `textSql` / `pinyinSql` 各应只有一个绑定占位符（通常是 `likeSql(...)`）。
+ */
+export function andSearchTermsWithPinyin(
+  terms: string[],
+  textSql: string,
+  pinyinSql: string,
+  isPinyinTerm: (term: string) => boolean,
+): SearchFilter {
+  if (!terms.length) return { sql: "", args: [] };
+  return {
+    sql: terms
+      .map((term) =>
+        isPinyinTerm(term) ? `(${textSql} OR ${pinyinSql})` : `(${textSql})`,
+      )
+      .join(" AND "),
+    args: terms.flatMap((term) =>
+      isPinyinTerm(term)
+        ? [containsPattern(term), containsPattern(term)]
+        : [containsPattern(term)],
     ),
   };
 }

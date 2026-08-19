@@ -144,7 +144,7 @@ describe("目录搜索按空格分词并 AND 组合", () => {
   });
 
   it("词条数达到上限时语句仍在 D1 的绑定参数预算内", async () => {
-    // 课程列表是绑定参数最多的一条：18 + 9×词条数，上限 6 个词条即 72 个。
+    // 课程列表仍是绑定最多的一条：固定参数 + 每词 1～2 个包含绑定，上限 6 个词条。
     const body = await search(
       "/api/courses",
       `q=${mathCourse} ${department} 甲 乙 丙 丁&teacherId=${firstTeacherId}&sort=reviews`,
@@ -179,5 +179,87 @@ describe("按教师命中的课程行", () => {
     expect(row?.teachers?.split(",")).toEqual(
       expect.arrayContaining([firstTeacher, secondTeacher]),
     );
+  });
+});
+
+describe("拼音与首字母检索", () => {
+  const advancedMath = "高等数学";
+  const zhangTeacher = "张拼音师";
+
+  beforeAll(async () => {
+    const [course, teacher] = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+      ).bind("PINYIN-MATH", advancedMath, "general", department),
+      env.DB.prepare(
+        "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+      ).bind(zhangTeacher, zhangTeacher, department),
+    ]);
+    await env.DB.prepare(
+      "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+    )
+      .bind(Number(course.meta.last_row_id), Number(teacher.meta.last_row_id))
+      .run();
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET fingerprint='stale' WHERE id=1",
+    ).run();
+  });
+
+  it("gaoshu 与 gdsx 能命中高等数学类课名", async () => {
+    expect(await courseNames("q=gaoshu")).toContain(advancedMath);
+    expect(await courseNames("q=gdsx")).toContain(advancedMath);
+  });
+
+  it("zhang 能命中姓张的教师及其任课", async () => {
+    const teachers = await search("/api/teachers", "q=zhang");
+    expect(teachers.items.map((item) => item.name)).toContain(zhangTeacher);
+    expect(await courseNames("q=zhang")).toContain(advancedMath);
+  });
+
+  it("汉字查询与通配符字面量保持原行为", async () => {
+    expect(await courseNames(`q=${advancedMath}`)).toContain(advancedMath);
+    const names = await courseNames("q=%");
+    expect(names).not.toContain(advancedMath);
+    expect(names).not.toContain(mathCourse);
+  });
+});
+
+describe("预计算 match_text", () => {
+  const staleFingerprint = () =>
+    env.DB.prepare(
+      "UPDATE public_precompute_state SET fingerprint='stale' WHERE id=1",
+    ).run();
+
+  it("课名变体写入后能搜到该课", async () => {
+    const linear = await env.DB.prepare(
+      "SELECT id FROM courses WHERE name=?",
+    )
+      .bind(linearCourse)
+      .first<{ id: number }>();
+    expect(linear?.id).toBeTruthy();
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO course_name_variants(course_id,name) VALUES(?,?)",
+    )
+      .bind(linear!.id, "搜索线代别名")
+      .run();
+    await staleFingerprint();
+    expect(await courseNames("q=搜索线代别名")).toEqual([linearCourse]);
+  });
+
+  it("改课名后下一次公开列表能搜到新名字", async () => {
+    const renamed = "搜索高数改名";
+    await env.DB.prepare("UPDATE courses SET name=? WHERE name=?")
+      .bind(renamed, mathCourse)
+      .run();
+    await staleFingerprint();
+    try {
+      expect(await courseNames(`q=${renamed}`)).toEqual([renamed]);
+    } finally {
+      await env.DB.prepare("UPDATE courses SET name=? WHERE name=?")
+        .bind(mathCourse, renamed)
+        .run();
+      await staleFingerprint();
+      await courseNames(`q=${mathCourse}`);
+    }
   });
 });

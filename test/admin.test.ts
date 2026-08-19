@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const origin = "https://example.com";
 let loginSequence = 10;
@@ -788,5 +788,207 @@ describe("review protection", () => {
       }),
     });
     expect(request.status).toBe(403);
+  });
+});
+
+describe("管理后台评价搜索把通配符当字面量", () => {
+  const department = "管理搜索学院";
+  const firstTeacher = "管理搜索甲师";
+  const secondTeacher = "管理搜索乙师";
+  const percentCourse = "管理搜索百分号100%课";
+  const underscoreCourse = "管理搜索A_下划线课";
+  const underscoreDecoy = "管理搜索AB下划线课";
+  const percentComment = "管理搜索百分号评价";
+  const underscoreComment = "管理搜索下划线评价";
+  const decoyComment = "管理搜索诱饵评价";
+  const commentPercent = "正文含100%字面量";
+  const legacyPercentComment = "管理搜索历史百分号评价";
+  const legacyDecoyComment = "管理搜索历史诱饵评价";
+  const legacyUnderscoreComment = "管理搜索历史A_下划线评价";
+
+  let firstTeacherId = 0;
+  let underscoreReviewId = 0;
+  let decoyReviewId = 0;
+
+  const reviewComments = (body: { items: Array<{ comment: string }> }) =>
+    body.items.map((item) => item.comment);
+
+  beforeAll(async () => {
+    const insertTeacher = (name: string) =>
+      env.DB.prepare(
+        "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+      ).bind(name, name, department);
+    const insertCourse = (code: string, name: string) =>
+      env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department) VALUES(?,?,'general',?)",
+      ).bind(code, name, department);
+
+    const [first, second, percent, underscore, decoy] = await env.DB.batch([
+      insertTeacher(firstTeacher),
+      insertTeacher(secondTeacher),
+      insertCourse("ADMIN-SEARCH-PCT", percentCourse),
+      insertCourse("ADMIN-SEARCH-UNDERSCORE", underscoreCourse),
+      insertCourse("ADMIN-SEARCH-DECOY", underscoreDecoy),
+    ]);
+    firstTeacherId = Number(first.meta.last_row_id);
+    const secondTeacherId = Number(second.meta.last_row_id);
+    const percentCourseId = Number(percent.meta.last_row_id);
+    const underscoreCourseId = Number(underscore.meta.last_row_id);
+    const decoyCourseId = Number(decoy.meta.last_row_id);
+
+    const insertReview = (
+      courseId: number,
+      teacherId: number,
+      comment: string,
+    ) =>
+      env.DB.prepare(
+        `INSERT INTO reviews(course_id,teacher_id,category,overall,status,comment)
+         VALUES(?,?,'general',4,'pending',?)`,
+      ).bind(courseId, teacherId, comment);
+
+    const [percentReview, underscoreReview, decoyReview] = await env.DB.batch([
+      insertReview(percentCourseId, firstTeacherId, percentComment),
+      insertReview(underscoreCourseId, firstTeacherId, underscoreComment),
+      insertReview(decoyCourseId, secondTeacherId, decoyComment),
+      insertReview(decoyCourseId, secondTeacherId, commentPercent),
+      env.DB.prepare(
+        `INSERT INTO legacy_import_batches(id,source_type,source_label,status,row_count)
+         VALUES('admin-search-escape','legacy_ocr','腾讯表格历史资料','imported',3)`,
+      ),
+    ]);
+    underscoreReviewId = Number(underscoreReview.meta.last_row_id);
+    decoyReviewId = Number(decoyReview.meta.last_row_id);
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,course_id,teacher_id,category,comment)
+         VALUES('admin-search-escape','pct.png','主要课程','1','原文',.99,?,?,'general',?)`,
+      ).bind(percentCourseId, firstTeacherId, legacyPercentComment),
+      env.DB.prepare(
+        `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,course_id,teacher_id,category,comment)
+         VALUES('admin-search-escape','decoy.png','主要课程','2','原文',.99,?,?,'general',?)`,
+      ).bind(decoyCourseId, secondTeacherId, legacyDecoyComment),
+      env.DB.prepare(
+        `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,course_id,teacher_id,category,comment)
+         VALUES('admin-search-escape','underscore.png','主要课程','3','原文',.99,?,?,'general',?)`,
+      ).bind(underscoreCourseId, firstTeacherId, legacyUnderscoreComment),
+    ]);
+  });
+
+  it("未登录仍 401", async () => {
+    const reviews = await SELF.fetch(`${origin}/api/admin/reviews?q=%`);
+    const legacy = await SELF.fetch(`${origin}/api/admin/legacy-reviews?q=%`);
+    expect(reviews.status).toBe(401);
+    expect(legacy.status).toBe(401);
+  });
+
+  it("% 只匹配课名或正文里真的有 % 的评价", async () => {
+    const auth = await login();
+    const response = await SELF.fetch(
+      `${origin}/api/admin/reviews?status=pending&q=%25&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json<{ items: Array<{ id: number; comment: string }> }>();
+    expect(reviewComments(body)).toEqual(
+      expect.arrayContaining([percentComment, commentPercent]),
+    );
+    expect(reviewComments(body)).not.toContain(underscoreComment);
+    expect(reviewComments(body)).not.toContain(decoyComment);
+  });
+
+  it("_ 不再当单字符通配符", async () => {
+    const auth = await login();
+    const response = await SELF.fetch(
+      `${origin}/api/admin/reviews?status=pending&q=A_&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json<{ items: Array<{ id: number }> }>();
+    const ids = body.items.map((item) => item.id);
+    expect(ids).toContain(underscoreReviewId);
+    expect(ids).not.toContain(decoyReviewId);
+  });
+
+  it("课名 + 教师只返回同时命中的评价", async () => {
+    const auth = await login();
+    const matched = await SELF.fetch(
+      `${origin}/api/admin/reviews?status=pending&q=${encodeURIComponent(`${percentCourse} ${firstTeacher}`)}&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(matched.status).toBe(200);
+    expect(
+      reviewComments(await matched.json<{ items: Array<{ comment: string }> }>()),
+    ).toEqual([percentComment]);
+
+    const mismatched = await SELF.fetch(
+      `${origin}/api/admin/reviews?status=pending&q=${encodeURIComponent(`${percentCourse} ${secondTeacher}`)}&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(mismatched.status).toBe(200);
+    expect(
+      reviewComments(await mismatched.json<{ items: Array<{ comment: string }> }>()),
+    ).toEqual([]);
+  });
+
+  it("历史评价搜索同样不把 % 当通配符", async () => {
+    const auth = await login();
+    const response = await SELF.fetch(
+      `${origin}/api/admin/legacy-reviews?status=all&batchId=admin-search-escape&q=%25&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json<{ items: Array<{ comment: string }> }>();
+    expect(reviewComments(body)).toEqual([legacyPercentComment]);
+  });
+
+  it("历史评价搜索同样不把 _ 当通配符", async () => {
+    const auth = await login();
+    const response = await SELF.fetch(
+      `${origin}/api/admin/legacy-reviews?status=all&batchId=admin-search-escape&q=A_&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(response.status).toBe(200);
+    expect(
+      reviewComments(
+        await response.json<{ items: Array<{ comment: string }> }>(),
+      ),
+    ).toEqual([legacyUnderscoreComment]);
+  });
+
+  it("历史评价空查询仍只按批次筛选", async () => {
+    const auth = await login();
+    const response = await SELF.fetch(
+      `${origin}/api/admin/legacy-reviews?status=all&batchId=admin-search-escape&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(response.status).toBe(200);
+    expect(
+      reviewComments(
+        await response.json<{ items: Array<{ comment: string }> }>(),
+      ).sort(),
+    ).toEqual(
+      [legacyDecoyComment, legacyPercentComment, legacyUnderscoreComment].sort(),
+    );
+  });
+
+  it("空查询仍只按状态筛选", async () => {
+    const auth = await login();
+    const empty = await SELF.fetch(
+      `${origin}/api/admin/reviews?status=pending&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(empty.status).toBe(200);
+    const emptyBody = await empty.json<{ total: number }>();
+    expect(emptyBody.total).toBeGreaterThanOrEqual(3);
+
+    const filtered = await SELF.fetch(
+      `${origin}/api/admin/reviews?status=pending&q=${encodeURIComponent(decoyComment)}&pageSize=50`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(filtered.status).toBe(200);
+    expect(
+      reviewComments(await filtered.json<{ items: Array<{ comment: string }> }>()),
+    ).toEqual([decoyComment]);
   });
 });

@@ -9,8 +9,9 @@
  *
  * Entity-specific wording via `copy` (courses vs teachers).
  */
-import { Button, Skeleton, Spinner } from "@heroui/react";
+import { Button, Link, Skeleton, Spinner } from "@heroui/react";
 import type { ReactNode } from "react";
+import { NavLink } from "react-router-dom";
 
 export type CatalogResultsCopy = {
   /** e.g. 课程目录加载失败 */
@@ -22,7 +23,7 @@ export type CatalogResultsCopy = {
   emptyFilteredDesc: string;
   emptyCatalogTitle: string;
   emptyCatalogDesc: string;
-  /** Button on filtered empty — 清除筛选 / 清空搜索 */
+  /** Button on filtered empty — 清空筛选 / 清空搜索 */
   clearLabel: string;
   /** Pagination unit after total — 门 / 位 */
   totalUnit: string;
@@ -38,7 +39,8 @@ export const COURSE_CATALOG_COPY: CatalogResultsCopy = {
   emptyFilteredDesc: "试试调整关键词、类别或教师筛选。",
   emptyCatalogTitle: "目录暂无课程数据",
   emptyCatalogDesc: "请稍后再来，或联系维护者导入公开目录。",
-  clearLabel: "清除筛选",
+  // 与筛选工具条按钮同文案（Issue #276）。
+  clearLabel: "清空筛选",
   totalUnit: "门",
 };
 
@@ -65,6 +67,10 @@ export type CatalogResultsStatesProps = {
   hasFilters: boolean;
   /** Active search keyword for empty-state copy */
   emptyQuery?: string;
+  /** Labels of every active filter (keyword/category/department/teacher) so
+   *  the filtered empty state names them all instead of only the keyword
+   *  (Issue #276). */
+  emptyFilters?: string[];
   currentPage: number;
   totalPages: number;
   total: number;
@@ -73,6 +79,8 @@ export type CatalogResultsStatesProps = {
   onClearFilters: () => void;
   children: ReactNode;
   copy?: CatalogResultsCopy;
+  /** Opposite-catalog hint when this catalog is empty (Issue #287). */
+  rescue?: ReactNode;
 };
 
 /** First-load placeholder: skeleton rows mirror the result table's shape so
@@ -129,18 +137,27 @@ function ErrorPanel({
 function EmptyPanel({
   hasFilters,
   emptyQuery,
+  emptyFilters,
   onClearFilters,
   copy,
+  rescue,
 }: {
   hasFilters: boolean;
   emptyQuery?: string;
+  emptyFilters?: string[];
   onClearFilters: () => void;
   copy: CatalogResultsCopy;
+  rescue?: ReactNode;
 }) {
   const title = hasFilters
     ? copy.emptyFilteredTitle(emptyQuery)
     : copy.emptyCatalogTitle;
-  const desc = hasFilters ? copy.emptyFilteredDesc : copy.emptyCatalogDesc;
+  // 叠了多个筛时空文案点名全部生效筛选，不只提关键词（Issue #276）。
+  const desc = hasFilters
+    ? emptyFilters?.length
+      ? `试试调整或清空当前筛选：${emptyFilters.join("、")}。`
+      : copy.emptyFilteredDesc
+    : copy.emptyCatalogDesc;
 
   return (
     <div
@@ -149,12 +166,41 @@ function EmptyPanel({
     >
       <div className="font-medium text-foreground">{title}</div>
       <p className="mt-1 mb-3 text-sm">{desc}</p>
+      {rescue ? <p className="mb-3 text-sm">{rescue}</p> : null}
       {hasFilters ? (
         <Button size="sm" variant="outline" onPress={onClearFilters}>
           {copy.clearLabel}
         </Button>
       ) : null}
     </div>
+  );
+}
+
+/** SPA rescue link: official Link + React Router NavLink (same as AppShell). */
+export function CatalogEmptyRescueLink({
+  to,
+  children,
+}: {
+  to: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={to}
+      render={(domProps) => (
+        <NavLink
+          {...(domProps as object)}
+          className={
+            typeof domProps.className === "string"
+              ? domProps.className
+              : undefined
+          }
+          to={to}
+        />
+      )}
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -209,6 +255,7 @@ export function CatalogResultsStates({
   itemCount,
   hasFilters,
   emptyQuery,
+  emptyFilters,
   currentPage,
   totalPages,
   total,
@@ -217,6 +264,7 @@ export function CatalogResultsStates({
   onClearFilters,
   children,
   copy = COURSE_CATALOG_COPY,
+  rescue,
 }: CatalogResultsStatesProps) {
   if (error && !hasPayload) {
     return (
@@ -237,8 +285,10 @@ export function CatalogResultsStates({
       <EmptyPanel
         hasFilters={hasFilters}
         emptyQuery={emptyQuery}
+        emptyFilters={emptyFilters}
         onClearFilters={onClearFilters}
         copy={copy}
+        rescue={rescue}
       />
     );
   }

@@ -1,17 +1,25 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogFilters,
+  catalogActiveFilters,
   isPublicCategoryFilter,
 } from "../components/CatalogFilters";
 import {
+  CatalogEmptyRescueLink,
   CatalogResultsStates,
   COURSE_CATALOG_COPY,
 } from "../components/CatalogResultsStates";
-import { CatalogSearchHeader } from "../components/CatalogSearchHeader";
+import {
+  CatalogSearchHeader,
+  type CatalogSearchSuggestion,
+} from "../components/CatalogSearchHeader";
 import { CourseResultTable } from "../components/CourseResultTable";
 import { EmptyBox } from "../components/EmptyBox";
 import { api } from "../lib/api";
+import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
+import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
+import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
 import type { Course, Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
@@ -57,6 +65,15 @@ const CatalogFollowupPrototypeLazy = import.meta.env.DEV
   ? lazy(() =>
       import("../prototype/CatalogFollowupVariants").then((m) => ({
         default: m.CatalogFollowupPrototype,
+      })),
+    )
+  : null;
+
+/** DEV-only: issue #303 C-variant opposite-catalog hint. */
+const GlobalSearchHintLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/GlobalSearchVariants").then((m) => ({
+        default: m.GlobalSearchCrossCatalogHint,
       })),
     )
   : null;
@@ -116,6 +133,17 @@ function useCatalogFollowupPrototypeVariant(): "A" | "B" | "C" | null {
   }, [params]);
 }
 
+function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "global-search") return null;
+    const key = (params.get("variant") || "A").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "A";
+  }, [params]);
+}
+
 export function CoursesPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -124,6 +152,7 @@ export function CoursesPage() {
   const courseTableVariant = useCourseTablePrototypeVariant();
   const catalogStatesVariant = useCatalogStatesPrototypeVariant();
   const catalogFollowupVariant = useCatalogFollowupPrototypeVariant();
+  const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const q = params.get("q") || "";
   const rawCategory = params.get("category") || "";
   const category = isPublicCategoryFilter(rawCategory) ? rawCategory : "";
@@ -147,6 +176,31 @@ export function CoursesPage() {
   const [teacherLoading, setTeacherLoading] = useState(true);
   /** Bumps to re-fetch the current catalog query (prototype retry / force-reload). */
   const [reloadToken, setReloadToken] = useState(0);
+  const [rescueTotal, setRescueTotal] = useState<number | null>(null);
+  const loadCourseSuggestions = useCallback(
+    (query: string, signal: AbortSignal) => {
+      const suggest = new URLSearchParams({
+        q: query,
+        page: "1",
+        pageSize: String(CATALOG_SUGGEST_PAGE_SIZE),
+      });
+      return api<Paginated<Course>>(`/api/courses?${suggest}`, { signal }).then(
+        (result) =>
+          result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
+            (course): CatalogSearchSuggestion => ({
+              id: String(course.id),
+              title: course.name,
+              detail: course.code,
+            }),
+          ),
+      );
+    },
+    [],
+  );
+  const courseSuggestions = useCatalogSuggestions(
+    queryDraft,
+    loadCourseSuggestions,
+  );
 
   useEffect(() => setQueryDraft(q), [q]);
   useEffect(() => setDepartmentDraft(department), [department]);
@@ -221,6 +275,44 @@ export function CoursesPage() {
       controller.abort();
     };
   }, [queryString, reloadToken]);
+
+  const offerRescue =
+    data != null &&
+    shouldOfferCatalogRescue({
+      itemCount: data.items.length,
+      query: q,
+      extraFilters: Boolean(category || department || teacherId),
+    });
+
+  useEffect(() => {
+    if (!offerRescue) {
+      setRescueTotal(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+    const query = new URLSearchParams({
+      q,
+      page: "1",
+      pageSize: "1",
+    });
+
+    api<Paginated<Teacher>>(`/api/teachers?${query}`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!cancelled) setRescueTotal(result.total);
+      })
+      .catch(() => {
+        if (!cancelled) setRescueTotal(null);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [offerRescue, q]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -363,6 +455,28 @@ export function CoursesPage() {
   );
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
+  /** 「0 门课程」时排序控件禁用（Issue #278）；已选 sort 深链保留。
+   *  按 total 而非当前页行数判定：深链越界页（items 空但 total>0）时
+   *  排序仍是回到第 1 页的出口，不能禁用。 */
+  const sortDisabled = data != null && data.total === 0;
+  const selectedTeacherName = teacherId
+    ? teachers.find((teacher) => String(teacher.id) === teacherId)?.name
+    : undefined;
+  /** 与「当前筛选」chips 同源的标签列表，供空状态文案点名全部生效筛选。 */
+  const activeFilterLabels = catalogActiveFilters({
+    queryDraft,
+    category,
+    departmentDraft,
+    teacherId,
+    teacherIdStatus,
+    teacherQueryDraft,
+    selectedTeacherName,
+  }).map((tag) => tag.label);
+
+  function applySearch(next: string) {
+    setQueryDraft(next);
+    update({ q: next.trim(), page: "1" }, true);
+  }
 
   function clearFilters() {
     setQueryDraft("");
@@ -395,6 +509,12 @@ export function CoursesPage() {
     Boolean(catalogFollowupVariant) && Boolean(CatalogFollowupPrototypeLazy);
 
   const pageSize = data?.pageSize || 20;
+  const rescue =
+    rescueTotal && rescueTotal > 0 ? (
+      <CatalogEmptyRescueLink to={`/teachers?q=${encodeURIComponent(q)}`}>
+        教师资料有 {rescueTotal} 位匹配，去查看
+      </CatalogEmptyRescueLink>
+    ) : undefined;
 
   const filtersModel = {
     queryDraft,
@@ -429,6 +549,7 @@ export function CoursesPage() {
       teacherError={teacherError}
       teacherQuery={teacherQuery}
       sort={sort}
+      sortDisabled={sortDisabled}
       hasFilters={hasFilters}
       onCategoryChange={(value) => update({ category: value })}
       onDepartmentDraftChange={setDepartmentDraft}
@@ -470,6 +591,7 @@ export function CoursesPage() {
       itemCount={data?.items.length ?? 0}
       hasFilters={hasFilters}
       emptyQuery={q || undefined}
+      emptyFilters={activeFilterLabels}
       currentPage={currentPage}
       totalPages={totalPages}
       total={data?.total ?? 0}
@@ -477,6 +599,7 @@ export function CoursesPage() {
       onRetry={() => setReloadToken((n) => n + 1)}
       onClearFilters={clearFilters}
       copy={COURSE_CATALOG_COPY}
+      rescue={rescue}
     >
       {data ? (
         comparingTable && courseTableVariant && CourseTablePrototypeLazy ? (
@@ -569,6 +692,10 @@ export function CoursesPage() {
           searchLabel="搜索课程"
           clearAriaLabel="清空课程搜索"
           name="course-search"
+          suggestions={courseSuggestions.items}
+          suggestionsReady={courseSuggestions.ready}
+          suggestionsFailed={courseSuggestions.failed}
+          onSelectSuggestion={applySearch}
         />
         <Suspense fallback={<EmptyBox role="status">加载目录后续原型…</EmptyBox>}>
           <CatalogFollowupPrototypeLazy
@@ -603,6 +730,10 @@ export function CoursesPage() {
           searchLabel="搜索课程"
           clearAriaLabel="清空课程搜索"
           name="course-search"
+          suggestions={courseSuggestions.items}
+          suggestionsReady={courseSuggestions.ready}
+          suggestionsFailed={courseSuggestions.failed}
+          onSelectSuggestion={applySearch}
         />
       )}
 
@@ -620,6 +751,11 @@ export function CoursesPage() {
       ) : (
         <>
           {defaultFilters}
+          {globalSearchVariant === "C" && q && GlobalSearchHintLazy ? (
+            <Suspense fallback={null}>
+              <GlobalSearchHintLazy catalog="courses" query={q} />
+            </Suspense>
+          ) : null}
           {results}
         </>
       )}

@@ -17,8 +17,12 @@ import {
   putBaselineChunk,
   readBoundedJson,
 } from "./catalog-baseline-import";
+import { isAsciiLetterTerm } from "./lib/catalog-pinyin";
 import {
   andSearchTerms,
+  andSearchTermsWithPinyin,
+  containsPattern,
+  delimitedExactSql,
   likeSql,
   parseSearchTerms,
   prefixPattern,
@@ -29,7 +33,6 @@ import {
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicPeCanonicalCourseSql,
-  publicPeFamilySearchSql,
   publicPeResolveCanonicalIdSql,
   publicPeSkillFamilySql,
   publicSportsMatchSql,
@@ -70,12 +73,18 @@ import {
   type CourseTag,
   type SchemeKey,
 } from "./lib/review-schemes";
+import {
+  DEFAULT_API_CACHE_CONTROL,
+  purgePublicCatalogCache,
+  setPublicCatalogCacheHeaders,
+} from "./lib/public-catalog-cache";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
 import {
   ensurePublicListPrecomputes,
   publicCourseCanonicalJoin,
-  publicCourseFamilySearchSql,
+  publicCourseMatchJoin,
+  publicTeacherSearchJoin,
   refreshPublicListPrecomputes,
   shouldRefreshPublicListPrecomputes,
 } from "./public-list-precompute";
@@ -333,6 +342,24 @@ const pageArgs = (c: any) => ({
   page: Math.max(1, integer(c.req.query("page")) || 1),
   size: Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20)),
 });
+type WindowedRow = { window_total?: number };
+const stripWindowTotal = <T extends WindowedRow>(row: T) => {
+  const { window_total: _total, ...rest } = row;
+  return rest;
+};
+/** 列表查询用 COUNT(*) OVER() 带出总数；越界空页没有行可读窗口值，才回退 COUNT。 */
+const windowedPage = async <T extends WindowedRow>(
+  rows: T[],
+  page: number,
+  fallbackTotal: () => Promise<number>,
+) => ({
+  items: rows.map(stripWindowTotal),
+  total: rows.length
+    ? Number(rows[0].window_total) || 0
+    : page > 1
+      ? await fallbackTotal()
+      : 0,
+});
 const originOk = (c: any) => {
   const origin = c.req.header("Origin");
   return origin === new URL(c.req.url).origin;
@@ -354,23 +381,6 @@ const publicReviewBinding = `
              AND public_offering.course_id=r.course_id
          )
        )`;
-/**
- * 课程 c 的任课教师里存在一位满足 `match` 的教师。
- *
- * `alias` 只用来给子查询的表起前缀，避免与外层查询撞名；`match` 收到教师表
- * 别名，可同时约束姓名与院系。
- */
-const courseTeacherExistsSql = (
-  alias: string,
-  match: (teacherAlias: string) => string,
-) =>
-  `EXISTS(SELECT 1 FROM course_teachers ${alias}_ct JOIN teachers ${alias}_t ON ${alias}_t.id=${alias}_ct.teacher_id WHERE ${alias}_ct.course_id=c.id AND (${match(`${alias}_t`)}))`;
-/** 课程 c 的课名变体里存在一个满足 `match` 的名称。 */
-const courseNameVariantExistsSql = (
-  alias: string,
-  match: (nameColumn: string) => string,
-) =>
-  `EXISTS(SELECT 1 FROM course_name_variants ${alias}_cnv WHERE ${alias}_cnv.course_id=c.id AND (${match(`${alias}_cnv.name`)}))`;
 const publicTextReviewCounts = `
   SELECT course_id,teacher_id,COUNT(*) review_count
   FROM (
@@ -580,6 +590,10 @@ app.use("/api/*", async (c, next) => {
       shouldRefreshPublicListPrecomputes(c.req.method, c.req.path))
   ) {
     await refreshPublicListPrecomputes(c.env.DB);
+    await purgePublicCatalogCache(c);
+  }
+  if (!c.res.headers.get("Cache-Control")) {
+    c.header("Cache-Control", DEFAULT_API_CACHE_CONTROL);
   }
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "same-origin");
@@ -612,39 +626,38 @@ app.get("/api/courses", async (c) => {
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  // 单个词条的命中面：课名 / 课号 / 院系 / 任课教师 / 课名变体 / 公开展示课名。
-  // 任课教师走 EXISTS 而不是行级 JOIN，这样「课名 + 教师」这类多词查询里，
-  // 不同词条可以由课程本身和它的某位教师分别满足。
-  const searchFilter = andSearchTerms(
+  // 单个词条打预计算 match_text；ASCII 字母词条再 OR 拼音面。
+  const searchGroup = andSearchTermsWithPinyin(
     searchTerms,
-    `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("c.department")}
-       OR ${courseTeacherExistsSql("search", (teacher) => likeSql(`${teacher}.name`))}
-       OR ${courseNameVariantExistsSql("search", (variant) => likeSql(variant))}
-       OR ${publicCourseFamilySearchSql("pcc")}`,
+    likeSql("pcc.match_text"),
+    likeSql("pcc.pinyin_text"),
+    isAsciiLetterTerm,
   );
-  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchFilter.sql ? ` AND ${searchFilter.sql}` : ""}`;
+  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = [
     cat,
     department,
     department,
     ...(teacherId === null ? [] : [teacherId]),
-    ...searchFilter.args,
+    ...searchGroup.args,
   ];
   const countJoins =
     teacherId === null
       ? publicCourseCanonicalJoin
       : `${publicCourseCanonicalJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id`;
-  const total = await c.env.DB.prepare(
-    `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
-  )
-    .bind(...args)
-    .first<{ n: number }>();
+  const courseCount = () =>
+    c.env.DB.prepare(
+      `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
+    )
+      .bind(...args)
+      .first<{ n: number }>()
+      .then((row) => row?.n || 0);
   // 其余档位比的是整串查询（精确、再前缀），多词查询永远到不了那些档：这一档
   // 用包含匹配，让所有词条都落在课名或课号上的结果排在院系与教师命中之前。
-  const allTermsInTitle = andSearchTerms(
-    searchTerms.length > 1 ? searchTerms : [],
-    `${likeSql("c.name")} OR ${likeSql("c.code")}`,
-  );
+  const allTermsInTitle =
+    searchTerms.length > 1
+      ? andSearchTerms(searchTerms, `${likeSql("c.name")} OR ${likeSql("c.code")}`)
+      : { sql: "", args: [] };
   const relevanceOrder = `CASE
        WHEN ?='' THEN 0
        WHEN c.name=? OR c.code=? OR (${publicPeSkillFamilySql("c")})=? THEN 0
@@ -652,11 +665,10 @@ app.get("/api/courses", async (c) => {
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
        WHEN ${likeSql("c.department")} THEN 4
-       WHEN ${courseTeacherExistsSql("rank", (teacher) => `${teacher}.name=?`)}
-         OR ${courseNameVariantExistsSql("rank", (variant) => `${variant}=?`)} THEN 5
-       WHEN ${courseTeacherExistsSql("rank", (teacher) => likeSql(`${teacher}.name`))}
-         OR ${courseNameVariantExistsSql("rank", (variant) => likeSql(variant))} THEN 6
-       ELSE 7
+       WHEN ${delimitedExactSql("pcc.teacher_variant_text")} THEN 5
+       WHEN ${likeSql("pcc.teacher_variant_text")} THEN 6
+       WHEN ${likeSql("pcc.pinyin_text")} THEN 7
+       ELSE 8
      END,review_count DESC,c.name,c.code,c.id`;
   const searchRankArgs = [
     search,
@@ -669,15 +681,15 @@ app.get("/api/courses", async (c) => {
     search,
     prefixPattern(search),
     search,
-    search,
     prefixPattern(search),
-    prefixPattern(search),
+    containsPattern(search),
   ];
   const { results } = await c.env.DB.prepare(
     `SELECT c.*,
        GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
        GROUP_CONCAT(DISTINCT t.name) teachers,
-       COALESCE(course_review_counts.review_count,0) review_count
+       COALESCE(course_review_counts.review_count,0) review_count,
+       COUNT(*) OVER() window_total
       FROM courses c
       ${publicCourseCanonicalJoin}
       LEFT JOIN course_teachers ct ON ct.course_id=c.id
@@ -695,17 +707,22 @@ app.get("/api/courses", async (c) => {
       (page - 1) * size,
     )
     .all();
+  const pageRows = await windowedPage(
+    results as WindowedRow[],
+    page,
+    courseCount,
+  );
   const virtualItems = await loadVirtualPeSportItems(
     c.env.DB,
     searchTerms,
     teacherId,
     department,
   );
-  const listed = results.map(withPublicCourseCategory);
+  const listed = pageRows.items.map(withPublicCourseCategory);
   const extras = virtualItems
     .filter((item) => !listed.some((row) => row.name === item.name))
     .map(({ rating: _rating, ...item }) => item);
-  const totalCount = (total?.n || 0) + extras.length;
+  const totalCount = pageRows.total + extras.length;
   // 虚拟体育课项只落在第一页；课名排序时按同一次序并入，而不是追加在末尾。
   const byNameCodeId = (
     a: { id?: unknown; code?: unknown; name?: unknown },
@@ -723,6 +740,7 @@ app.get("/api/courses", async (c) => {
     sort === "name"
       ? [...listed, ...extras].sort(byNameCodeId)
       : [...listed, ...extras];
+  setPublicCatalogCacheHeaders(c);
   return c.json({
     items: page === 1 ? firstPage : listed,
     page,
@@ -735,22 +753,29 @@ app.get("/api/teachers", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const searchFilter = andSearchTerms(
-    parseSearchTerms(search),
-    `${likeSql("t.name")} OR ${likeSql("t.department")}`,
+  const searchTerms = parseSearchTerms(search);
+  const searchGroup = andSearchTermsWithPinyin(
+    searchTerms,
+    likeSql("pts.match_text"),
+    likeSql("pts.pinyin_text"),
+    isAsciiLetterTerm,
   );
-  const where = searchFilter.sql || "1=1";
-  const args = searchFilter.args;
-  const total = await c.env.DB.prepare(
-    `SELECT COUNT(*) n FROM teachers t WHERE ${where}`,
-  )
-    .bind(...args)
-    .first<{ n: number }>();
+  const where = searchGroup.sql || "1=1";
+  const args = searchGroup.args;
+  const teacherCount = () =>
+    c.env.DB.prepare(
+      `SELECT COUNT(*) n FROM teachers t ${publicTeacherSearchJoin} WHERE ${where}`,
+    )
+      .bind(...args)
+      .first<{ n: number }>()
+      .then((row) => row?.n || 0);
   const { results } = await c.env.DB.prepare(
       `SELECT t.*,
        COALESCE(public_teacher_course_counts.course_count,0) course_count,
-       COALESCE(teacher_review_counts.review_count,0) review_count
+       COALESCE(teacher_review_counts.review_count,0) review_count,
+       COUNT(*) OVER() window_total
       FROM teachers t
+      ${publicTeacherSearchJoin}
       LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
       LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM public_review_counts GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
      WHERE ${where}
@@ -760,7 +785,8 @@ app.get("/api/teachers", async (c) => {
        WHEN ${likeSql("t.name")} THEN 1
        WHEN t.department=? THEN 2
        WHEN ${likeSql("t.department")} THEN 3
-       ELSE 4
+       WHEN ${likeSql("pts.pinyin_text")} THEN 4
+       ELSE 5
      END,review_count DESC,t.name,t.department,t.id
      LIMIT ? OFFSET ?`,
   )
@@ -771,13 +797,20 @@ app.get("/api/teachers", async (c) => {
       prefixPattern(search),
       search,
       prefixPattern(search),
+      containsPattern(search),
       size,
       (page - 1) * size,
     )
     .all();
-  const totalCount = total?.n || 0;
+  const pageRows = await windowedPage(
+    results as WindowedRow[],
+    page,
+    teacherCount,
+  );
+  const totalCount = pageRows.total;
+  setPublicCatalogCacheHeaders(c);
   return c.json({
-    items: results.map((row: { name?: string; course_count?: number }) => {
+    items: pageRows.items.map((row: { name?: string; course_count?: number }) => {
       const sport = virtualPeSportForTeacherName(
         typeof row.name === "string" ? row.name : "",
       );
@@ -865,33 +898,43 @@ app.get("/api/teachers/:id/reviews", async (c) => {
   return c.json(page);
 });
 app.get("/api/courses/options", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const searchFilter = andSearchTerms(
+  const searchGroup = andSearchTermsWithPinyin(
     parseSearchTerms(search),
-    `${likeSql("c.name")} OR ${likeSql("c.code")}
-       OR ${courseTeacherExistsSql("search", (teacher) => `${likeSql(`${teacher}.name`)} OR ${likeSql(`${teacher}.department`)}`)}
-       OR ${publicPeFamilySearchSql("c")}`,
+    likeSql("pcc.match_text"),
+    likeSql("pcc.pinyin_text"),
+    isAsciiLetterTerm,
   );
-  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchFilter.sql ? ` AND ${searchFilter.sql}` : ""}`;
-  const args = searchFilter.args;
-  const total = await c.env.DB.prepare(
-    `SELECT COUNT(*) n FROM courses c WHERE ${where}`,
-  )
-    .bind(...args)
-    .first<{ n: number }>();
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const args = searchGroup.args;
+  const optionCount = () =>
+    c.env.DB.prepare(
+      `SELECT COUNT(*) n FROM courses c ${publicCourseMatchJoin} WHERE ${where}`,
+    )
+      .bind(...args)
+      .first<{ n: number }>()
+      .then((row) => row?.n || 0);
   const { results } = await c.env.DB.prepare(
     `SELECT c.id,c.code,c.name,c.category,c.department,c.scheme_key,
        (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
-       GROUP_CONCAT(DISTINCT t.name) teachers
-     FROM courses c LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
+       GROUP_CONCAT(DISTINCT t.name) teachers,
+       COUNT(*) OVER() window_total
+     FROM courses c ${publicCourseMatchJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
      WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
   )
     .bind(...args, size, (page - 1) * size)
     .all();
-  const totalCount = total?.n || 0;
+  const pageRows = await windowedPage(
+    results as WindowedRow[],
+    page,
+    optionCount,
+  );
+  const totalCount = pageRows.total;
+  setPublicCatalogCacheHeaders(c);
   return c.json({
-    items: results.map((row) => withCourseReviewScheme(row)),
+    items: pageRows.items.map((row) => withCourseReviewScheme(row)),
     page,
     pageSize: size,
     total: totalCount,
@@ -907,6 +950,7 @@ app.get("/api/courses/departments", async (c) => {
        AND trim(COALESCE(c.department,''))<>''
      ORDER BY trim(c.department)`,
   ).all<{ department: string }>();
+  setPublicCatalogCacheHeaders(c);
   return c.json({ items: results.map((row) => row.department) });
 });
 app.get("/api/courses/:id", async (c) => {
@@ -1729,13 +1773,17 @@ app.post("/api/admin/sessions/revoke-others", async (c) => {
 app.get("/api/admin/reviews", async (c) => {
   const { page, size } = pageArgs(c),
     status = clean(c.req.query("status"), 20) || "pending",
-    q = `%${clean(c.req.query("q"), 80)}%`;
+    searchGroup = andSearchTerms(
+      parseSearchTerms(clean(c.req.query("q"), 80)),
+      `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("t.name")} OR ${likeSql("r.comment")} OR ${likeSql("r.teaching")} OR ${likeSql("r.term")}`,
+    );
   if (!["pending", "approved", "rejected", "all"].includes(status))
     return fail(c, "无效审核状态");
+  const searchFilter = searchGroup.sql ? ` AND ${searchGroup.sql}` : "";
   const total = await c.env.DB.prepare(
-    `SELECT COUNT(*) n FROM reviews r JOIN courses c ON c.id=r.course_id LEFT JOIN teachers t ON t.id=r.teacher_id WHERE (?='all' OR r.status=?) AND(c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ? OR r.comment LIKE ? OR r.teaching LIKE ? OR r.term LIKE ?)`,
+    `SELECT COUNT(*) n FROM reviews r JOIN courses c ON c.id=r.course_id LEFT JOIN teachers t ON t.id=r.teacher_id WHERE (?='all' OR r.status=?)${searchFilter}`,
   )
-    .bind(status, status, q, q, q, q, q, q)
+    .bind(status, status, ...searchGroup.args)
     .first<{ n: number }>();
   const results = (
     await c.env.DB.prepare(
@@ -1748,11 +1796,10 @@ app.get("/api/admin/reviews", async (c) => {
         c.name course_name,c.code,t.name teacher_name
        FROM reviews r JOIN courses c ON c.id=r.course_id
        LEFT JOIN teachers t ON t.id=r.teacher_id
-       WHERE (?='all' OR r.status=?)
-         AND(c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ? OR r.comment LIKE ? OR r.teaching LIKE ? OR r.term LIKE ?)
+       WHERE (?='all' OR r.status=?)${searchFilter}
        ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
     )
-      .bind(status, status, q, q, q, q, q, q, size, (page - 1) * size)
+      .bind(status, status, ...searchGroup.args, size, (page - 1) * size)
       .all()
   ).results;
   return c.json({
@@ -2085,12 +2132,15 @@ app.get("/api/admin/legacy-reviews", async (c) => {
   const { page, size } = pageArgs(c),
     status = clean(c.req.query("status"), 20) || "pending",
     batchId = clean(c.req.query("batchId"), 80),
-    q = `%${clean(c.req.query("q"), 100)}%`;
+    searchGroup = andSearchTerms(
+      parseSearchTerms(clean(c.req.query("q"), 100)),
+      `${likeSql("lr.comment")} OR ${likeSql("lr.raw_ocr_text")} OR ${likeSql("lr.ocr_course_name")} OR ${likeSql("lr.ocr_teacher_name")} OR ${likeSql("lr.source_file")} OR ${likeSql("lr.term")} OR ${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("t.name")}`,
+    );
   if (!["pending", "approved", "rejected", "all"].includes(status))
     return fail(c, "无效历史审核状态");
-  const where = `(?='all' OR lr.status=?) AND (?='' OR lr.import_batch_id=?) AND
-    (lr.comment LIKE ? OR lr.raw_ocr_text LIKE ? OR lr.ocr_course_name LIKE ? OR lr.ocr_teacher_name LIKE ? OR lr.source_file LIKE ? OR lr.term LIKE ? OR c.name LIKE ? OR c.code LIKE ? OR t.name LIKE ?)`;
-  const values = [status, status, batchId, batchId, q, q, q, q, q, q, q, q, q];
+  const searchFilter = searchGroup.sql ? ` AND ${searchGroup.sql}` : "";
+  const where = `(?='all' OR lr.status=?) AND (?='' OR lr.import_batch_id=?)${searchFilter}`;
+  const values = [status, status, batchId, batchId, ...searchGroup.args];
   const total = await c.env.DB.prepare(
     `SELECT COUNT(*) n FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id WHERE ${where}`,
   )
