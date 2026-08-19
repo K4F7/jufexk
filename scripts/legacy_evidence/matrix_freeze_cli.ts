@@ -12,6 +12,7 @@ import {
   locateMatrixFreezeRange,
   requireMatrixFreezeLiveLayout,
   scanMatrixFreezeExtents,
+  sheetLastRowsFromSpec,
   validateMatrixFreezeExtent,
   validateMatrixFreezeQa,
   type MatrixFreezeCompositionPair,
@@ -42,6 +43,7 @@ async function scanExtentCommand() {
     worksheets: repeatable("--worksheet"),
     first_row: optionalInteger("--first-row"),
     last_row: optionalInteger("--last-row"),
+    sheet_last_rows: await loadSheetLastRows(),
     layout,
   });
   await mkdir(outDir, { recursive: true });
@@ -189,6 +191,12 @@ async function loadLayout(): Promise<LiveLayout> {
   return requireMatrixFreezeLiveLayout(layout);
 }
 
+async function loadSheetLastRows(): Promise<Record<string, number> | undefined> {
+  const specPath = optionalOption("--last-row-spec");
+  if (specPath == null) return undefined;
+  return sheetLastRowsFromSpec(JSON.parse(await readFile(resolve(specPath), "utf8")));
+}
+
 async function loadOrScanExtent(outDir: string, layout: LiveLayout) {
   try {
     return await loadExtent(outDir);
@@ -198,6 +206,7 @@ async function loadOrScanExtent(outDir: string, layout: LiveLayout) {
       worksheets: repeatable("--worksheet"),
       first_row: optionalInteger("--first-row"),
       last_row: optionalInteger("--last-row"),
+      sheet_last_rows: await loadSheetLastRows(),
       layout,
     });
   }
@@ -262,7 +271,7 @@ function usage(): never {
 function usageText() {
   return [
     "Usage:",
-    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts scan-extent --out <dir> --layout <live-layout.json> [--worksheet name] [--first-row N] [--last-row N]",
+    "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts scan-extent --out <dir> --layout <live-layout.json> [--worksheet name] [--first-row N] [--last-row N] [--last-row-spec json]",
     "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts locate --out <dir> --layout <live-layout.json> --worksheet <name> [--evidence-dir <dir>] [--first-row N] [--last-row N]",
     "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts qa --out <dir> --layout <live-layout.json> [--evidence-dir <dir>] [--pairs <json>] [--windows <json>]",
     "  pnpm exec tsx scripts/legacy_evidence/matrix_freeze_cli.ts freeze-manifest --out <dir> --layout <live-layout.json> [--evidence-dir <dir>]",

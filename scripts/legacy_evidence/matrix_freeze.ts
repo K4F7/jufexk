@@ -27,6 +27,8 @@ export const MATRIX_FREEZE_QA_VERSION = "legacy-matrix-freeze-qa-v1" as const;
 export const MATRIX_FREEZE_MANIFEST_VERSION = "legacy-matrix-freeze-manifest-v1" as const;
 
 export const MATRIX_FREEZE_DEFAULT_WORKSHEETS = LIVE_LAYOUT_WORKSHEETS;
+/** Live MOOC table ends at row 20. G46 is past the table; freeze 8–20 without probing G46. */
+export const MOOC_LIVE_LAST_ROW = 20;
 export const MATRIX_FREEZE_REQUIRED_WINDOW = { width: 2560, height: 1440 } as const;
 
 export const PROTECTED_FREEZE_OUTPUT_MARKERS = [
@@ -143,12 +145,12 @@ export function assertMatrixFreezeRangeAllowed(
 ) {
   const mooc = layout.sheets.find((sheet) => sheet.worksheet === "MOOC");
   if (!mooc || mooc.g46_status !== "blocked_locator") return;
-  const [smokeFirst, smokeLast] = mooc.smoke_rows;
+  const [smokeFirst] = mooc.smoke_rows;
   for (const sheet of sheets) {
     if (sheet.worksheet !== "MOOC") continue;
-    if (sheet.first_row < smokeFirst || sheet.last_row > smokeLast) {
+    if (sheet.first_row < smokeFirst || sheet.last_row > MOOC_LIVE_LAST_ROW) {
       throw new Error(
-        `MOOC rows ${sheet.first_row}-${sheet.last_row} are rejected while G46 is blocked_locator; only smoke rows ${smokeFirst}-${smokeLast} are allowed`,
+        `MOOC rows ${sheet.first_row}-${sheet.last_row} are rejected while G46 is blocked_locator; live table is ${smokeFirst}-${MOOC_LIVE_LAST_ROW} and G46 must not be probed`,
       );
     }
   }
@@ -169,6 +171,21 @@ export function bindMatrixFreezeLayout(options: {
   return layout;
 }
 
+export function sheetLastRowsFromSpec(spec: unknown): Record<string, number> {
+  if (!isRecord(spec)) throw new Error("last-row spec must be an object");
+  const rows: Record<string, number> = {};
+  const sheets = isRecord(spec.sheets) ? spec.sheets : spec;
+  for (const [worksheet, value] of Object.entries(sheets)) {
+    const lastRow = typeof value === "number" ? value : isRecord(value) ? value.last_row : null;
+    if (!Number.isInteger(lastRow) || (lastRow as number) < 1) {
+      throw new Error(`last-row spec is missing a positive last_row for ${worksheet}`);
+    }
+    frozenSheetExtent(worksheet);
+    rows[worksheet] = lastRow as number;
+  }
+  return rows;
+}
+
 export function normalizeMatrixFreezeWorksheets(worksheets?: readonly string[]) {
   const requested = worksheets?.length ? [...worksheets] : [...MATRIX_FREEZE_DEFAULT_WORKSHEETS];
   const seen = new Set<string>();
@@ -185,6 +202,7 @@ export function scanMatrixFreezeExtents(options: {
   worksheets?: readonly string[];
   first_row?: number;
   last_row?: number;
+  sheet_last_rows?: Readonly<Record<string, number>>;
   layout?: LiveLayout | null;
 } = {}): MatrixFreezeExtent {
   const layout = requireMatrixFreezeLiveLayout(options.layout);
@@ -198,11 +216,17 @@ export function scanMatrixFreezeExtents(options: {
   if (options.first_row != null && options.last_row != null && options.last_row < options.first_row) {
     throw new Error("last_row must be at or after first_row");
   }
+  for (const [worksheet, lastRow] of Object.entries(options.sheet_last_rows ?? {})) {
+    if (!Number.isInteger(lastRow) || lastRow < 1) {
+      throw new Error(`sheet_last_rows.${worksheet} must be a positive integer`);
+    }
+  }
 
   const sheets = worksheets.map((worksheet) => {
     const frozen = frozenSheetExtent(worksheet);
     const firstRow = options.first_row ?? frozen.first_row;
-    const clipped = clipBlockedMoocLastRow(worksheet, options.last_row ?? frozen.last_row, options.last_row == null, layout);
+    const explicitLast = options.sheet_last_rows?.[worksheet] ?? options.last_row;
+    const clipped = clipBlockedMoocLastRow(worksheet, explicitLast ?? frozen.last_row, explicitLast == null, layout);
     const lastRow = clipped.last_row;
     if (lastRow < firstRow) {
       throw new Error("last_row must be at or after first_row");
@@ -556,7 +580,7 @@ function clipBlockedMoocLastRow(
   if (!scanToEnd || worksheet !== "MOOC") return { last_row: lastRow, scan_to_end: scanToEnd };
   const mooc = layout.sheets.find((sheet) => sheet.worksheet === "MOOC");
   if (mooc?.g46_status !== "blocked_locator") return { last_row: lastRow, scan_to_end: scanToEnd };
-  return { last_row: mooc.smoke_rows[1], scan_to_end: false };
+  return { last_row: MOOC_LIVE_LAST_ROW, scan_to_end: false };
 }
 
 function assertNoReviewBodies(value: unknown) {
