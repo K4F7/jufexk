@@ -5,6 +5,7 @@ import {
   isPublicCategoryFilter,
 } from "../components/CatalogFilters";
 import {
+  CatalogEmptyRescueLink,
   CatalogResultsStates,
   COURSE_CATALOG_COPY,
 } from "../components/CatalogResultsStates";
@@ -12,6 +13,7 @@ import { CatalogSearchHeader } from "../components/CatalogSearchHeader";
 import { CourseResultTable } from "../components/CourseResultTable";
 import { EmptyBox } from "../components/EmptyBox";
 import { api } from "../lib/api";
+import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import type { Course, Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
@@ -147,6 +149,7 @@ export function CoursesPage() {
   const [teacherLoading, setTeacherLoading] = useState(true);
   /** Bumps to re-fetch the current catalog query (prototype retry / force-reload). */
   const [reloadToken, setReloadToken] = useState(0);
+  const [rescueTotal, setRescueTotal] = useState<number | null>(null);
 
   useEffect(() => setQueryDraft(q), [q]);
   useEffect(() => setDepartmentDraft(department), [department]);
@@ -221,6 +224,44 @@ export function CoursesPage() {
       controller.abort();
     };
   }, [queryString, reloadToken]);
+
+  const offerRescue =
+    data != null &&
+    shouldOfferCatalogRescue({
+      itemCount: data.items.length,
+      query: q,
+      extraFilters: Boolean(category || department || teacherId),
+    });
+
+  useEffect(() => {
+    if (!offerRescue) {
+      setRescueTotal(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+    const query = new URLSearchParams({
+      q,
+      page: "1",
+      pageSize: "1",
+    });
+
+    api<Paginated<Teacher>>(`/api/teachers?${query}`, {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!cancelled) setRescueTotal(result.total);
+      })
+      .catch(() => {
+        if (!cancelled) setRescueTotal(null);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [offerRescue, q]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -395,6 +436,12 @@ export function CoursesPage() {
     Boolean(catalogFollowupVariant) && Boolean(CatalogFollowupPrototypeLazy);
 
   const pageSize = data?.pageSize || 20;
+  const rescue =
+    rescueTotal && rescueTotal > 0 ? (
+      <CatalogEmptyRescueLink to={`/teachers?q=${encodeURIComponent(q)}`}>
+        教师资料有 {rescueTotal} 位匹配，去查看
+      </CatalogEmptyRescueLink>
+    ) : undefined;
 
   const filtersModel = {
     queryDraft,
@@ -477,6 +524,7 @@ export function CoursesPage() {
       onRetry={() => setReloadToken((n) => n + 1)}
       onClearFilters={clearFilters}
       copy={COURSE_CATALOG_COPY}
+      rescue={rescue}
     >
       {data ? (
         comparingTable && courseTableVariant && CourseTablePrototypeLazy ? (

@@ -9,8 +9,9 @@
  *
  * Entity-specific wording via `copy` (courses vs teachers).
  */
-import { Button, Skeleton, Spinner } from "@heroui/react";
+import { Button, Link, Skeleton, Spinner } from "@heroui/react";
 import type { ReactNode } from "react";
+import { NavLink } from "react-router-dom";
 
 export type CatalogResultsCopy = {
   /** e.g. 课程目录加载失败 */
@@ -73,6 +74,8 @@ export type CatalogResultsStatesProps = {
   onClearFilters: () => void;
   children: ReactNode;
   copy?: CatalogResultsCopy;
+  /** Opposite-catalog hint when this catalog is empty (Issue #287). */
+  rescue?: ReactNode;
 };
 
 /** First-load placeholder: skeleton rows mirror the result table's shape so
@@ -131,11 +134,13 @@ function EmptyPanel({
   emptyQuery,
   onClearFilters,
   copy,
+  rescue,
 }: {
   hasFilters: boolean;
   emptyQuery?: string;
   onClearFilters: () => void;
   copy: CatalogResultsCopy;
+  rescue?: ReactNode;
 }) {
   const title = hasFilters
     ? copy.emptyFilteredTitle(emptyQuery)
@@ -149,12 +154,41 @@ function EmptyPanel({
     >
       <div className="font-medium text-foreground">{title}</div>
       <p className="mt-1 mb-3 text-sm">{desc}</p>
+      {rescue ? <p className="mb-3 text-sm">{rescue}</p> : null}
       {hasFilters ? (
         <Button size="sm" variant="outline" onPress={onClearFilters}>
           {copy.clearLabel}
         </Button>
       ) : null}
     </div>
+  );
+}
+
+/** SPA rescue link: official Link + React Router NavLink (same as AppShell). */
+export function CatalogEmptyRescueLink({
+  to,
+  children,
+}: {
+  to: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={to}
+      render={(domProps) => (
+        <NavLink
+          {...(domProps as object)}
+          className={
+            typeof domProps.className === "string"
+              ? domProps.className
+              : undefined
+          }
+          to={to}
+        />
+      )}
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -217,6 +251,7 @@ export function CatalogResultsStates({
   onClearFilters,
   children,
   copy = COURSE_CATALOG_COPY,
+  rescue,
 }: CatalogResultsStatesProps) {
   if (error && !hasPayload) {
     return (
@@ -239,6 +274,7 @@ export function CatalogResultsStates({
         emptyQuery={emptyQuery}
         onClearFilters={onClearFilters}
         copy={copy}
+        rescue={rescue}
       />
     );
   }
