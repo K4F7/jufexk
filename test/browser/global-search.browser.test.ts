@@ -11,6 +11,15 @@ async function mockCatalogApi(page: Page) {
         json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
       });
     }
+    if (url.pathname === "/api/user/session") {
+      return route.fulfill({
+        json: {
+          authenticated: false,
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
+    }
     if (url.pathname === "/api/auth/campus") {
       return route.fulfill({
         json: {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogFilters,
@@ -10,11 +10,16 @@ import {
   CatalogResultsStates,
   COURSE_CATALOG_COPY,
 } from "../components/CatalogResultsStates";
-import { CatalogSearchHeader } from "../components/CatalogSearchHeader";
+import {
+  CatalogSearchHeader,
+  type CatalogSearchSuggestion,
+} from "../components/CatalogSearchHeader";
 import { CourseResultTable } from "../components/CourseResultTable";
 import { EmptyBox } from "../components/EmptyBox";
 import { api } from "../lib/api";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
+import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
+import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
 import type { Course, Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
@@ -172,6 +177,30 @@ export function CoursesPage() {
   /** Bumps to re-fetch the current catalog query (prototype retry / force-reload). */
   const [reloadToken, setReloadToken] = useState(0);
   const [rescueTotal, setRescueTotal] = useState<number | null>(null);
+  const loadCourseSuggestions = useCallback(
+    (query: string, signal: AbortSignal) => {
+      const suggest = new URLSearchParams({
+        q: query,
+        page: "1",
+        pageSize: String(CATALOG_SUGGEST_PAGE_SIZE),
+      });
+      return api<Paginated<Course>>(`/api/courses?${suggest}`, { signal }).then(
+        (result) =>
+          result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
+            (course): CatalogSearchSuggestion => ({
+              id: String(course.id),
+              title: course.name,
+              detail: course.code,
+            }),
+          ),
+      );
+    },
+    [],
+  );
+  const courseSuggestions = useCatalogSuggestions(
+    queryDraft,
+    loadCourseSuggestions,
+  );
 
   useEffect(() => setQueryDraft(q), [q]);
   useEffect(() => setDepartmentDraft(department), [department]);
@@ -444,6 +473,11 @@ export function CoursesPage() {
     selectedTeacherName,
   }).map((tag) => tag.label);
 
+  function applySearch(next: string) {
+    setQueryDraft(next);
+    update({ q: next.trim(), page: "1" }, true);
+  }
+
   function clearFilters() {
     setQueryDraft("");
     setDepartmentDraft("");
@@ -658,6 +692,10 @@ export function CoursesPage() {
           searchLabel="搜索课程"
           clearAriaLabel="清空课程搜索"
           name="course-search"
+          suggestions={courseSuggestions.items}
+          suggestionsReady={courseSuggestions.ready}
+          suggestionsFailed={courseSuggestions.failed}
+          onSelectSuggestion={applySearch}
         />
         <Suspense fallback={<EmptyBox role="status">加载目录后续原型…</EmptyBox>}>
           <CatalogFollowupPrototypeLazy
@@ -692,6 +730,10 @@ export function CoursesPage() {
           searchLabel="搜索课程"
           clearAriaLabel="清空课程搜索"
           name="course-search"
+          suggestions={courseSuggestions.items}
+          suggestionsReady={courseSuggestions.ready}
+          suggestionsFailed={courseSuggestions.failed}
+          onSelectSuggestion={applySearch}
         />
       )}
 
