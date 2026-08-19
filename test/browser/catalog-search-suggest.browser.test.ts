@@ -89,6 +89,10 @@ async function mockCatalogApi(page: Page, options: { failSuggest?: boolean } = {
   });
 }
 
+async function searchQuery(page: Page) {
+  return new URL(page.url()).searchParams.get("q");
+}
+
 test("course search shows suggestions and selecting writes q", async ({
   page,
 }) => {
@@ -98,8 +102,7 @@ test("course search shows suggestions and selecting writes q", async ({
   const option = page.getByRole("option", { name: /高等数学/ });
   await expect(option).toBeVisible({ timeout: 5000 });
   await option.click();
-  await expect(page).toHaveURL(/q=/);
-  expect(decodeURIComponent(page.url())).toContain("q=高等数学");
+  await expect.poll(() => searchQuery(page)).toBe("高等数学");
 });
 
 test("teacher search shows suggestions symmetrically", async ({ page }) => {
@@ -109,7 +112,32 @@ test("teacher search shows suggestions symmetrically", async ({ page }) => {
   const option = page.getByRole("option", { name: /张三/ });
   await expect(option).toBeVisible({ timeout: 5000 });
   await option.click();
-  expect(decodeURIComponent(page.url())).toContain("q=张三");
+  await expect.poll(() => searchQuery(page)).toBe("张三");
+});
+
+test("escape closes suggestions without clearing the field", async ({
+  page,
+}) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses");
+  const search = page.getByRole("searchbox", { name: "搜索课程" });
+  await search.fill("高等");
+  await expect(page.getByRole("option", { name: /高等数学/ })).toBeVisible({
+    timeout: 5000,
+  });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(search).toHaveValue("高等");
+});
+
+test("empty suggestions show official empty state and still submit q", async ({
+  page,
+}) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses");
+  await page.getByRole("searchbox", { name: "搜索课程" }).fill("没有这门课");
+  await expect(page.getByText("没有匹配的建议")).toBeVisible({ timeout: 5000 });
+  await expect.poll(() => searchQuery(page)).toBe("没有这门课");
 });
 
 test("no input does not show a suggestion list", async ({ page }) => {

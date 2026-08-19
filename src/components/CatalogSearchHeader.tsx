@@ -13,6 +13,7 @@ import {
   Typography,
 } from "@heroui/react";
 import { useState } from "react";
+import { shouldOpenCatalogSuggestions } from "../lib/catalog-search-suggest";
 
 export type CatalogSearchSuggestion = {
   id: string;
@@ -57,14 +58,19 @@ export function CatalogSearchHeader({
   onSelectSuggestion,
 }: CatalogSearchHeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
-  const open =
-    searchFocused && suggestions.length > 0 && !suggestionsFailed;
-  const showEmptySuggest =
-    searchFocused &&
-    Boolean(value.trim()) &&
-    suggestionsReady &&
-    !suggestionsFailed &&
-    suggestions.length === 0;
+  const [dismissed, setDismissed] = useState(false);
+  const open = shouldOpenCatalogSuggestions({
+    focused: searchFocused,
+    query: value,
+    ready: suggestionsReady,
+    failed: suggestionsFailed,
+    dismissed,
+  });
+
+  function chooseSuggestion(key: string | number | bigint) {
+    const selected = suggestions.find((item) => item.id === String(key));
+    if (selected) onSelectSuggestion?.(selected.title);
+  }
 
   return (
     <header className="mb-3" aria-label="目录标题与搜索">
@@ -97,18 +103,23 @@ export function CatalogSearchHeader({
             value={null}
             isOpen={open}
             onOpenChange={(next) => {
-              if (!next) setSearchFocused(false);
+              if (!next) setDismissed(true);
             }}
             onChange={(key) => {
-              const selected = suggestions.find((item) => item.id === String(key));
-              if (selected) onSelectSuggestion?.(selected.title);
+              const selectedKey = Array.isArray(key) ? key[0] : key;
+              if (selectedKey == null) return;
+              chooseSuggestion(selectedKey);
             }}
           >
             <Label className="sr-only">{searchLabel}</Label>
             <Autocomplete.Filter
               filter={() => true}
               inputValue={value}
-              onInputChange={onChange}
+              onInputChange={(next) => {
+                onChange(next);
+                setDismissed(false);
+                setSearchFocused(true);
+              }}
             >
               <SearchField fullWidth name={name} variant="secondary">
                 <Label className="sr-only">{searchLabel}</Label>
@@ -118,6 +129,9 @@ export function CatalogSearchHeader({
                     className="w-full"
                     placeholder={placeholder}
                     onFocus={() => setSearchFocused(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setDismissed(true);
+                    }}
                   />
                   <SearchField.ClearButton aria-label={clearAriaLabel} />
                 </SearchField.Group>
@@ -127,12 +141,13 @@ export function CatalogSearchHeader({
                   renderEmptyState={() => (
                     <EmptyState>没有匹配的建议</EmptyState>
                   )}
+                  onAction={(key) => chooseSuggestion(key)}
                 >
                   {suggestions.map((item) => (
                     <ListBox.Item
                       key={item.id}
                       id={item.id}
-                      textValue={`${item.title} ${item.detail ?? ""}`}
+                      textValue={item.title}
                     >
                       <Label>{item.title}</Label>
                       {item.detail ? (
@@ -144,9 +159,6 @@ export function CatalogSearchHeader({
               </Autocomplete.Popover>
             </Autocomplete.Filter>
           </Autocomplete>
-          {showEmptySuggest ? (
-            <EmptyState className="mt-1">没有匹配的建议</EmptyState>
-          ) : null}
         </div>
       </div>
     </header>

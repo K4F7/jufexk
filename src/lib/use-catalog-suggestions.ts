@@ -21,6 +21,7 @@ export function useCatalogSuggestions<T>(
     }
 
     const controller = new AbortController();
+    setItems([]);
     setReady(false);
     const timer = window.setTimeout(() => {
       load(draft.trim(), controller.signal)
