@@ -1,8 +1,23 @@
 /**
  * Catalog title + primary search — visually frozen: prototype C (同行工具条).
- * Title left · count under title · HeroUI SearchField secondary full-width right.
+ * Title left · count under title · HeroUI SearchField nested in Autocomplete.
  */
-import { Label, SearchField, Skeleton, Typography } from "@heroui/react";
+import {
+  Autocomplete,
+  Description,
+  EmptyState,
+  Label,
+  ListBox,
+  SearchField,
+  Skeleton,
+  Typography,
+} from "@heroui/react";
+
+export type CatalogSearchSuggestion = {
+  id: string;
+  title: string;
+  detail?: string;
+};
 
 export type CatalogSearchHeaderProps = {
   title: string;
@@ -19,6 +34,10 @@ export type CatalogSearchHeaderProps = {
   searchLabel: string;
   clearAriaLabel: string;
   name?: string;
+  suggestions?: CatalogSearchSuggestion[];
+  suggestionsReady?: boolean;
+  suggestionsFailed?: boolean;
+  onSelectSuggestion?: (title: string) => void;
 };
 
 export function CatalogSearchHeader({
@@ -31,7 +50,14 @@ export function CatalogSearchHeader({
   searchLabel,
   clearAriaLabel,
   name = "catalog-search",
+  suggestions = [],
+  suggestionsReady = false,
+  suggestionsFailed = false,
+  onSelectSuggestion,
 }: CatalogSearchHeaderProps) {
+  const open =
+    Boolean(value.trim()) && suggestionsReady && !suggestionsFailed;
+
   return (
     <header className="mb-3" aria-label="目录标题与搜索">
       <div className="flex flex-wrap items-end gap-x-4 gap-y-2 sm:flex-nowrap">
@@ -55,20 +81,57 @@ export function CatalogSearchHeader({
           </div>
         </div>
         <div className="min-w-0 flex-1 basis-[min(100%,18rem)]">
-          <SearchField
+          <Autocomplete
+            allowsEmptyCollection
             fullWidth
-            name={name}
-            value={value}
             variant="secondary"
-            onChange={onChange}
+            selectionMode="single"
+            value={null}
+            isOpen={open}
+            onChange={(key) => {
+              const selected = suggestions.find((item) => item.id === String(key));
+              if (selected) onSelectSuggestion?.(selected.title);
+            }}
           >
             <Label className="sr-only">{searchLabel}</Label>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input className="w-full" placeholder={placeholder} />
-              <SearchField.ClearButton aria-label={clearAriaLabel} />
-            </SearchField.Group>
-          </SearchField>
+            <Autocomplete.Filter
+              filter={() => true}
+              inputValue={value}
+              onInputChange={onChange}
+            >
+              <SearchField fullWidth name={name} variant="secondary">
+                <Label className="sr-only">{searchLabel}</Label>
+                <SearchField.Group>
+                  <SearchField.SearchIcon />
+                  <SearchField.Input
+                    className="w-full"
+                    placeholder={placeholder}
+                  />
+                  <SearchField.ClearButton aria-label={clearAriaLabel} />
+                </SearchField.Group>
+              </SearchField>
+              <Autocomplete.Popover>
+                <ListBox
+                  renderEmptyState={() => (
+                    <EmptyState>没有匹配的建议</EmptyState>
+                  )}
+                >
+                  {suggestions.map((item) => (
+                    <ListBox.Item
+                      key={item.id}
+                      id={item.id}
+                      textValue={`${item.title} ${item.detail ?? ""}`}
+                    >
+                      <Label>{item.title}</Label>
+                      {item.detail ? (
+                        <Description>{item.detail}</Description>
+                      ) : null}
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Autocomplete.Popover>
+            </Autocomplete.Filter>
+          </Autocomplete>
         </div>
       </div>
     </header>
