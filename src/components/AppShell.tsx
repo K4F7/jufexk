@@ -1,6 +1,7 @@
 import { buttonVariants, Link } from "@heroui/react";
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
+import { useCampusAuthEnabled } from "../hooks/useCampusAuthEnabled";
 import type { SiteConfig } from "../lib/types";
 import { AccountNavControl } from "./AccountNavControl";
 import { ThemeToggle } from "./ThemeToggle";
@@ -44,6 +45,9 @@ function navSelectedKey(pathname: string): string {
 /**
  * Production shell — visually frozen: left-cluster + button-styled Link nav (prototype C).
  * Brand wordmark · Button secondary/ghost 课程/教师 · university + ThemeToggle.
+ *
+ * 「写评价」只在校园认证开放后进入导航（foundations: 不展示不可用或
+ * “即将开放”的入口；Issue #277）；未开放期间 /submit 直达路由不受影响。
  */
 function DefaultShell({
   config,
@@ -54,8 +58,12 @@ function DefaultShell({
 }) {
   const location = useLocation();
   const selectedKey = navSelectedKey(location.pathname);
+  const campusEnabled = useCampusAuthEnabled();
   const siteName = config?.siteName || "江财选课参考";
   const universityName = config?.universityName || "江西财经大学";
+  const visibleLinks = links.filter(
+    (link) => link.id !== "submit" || campusEnabled === true,
+  );
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -69,7 +77,7 @@ function DefaultShell({
           </NavLink>
 
           <nav aria-label="主导航" className="flex min-w-0 items-center gap-1">
-            {links.map((link) => {
+            {visibleLinks.map((link) => {
               const active = selectedKey === link.id;
               return (
                 <Link
@@ -103,7 +111,7 @@ function DefaultShell({
             <span className="hidden text-xs text-muted sm:inline">
               {universityName}
             </span>
-            <AccountNavControl />
+            <AccountNavControl campusEnabled={campusEnabled} />
             <ThemeToggle />
           </div>
         </div>

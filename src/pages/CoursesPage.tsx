@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogFilters,
+  catalogActiveFilters,
   isPublicCategoryFilter,
 } from "../components/CatalogFilters";
 import {
@@ -404,6 +405,23 @@ export function CoursesPage() {
   );
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
+  /** 「0 门课程」时排序控件禁用（Issue #278）；已选 sort 深链保留。
+   *  按 total 而非当前页行数判定：深链越界页（items 空但 total>0）时
+   *  排序仍是回到第 1 页的出口，不能禁用。 */
+  const sortDisabled = data != null && data.total === 0;
+  const selectedTeacherName = teacherId
+    ? teachers.find((teacher) => String(teacher.id) === teacherId)?.name
+    : undefined;
+  /** 与「当前筛选」chips 同源的标签列表，供空状态文案点名全部生效筛选。 */
+  const activeFilterLabels = catalogActiveFilters({
+    queryDraft,
+    category,
+    departmentDraft,
+    teacherId,
+    teacherIdStatus,
+    teacherQueryDraft,
+    selectedTeacherName,
+  }).map((tag) => tag.label);
 
   function clearFilters() {
     setQueryDraft("");
@@ -476,6 +494,7 @@ export function CoursesPage() {
       teacherError={teacherError}
       teacherQuery={teacherQuery}
       sort={sort}
+      sortDisabled={sortDisabled}
       hasFilters={hasFilters}
       onCategoryChange={(value) => update({ category: value })}
       onDepartmentDraftChange={setDepartmentDraft}
@@ -517,6 +536,7 @@ export function CoursesPage() {
       itemCount={data?.items.length ?? 0}
       hasFilters={hasFilters}
       emptyQuery={q || undefined}
+      emptyFilters={activeFilterLabels}
       currentPage={currentPage}
       totalPages={totalPages}
       total={data?.total ?? 0}
