@@ -173,6 +173,48 @@ describe("按教师命中的课程行", () => {
   });
 });
 
+describe("拼音与首字母检索", () => {
+  const advancedMath = "高等数学";
+  const zhangTeacher = "张拼音师";
+
+  beforeAll(async () => {
+    const [course, teacher] = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+      ).bind("PINYIN-MATH", advancedMath, "general", department),
+      env.DB.prepare(
+        "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+      ).bind(zhangTeacher, zhangTeacher, department),
+    ]);
+    await env.DB.prepare(
+      "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+    )
+      .bind(Number(course.meta.last_row_id), Number(teacher.meta.last_row_id))
+      .run();
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET fingerprint='stale' WHERE id=1",
+    ).run();
+  });
+
+  it("gaoshu 与 gdsx 能命中高等数学类课名", async () => {
+    expect(await courseNames("q=gaoshu")).toContain(advancedMath);
+    expect(await courseNames("q=gdsx")).toContain(advancedMath);
+  });
+
+  it("zhang 能命中姓张的教师及其任课", async () => {
+    const teachers = await search("/api/teachers", "q=zhang");
+    expect(teachers.items.map((item) => item.name)).toContain(zhangTeacher);
+    expect(await courseNames("q=zhang")).toContain(advancedMath);
+  });
+
+  it("汉字查询与通配符字面量保持原行为", async () => {
+    expect(await courseNames(`q=${advancedMath}`)).toContain(advancedMath);
+    const names = await courseNames("q=%");
+    expect(names).not.toContain(advancedMath);
+    expect(names).not.toContain(mathCourse);
+  });
+});
+
 describe("预计算 match_text", () => {
   const staleFingerprint = () =>
     env.DB.prepare(

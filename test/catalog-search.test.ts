@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { isAsciiLetterTerm } from "../src/lib/catalog-pinyin";
 import {
   andSearchTerms,
+  andSearchTermsWithPinyin,
   delimitedExactSql,
   likeContains,
   likeEscape,
@@ -93,5 +95,29 @@ describe("andSearchTerms", () => {
       `c.name GLOB '?[0-9]*' OR ${likeSql("c.name")}`,
     );
     expect(filter.args).toEqual(["%张三%"]);
+  });
+});
+
+describe("andSearchTermsWithPinyin", () => {
+  it("only ORs the pinyin column for ASCII letter terms", () => {
+    const ascii = andSearchTermsWithPinyin(
+      ["gaoshu"],
+      likeSql("pcc.match_text"),
+      likeSql("pcc.pinyin_text"),
+      isAsciiLetterTerm,
+    );
+    expect(ascii.sql).toBe(
+      "(pcc.match_text LIKE ? ESCAPE '\\' OR pcc.pinyin_text LIKE ? ESCAPE '\\')",
+    );
+    expect(ascii.args).toEqual(["%gaoshu%", "%gaoshu%"]);
+
+    const chinese = andSearchTermsWithPinyin(
+      ["高等数学"],
+      likeSql("pcc.match_text"),
+      likeSql("pcc.pinyin_text"),
+      isAsciiLetterTerm,
+    );
+    expect(chinese.sql).toBe("(pcc.match_text LIKE ? ESCAPE '\\')");
+    expect(chinese.args).toEqual(["%高等数学%"]);
   });
 });
