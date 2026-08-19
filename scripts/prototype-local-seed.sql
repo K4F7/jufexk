@@ -2,12 +2,9 @@
 -- Seeds a realistic JUFE-shaped catalog so /courses and shell-nav variants
 -- render against real API data (not mock components).
 -- Apply: pnpm db:seed-preview
--- Safe-ish to re-run: skips when a marker course already exists.
+-- Safe to re-run: unique keys + INSERT OR IGNORE / NOT EXISTS, not a marker-course skip.
 
 PRAGMA foreign_keys=ON;
-
--- Idempotent guard: if preview catalog already present, do nothing.
--- (Wrangler D1 file exec is one script; we use a temp check via conditional inserts.)
 
 -- Schema notes (keep this file aligned with current migrations):
 -- teachers require source_teacher_label (UNIQUE); courses.category is general|sports.
