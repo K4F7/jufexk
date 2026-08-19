@@ -70,6 +70,11 @@ import {
   type CourseTag,
   type SchemeKey,
 } from "./lib/review-schemes";
+import {
+  DEFAULT_API_CACHE_CONTROL,
+  purgePublicCatalogCache,
+  setPublicCatalogCacheHeaders,
+} from "./lib/public-catalog-cache";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
 import {
@@ -582,6 +587,10 @@ app.use("/api/*", async (c, next) => {
       shouldRefreshPublicListPrecomputes(c.req.method, c.req.path))
   ) {
     await refreshPublicListPrecomputes(c.env.DB);
+    await purgePublicCatalogCache(c);
+  }
+  if (!c.res.headers.get("Cache-Control")) {
+    c.header("Cache-Control", DEFAULT_API_CACHE_CONTROL);
   }
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "same-origin");
@@ -720,6 +729,7 @@ app.get("/api/courses", async (c) => {
     sort === "name"
       ? [...listed, ...extras].sort(byNameCodeId)
       : [...listed, ...extras];
+  setPublicCatalogCacheHeaders(c);
   return c.json({
     items: page === 1 ? firstPage : listed,
     page,
@@ -780,6 +790,7 @@ app.get("/api/teachers", async (c) => {
     teacherCount,
   );
   const totalCount = pageRows.total;
+  setPublicCatalogCacheHeaders(c);
   return c.json({
     items: pageRows.items.map((row: { name?: string; course_count?: number }) => {
       const sport = virtualPeSportForTeacherName(
@@ -901,6 +912,7 @@ app.get("/api/courses/options", async (c) => {
     optionCount,
   );
   const totalCount = pageRows.total;
+  setPublicCatalogCacheHeaders(c);
   return c.json({
     items: pageRows.items.map((row) => withCourseReviewScheme(row)),
     page,
@@ -918,6 +930,7 @@ app.get("/api/courses/departments", async (c) => {
        AND trim(COALESCE(c.department,''))<>''
      ORDER BY trim(c.department)`,
   ).all<{ department: string }>();
+  setPublicCatalogCacheHeaders(c);
   return c.json({ items: results.map((row) => row.department) });
 });
 app.get("/api/courses/:id", async (c) => {
