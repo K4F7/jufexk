@@ -1,8 +1,25 @@
 /**
  * Catalog title + primary search — visually frozen: prototype C (同行工具条).
- * Title left · count under title · HeroUI SearchField secondary full-width right.
+ * Title left · count under title · HeroUI SearchField nested in Autocomplete.
  */
-import { Label, SearchField, Skeleton, Typography } from "@heroui/react";
+import {
+  Autocomplete,
+  Description,
+  EmptyState,
+  Label,
+  ListBox,
+  SearchField,
+  Skeleton,
+  Typography,
+} from "@heroui/react";
+import { useState } from "react";
+import { shouldOpenCatalogSuggestions } from "../lib/catalog-search-suggest";
+
+export type CatalogSearchSuggestion = {
+  id: string;
+  title: string;
+  detail?: string;
+};
 
 export type CatalogSearchHeaderProps = {
   title: string;
@@ -19,6 +36,10 @@ export type CatalogSearchHeaderProps = {
   searchLabel: string;
   clearAriaLabel: string;
   name?: string;
+  suggestions?: CatalogSearchSuggestion[];
+  suggestionsReady?: boolean;
+  suggestionsFailed?: boolean;
+  onSelectSuggestion?: (title: string) => void;
 };
 
 export function CatalogSearchHeader({
@@ -31,7 +52,26 @@ export function CatalogSearchHeader({
   searchLabel,
   clearAriaLabel,
   name = "catalog-search",
+  suggestions = [],
+  suggestionsReady = false,
+  suggestionsFailed = false,
+  onSelectSuggestion,
 }: CatalogSearchHeaderProps) {
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const open = shouldOpenCatalogSuggestions({
+    focused: searchFocused,
+    query: value,
+    ready: suggestionsReady,
+    failed: suggestionsFailed,
+    dismissed,
+  });
+
+  function chooseSuggestion(key: string | number | bigint) {
+    const selected = suggestions.find((item) => item.id === String(key));
+    if (selected) onSelectSuggestion?.(selected.title);
+  }
+
   return (
     <header className="mb-3" aria-label="目录标题与搜索">
       <div className="flex flex-wrap items-end gap-x-4 gap-y-2 sm:flex-nowrap">
@@ -55,20 +95,70 @@ export function CatalogSearchHeader({
           </div>
         </div>
         <div className="min-w-0 flex-1 basis-[min(100%,18rem)]">
-          <SearchField
+          <Autocomplete
+            allowsEmptyCollection
             fullWidth
-            name={name}
-            value={value}
             variant="secondary"
-            onChange={onChange}
+            selectionMode="single"
+            value={null}
+            isOpen={open}
+            onOpenChange={(next) => {
+              if (!next) setDismissed(true);
+            }}
+            onChange={(key) => {
+              const selectedKey = Array.isArray(key) ? key[0] : key;
+              if (selectedKey == null) return;
+              chooseSuggestion(selectedKey);
+            }}
           >
             <Label className="sr-only">{searchLabel}</Label>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input className="w-full" placeholder={placeholder} />
-              <SearchField.ClearButton aria-label={clearAriaLabel} />
-            </SearchField.Group>
-          </SearchField>
+            <Autocomplete.Filter
+              filter={() => true}
+              inputValue={value}
+              onInputChange={(next) => {
+                onChange(next);
+                setDismissed(false);
+                setSearchFocused(true);
+              }}
+            >
+              <SearchField fullWidth name={name} variant="secondary">
+                <Label className="sr-only">{searchLabel}</Label>
+                <SearchField.Group>
+                  <SearchField.SearchIcon />
+                  <SearchField.Input
+                    className="w-full"
+                    placeholder={placeholder}
+                    onFocus={() => setSearchFocused(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setDismissed(true);
+                    }}
+                  />
+                  <SearchField.ClearButton aria-label={clearAriaLabel} />
+                </SearchField.Group>
+              </SearchField>
+              <Autocomplete.Popover>
+                <ListBox
+                  renderEmptyState={() => (
+                    <EmptyState>没有匹配的建议</EmptyState>
+                  )}
+                  onAction={(key) => chooseSuggestion(key)}
+                >
+                  {suggestions.map((item) => (
+                    <ListBox.Item
+                      key={item.id}
+                      id={item.id}
+                      textValue={item.title}
+                    >
+                      <Label>{item.title}</Label>
+                      {item.detail ? (
+                        <Description>{item.detail}</Description>
+                      ) : null}
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Autocomplete.Popover>
+            </Autocomplete.Filter>
+          </Autocomplete>
         </div>
       </div>
     </header>

@@ -173,8 +173,12 @@ test("opposite catalog 500 keeps the original empty copy", async ({ page }) => {
   await page.goto("/courses?q=张三");
   await rescueFailed;
 
-  await expect(page.getByText("没有找到匹配「张三」的课程")).toBeVisible();
-  await expect(page.getByText("试试调整关键词、类别或教师筛选。")).toBeVisible();
+  const empty = page
+    .getByRole("status")
+    .filter({ hasText: "没有找到匹配「张三」的课程" });
+  await expect(empty).toBeVisible();
+  // 对侧 500 不改空态：仍用本目录的筛选点名文案（Issue #276），不出现救援链接。
+  await expect(empty).toContainText("试试调整或清空当前筛选：关键词“张三”。");
   await expect(
     page.getByRole("link", { name: /教师资料有 \d+ 位匹配/ }),
   ).toHaveCount(0);
