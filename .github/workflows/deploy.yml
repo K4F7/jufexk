@@ -9,7 +9,35 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.classify.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "web=true"
+          else
+            bash scripts/ci/list-changed-paths.sh | node scripts/ci/classify-changed-paths.mjs
+          fi
+
   deploy:
+    name: deploy
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 15
