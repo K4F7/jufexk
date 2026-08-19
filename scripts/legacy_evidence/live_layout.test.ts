@@ -82,6 +82,7 @@ describe("legacy live layout contract", () => {
   it("refuses to write over #180, #229, or formula-bar packs and leaves those hashes untouched", async () => {
     const protectedPaths = [
       "scripts/legacy_evidence/output/smoke-20260818-v1/manifest.json",
+      "scripts/legacy_evidence/output/smoke-rest-20260818-v1/manifest.json",
       "scripts/legacy_evidence/output/other-smoke-20260819-v1/manifest.json",
       "scripts/legacy_evidence/output/formula-bar-full-20260729-v1/audit.json",
     ];
@@ -91,9 +92,10 @@ describe("legacy live layout contract", () => {
     expect(afterCompile).toEqual(before);
 
     expect(() => assertLiveLayoutOutputPath(join(LIVE_LAYOUT_OUTPUT_RELATIVE, "live-layout.json"))).not.toThrow();
-    expect(() => assertLiveLayoutOutputPath("scripts/legacy_evidence/output/smoke-20260818-v1/live-layout.json")).toThrow(/#180|#229|formula-bar|protected/i);
-    expect(() => assertLiveLayoutOutputPath("scripts/legacy_evidence/output/other-smoke-20260819-v1/live-layout.json")).toThrow(/#180|#229|formula-bar|protected/i);
-    expect(() => assertLiveLayoutOutputPath("scripts/legacy_evidence/output/formula-bar-full-20260729-v1/live-layout.json")).toThrow(/#180|#229|formula-bar|protected/i);
+    expect(() => assertLiveLayoutOutputPath("scripts/legacy_evidence/output/smoke-20260818-v1/live-layout.json")).toThrow(/#180|#229|smoke-rest|formula-bar|protected/i);
+    expect(() => assertLiveLayoutOutputPath("scripts/legacy_evidence/output/smoke-rest-20260818-v1/live-layout.json")).toThrow(/#180|#229|smoke-rest|formula-bar|protected/i);
+    expect(() => assertLiveLayoutOutputPath("scripts/legacy_evidence/output/other-smoke-20260819-v1/live-layout.json")).toThrow(/#180|#229|smoke-rest|formula-bar|protected/i);
+    expect(() => assertLiveLayoutOutputPath("scripts/legacy_evidence/output/formula-bar-full-20260729-v1/live-layout.json")).toThrow(/#180|#229|smoke-rest|formula-bar|protected/i);
 
     const tempRoot = await mkdtemp(join(tmpdir(), "jufexk-live-layout-"));
     try {
