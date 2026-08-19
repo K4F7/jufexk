@@ -379,7 +379,7 @@ export function planRestSheetsRowCapture(
   if (!sheet) throw new Error(`rest-sheets inventory has no ${worksheet}`);
   if (!Number.isInteger(row) || row < 1) throw new Error(`invalid rest-sheets row: ${row}`);
 
-  if (worksheet === "MOOC") {
+  if (worksheet === "MOOC" && row === 46) {
     if (!locator || locator.worksheet !== "MOOC" || locator.target_address !== "G46") {
       throw new Error("MOOC G46 locator is required before planning G-N");
     }
@@ -558,7 +558,7 @@ export function buildRestSheetsCaptureQa(options: {
       issues.push("MOOC G46 locator has not been recorded");
     } else if (moocNote.active_address !== "G46") {
       moocG46Aligned = false;
-      issues.push("MOOC G46 is misaligned; do not plan G-N");
+      issues.push("MOOC G46 is misaligned; do not plan row 46 G-N");
     } else {
       moocG46Aligned = true;
     }

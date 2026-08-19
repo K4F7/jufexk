@@ -10,7 +10,7 @@ type Locator = {
   count(): Promise<number>;
   fill?(value: string): Promise<void>;
   press?(key: string): Promise<void>;
-  evaluate?(callback: (element: any) => unknown): Promise<unknown>;
+  evaluate?(callback: (element: any, arg?: any) => unknown, arg?: unknown): Promise<unknown>;
   textContent?(): Promise<string | null>;
   isVisible?(): Promise<boolean>;
   getAttribute?(name: string): Promise<string | null>;
@@ -34,6 +34,21 @@ export const TENCENT_SHEET_SELECTORS = {
   addressBox: "input.bar-label",
   formulaBar: "#alloy-simple-text-editor",
 } as const;
+
+export async function commitTencentAddressBox(addressBox: Locator, address: string) {
+  if (!addressBox.evaluate || !addressBox.press) {
+    throw new Error("Tencent sheet address box cannot use the native setter");
+  }
+  await addressBox.evaluate((element, value) => {
+    const input = element as { value?: string; dispatchEvent(event: Event): boolean };
+    const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (!proto) throw new Error("native value setter unavailable");
+    proto.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, address);
+  await addressBox.press("Enter");
+}
 
 export function createTencentSheetFormulaBarSource(options: {
   tab: TencentSheetTab;
@@ -78,7 +93,7 @@ export function createTencentSheetFormulaBarSource(options: {
       if (await viewOnly.count() !== 1 || !viewOnly.isVisible || !await viewOnly.isVisible()) {
         throw new Error("Tencent sheet is not visibly read-only");
       }
-      if (await addressBox.count() !== 1 || !addressBox.fill || !addressBox.press) {
+      if (await addressBox.count() !== 1 || !addressBox.evaluate || !addressBox.press) {
         throw new Error("Tencent sheet address box is unavailable or ambiguous");
       }
       if (await formulaBar.count() !== 1 || !formulaBar.textContent || !formulaBar.getAttribute
@@ -86,8 +101,7 @@ export function createTencentSheetFormulaBarSource(options: {
         throw new Error("Tencent sheet formula bar is unavailable or ambiguous");
       }
       await options.selectWorksheet?.(target.worksheet);
-      await addressBox.fill(target.address);
-      await addressBox.press("Enter");
+      await commitTencentAddressBox(addressBox, target.address);
       await options.settleAfterLocate?.(target);
       resetReadSnapshot();
     },
