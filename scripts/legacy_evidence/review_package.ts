@@ -6,7 +6,9 @@ import { buildFrozenFormulaBarMatrixPlan } from "./formula_bar_locator";
 import { formulaBarEvidencePath } from "./formula_bar_locator_store";
 import { PROTECTED_LIVE_LAYOUT_OUTPUT_MARKERS, validateLiveLayout, type LiveLayout } from "./live_layout";
 import { LIVE_LAYOUT_CONTEXT_INDEX_VERSION, MISSING_CONTEXT, validateLiveLayoutContextIndex } from "./live_layout_context_index";
+import { OTHER_SMOKE_INVENTORY_VERSION, OTHER_SMOKE_MANIFEST_VERSION } from "./other_smoke";
 import type { ProductionGapPartition } from "./production_gap";
+import { SMOKE_MANIFEST_VERSION } from "./smoke_recapture";
 
 export const REVIEW_PACKAGE_CONTRACT_VERSION = "legacy-review-package-v1" as const;
 export const NO_REVIEWS_TO_PACKAGE = "无评价可审" as const;
@@ -27,6 +29,9 @@ export const VERY_LONG_TEXT_BATCH_CELLS = 1;
 export const LONG_TEXT_CHARS = 400;
 export const VERY_LONG_TEXT_CHARS = 800;
 export const DEFAULT_MAX_BATCHES = 8;
+export const SMOKE_CAPTURE_MANIFEST_FILES = ["smoke-manifest.json", "manifest.json"] as const;
+export const SMOKE_SOURCE_INVENTORY_FILES = ["reuse-recapture-inventory.json", "inventory.json"] as const;
+export const SMOKE_CAPTURE_MANIFEST_VERSIONS = [SMOKE_MANIFEST_VERSION, OTHER_SMOKE_MANIFEST_VERSION] as const;
 
 export type ContextRow = { row: number; course: string; teacher: string; worksheet?: string };
 export type ImageOverride = { cell?: string; conflict?: string };
@@ -845,9 +850,77 @@ export async function loadScopedEvidence(options: {
   return { evidence, image_base_by_key };
 }
 
+export type SmokeInventoryScope = {
+  worksheet: string;
+  first_row: number;
+  last_row: number;
+};
+
+export async function readSmokeCaptureManifest(smokeRoot: string): Promise<Record<string, any> | null> {
+  const root = resolve(smokeRoot);
+  for (const name of SMOKE_CAPTURE_MANIFEST_FILES) {
+    const manifest = await readJsonIfExists(join(root, name));
+    if (!isRecord(manifest)) continue;
+    if (!(SMOKE_CAPTURE_MANIFEST_VERSIONS as readonly string[]).includes(String(manifest.contract_version))) continue;
+    return manifest;
+  }
+  return null;
+}
+
+export async function detectSmokeCaptureRoot(candidates: readonly string[]): Promise<string | undefined> {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const root = resolve(candidate);
+    if (await readSmokeCaptureManifest(root)) return root;
+  }
+  return undefined;
+}
+
+export async function loadSmokeInventoryScopes(smokeRoot: string): Promise<SmokeInventoryScope[] | null> {
+  const inventory = await readSmokeSourceInventory(smokeRoot);
+  if (!inventory || !Array.isArray(inventory.sheets)) return null;
+  const scopes: SmokeInventoryScope[] = [];
+  for (const sheet of inventory.sheets) {
+    if (!isRecord(sheet) || typeof sheet.worksheet !== "string") continue;
+    const rows = sheet.smoke_rows;
+    if (!Array.isArray(rows) || rows.length !== 2 || !Number.isInteger(rows[0]) || !Number.isInteger(rows[1])) continue;
+    scopes.push({ worksheet: sheet.worksheet, first_row: rows[0], last_row: rows[1] });
+  }
+  return scopes.length > 0 ? scopes : null;
+}
+
+export function resolveReviewEvidenceScopes(input: {
+  worksheet?: string;
+  first_row?: number;
+  last_row?: number;
+  pack_scopes?: SmokeInventoryScope[] | null;
+}): Array<{ worksheet?: string; first_row?: number; last_row?: number }> | null {
+  const pack = input.pack_scopes ?? null;
+  if (input.worksheet) {
+    const matched = pack?.filter((scope) => scope.worksheet === input.worksheet) ?? [];
+    if (matched.length === 0) {
+      return [{ worksheet: input.worksheet, first_row: input.first_row, last_row: input.last_row }];
+    }
+    return clipScopes(matched, input);
+  }
+  if (pack) return clipScopes(pack, input);
+  return null;
+}
+
+function clipScopes(
+  scopes: readonly SmokeInventoryScope[],
+  input: { first_row?: number; last_row?: number },
+): SmokeInventoryScope[] {
+  return scopes.flatMap((scope) => {
+    const first = input.first_row == null ? scope.first_row : Math.max(input.first_row, scope.first_row);
+    const last = input.last_row == null ? scope.last_row : Math.min(input.last_row, scope.last_row);
+    return first <= last ? [{ worksheet: scope.worksheet, first_row: first, last_row: last }] : [];
+  });
+}
+
 export async function loadSmokeImageOverrides(smokeRoot: string): Promise<Record<string, ImageOverride>> {
   const root = resolve(smokeRoot);
-  const manifest = await readJsonIfExists(join(root, "smoke-manifest.json"));
+  const manifest = await readSmokeCaptureManifest(root);
   const recapture = Array.isArray(manifest?.recapture_keys) ? manifest.recapture_keys as string[] : [];
   const overrides: Record<string, ImageOverride> = {};
   for (const key of recapture) {
@@ -863,10 +936,21 @@ export async function loadSmokeImageOverrides(smokeRoot: string): Promise<Record
 }
 
 export async function resolveSmokeEvidenceDir(smokeRoot: string) {
-  const inventory = await readJsonIfExists(join(resolve(smokeRoot), "reuse-recapture-inventory.json"));
+  const inventory = await readSmokeSourceInventory(smokeRoot);
   const source = typeof inventory?.source_evidence_root === "string" ? inventory.source_evidence_root : "";
   if (!source) return smokeRoot;
   return source.replace(/[\\/]+evidence[\\/]*$/, "") || source;
+}
+
+async function readSmokeSourceInventory(smokeRoot: string): Promise<Record<string, any> | null> {
+  const root = resolve(smokeRoot);
+  for (const name of SMOKE_SOURCE_INVENTORY_FILES) {
+    const inventory = await readJsonIfExists(join(root, name));
+    if (!isRecord(inventory) || typeof inventory.source_evidence_root !== "string") continue;
+    if (name === "inventory.json" && inventory.contract_version !== OTHER_SMOKE_INVENTORY_VERSION) continue;
+    return inventory;
+  }
+  return null;
 }
 
 async function fileExists(path: string) {
