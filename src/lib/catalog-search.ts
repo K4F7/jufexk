@@ -75,6 +75,31 @@ export function andSearchTerms(terms: string[], termSql: string): SearchFilter {
   };
 }
 
+/**
+ * 公开目录：汉字词条只打字面列；ASCII 字母词条再 OR 预计算拼音列。
+ * `textSql` / `pinyinSql` 各应只有一个绑定占位符（通常是 `likeSql(...)`）。
+ */
+export function andSearchTermsWithPinyin(
+  terms: string[],
+  textSql: string,
+  pinyinSql: string,
+  isPinyinTerm: (term: string) => boolean,
+): SearchFilter {
+  if (!terms.length) return { sql: "", args: [] };
+  return {
+    sql: terms
+      .map((term) =>
+        isPinyinTerm(term) ? `(${textSql} OR ${pinyinSql})` : `(${textSql})`,
+      )
+      .join(" AND "),
+    args: terms.flatMap((term) =>
+      isPinyinTerm(term)
+        ? [likeContains(term), likeContains(term)]
+        : [likeContains(term)],
+    ),
+  };
+}
+
 /** 数出片段里的绑定占位符；单引号字面量内部的 `?` 不算。 */
 function countPlaceholders(sql: string): number {
   let count = 0;

@@ -17,9 +17,12 @@ import {
   putBaselineChunk,
   readBoundedJson,
 } from "./catalog-baseline-import";
+import { isAsciiLetterTerm } from "./lib/catalog-pinyin";
 import {
   andSearchTerms,
+  andSearchTermsWithPinyin,
   delimitedExactSql,
+  likeContains,
   likePrefix,
   likeSql,
   parseSearchTerms,
@@ -623,8 +626,13 @@ app.get("/api/courses", async (c) => {
   if (cat && cat !== "sports")
     return fail(c, "公开筛选仅支持 sports");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  // 单个词条打预计算 match_text（课名/课号/院系/教师/变体/族名已拼好）。
-  const searchGroup = andSearchTerms(searchTerms, likeSql("pcc.match_text"));
+  // 单个词条打预计算 match_text；ASCII 字母词条再 OR 拼音面。
+  const searchGroup = andSearchTermsWithPinyin(
+    searchTerms,
+    likeSql("pcc.match_text"),
+    likeSql("pcc.pinyin_text"),
+    isAsciiLetterTerm,
+  );
   const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = [
     cat,
@@ -658,7 +666,8 @@ app.get("/api/courses", async (c) => {
        WHEN ${likeSql("c.department")} THEN 4
        WHEN ${delimitedExactSql("pcc.teacher_variant_text")} THEN 5
        WHEN ${likeSql("pcc.teacher_variant_text")} THEN 6
-       ELSE 7
+       WHEN ${likeSql("pcc.pinyin_text")} THEN 7
+       ELSE 8
      END,review_count DESC,c.name,c.code,c.id`;
   const searchRankArgs = [
     search,
@@ -672,6 +681,7 @@ app.get("/api/courses", async (c) => {
     likePrefix(search),
     search,
     likePrefix(search),
+    likeContains(search),
   ];
   const { results } = await c.env.DB.prepare(
     `SELECT c.*,
@@ -743,7 +753,12 @@ app.get("/api/teachers", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const searchTerms = parseSearchTerms(search);
-  const searchGroup = andSearchTerms(searchTerms, likeSql("pts.match_text"));
+  const searchGroup = andSearchTermsWithPinyin(
+    searchTerms,
+    likeSql("pts.match_text"),
+    likeSql("pts.pinyin_text"),
+    isAsciiLetterTerm,
+  );
   const where = searchGroup.sql || "1=1";
   const args = searchGroup.args;
   const teacherCount = () =>
@@ -769,7 +784,8 @@ app.get("/api/teachers", async (c) => {
        WHEN ${likeSql("t.name")} THEN 1
        WHEN t.department=? THEN 2
        WHEN ${likeSql("t.department")} THEN 3
-       ELSE 4
+       WHEN ${likeSql("pts.pinyin_text")} THEN 4
+       ELSE 5
      END,review_count DESC,t.name,t.department,t.id
      LIMIT ? OFFSET ?`,
   )
@@ -780,6 +796,7 @@ app.get("/api/teachers", async (c) => {
       likePrefix(search),
       search,
       likePrefix(search),
+      likeContains(search),
       size,
       (page - 1) * size,
     )
@@ -883,9 +900,11 @@ app.get("/api/courses/options", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const searchGroup = andSearchTerms(
+  const searchGroup = andSearchTermsWithPinyin(
     parseSearchTerms(search),
     likeSql("pcc.match_text"),
+    likeSql("pcc.pinyin_text"),
+    isAsciiLetterTerm,
   );
   const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = searchGroup.args;

@@ -1,3 +1,4 @@
+import { catalogPinyinText } from "./lib/catalog-pinyin";
 import {
   PE_SKILL_FAMILIES,
   publicPeHasTextReviewSql,
@@ -165,6 +166,71 @@ export async function refreshPublicListPrecomputes(db: D1Database) {
     db.prepare(teacherSearchInsert),
     db.prepare("UPDATE public_precompute_state SET dirty=0,fingerprint=? WHERE id=1").bind(fingerprint),
   ]);
+  await refreshCatalogPinyinTexts(db);
+}
+
+const PYINYIN_BATCH = 40;
+const NAME_SPLIT = "\u001f";
+
+async function refreshCatalogPinyinTexts(db: D1Database) {
+  const courses = await db
+    .prepare(
+      `SELECT pcc.course_id,
+        COALESCE(c.name,'') name,
+        COALESCE(pcc.family_label,'') family_label,
+        COALESCE((
+          SELECT GROUP_CONCAT(t.name, '${NAME_SPLIT}')
+          FROM course_teachers ct JOIN teachers t ON t.id=ct.teacher_id
+          WHERE ct.course_id=c.id
+        ),'') teachers,
+        COALESCE((
+          SELECT GROUP_CONCAT(cnv.name, '${NAME_SPLIT}')
+          FROM course_name_variants cnv
+          WHERE cnv.course_id=c.id
+        ),'') variants
+       FROM public_course_canonicals pcc
+       JOIN courses c ON c.id=pcc.course_id`,
+    )
+    .all<{
+      course_id: number;
+      name: string;
+      family_label: string;
+      teachers: string;
+      variants: string;
+    }>();
+  const teachers = await db
+    .prepare("SELECT id,name FROM teachers")
+    .all<{ id: number; name: string }>();
+
+  const splitNames = (value: string) =>
+    value.split(NAME_SPLIT).map((part) => part.trim()).filter(Boolean);
+
+  const updates = [
+    ...courses.results.map((row) =>
+      db
+        .prepare(
+          "UPDATE public_course_canonicals SET pinyin_text=? WHERE course_id=?",
+        )
+        .bind(
+          catalogPinyinText([
+            row.name,
+            row.family_label,
+            ...splitNames(row.teachers),
+            ...splitNames(row.variants),
+          ]),
+          row.course_id,
+        ),
+    ),
+    ...teachers.results.map((row) =>
+      db
+        .prepare("UPDATE public_teacher_search SET pinyin_text=? WHERE teacher_id=?")
+        .bind(catalogPinyinText([row.name], { surname: true }), row.id),
+    ),
+  ];
+
+  for (let offset = 0; offset < updates.length; offset += PYINYIN_BATCH) {
+    await db.batch(updates.slice(offset, offset + PYINYIN_BATCH));
+  }
 }
 
 async function publicListSourceFingerprint(db: D1Database) {
