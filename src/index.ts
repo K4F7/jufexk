@@ -43,7 +43,9 @@ import {
 } from "./lib/public-course-presentation";
 import {
   HistoricalBatchImportError,
+  type HistoricalBatchLookupRow,
   importIssue111HistoricalBatch,
+  resolveHistoricalBatchRows,
 } from "./historical-batch-imports";
 import { handleCampusAuthStatus } from "./campus-jwt";
 import {
@@ -1624,6 +1626,7 @@ app.post("/api/admin/historical-review-imports", async (c) => {
     comment: string;
   }> = [];
   let existingCount = 0;
+  const lookupRows: HistoricalBatchLookupRow[] = [];
   for (const record of selectedRecords) {
     if (
       !record ||
@@ -1642,29 +1645,23 @@ app.post("/api/admin/historical-review-imports", async (c) => {
     if (seen.has(reviewId)) return fail(c, "历史评价批次包含重复稳定身份", 422);
     seen.add(reviewId);
 
-    const identity = await c.env.DB.prepare(
-      `SELECT c.id course_id,t.id teacher_id,
-           EXISTS(
-             SELECT 1 FROM course_teachers ct
-             WHERE ct.course_id=c.id AND ct.teacher_id=t.id
-           ) relation_exists
-         FROM courses c CROSS JOIN teachers t
-         WHERE c.code=? AND t.source_teacher_label=?`,
-    )
-      .bind(courseCode, teacherLabel)
-      .first<{ course_id: number; teacher_id: number; relation_exists: number }>();
-    if (!identity || !identity.relation_exists)
-      return fail(c, "历史评价引用的课程、教师或任课关系不存在", 422);
+    lookupRows.push({ reviewId, courseCode, teacherLabel, comment });
+  }
 
-    const existing = await c.env.DB.prepare(
-      `SELECT course_id,teacher_id,comment FROM public_historical_reviews WHERE id=?`,
-    )
-      .bind(reviewId)
-      .first<{ course_id: number; teacher_id: number; comment: string }>();
+  let resolvedRows: Awaited<ReturnType<typeof resolveHistoricalBatchRows>>;
+  try {
+    resolvedRows = await resolveHistoricalBatchRows(c.env.DB, lookupRows);
+  } catch (error) {
+    if (error instanceof HistoricalBatchImportError)
+      return fail(c, error.message, error.status);
+    throw error;
+  }
+  for (const resolved of resolvedRows) {
+    const { reviewId, comment, courseId, teacherId, existing } = resolved;
     if (existing) {
       if (
-        existing.course_id !== identity.course_id ||
-        existing.teacher_id !== identity.teacher_id ||
+        existing.course_id !== courseId ||
+        existing.teacher_id !== teacherId ||
         existing.comment !== comment
       )
         return fail(c, "稳定评价身份已绑定到不同内容", 409);
@@ -1673,8 +1670,8 @@ app.post("/api/admin/historical-review-imports", async (c) => {
     }
     pending.push({
       reviewId,
-      courseId: identity.course_id,
-      teacherId: identity.teacher_id,
+      courseId,
+      teacherId,
       comment,
     });
   }
