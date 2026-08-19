@@ -214,6 +214,35 @@ describe("rest-sheets capture scaffolding", () => {
     expect(aligned.steps.some((step) => "address" in step && step.address === "H46")).toBe(false);
   });
 
+  it("plans non-46 MOOC recapture rows even when G46 is misaligned", () => {
+    const inventory = bindRestSheetsCaptureInventory(restGapWithMooc8(), { allowUnboundSha: true });
+    const misaligned = { worksheet: "MOOC", target_address: "G46", active_address: "G47" } as const;
+
+    const row8NoNote = planRestSheetsRowCapture(inventory, "MOOC", 8);
+    expect(row8NoNote.mode).toBe("recapture_only");
+    expect(row8NoNote.steps.some((step) => step.type === "stop")).toBe(false);
+
+    const row8 = planRestSheetsRowCapture(inventory, "MOOC", 8, misaligned);
+    expect(row8.mode).toBe("recapture_only");
+    expect(row8.row).toBe(8);
+    expect(row8.steps.some((step) => step.type === "stop")).toBe(false);
+    expect(row8.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "locate", address: "G8", role: "review" }),
+      expect.objectContaining({ type: "capture_pair", address: "G8", recapture: true }),
+    ]));
+    expect(JSON.stringify(row8.steps)).not.toMatch(/G46|H46|N46|G47/);
+
+    const stopped46 = planRestSheetsRowCapture(inventory, "MOOC", 46, misaligned);
+    expect(stopped46.mode).toBe("locator_only");
+    expect(stopped46.steps.at(-1)).toEqual({
+      type: "stop",
+      reason: "active_address_mismatch",
+      target_address: "G46",
+      active_address: "G47",
+    });
+    expect(stopped46.steps.some((step) => step.type === "capture_pair")).toBe(false);
+  });
+
   it("treats F23/F25 as locate-only and does not screenshot empty 美育 cells", () => {
     expect(REST_SHEETS_LOCATOR_TARGETS).toEqual([
       { worksheet: "MOOC", address: "G46", purpose: "halt_batch_row" },
@@ -420,6 +449,45 @@ describe("rest-sheets capture scaffolding", () => {
     expect(combined).not.toMatch(/SMOKE_MANIFEST_VERSION|smoke-capture-manifest-v1/);
   });
 });
+
+function restGapWithMooc8(): ProductionGapInventory {
+  return buildProductionGapInventory({
+    plan: tinyPlan([
+      "外教|4|K",
+      "外教|4|L",
+      "数学课|8|D",
+      "MOOC|8|G",
+      "MOOC|46|G",
+      "MOOC|46|H",
+      "主要课程|19|F",
+      "主要课程|19|G",
+      "主要课程|23|F",
+      "美育|8|E",
+      "美育|8|F",
+      "思政课|8|G",
+    ]),
+    evidence: [
+      gap("外教|4|K", "review_origin", true, false, HASH_A),
+      gap("外教|4|L", "review_origin", true, false, HASH_B),
+      gap("数学课|8|D", "review_origin", true, false, HASH_C),
+      gap("MOOC|8|G", "review_origin", true, false, HASH_C),
+      gap("MOOC|46|G", "evidence_conflict", true, true, HASH_A),
+      gap("MOOC|46|H", "ordinary_blank", false, false, HASH_B),
+      gap("主要课程|19|F", "review_origin", true, false, HASH_C),
+      gap("主要课程|19|G", "review_origin", true, false, HASH_A),
+      gap("主要课程|23|F", "ordinary_blank", false, false, HASH_B),
+      gap("美育|8|E", "review_origin", true, false, HASH_C),
+      gap("美育|8|F", "ordinary_blank", false, false, HASH_A),
+      gap("思政课|8|G", "review_origin", true, false, HASH_B),
+    ],
+    production: [
+      { name: "v2", records: [identity("主要课程", 19, "G"), identity("美育", 8, "E")] },
+    ],
+    unimported: [
+      { name: "catalog-identity-unresolved", records: [identity("外教", 4, "L")] },
+    ],
+  });
+}
 
 function restGap(): ProductionGapInventory {
   return buildProductionGapInventory({

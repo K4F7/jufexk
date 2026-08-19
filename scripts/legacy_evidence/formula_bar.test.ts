@@ -289,9 +289,14 @@ describe("single-cell formula-bar evidence", () => {
     const actions: string[] = [];
     const addressLocator = {
       count: async () => 1,
-      fill: async (value: string) => { actions.push(`fill:${value}`); },
       press: async (key: string) => { actions.push(`press:${key}`); },
-      evaluate: async () => "L51",
+      evaluate: async (_callback: (element: unknown, arg?: unknown) => unknown, arg?: unknown) => {
+        if (arg !== undefined) {
+          actions.push(`native:${String(arg)}`);
+          return undefined;
+        }
+        return "L51";
+      },
     };
     const formulaLocator = {
       count: async () => 1,
@@ -333,7 +338,7 @@ describe("single-cell formula-bar evidence", () => {
       "locator:input.bar-label",
       "locator:#alloy-simple-text-editor",
       "role:button:只能查看:true",
-      "fill:L51",
+      "native:L51",
       "press:Enter",
     ]);
   });
@@ -342,9 +347,14 @@ describe("single-cell formula-bar evidence", () => {
     const actions: string[] = [];
     const addressLocator = {
       count: async () => 1,
-      fill: async (value: string) => { actions.push(`fill:${value}`); },
       press: async (key: string) => { actions.push(`press:${key}`); },
-      evaluate: async () => "L51",
+      evaluate: async (_callback: (element: unknown, arg?: unknown) => unknown, arg?: unknown) => {
+        if (arg !== undefined) {
+          actions.push(`native:${String(arg)}`);
+          return undefined;
+        }
+        return "L51";
+      },
     };
     const formulaLocator = {
       count: async () => 1,
@@ -372,7 +382,7 @@ describe("single-cell formula-bar evidence", () => {
 
     await captureFormulaBarCell({ worksheet: "大英和视听说", address: "L51" }, liveSource);
 
-    expect(actions).toEqual(["sheet:大英和视听说", "fill:L51", "press:Enter", "settle:L51"]);
+    expect(actions).toEqual(["sheet:大英和视听说", "native:L51", "press:Enter", "settle:L51"]);
   });
 
   it("replays one page-side snapshot as two address-bound formula reads", async () => {
@@ -383,9 +393,11 @@ describe("single-cell formula-bar evidence", () => {
           locator: (selector: string) => selector === "input.bar-label"
             ? {
               count: async () => 1,
-              fill: async () => undefined,
               press: async () => undefined,
-              evaluate: async () => { throw new Error("uncached address read"); },
+              evaluate: async (_callback: (element: unknown, arg?: unknown) => unknown, arg?: unknown) => {
+                if (arg !== undefined) return undefined;
+                throw new Error("uncached address read");
+              },
             }
             : {
               count: async () => 1,
@@ -426,7 +438,6 @@ describe("single-cell formula-bar evidence", () => {
     const actions: string[] = [];
     const locator = {
       count: async () => 1,
-      fill: async () => undefined,
       press: async () => undefined,
       evaluate: async () => "L51",
       textContent: async () => "value",
@@ -462,9 +473,11 @@ describe("single-cell formula-bar evidence", () => {
     let addressWrites = 0;
     const inertLocator = {
       count: async () => 1,
-      fill: async () => { addressWrites += 1; },
       press: async () => undefined,
-      evaluate: async () => "L51",
+      evaluate: async (_callback: (element: unknown, arg?: unknown) => unknown, arg?: unknown) => {
+        if (arg !== undefined) addressWrites += 1;
+        return "L51";
+      },
       textContent: async () => "value",
     };
     const liveSource = createTencentSheetFormulaBarSource({
