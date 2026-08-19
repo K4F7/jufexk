@@ -3,7 +3,7 @@
  * CatalogSearchHeader C · CatalogResultsStates A · TeacherResultTable (B fold).
  * No separate A/B/C prototype round (foundations).
  */
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogEmptyRescueLink,
@@ -18,9 +18,30 @@ import type { Course, Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
 
+/** DEV-only: issue #303 C-variant opposite-catalog hint. */
+const GlobalSearchHintLazy = import.meta.env.DEV
+  ? lazy(() =>
+      import("../prototype/GlobalSearchVariants").then((m) => ({
+        default: m.GlobalSearchCrossCatalogHint,
+      })),
+    )
+  : null;
+
+function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
+  const [params] = useSearchParams();
+  return useMemo(() => {
+    if (!import.meta.env.DEV) return null;
+    if (params.get("module") !== "global-search") return null;
+    const key = (params.get("variant") || "A").toUpperCase();
+    if (key === "A" || key === "B" || key === "C") return key;
+    return "A";
+  }, [params]);
+}
+
 export function TeachersPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
+  const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const q = params.get("q") || "";
   const parsedPage = Number(params.get("page") || "1");
   const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
@@ -145,6 +166,12 @@ export function TeachersPage() {
         clearAriaLabel="清空教师搜索"
         name="teacher-search"
       />
+
+      {globalSearchVariant === "C" && q && GlobalSearchHintLazy ? (
+        <Suspense fallback={null}>
+          <GlobalSearchHintLazy catalog="teachers" query={q} />
+        </Suspense>
+      ) : null}
 
       <CatalogResultsStates
         loading={loading}

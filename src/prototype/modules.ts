@@ -39,6 +39,7 @@ export type PrototypeModuleDef = {
  * catalog-followup: 收藏 / 本专业入口（issue #63；决策记录 #73）— 用户已选择 C（条件密度 + Tag 清单），生产未实现。
  * teaching-reviews-feed: 任课评价文字流视觉确认（issue #71 承接 #68 / module 12）— 探索中。
  * review-recognition: 任课评价认可交互状态（issue #74 承接 #70 / module 13）— 探索中。
+ * global-search: 页内目录搜索 vs 导航栏全局搜索（issue #303）— 探索中，不改生产默认。
  */
 export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
   {
@@ -399,6 +400,37 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
         name: "动作与计数分离",
         summary:
           "Button 只含「认可 / 已认可」动作；计数为独立 muted 文本「N 人认可」。",
+      },
+    ],
+  },
+  {
+    id: "global-search",
+    title: "页内目录搜索 vs 导航栏全局搜索",
+    question:
+      "导航栏要不要加一个统一搜索入口，还是把能力留在页内搜索（#286）+ 空态救援（#287）就够？",
+    status: "exploring",
+    preview: "live",
+    livePath: "/courses",
+    notes:
+      "Issue #303 · throwaway prototype，不改生产默认。数据走现网 /api/courses、/api/teachers 的 q。若选出 B 或 C，另开 frontend 票再落地。",
+    variants: [
+      {
+        key: "A",
+        name: "维持页内",
+        summary:
+          "无顶栏搜索。第一次：进目录页 → 页内 SearchField 输入。搜错实体：空态 #287 跨目录链接。",
+      },
+      {
+        key: "B",
+        name: "顶栏分组建议",
+        summary:
+          "顶栏 Modal + Autocomplete，课程/教师各最多 5 条。点选进详情，回车进当前目录 ?q=。窄屏用图标开 Modal。",
+      },
+      {
+        key: "C",
+        name: "顶栏只跳转",
+        summary:
+          "顶栏 SearchField 回车进当前目录；结果上方「也在另一目录中搜」Link。比 B 轻，比 A 多常驻入口。",
       },
     ],
   },
