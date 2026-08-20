@@ -28,6 +28,9 @@ const ALL_VALUE = "__all__";
 const CATEGORY_OPTIONS = [
   { id: "", label: "全部" },
   { id: "sports", label: "体育课" },
+  { id: "english", label: "英语课" },
+  { id: "ideology", label: "思政课" },
+  { id: "math", label: "数学课" },
 ] as const;
 
 const SORT_OPTIONS = [
@@ -73,7 +76,13 @@ export function catalogActiveFilters({
   const tags: CatalogActiveFilter[] = [];
   const query = queryDraft.trim();
   if (query) tags.push({ id: "query", label: `关键词“${query}”` });
-  if (category) tags.push({ id: "category", label: categoryLabel(category) });
+  if (category) {
+    const option = CATEGORY_OPTIONS.find((opt) => opt.id === category);
+    tags.push({
+      id: "category",
+      label: option?.label ?? categoryLabel(category),
+    });
+  }
   const department = departmentDraft.trim();
   if (department) tags.push({ id: "department", label: `院系“${department}”` });
   if (teacherId) {

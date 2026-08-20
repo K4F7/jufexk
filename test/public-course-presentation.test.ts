@@ -7,6 +7,8 @@ import {
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicPeSkillLabel,
+  isPublicListCategoryFilter,
+  publicCategoryFilterSql,
   publicSportsMatchSql,
   virtualPeSportForTeacherName,
 } from "../src/lib/public-course-presentation";
@@ -62,6 +64,27 @@ describe("public PE course presentation", () => {
     expect(publicSportsMatchSql("c")).toContain(publicCourseVisibleSql("c"));
     expect(publicCourseVisibleSql("c")).toContain("'体育1'");
     expect(publicSportsMatchSql("c")).toContain("'网球%'");
+  });
+
+  it("filters public catalog chips by sports match or scheme_key", () => {
+    expect(isPublicListCategoryFilter("sports")).toBe(true);
+    expect(isPublicListCategoryFilter("english")).toBe(true);
+    expect(isPublicListCategoryFilter("ideology")).toBe(true);
+    expect(isPublicListCategoryFilter("math")).toBe(true);
+    expect(isPublicListCategoryFilter("major")).toBe(false);
+    expect(isPublicListCategoryFilter("pe")).toBe(false);
+    expect(isPublicListCategoryFilter("public_basic")).toBe(false);
+    expect(publicCategoryFilterSql("", "c")).toEqual({ sql: "1=1", args: [] });
+    expect(publicCategoryFilterSql("sports", "c").sql).toContain(
+      "c.scheme_key='pe'",
+    );
+    expect(publicCategoryFilterSql("sports", "c").sql).toContain(
+      publicSportsMatchSql("c"),
+    );
+    expect(publicCategoryFilterSql("english", "c")).toEqual({
+      sql: "c.scheme_key=?",
+      args: ["english"],
+    });
   });
 
   it("maps umbrella-only PE teachers onto visible sport names", () => {

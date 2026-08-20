@@ -28,14 +28,15 @@ import {
   prefixPattern,
 } from "./lib/catalog-search";
 import {
+  isPublicListCategoryFilter,
   isVirtualPeSportId,
+  publicCategoryFilterSql,
   publicCourseCategory,
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicPeCanonicalCourseSql,
   publicPeResolveCanonicalIdSql,
   publicPeSkillFamilySql,
-  publicSportsMatchSql,
   VIRTUAL_PE_SPORTS,
   virtualPeSportById,
   virtualPeSportForTeacherName,
@@ -637,8 +638,9 @@ app.get("/api/courses", async (c) => {
     teacherId = integer(c.req.query("teacherId")),
     // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
     sort = clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews";
-  if (cat && cat !== "sports")
-    return fail(c, "公开筛选仅支持 sports");
+  if (cat && !isPublicListCategoryFilter(cat))
+    return fail(c, "公开筛选仅支持 sports、english、ideology、math");
+  const categoryFilter = publicCategoryFilterSql(cat, "c");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
   // 单个词条打预计算 match_text；ASCII 字母词条再 OR 拼音面。
   const searchGroup = andSearchTermsWithPinyin(
@@ -647,9 +649,9 @@ app.get("/api/courses", async (c) => {
     likeSql("pcc.pinyin_text"),
     isAsciiLetterTerm,
   );
-  const where = `${publicCourseVisibleSql("c")} AND (?='' OR ${publicSportsMatchSql("c")}) AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = [
-    cat,
+    ...categoryFilter.args,
     department,
     department,
     ...(teacherId === null ? [] : [teacherId]),
@@ -726,12 +728,15 @@ app.get("/api/courses", async (c) => {
     page,
     courseCount,
   );
-  const virtualItems = await loadVirtualPeSportItems(
-    c.env.DB,
-    searchTerms,
-    teacherId,
-    department,
-  );
+  const virtualItems =
+    !cat || cat === "sports"
+      ? await loadVirtualPeSportItems(
+          c.env.DB,
+          searchTerms,
+          teacherId,
+          department,
+        )
+      : [];
   const listed = pageRows.items.map(withPublicCourseCategory);
   const extras = virtualItems
     .filter((item) => !listed.some((row) => row.name === item.name))
