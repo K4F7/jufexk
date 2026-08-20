@@ -74,4 +74,23 @@ pnpm run historical-import:issue111 -- --apply
 
 2026-08-17 维护窗口已写入：课程 / 教师仍为 `3740 / 1951`，任课关系 `11567 → 11572`，公开历史评价 `818 → 882`。目录基线 marker 哈希未变。不要再执行该包的 apply 脚本。
 
+## Issue 334：v5 批准包生产候选冻结包（只读预检）
+
+#334 把 `review-approved-20260820-v5` 编成独立生产候选冻结包。不得覆盖 v5 批准包、#316 各路 `out_dir`、冻结矩阵包，也不得重放 522 / 164 / 120 / 12 / 64。默认停在预检；`--apply` 在本票明确授权前会直接拒绝。
+
+候选包固定路径：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v1`。
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v1'
+```
+
+预检要求备份文件已存在，并核对 v2 目录 marker 与课程/教师计数 `3740 / 1951`。任课关系与公开历史评价按现场实数记录，不把旧批次的 11482 / 882 当作写入目标。退出码 `2` 表示预览完成且没有写入。
+
+```powershell
+$env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
+$env:JUFEXK_ADMIN_PASSWORD = '...' # 或 $env:ADMIN_PASSWORD
+$env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\<existing-backup>.sql'
+pnpm run historical-import:v5
+```
+
 
