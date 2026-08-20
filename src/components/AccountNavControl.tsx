@@ -1,24 +1,16 @@
-import { Button, Chip, Dropdown, Label, buttonVariants } from "@heroui/react";
+import { Button, Dropdown, Label, buttonVariants } from "@heroui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
 import { RouterAriaLink } from "./RouterAriaLink";
 
 /**
- * Low-emphasis login / account entry in the shell nav (issue #139).
+ * Low-emphasis login / account entry in the shell nav (issue #139 / #325).
  * The session payload carries no email, sub or users.id, so the authenticated
  * entry is a generic account menu — nothing identifying is ever rendered.
- *
- * While campus auth reports `enabled: false`, guests get a non-interactive
- * 「登录未开放」status chip instead of a link into a formless page (Issues
- * #204/#277: a disabled ghost button reads as plain text at link weight, so
- * the closed state is a status label, not a control); the entry becomes a
- * real link again automatically once campus auth is enabled.
+ * Guests always get a real login link: school-email verification is the
+ * production path, independent of the parked AuthBridge callback.
  */
-export function AccountNavControl({
-  campusEnabled,
-}: {
-  campusEnabled: boolean | null;
-}) {
+export function AccountNavControl() {
   const { viewer, ready } = useViewer();
   const location = useLocation();
   const navigate = useNavigate();
@@ -26,15 +18,6 @@ export function AccountNavControl({
   if (!ready) return null;
 
   if (!viewer.authenticated) {
-    // 等接入状态到位再渲染，避免先亮出可点「登录」再收回。
-    if (campusEnabled === null) return null;
-    if (!campusEnabled) {
-      return (
-        <Chip size="sm" variant="soft">
-          登录未开放
-        </Chip>
-      );
-    }
     const from = `${location.pathname}${location.search}`;
     return (
       <RouterAriaLink

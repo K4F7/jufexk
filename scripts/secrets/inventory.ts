@@ -7,6 +7,7 @@ export const WORKER_SECRETS = [
   "CAMPUS_JWT_SECRET",
   "CAMPUS_JWT_AES_KEY",
   "CAMPUS_IDENTITY_SECRET",
+  "MAIL_DELIVERY_TOKEN",
 ] as const;
 
 export const GITHUB_DEPLOY_SECRETS = [

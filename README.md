@@ -78,11 +78,12 @@ pnpm run dev
 | `SITE_NAME` / `UNIVERSITY_NAME` | 站点与学校显示名 |
 | `TURNSTILE_SITE_KEY` | Turnstile 公开 Site Key |
 | `CAMPUS_JWT_AUD` / `CAMPUS_APP_ID` / `AUTHBRIDGE_BASE_URL` | 校内身份认证参数 |
+| `MAIL_DELIVERY_URL` / `MAIL_FROM` | 验证信 HTTPS 投递端点与发件人（Resend） |
 | `HISTORICAL_IMPORT_*` / `ISSUE111_*` | 历史导入制品的内容哈希校验值 |
 
 ### 密钥（Cloudflare Secrets Store）
 
-`ADMIN_PASSWORD`、`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_IDENTITY_SECRET`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与管理员口令、Turnstile Secret 不同的随机值。
+`ADMIN_PASSWORD`、`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_IDENTITY_SECRET`、`MAIL_DELIVERY_TOKEN`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与管理员口令、Turnstile Secret 不同的随机值。
 
 ### Turnstile
 

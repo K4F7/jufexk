@@ -37,6 +37,17 @@ async function mockApi(page: Page) {
           logoutPath: "/logout",
         },
       });
+    if (url.pathname === "/api/auth/email")
+      return route.fulfill({ json: { ok: true } });
+    if (url.pathname === "/api/auth/verify")
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          csrfToken: "csrf-user",
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
     if (url.pathname === "/api/courses")
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
@@ -65,18 +76,28 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockApi(page));
 
-test("direct visit shows the honest status and a way back to the catalog", async ({
+test("direct visit shows the email form and a way back to the catalog", async ({
   page,
 }) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
-  await expect(page.getByText("校园 JWT 登录尚未开放")).toBeVisible();
-  await expect(page.getByText("接入状态：未开放。")).toBeVisible();
+  await expect(page.getByLabel("校学生邮箱")).toBeVisible();
+  await expect(page.getByRole("button", { name: "发送验证信" })).toBeVisible();
+  await expect(page.getByText("校园 JWT 登录尚未开放")).toHaveCount(0);
 
   const back = page.getByRole("link", { name: "返回继续浏览" });
   await expect(back).toBeVisible();
   await back.click();
   await expect(page).toHaveURL(/\/courses$/);
+});
+
+test("submitting an email shows the check-inbox hint", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page.getByLabel("验证码")).toBeVisible();
+  await page.getByLabel("校学生邮箱").fill("2202100001@stu.jxufe.edu.cn");
+  await page.getByRole("button", { name: "发送验证信" }).click();
+  await expect(page.getByText("若该邮箱符合条件，我们已发送验证信")).toBeVisible();
+  await expect(page.getByLabel("验证码")).toBeVisible();
 });
 
 test("returns to the internal source page given by from", async ({ page }) => {

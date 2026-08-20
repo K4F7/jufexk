@@ -20,10 +20,12 @@ import { readSecret } from "./secrets";
 export const ORDINARY_USER_CSRF_COOKIE = "jufexk_user_csrf";
 export const ORDINARY_USER_ID_HEADER = "X-Jufexk-Ordinary-User";
 export const ORDINARY_USER_MAC_HEADER = "X-Jufexk-Ordinary-User-Mac";
+export const EMAIL_LOGIN_COOKIE = "jufexk_user_session";
 export const LOGIN_PATH = "/login";
 export const LOGOUT_PATH = "/logout";
 export const USER_SESSION_PATH = "/api/user/session";
 export const USER_LOGOUT_PATH = "/api/user/logout";
+const EMAIL_SESSION_TTL_SECONDS = 86400;
 
 /**
  * Campus JWT issued after JXUFE CAS, via Mine-JUFE/AuthBridge.
@@ -180,17 +182,7 @@ export async function resolveCampusJwt(
   return mapped?.user ?? null;
 }
 
-/**
- * Session boundary for ordinary-user writes.
- * Guests stay anonymous. Campus JWT or the signed test proof of a
- * `users.id` can authenticate; admin cookies, IP hashes and submitter
- * hashes never authenticate here.
- */
-export async function resolveOrdinaryUser(
-  c: Context,
-): Promise<OrdinaryUser | null> {
-  const campusUser = await resolveCampusJwt(c);
-  if (campusUser) return campusUser;
+async function resolveTestHmacUser(c: Context): Promise<OrdinaryUser | null> {
   const secret =
     typeof c.env.ORDINARY_USER_TEST_AUTH_SECRET === "string"
       ? c.env.ORDINARY_USER_TEST_AUTH_SECRET
@@ -203,6 +195,60 @@ export async function resolveOrdinaryUser(
   if (!timingSafeEqualHex(expected, mac)) return null;
   const stableId = await hmacHex(`ordinary-test-user:${userId}`, secret);
   return loadOrCreateUser(c.env.DB, stableId);
+}
+
+export async function issueEmailSessionCookie(
+  c: Context,
+  userId: string,
+  identitySecret: string,
+) {
+  const exp = Math.floor(Date.now() / 1000) + EMAIL_SESSION_TTL_SECONDS;
+  const mac = await hmacHex(`email-session:v1:${userId}:${exp}`, identitySecret);
+  setCookie(c, EMAIL_LOGIN_COOKIE, `v1.${userId}.${exp}.${mac}`, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: EMAIL_SESSION_TTL_SECONDS,
+  });
+}
+
+async function resolveEmailSessionUser(c: Context): Promise<OrdinaryUser | null> {
+  const raw = getCookie(c, EMAIL_LOGIN_COOKIE) || "";
+  const parts = raw.split(".");
+  if (parts.length !== 4 || parts[0] !== "v1") return null;
+  const [, userId, expRaw, mac] = parts;
+  const exp = Number(expRaw);
+  if (!isStableUserId(userId) || !Number.isFinite(exp) || exp <= Date.now() / 1000) {
+    return null;
+  }
+  const identitySecret = await readSecret(c.env.CAMPUS_IDENTITY_SECRET);
+  if (!identitySecret || !mac) return null;
+  const expected = await hmacHex(`email-session:v1:${userId}:${exp}`, identitySecret);
+  if (!timingSafeEqualHex(expected, mac)) return null;
+  const db = c.env.DB as D1Database;
+  return db
+    .prepare(
+      "SELECT id,status,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
+    )
+    .bind(userId)
+    .first<OrdinaryUser>();
+}
+
+/**
+ * Session boundary for ordinary-user writes.
+ * Guests stay anonymous. Test HMAC, the email session cookie, or campus JWT
+ * can authenticate; admin cookies, IP hashes and submitter hashes never
+ * authenticate here.
+ */
+export async function resolveOrdinaryUser(
+  c: Context,
+): Promise<OrdinaryUser | null> {
+  const hmacUser = await resolveTestHmacUser(c);
+  if (hmacUser) return hmacUser;
+  const emailUser = await resolveEmailSessionUser(c);
+  if (emailUser) return emailUser;
+  return resolveCampusJwt(c);
 }
 
 export function ordinaryUserCsrfOk(c: Context) {
@@ -228,6 +274,7 @@ export function issueOrdinaryUserCsrf(c: Context, token: string) {
 
 export function clearOrdinaryUserCookies(c: Context) {
   deleteCookie(c, CAMPUS_JWT_COOKIE, { path: "/" });
+  deleteCookie(c, EMAIL_LOGIN_COOKIE, { path: "/" });
   deleteCookie(c, ORDINARY_USER_CSRF_COOKIE, { path: "/" });
 }
 
@@ -257,10 +304,10 @@ function pendingDeletionSession(
   };
 }
 
-export async function ordinaryUserSessionPayload(
+export function sessionPayloadForUser(
   c: Context,
-): Promise<OrdinaryUserSession> {
-  const user = await resolveOrdinaryUser(c);
+  user: OrdinaryUser | null,
+): OrdinaryUserSession {
   if (user?.status === "pending_deletion") {
     return pendingDeletionSession(c, user.pending_deletion_at);
   }
@@ -271,6 +318,12 @@ export async function ordinaryUserSessionPayload(
     loginPath: LOGIN_PATH,
     logoutPath: LOGOUT_PATH,
   };
+}
+
+export async function ordinaryUserSessionPayload(
+  c: Context,
+): Promise<OrdinaryUserSession> {
+  return sessionPayloadForUser(c, await resolveOrdinaryUser(c));
 }
 
 export async function handleOrdinaryUserSession(c: Context) {

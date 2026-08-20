@@ -31,6 +31,8 @@
     "CAMPUS_JWT_AUD": "jufexk",
     "CAMPUS_APP_ID": "jufexk",
     "AUTHBRIDGE_BASE_URL": "https://mc.jxufe.edu.cn/authbridge",
+    "MAIL_DELIVERY_URL": "https://api.resend.com/emails",
+    "MAIL_FROM": "江财选课参考 <noreply@sein.moe>",
   },
   "secrets_store_secrets": [
     {
@@ -62,6 +64,11 @@
       "binding": "CAMPUS_IDENTITY_SECRET",
       "store_id": "323163a091874b07aacdf5500bff903e",
       "secret_name": "CAMPUS_IDENTITY_SECRET",
+    },
+    {
+      "binding": "MAIL_DELIVERY_TOKEN",
+      "store_id": "323163a091874b07aacdf5500bff903e",
+      "secret_name": "MAIL_DELIVERY_TOKEN",
     },
   ],
   "observability": { "enabled": true, "head_sampling_rate": 1 },

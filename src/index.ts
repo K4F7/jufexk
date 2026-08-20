@@ -49,6 +49,10 @@ import {
 } from "./historical-batch-imports";
 import { handleCampusAuthStatus } from "./campus-jwt";
 import {
+  handleEmailLoginRequest,
+  handleEmailLoginVerify,
+} from "./email-login";
+import {
   handleRequestOrdinaryUserDeletion,
   handleRestoreOrdinaryUserDeletion,
   USER_DELETION_PATH,
@@ -113,6 +117,9 @@ type Bindings = {
   CAMPUS_JWT_ENABLED?: string;
   CAMPUS_APP_ID?: string;
   AUTHBRIDGE_BASE_URL?: string;
+  MAIL_DELIVERY_URL?: string;
+  MAIL_FROM?: string;
+  MAIL_DELIVERY_TOKEN?: string | { get(): Promise<string> };
 };
 type Vars = {
   adminSession?: string;
@@ -1096,6 +1103,8 @@ app.post(USER_DELETION_PATH, handleRequestOrdinaryUserDeletion);
 app.post(USER_DELETION_RESTORE_PATH, handleRestoreOrdinaryUserDeletion);
 app.get("/api/auth/campus", handleCampusAuthStatus);
 app.post("/api/auth/callback", handleCampusAuthCallback);
+app.post("/api/auth/email", handleEmailLoginRequest);
+app.post("/api/auth/verify", handleEmailLoginVerify);
 app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
 app.delete("/api/reviews/:id/endorsement", handleWithdrawEndorsement);
 
