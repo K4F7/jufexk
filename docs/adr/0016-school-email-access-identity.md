@@ -1,5 +1,7 @@
 # 普通用户通过校园 AuthBridge JWT 接入，游客只读
 
+_2026-08-19：AuthBridge 开通已按 [ADR-0022](./0022-launch-without-ordinary-user-auth.md) 搁置——首发不启用普通用户认证，callback 维持 503；届时若需要认证，唯一候选是 `stu.jxufe.edu.cn` 校学生邮箱验证。本文的身份、会话与账号生命周期契约继续有效。_
+
 _#137 已否决 Cloudflare Access OTP：Zero Trust 席位不适合全校投稿门。生产认证方改为 [Mine-JUFE/AuthBridge](https://github.com/Mine-JUFE/AuthBridge) 在 CAS 验票后按应用签发的 HS256 JWT。应用尚未进入校方白名单时，callback 保持关闭，不跳转、不请求 AuthBridge。_
 
 _与 `CONTEXT.md`「校内邮箱身份」冲突——第一版校园 JWT 没有邮箱声明；资格来自 CAS / AuthBridge，不是校内邮箱 OTP。词汇表仍保留该条目，待身份源稳定后再改。_
