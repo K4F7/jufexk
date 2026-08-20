@@ -208,3 +208,37 @@ export function publicSportsMatchSql(alias = "c"): string {
   ).join(" OR ");
   return `(${publicCourseVisibleSql(alias)} AND (${alias}.category IN ('sports','pe') OR ${prefixes}))`;
 }
+
+/** Public catalog `?category=` values. Empty means all; others stay 400. */
+export const PUBLIC_CATEGORY_FILTERS = [
+  "sports",
+  "english",
+  "ideology",
+  "math",
+] as const;
+
+export type PublicCategoryFilter = (typeof PUBLIC_CATEGORY_FILTERS)[number];
+
+export function isPublicListCategoryFilter(
+  value: string,
+): value is PublicCategoryFilter {
+  return (PUBLIC_CATEGORY_FILTERS as readonly string[]).includes(value);
+}
+
+/**
+ * sports: existing PE presentation match or scheme_key=pe.
+ * english / ideology / math: exact scheme_key.
+ */
+export function publicCategoryFilterSql(
+  category: string,
+  alias = "c",
+): { sql: string; args: string[] } {
+  if (!category) return { sql: "1=1", args: [] };
+  if (category === "sports") {
+    return {
+      sql: `(${publicSportsMatchSql(alias)} OR ${alias}.scheme_key='pe')`,
+      args: [],
+    };
+  }
+  return { sql: `${alias}.scheme_key=?`, args: [category] };
+}

@@ -29,14 +29,84 @@ async function login() {
 }
 
 describe("review template kind API contract", () => {
-  it("offers only the optional sports-only public filter", async () => {
-    const response = await SELF.fetch(`${origin}/api/courses?category=sports`);
-    const body = await response.json<{ items: Array<{ category: string }> }>();
-    expect(response.status).toBe(200);
-    expect(body.items.length).toBeGreaterThan(0);
-    expect(body.items.every((item) => item.category === "sports")).toBe(true);
-    for (const obsolete of ["required", "elective", "general", "major", "pe"])
-      expect((await SELF.fetch(`${origin}/api/courses?category=${obsolete}`)).status).toBe(400);
+  it("offers sports plus english, ideology, and math public filters", async () => {
+    const sports = await SELF.fetch(`${origin}/api/courses?category=sports`);
+    const sportsBody = await sports.json<{
+      items: Array<{ name: string; category: string }>;
+    }>();
+    expect(sports.status).toBe(200);
+    expect(sportsBody.items.length).toBeGreaterThan(0);
+    expect(sportsBody.items.every((item) => item.category === "sports")).toBe(
+      true,
+    );
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
+          (33701,'EN33701','大学英语1','general','外国语学院','english'),
+          (33702,'ID33702','思想道德与法治','general','马克思主义学院','ideology'),
+          (33703,'MA33703','高等数学A','general','统计学院','math'),
+          (33704,'PE33704','大学体育理论','general','体育学院','pe'),
+          (33705,'MJ33705','计量经济学','general','经济学院','major'),
+          (33706,'PB33706','公共基础导论','general','教务处','public_basic')`,
+      ),
+    ]);
+
+    const sportsAfter = await SELF.fetch(`${origin}/api/courses?category=sports`);
+    const sportsAfterBody = await sportsAfter.json<{
+      items: Array<{ name: string; category: string }>;
+    }>();
+    expect(sportsAfter.status).toBe(200);
+    const sportsNames = sportsAfterBody.items.map((item) => item.name);
+    expect(sportsNames).toContain("测试体育课");
+    expect(sportsNames).toContain("大学体育理论");
+    expect(sportsNames).not.toContain("大学英语1");
+    expect(sportsNames).not.toContain("思想道德与法治");
+    expect(sportsNames).not.toContain("高等数学A");
+    expect(sportsNames).not.toContain("计量经济学");
+    expect(
+      sportsAfterBody.items.find((item) => item.name === "大学体育理论")
+        ?.category,
+    ).toBe("general");
+
+    for (const [category, name] of [
+      ["english", "大学英语1"],
+      ["ideology", "思想道德与法治"],
+      ["math", "高等数学A"],
+    ] as const) {
+      const response = await SELF.fetch(
+        `${origin}/api/courses?category=${category}`,
+      );
+      const body = await response.json<{
+        items: Array<{ name: string; category: string }>;
+      }>();
+      expect(response.status).toBe(200);
+      const names = body.items.map((item) => item.name);
+      expect(names).toContain(name);
+      expect(names).not.toContain("测试体育课");
+      expect(names).not.toContain("计量经济学");
+      expect(names).not.toContain("公共基础导论");
+      expect(names).not.toContain("大学体育理论");
+      expect(body.items.find((item) => item.name === name)?.category).toBe(
+        "general",
+      );
+    }
+
+    for (const obsolete of [
+      "required",
+      "elective",
+      "general",
+      "major",
+      "pe",
+      "public_basic",
+    ])
+      expect(
+        (await SELF.fetch(`${origin}/api/courses?category=${obsolete}`)).status,
+      ).toBe(400);
+
+    await env.DB.prepare(
+      "DELETE FROM courses WHERE id BETWEEN 33701 AND 33706",
+    ).run();
   });
 
   it("accepts all new values and rejects old or missing values on writes", async () => {
