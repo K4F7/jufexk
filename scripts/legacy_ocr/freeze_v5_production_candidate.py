@@ -1,0 +1,490 @@
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from compile_production_staging import read_json, read_jsonl, sha256, write_json, write_jsonl
+from map_catalog_identities import catalog_indexes, match_identity, normalize_source_label, verified_catalog
+
+
+SOURCE_CONTRACT = "legacy-review-approved-package-v1"
+FREEZE_CONTRACT = "legacy-v5-historical-freeze-v1"
+RECORD_SCHEMA = "legacy-approved-review-v1"
+EXPECTED_V5_EVALUATIONS = 630
+EXPECTED_V5_EVALUATIONS_SHA256 = (
+    "27ba8bff846bb74b77728ccf23075a193385c9d01157c77fea785d4ee04bdfae"
+)
+APPROVED_CATALOG_CONTENT_SHA256 = (
+    "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588"
+)
+APPROVED_CATALOG_MANIFEST_SHA256 = (
+    "c26d125dc56dfadf93638d2f94241c2ed6dd8c844f16e06262ae890798bd1070"
+)
+APPROVED_CATALOG_ARTIFACT_SHA256 = (
+    "aab562b8ff5cbe8159128769749616f6285fa0b8a9fab9bb6a49d6e70e72504a"
+)
+REQUIRED_OWNER_LABELS = {
+    "大英和视听说|10|N": ("英语口语", "张晓花"),
+}
+REQUIRED_OWNER_TEACHERS = {
+    ("主要课程", 173): "孙爱琳",
+    ("主要课程", 180): "缪丽",
+}
+FORBIDDEN_KEYS = {"大英和视听说|56|J"}
+PROTECTED_OUT_MARKERS = (
+    "full-matrix-freeze-20260819-v1",
+    "full-matrix-ocr-20260819-v1",
+    "review-approved-20260820-v5",
+    "frozen-historical-production-v2",
+    "frozen-historical-issue111-v1",
+    "issue111-relation-addition-v1",
+    "issue111-isolated-usable-v1",
+    "issue111-isolated-shorthand-v1",
+    "issue111-pe-course-teacher-v1",
+)
+IMPORTED_PACKAGES = (
+    ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
+    ("frozen-historical-issue111-v1/importable-legacy-reviews.jsonl", 164),
+    ("issue111-isolated-usable-v1/reviews.jsonl", 120),
+    ("issue111-isolated-shorthand-v1/reviews.jsonl", 12),
+    ("issue111-pe-course-teacher-v1/reviews.jsonl", 64),
+)
+APPROVED_FIELDS = (
+    "catalog_course_code",
+    "catalog_teacher_label",
+    "category",
+    "comment",
+    "decision_basis",
+    "duplicate_group",
+    "proposed_teacher_label",
+    "review_id",
+    "schema_version",
+    "source_column",
+    "source_evaluation_id",
+    "source_row",
+    "worksheet",
+)
+PE_PUBLIC_ALIASES = {
+    "健美操": frozenset({"健美操", "健身教练"}),
+}
+SPECIAL_THEORY_SUFFIX = re.compile(r"专项理论与实践[1-6]$")
+LEVEL_SUFFIX = re.compile(r"[1-6]$")
+
+
+class V5FreezeError(ValueError):
+    pass
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_text(value: str) -> str:
+    return sha256_bytes(value.encode("utf-8"))
+
+
+def content_sha256(files: dict[str, dict[str, Any]]) -> str:
+    payload = json.dumps(files, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return sha256_bytes(payload.encode("utf-8"))
+
+
+def stable_id(prefix: str, *parts: str) -> str:
+    return prefix + hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:32]
+
+
+def public_display_family(name: str) -> str:
+    value = normalize_source_label(name)
+    value = SPECIAL_THEORY_SUFFIX.sub("", value)
+    return LEVEL_SUFFIX.sub("", value)
+
+
+def sports_family_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    aliases = PE_PUBLIC_ALIASES.get(visible, frozenset({visible}))
+    hits: list[dict[str, Any]] = []
+    for course in courses.values():
+        current = course.get("currentName")
+        if not isinstance(current, str) or not current:
+            continue
+        family = public_display_family(current)
+        if current in aliases or family in aliases:
+            hits.append(course)
+    unique = {course["courseCode"]: course for course in hits}
+    return [unique[code] for code in sorted(unique)]
+
+
+def verify_v5_source(
+    source: Path,
+    expected_evaluations_sha256: str,
+    expected_rows: int,
+) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
+    manifest_path = source / "manifest.json"
+    manifest = read_json(manifest_path)
+    if manifest.get("contract_version") != SOURCE_CONTRACT:
+        raise V5FreezeError("source is not the v5 approved package")
+    if manifest.get("status") != "completed":
+        raise V5FreezeError("v5 approved package is not completed")
+    if manifest.get("wrote_tencent_or_business_db") is not False:
+        raise V5FreezeError("v5 package claims a Tencent or business-db write")
+    declaration = (manifest.get("files") or {}).get("evaluations.jsonl")
+    path = source / "evaluations.jsonl"
+    if not isinstance(declaration, dict) or not path.is_file():
+        raise V5FreezeError("v5 evaluations.jsonl is missing")
+    actual_sha = sha256(path)
+    if actual_sha != declaration.get("sha256") or actual_sha != expected_evaluations_sha256:
+        raise V5FreezeError("v5 evaluations.jsonl hash mismatch")
+    rows = read_jsonl(path)
+    if len(rows) != declaration.get("rows") or len(rows) != expected_rows:
+        raise V5FreezeError("v5 evaluations.jsonl row count mismatch")
+    return manifest, sha256(manifest_path), rows
+
+
+def load_imported_keys(
+    imported_root: Path,
+    imported_packages: tuple[tuple[str, int], ...],
+) -> set[str]:
+    keys: set[str] = set()
+    for relative, expected in imported_packages:
+        path = imported_root / relative
+        if not path.is_file():
+            raise V5FreezeError(f"missing already-imported package: {relative}")
+        rows = read_jsonl(path)
+        if len(rows) != expected:
+            raise V5FreezeError(f"{relative} row count is not {expected}")
+        for row in rows:
+            key = f"{row.get('worksheet')}|{row.get('source_row')}|{row.get('source_column')}"
+            if not row.get("worksheet") or row.get("source_row") is None or not row.get("source_column"):
+                raise V5FreezeError(f"{relative} is missing worksheet/row/column identity")
+            keys.add(key)
+    return keys
+
+
+def assert_owner_labels(rows: list[dict[str, Any]]) -> None:
+    by_key = {str(row.get("key")): row for row in rows}
+    for key in FORBIDDEN_KEYS:
+        if key in by_key:
+            raise V5FreezeError(f"forbidden key entered v5 evaluations: {key}")
+    for key, expected in REQUIRED_OWNER_LABELS.items():
+        row = by_key.get(key)
+        if row is None:
+            continue
+        if (row.get("course"), row.get("teacher")) != expected:
+            raise V5FreezeError(f"owner mapping was not preserved: {key}")
+    for (worksheet, source_row), teacher in REQUIRED_OWNER_TEACHERS.items():
+        matching = [
+            row for row in rows
+            if row.get("worksheet") == worksheet and row.get("row") == source_row
+        ]
+        if matching and any(row.get("teacher") != teacher for row in matching):
+            raise V5FreezeError(f"owner teacher mapping was not preserved: {worksheet}|{source_row}")
+
+
+def project_importable(
+    row: dict[str, Any],
+    course: dict[str, Any],
+    teacher: dict[str, Any],
+    basis: str,
+) -> dict[str, Any]:
+    projected = {
+        "catalog_course_code": course["courseCode"],
+        "catalog_teacher_label": teacher["sourceTeacherLabel"],
+        "category": "sports" if course.get("category") == "sports" else "general",
+        "comment": row["body"],
+        "decision_basis": basis,
+        "duplicate_group": None,
+        "proposed_teacher_label": None,
+        "review_id": stable_id("legacy-review-", row["key"], row["formula_bar_text_sha256"]),
+        "schema_version": RECORD_SCHEMA,
+        "source_column": row["column"],
+        "source_evaluation_id": stable_id("evaluation-", row["key"]),
+        "source_row": row["row"],
+        "worksheet": row["worksheet"],
+    }
+    return {field: projected[field] for field in APPROVED_FIELDS}
+
+
+def match_row(
+    row: dict[str, Any],
+    courses: dict[str, dict[str, Any]],
+    relations: set[tuple[str, str]],
+    course_names: dict[str, list[dict[str, Any]]],
+    teacher_names: dict[str, list[dict[str, Any]]],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str, str, str]:
+    course_name = str(row.get("course") or "")
+    teacher_name = str(row.get("teacher") or "")
+    course, course_method, _course_candidates = match_identity(course_name, course_names, "currentName")
+    teacher, teacher_method, _teacher_candidates = match_identity(teacher_name, teacher_names, "sourceTeacherLabel")
+    pair_course_candidates = course_names.get(normalize_source_label(course_name), [])
+    exact_pair = [candidate for candidate in pair_course_candidates if candidate.get("currentName") == course_name]
+    pair_course_candidates = exact_pair or pair_course_candidates
+    if not pair_course_candidates and row.get("worksheet") == "体育课" and course_name:
+        pair_course_candidates = sports_family_candidates(course_name, courses)
+        if pair_course_candidates and course is None:
+            course_method = "pe_public_display_family"
+    if teacher and course is None and pair_course_candidates:
+        relation_matches = [
+            candidate
+            for candidate in pair_course_candidates
+            if (candidate["courseCode"], teacher["sourceTeacherLabel"]) in relations
+        ]
+        if len(relation_matches) == 1:
+            course = relation_matches[0]
+            course_method = (
+                "pe_public_display_unique"
+                if course_method == "pe_public_display_family"
+                else "pair_relation_unique"
+            )
+    return course, teacher, course_method, teacher_method, course_name
+
+
+def freeze_v5_production_candidate(
+    source: Path,
+    catalog_root: Path,
+    imported_root: Path,
+    out: Path,
+    *,
+    expected_evaluations_sha256: str = EXPECTED_V5_EVALUATIONS_SHA256,
+    expected_rows: int = EXPECTED_V5_EVALUATIONS,
+    expected_catalog_content_sha256: str = APPROVED_CATALOG_CONTENT_SHA256,
+    expected_catalog_manifest_sha256: str = APPROVED_CATALOG_MANIFEST_SHA256,
+    expected_catalog_artifact_sha256: str = APPROVED_CATALOG_ARTIFACT_SHA256,
+    imported_packages: tuple[tuple[str, int], ...] = IMPORTED_PACKAGES,
+) -> dict[str, Any]:
+    if out.exists():
+        raise V5FreezeError(f"refusing existing output: {out}")
+    out_parts = {part.lower() for part in out.resolve().parts}
+    blocked = [marker for marker in PROTECTED_OUT_MARKERS if marker.lower() in out_parts]
+    if blocked:
+        raise V5FreezeError(f"refusing protected output directory: {blocked[0]}")
+    source_manifest, source_manifest_sha, evaluations = verify_v5_source(
+        source, expected_evaluations_sha256, expected_rows
+    )
+    assert_owner_labels(evaluations)
+    imported_keys = load_imported_keys(imported_root, imported_packages)
+    catalog_manifest, catalog_manifest_sha, catalog_rows = verified_catalog(catalog_root)
+    if catalog_manifest.get("contentSha256") != expected_catalog_content_sha256:
+        raise V5FreezeError("approved catalog content hash mismatch")
+    if catalog_manifest_sha != expected_catalog_manifest_sha256:
+        raise V5FreezeError("approved catalog manifest hash mismatch")
+    if (catalog_manifest.get("artifact") or {}).get("sha256") != expected_catalog_artifact_sha256:
+        raise V5FreezeError("approved catalog artifact hash mismatch")
+    courses, _teachers, relations, course_names, teacher_names = catalog_indexes(catalog_rows)
+
+    importable: list[dict[str, Any]] = []
+    pending_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
+    excluded: list[dict[str, Any]] = []
+    unresolved_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    lineage: list[dict[str, Any]] = []
+
+    for row in evaluations:
+        key = row.get("key")
+        if not isinstance(key, str) or "|" not in key:
+            raise V5FreezeError("v5 evaluation is missing a matrix key")
+        if row.get("body_source") != "formula_bar":
+            raise V5FreezeError(f"{key} body_source is not formula_bar")
+        body = row.get("body")
+        body_sha = row.get("formula_bar_text_sha256")
+        if not isinstance(body, str) or not isinstance(body_sha, str) or sha256_text(body) != body_sha:
+            raise V5FreezeError(f"{key} formula-bar SHA does not match body")
+        if key in FORBIDDEN_KEYS:
+            raise V5FreezeError(f"forbidden key entered v5 evaluations: {key}")
+
+        common = {
+            "key": key,
+            "worksheet": row.get("worksheet"),
+            "source_row": row.get("row"),
+            "source_column": row.get("column"),
+            "formula_bar_text_sha256": body_sha,
+            "legacy_course_name": row.get("course"),
+            "legacy_teacher_name": row.get("teacher"),
+        }
+        if key in imported_keys:
+            excluded.append({**common, "reason": "already_imported", "detail": "replay_forbidden_batch"})
+            lineage.append({**common, "partition": "excluded", "review_id": None})
+            continue
+        if not str(row.get("teacher") or "").strip():
+            excluded.append({**common, "reason": "missing_teacher", "detail": "empty_source_teacher_label"})
+            lineage.append({**common, "partition": "excluded", "review_id": None})
+            continue
+        if not body.strip():
+            excluded.append({**common, "reason": "blank_body", "detail": "formula_bar_empty_after_strip"})
+            lineage.append({**common, "partition": "excluded", "review_id": None})
+            continue
+
+        course, teacher, course_method, teacher_method, course_name = match_row(
+            row, courses, relations, course_names, teacher_names
+        )
+        if not course or not teacher:
+            if not course:
+                unresolved_key = ("course", course_name)
+                unresolved_by_key.setdefault(
+                    unresolved_key,
+                    {
+                        "schema_version": "legacy-catalog-alias-exception-v1",
+                        "identity_kind": "course",
+                        "legacy_source_label": course_name,
+                        "reason": course_method,
+                        "terminal_status": "excluded_no_guess",
+                        "keys": [],
+                    },
+                )["keys"].append(key)
+            if not teacher:
+                teacher_name = str(row.get("teacher") or "")
+                unresolved_key = ("teacher", teacher_name)
+                unresolved_by_key.setdefault(
+                    unresolved_key,
+                    {
+                        "schema_version": "legacy-catalog-alias-exception-v1",
+                        "identity_kind": "teacher",
+                        "legacy_source_label": teacher_name,
+                        "reason": teacher_method,
+                        "terminal_status": "excluded_no_guess",
+                        "keys": [],
+                    },
+                )["keys"].append(key)
+            excluded.append(
+                {
+                    **common,
+                    "reason": "catalog_identity_unmatched",
+                    "detail": f"course={course_method};teacher={teacher_method}",
+                }
+            )
+            lineage.append({**common, "partition": "excluded", "review_id": None})
+            continue
+
+        pair = (course["courseCode"], teacher["sourceTeacherLabel"])
+        if pair not in relations:
+            pending = pending_by_pair.setdefault(
+                pair,
+                {
+                    "schema_version": "legacy-catalog-addition-request-v1",
+                    "request_kind": "relation",
+                    "catalog_course_code": pair[0],
+                    "catalog_teacher_label": pair[1],
+                    "reason": "approved_catalog_relation_missing",
+                    "terminal_status": "owner_review_required",
+                    "keys": [],
+                },
+            )
+            pending["keys"].append(key)
+            lineage.append(
+                {
+                    **common,
+                    "partition": "pending_relation",
+                    "review_id": None,
+                    "catalog_course_code": pair[0],
+                    "catalog_teacher_label": pair[1],
+                }
+            )
+            continue
+
+        basis = {
+            "exact_source_identity": "existing_catalog_relation",
+            "stable_normalized_alias": "existing_catalog_relation",
+            "pair_relation_unique": "pair_relation_unique",
+            "pe_public_display_unique": "pe_public_display_unique",
+            "pe_public_display_family": "pe_public_display_unique",
+        }.get(course_method, "existing_catalog_relation")
+        projected = project_importable(row, course, teacher, basis)
+        importable.append(projected)
+        lineage.append(
+            {
+                **common,
+                "partition": "importable",
+                "review_id": projected["review_id"],
+                "catalog_course_code": projected["catalog_course_code"],
+                "catalog_teacher_label": projected["catalog_teacher_label"],
+                "decision_basis": basis,
+            }
+        )
+
+    importable.sort(key=lambda row: (row["worksheet"], row["source_row"], row["source_column"]))
+    excluded.sort(key=lambda row: str(row["key"]))
+    pending_relations = sorted(
+        pending_by_pair.values(),
+        key=lambda row: (row["catalog_course_code"], row["catalog_teacher_label"]),
+    )
+    for item in pending_relations:
+        item["keys"] = sorted(item["keys"])
+    unresolved = sorted(
+        unresolved_by_key.values(),
+        key=lambda row: (row["identity_kind"], row["legacy_source_label"]),
+    )
+    for item in unresolved:
+        item["keys"] = sorted(item["keys"])
+    lineage.sort(key=lambda row: str(row["key"]))
+
+    if len(importable) + len(excluded) + sum(len(item["keys"]) for item in pending_relations) != expected_rows:
+        raise V5FreezeError("v5 partition counts do not cover every evaluation")
+    if any(item["partition"] is None for item in lineage):
+        raise V5FreezeError("v5 lineage is missing a terminal partition")
+
+    out.mkdir(parents=True)
+    files = {
+        "importable-legacy-reviews.jsonl": write_jsonl(out / "importable-legacy-reviews.jsonl", importable),
+        "catalog-relation-pending.jsonl": write_jsonl(out / "catalog-relation-pending.jsonl", pending_relations),
+        "catalog-identity-excluded.jsonl": write_jsonl(out / "catalog-identity-excluded.jsonl", unresolved),
+        "excluded.jsonl": write_jsonl(out / "excluded.jsonl", excluded),
+        "lineage.jsonl": write_jsonl(out / "lineage.jsonl", lineage),
+    }
+    freeze_manifest = {
+        "contractVersion": FREEZE_CONTRACT,
+        "status": "package_ready",
+        "contentSha256": content_sha256(files),
+        "counts": {
+            "importable": len(importable),
+            "pending_relations": len(pending_relations),
+            "pending_relation_reviews": sum(len(item["keys"]) for item in pending_relations),
+            "excluded_identities": len(unresolved),
+            "excluded": len(excluded),
+            "source_evaluations": expected_rows,
+        },
+        "schemas": {
+            "importable-legacy-reviews.jsonl": RECORD_SCHEMA,
+            "catalog-relation-pending.jsonl": "legacy-catalog-addition-request-v1",
+            "catalog-identity-excluded.jsonl": "legacy-catalog-alias-exception-v1",
+            "excluded.jsonl": "legacy-v5-exclusion-v1",
+            "lineage.jsonl": "legacy-v5-lineage-v1",
+        },
+        "files": files,
+        "lineage": {
+            "approvedPackageContract": SOURCE_CONTRACT,
+            "approvedPackageManifestSha256": source_manifest_sha,
+            "approvedEvaluationsSha256": expected_evaluations_sha256,
+            "approvedCatalogContentSha256": APPROVED_CATALOG_CONTENT_SHA256,
+            "approvedCatalogManifestSha256": catalog_manifest_sha,
+            "approvedCatalogArtifactSha256": APPROVED_CATALOG_ARTIFACT_SHA256,
+        },
+        "safety": {
+            "wrote_tencent_or_business_db": False,
+            "wrote_production_d1": False,
+            "overwrote_protected_directories": False,
+        },
+        "source_status": source_manifest.get("status"),
+    }
+    write_json(out / "manifest.json", freeze_manifest)
+    return freeze_manifest
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Compile the v5 production-candidate freeze package")
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--catalog", required=True)
+    parser.add_argument("--imported-root", required=True)
+    parser.add_argument("--out", required=True)
+    args = parser.parse_args()
+    result = freeze_v5_production_candidate(
+        Path(args.source),
+        Path(args.catalog),
+        Path(args.imported_root),
+        Path(args.out),
+    )
+    print(json.dumps({"status": result["status"], "counts": result["counts"]}, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
