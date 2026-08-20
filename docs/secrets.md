@@ -13,13 +13,14 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 | `TURNSTILE_SECRET` | Secrets Store | Worker 绑定 | 与公开 `TURNSTILE_SITE_KEY` 成对 |
 | `CAMPUS_JWT_SECRET` | Secrets Store | Worker 绑定 | AuthBridge 应用 HS256 密钥；hex 按原始字节验签。现为开通前占位值 |
 | `CAMPUS_JWT_AES_KEY` | Secrets Store | Worker 绑定 | AuthBridge 默认 `encrypt_type=aes` 的学号 AES-GCM 密钥（64 hex） |
-| `CAMPUS_IDENTITY_SECRET` | Secrets Store | Worker 绑定 | 学号/`sub` HMAC 摘要密钥，明文永不落库 |
+| `CAMPUS_IDENTITY_SECRET` | Secrets Store | Worker 绑定 | 学号/`sub`/校学生邮箱 HMAC 摘要密钥，明文永不落库 |
+| `MAIL_DELIVERY_TOKEN` | Secrets Store | Worker 绑定 | Resend API 投递 token；只放密钥清单，不进仓库 |
 | `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA `wrangler deploy` / D1 迁移 | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。需含 Workers Scripts Edit、D1 Edit、Account Settings Read、**Secrets Store Write** |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
 
 不要写入 Secrets Store：
 
-- `SITE_NAME`、`UNIVERSITY_NAME`、`TURNSTILE_SITE_KEY`、`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置。`CAMPUS_JWT_ENABLED` 不得写入仓库；白名单开通并完成预览验证后再作为 Worker var 打开。
+- `SITE_NAME`、`UNIVERSITY_NAME`、`TURNSTILE_SITE_KEY`、`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL`、`MAIL_DELIVERY_URL`、`MAIL_FROM`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置。`CAMPUS_JWT_ENABLED` 不得写入仓库；白名单开通并完成预览验证后再作为 Worker var 打开。
 - Vitest 夹具口令：仅测试
 - `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`：运维参数
 

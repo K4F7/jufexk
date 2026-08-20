@@ -1,13 +1,15 @@
-# 首发不启用普通用户认证；届时若需要，唯一候选是校学生邮箱验证
+# 首发不启用校园 JWT；普通用户登录改为校学生邮箱验证
 
-正式上线不接入校园 JWT（AuthBridge），[#169](https://github.com/K4F7/jufexk/issues/169) 的白名单开通搁置。投稿门维持现有匿名反滥用：蜜罐、Turnstile、同源 `Origin`、每 IP 哈希限流与 `submitter_hash` 去重（`src/index.ts` 的 `POST /api/reviews`）。只有当公开上线后出现有问题的投稿时，才重新评估是否上认证；届时的唯一候选方案是**校学生邮箱验证信**，其他认证路线全部不再考虑。
+_2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 把「等到出现有问题的投稿再实现」提前为现在实现。唯一候选仍是校学生邮箱验证；生产投递面为 Resend HTTPS API，不是 louis SMTP。AuthBridge 仍搁置。_
 
-## 邮箱验证的约束（届时实现前提，不是现在的实现任务）
+正式上线不接入校园 JWT（AuthBridge），[#169](https://github.com/K4F7/jufexk/issues/169) 的白名单开通搁置。普通用户登录走 `stu.jxufe.edu.cn` 验证信（#325）。投稿写门是否强制登录见 #326。其他认证路线全部不再考虑。
+
+## 邮箱验证的约束
 
 - 允许域只有 `stu.jxufe.edu.cn`，精确匹配，不含 `jxufe.edu.cn` 主域及其他子域；扩域需另行决定。
-- 验证信经自托管邮件服务器（louis 主机）投递。Worker 不能直连 SMTP:25，必须走该邮件服务器的 HTTPS API 或中继（见 `docs/research/lightweight-ordinary-user-auth.md`）。
-- 启动实现前先用真实 `stu.jxufe.edu.cn` 邮箱验证发件域能进校内收件箱（SPF/DKIM/DMARC），进箱失败则方案重议。
-- ADR-0016 的身份契约照旧：邮箱哈希只作认证身份 `subject`，不当业务主键；`users.id` 稳定匿名；公开只读不要求登录；JWT/凭据已验证不等于免 CSRF。
+- 验证信经可配置 HTTPS 投递端点发出（生产为 Resend `https://api.resend.com/emails`）。Worker 不能直连 SMTP:25。
+- 真实 `stu.jxufe.edu.cn` 进箱与魔法链接登录验收见人工票 #327；进箱失败则生产路径重议，不改代码去碰校园 JWT。
+- ADR-0016 的身份契约照旧：邮箱哈希只作认证身份 `subject`，不当业务主键；`users.id` 稳定匿名；公开只读不要求登录；凭据已验证不等于免 CSRF。
 
 ## 与 ADR-0016 的关系
 
@@ -15,8 +17,8 @@
 
 ## Consequences
 
-- 生产环境没有任何普通用户会话签发路径，认可（`PUT/DELETE /api/reviews/:id/endorsement`）在生产不可用，直到认证上线；测试 HMAC 头继续只用于 Vitest。
-- 将来若从搁置状态改上邮箱认证，认证身份的 `provider` 与 AuthBridge 不同，且双方没有可自动关联的信号；按 0016 的规则不猜测合并。趁生产零普通用户时切换没有迁移成本。
+- 生产普通用户会话由校学生邮箱验证签发；认可在持有可写普通用户会话后可用。测试 HMAC 头继续只用于 Vitest。
+- 邮箱认证身份的 `provider` 与 AuthBridge 不同，且双方没有可自动关联的信号；按 0016 的规则不猜测合并。生产零普通用户时切换没有迁移成本。
 
 ## Considered Options
 

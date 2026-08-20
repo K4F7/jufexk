@@ -1,7 +1,6 @@
 import { buttonVariants, Link } from "@heroui/react";
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
-import { useCampusAuthEnabled } from "../hooks/useCampusAuthEnabled";
 import type { SiteConfig } from "../lib/types";
 import { AccountNavControl } from "./AccountNavControl";
 import { ThemeToggle } from "./ThemeToggle";
@@ -87,7 +86,6 @@ function DefaultShell({
   const location = useLocation();
   const [params] = useSearchParams();
   const selectedKey = navSelectedKey(location.pathname);
-  const campusEnabled = useCampusAuthEnabled();
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const siteName = config?.siteName || "江财选课参考";
   const universityName = config?.universityName || "江西财经大学";
@@ -157,7 +155,7 @@ function DefaultShell({
             <span className="hidden text-xs text-muted sm:inline">
               {universityName}
             </span>
-            <AccountNavControl campusEnabled={campusEnabled} />
+            <AccountNavControl />
             <ThemeToggle />
           </div>
         </div>

@@ -1,19 +1,19 @@
-# 普通用户通过校园 AuthBridge JWT 接入，游客只读
+# 普通用户通过校学生邮箱验证接入，游客只读
 
-_2026-08-19：AuthBridge 开通已按 [ADR-0022](./0022-launch-without-ordinary-user-auth.md) 搁置——首发不启用普通用户认证，callback 维持 503；届时若需要认证，唯一候选是 `stu.jxufe.edu.cn` 校学生邮箱验证。本文的身份、会话与账号生命周期契约继续有效。_
+_2026-08-21：生产登录路径改为 `stu.jxufe.edu.cn` 校学生邮箱验证（#324 / #325）。验证信经可配置 HTTPS 投递端点发出（生产为 Resend）；Worker 不直连 SMTP:25。AuthBridge 仍搁置：`CAMPUS_JWT_ENABLED` 不设，callback 维持 503，占位密钥与验签代码不删除。本文的身份三元组、`users.id`、CSRF、封禁/待删除形状与管理员隔离继续有效。_
 
-_#137 已否决 Cloudflare Access OTP：Zero Trust 席位不适合全校投稿门。生产认证方改为 [Mine-JUFE/AuthBridge](https://github.com/Mine-JUFE/AuthBridge) 在 CAS 验票后按应用签发的 HS256 JWT。应用尚未进入校方白名单时，callback 保持关闭，不跳转、不请求 AuthBridge。_
+_2026-08-19：AuthBridge 开通已按 [ADR-0022](./0022-launch-without-ordinary-user-auth.md) 搁置——callback 维持 503。_
 
-_与 `CONTEXT.md`「校内邮箱身份」冲突——第一版校园 JWT 没有邮箱声明；资格来自 CAS / AuthBridge，不是校内邮箱 OTP。词汇表仍保留该条目，待身份源稳定后再改。_
+_#137 已否决 Cloudflare Access OTP：Zero Trust 席位不适合全校投稿门。校园 JWT（[Mine-JUFE/AuthBridge](https://github.com/Mine-JUFE/AuthBridge)）保留为搁置占位，不作为生产登录路径。_
 
-大多数访问者是游客，课程、教师、任课关系和公开评价只读页面匿名可访问。校园 JWT 只在投稿、认可等写操作上构成普通用户会话。管理员后台继续使用独立口令 session，不能与普通用户身份互换。
+大多数访问者是游客，课程、教师、任课关系和公开评价只读页面匿名可访问。校学生邮箱验证（或测试 HMAC 头）只在投稿、认可等写操作上构成普通用户会话。管理员后台继续使用独立口令 session，不能与普通用户身份互换。
 
-Worker 必须独立验签 JWT，并把认证方主体映射到站内稳定、不可公开的普通用户身份。AuthBridge `sub`（密文）、学号、管理员会话、IP hash 和既有 `submitter_hash` 都不直接承担任课评价或认可的业务唯一性。
+Worker 必须核销校学生邮箱挑战（或测试 HMAC 头），并把认证主体映射到站内稳定、不可公开的普通用户身份。AuthBridge JWT 验签保留为搁置占位。明文邮箱、AuthBridge `sub`（密文）、学号、管理员会话、IP hash 和既有 `submitter_hash` 都不直接承担任课评价或认可的业务唯一性。
 
 ## 游客、普通用户与管理员
 
 - 公开只读不要求登录，也不把未登录当作错误。
-- 普通用户会话只证明本次请求持有已验证的校园 JWT（或测试 HMAC 头），并对应一个 `active` 的 `users.id`。
+- 普通用户会话只证明本次请求持有已验证的校学生邮箱会话 cookie（或测试 HMAC 头；校园 JWT cookie 仍可解析但生产不签发），并对应一个 `active` 的 `users.id`。
 - 管理员口令登录只签发 `admin_sessions`；`jufexk_admin` cookie、校园 JWT 和测试 HMAC 头不得互相授权。
 
 ## JWT 验证边界
@@ -26,13 +26,14 @@ Worker 必须独立验签 JWT，并把认证方主体映射到站内稳定、不
 ## 普通用户与身份绑定
 
 - `users.id` 是随机生成且永久稳定的站内标识。任课评价、认可、封禁和账号状态只引用该标识；公开 API 和页面永不返回它。
-- 认证身份以 `(provider, issuer, subject)` 唯一。`provider` 为 `authbridge`，`issuer` 为 JWT `aud`（缺省时为配置的 `CAMPUS_JWT_AUD`，再缺省为 `authbridge`），`subject` 是学号或稳定 `sub` 的 HMAC，不是明文。AuthBridge 当前签发的 JWT 通常没有 `aud` claim。
-- 同一认证主体重复登录复用原普通用户。AuthBridge 每次加密会换 IV，因此必须解密后再哈希，不能把密文 `sub` 当主键。
-- 站点第一版没有邮箱声明，因此不按邮箱合并账号。多个认证主体默认是不同普通用户。
+- 认证身份以 `(provider, issuer, subject)` 唯一。生产邮箱登录：`provider` 为 `email`，`issuer` 为 `stu.jxufe.edu.cn`，`subject` 是规范化邮箱的 HMAC（密钥为 `CAMPUS_IDENTITY_SECRET`），不是明文邮箱。AuthBridge 占位身份仍为 `provider=authbridge`，`issuer` 为 JWT `aud`（缺省时为配置的 `CAMPUS_JWT_AUD`，再缺省为 `authbridge`），`subject` 是学号或稳定 `sub` 的 HMAC。两种身份不自动合并。
+- 同一认证主体重复登录复用原普通用户。邮箱按规范化地址哈希；AuthBridge 每次加密会换 IV，因此必须解密后再哈希，不能把密文 `sub` 当主键。
+- 明文邮箱不当主键，不进公开响应或日志。多个认证主体默认是不同普通用户。
 
 ## 会话、注销与封禁
 
-- 普通用户 CSRF cookie 为 24 小时，`SameSite=Lax`。校园 JWT cookie 若将来由开放的 callback 写入，必须 `HttpOnly`、`Secure`、`SameSite=Lax`。站点不把管理员 `admin_sessions` 复用于普通用户。
+- 普通用户 CSRF cookie 为 24 小时，`SameSite=Lax`。邮箱登录会话 cookie（`jufexk_user_session`）由本站签发，`HttpOnly`、`Secure`、`SameSite=Lax`，寿命约 24 小时。校园 JWT cookie 若将来由开放的 callback 写入，必须同样的 cookie 属性。站点不把管理员 `admin_sessions` 复用于普通用户。
+- `resolveOrdinaryUser` 解析顺序：测试 HMAC 头（仅当测试密钥已绑定）→ 本站邮箱会话 cookie → 校园 JWT cookie（生产仍不签发）。
 - 注销走 `POST /api/user/logout`，清除普通用户 cookie；前端 `/logout` 只是引导页。前端以 `/api/user/session` 为 viewer-state 来源，收到写接口 `401` 后清除本地状态。可写用户注销仍要 CSRF；`pending_deletion` 等不可写用户仍可注销。
 - JWT 认证通过后仍查询普通用户状态。`banned`、`pending_deletion` 和 `deleted` 一律拒绝写入。
 - `GET /api/user/session` 对 `pending_deletion` 且凭证仍能解析到该普通用户时返回 `authenticated: false`、`accountStatus: "pending_deletion"`、`restoreUntil`（`pending_deletion_at + 30` 天的 ISO-8601）和 CSRF；不因探测 session 而恢复账号。游客、`banned`、`deleted` 保持游客形状，不增加 `accountStatus`。
@@ -90,7 +91,7 @@ Secrets Store：
 ## Considered Options
 
 - **Cloudflare Access OTP + 应用 JWT**：功能能证明邮箱控制权，但每次登录占 Zero Trust 席位，免费档约 50 人，不适合全校投稿门，否决。
-- **站点自行发送验证码或魔法链接并签发 JWT**：需要新增邮件投递与撤销体系；校园 JWT 已由 AuthBridge 在 CAS 后签发，否决。
+- **站点自行发送验证码或魔法链接并签发短期会话 cookie**：现为生产登录路径。校园 JWT 由 AuthBridge 签发的前提已搁置；投递走 HTTPS API（生产为 Resend），不在 Worker 里讲 SMTP。
 - **把 AuthBridge 密文 `sub` 或学号直接作为业务主键**：密文随 IV 变化，学号也会变更或需要合并，否决。
 - **把管理员 session 复用为普通用户**：破坏匿名边界与权限分离，否决。
 - **公开只读也强制校园 JWT**：大多数用户只是游客，否决。
