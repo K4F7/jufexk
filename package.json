@@ -51,7 +51,7 @@
   "dependencies": {
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
-    "hono": "4.13.1",
+    "hono": "4.13.2",
     "pinyin-pro": "^3.29.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
