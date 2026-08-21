@@ -142,4 +142,15 @@ uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py -
 pnpm run historical-import:v5
 ```
 
+## Issue 348：按回表截图裁定补空教师（v6）
+
+#348 在 v5 之上按所有者看图裁定写入 `--teacher-overrides`：MOOC 8 樊凤龙、MOOC 18 李珺、主要课程 155 王云、外教 3 Christine、外教 6 carl。常见急救知识（153）因目录非唯一任课排除；点名排除行与未点名空教师行不继承。新目录 v6，不覆盖 v5 / v4 / v3。`--apply` 仍拒绝。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v6`
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v6' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json'
+pnpm run historical-import:v5
+```
+
 
