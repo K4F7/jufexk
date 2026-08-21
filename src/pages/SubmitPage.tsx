@@ -1,5 +1,6 @@
 import {
   Button,
+  Card,
   ComboBox,
   Description,
   FieldError,
@@ -21,6 +22,7 @@ import { TurnstileBox } from "../components/TurnstileBox";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
+import { COMMON_CORE_QUESTIONS } from "../lib/review-schemes";
 import type {
   ApplicableQuestion,
   CourseOption,
@@ -32,6 +34,13 @@ import type {
 
 const SEARCH_DELAY = 320;
 const SCALE = ["1", "2", "3", "4", "5"] as const;
+/**
+ * Grace period before a not-ready Turnstile widget is revealed in form mode:
+ * `refresh-expired: auto` renewals and the fresh challenge on form entry
+ * normally complete well under this, so the widget only appears when the
+ * user actually has to interact with it again.
+ */
+const WIDGET_REVEAL_DELAY = 2500;
 
 type SchemeCourse = CourseOption &
   CourseReviewScheme & {
@@ -77,11 +86,32 @@ function ScaleRadios({
   );
 }
 
+/** Keep scores for questions that still apply; drop the rest (issue #361). */
+function keepApplicable(
+  scores: Record<string, string>,
+  questions: readonly ApplicableQuestion[],
+) {
+  const applicable = new Set(questions.map((question) => question.id));
+  return Object.fromEntries(
+    Object.entries(scores).filter(([id]) => applicable.has(id)),
+  );
+}
+
+function StatusMessage({ msg }: { msg: string }) {
+  if (!msg) return null;
+  return (
+    <p className="m-0 text-sm" role="status">
+      {msg}
+    </p>
+  );
+}
+
 export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const { viewer, ready: viewerReady } = useViewer();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const [phase, setPhase] = useState<"gate" | "form">("gate");
   const [courseQueryDraft, setCourseQueryDraft] = useState("");
   const [courseQuery, setCourseQuery] = useState("");
   const [courseOptions, setCourseOptions] = useState<CourseOption[]>([]);
@@ -95,6 +125,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [comment, setComment] = useState("");
   const [msg, setMsg] = useState("");
   const [ready, setReady] = useState(!config?.turnstileSiteKey);
+  const [revealWidget, setRevealWidget] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const widgetRef = useRef<string | number | null>(null);
   const onReadyChange = useCallback((nextReady: boolean) => {
@@ -102,8 +133,13 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }, []);
 
   const questions: ApplicableQuestion[] =
-    selectedCourse?.applicableQuestions ?? [];
+    selectedCourse?.applicableQuestions ?? COMMON_CORE_QUESTIONS;
   const teachers = selectedCourse?.teachers ?? [];
+  const hiddenCoreLabels = selectedCourse?.tags.includes("mooc")
+    ? COMMON_CORE_QUESTIONS.filter(
+        (core) => !questions.some((question) => question.id === core.id),
+      ).map((core) => core.label)
+    : [];
 
   useEffect(() => {
     if (!viewerReady || viewer.authenticated) return;
@@ -152,12 +188,22 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     };
   }, [courseQuery]);
 
+  useEffect(() => {
+    if (ready || phase !== "form") {
+      setRevealWidget(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setRevealWidget(true),
+      WIDGET_REVEAL_DELAY,
+    );
+    return () => window.clearTimeout(timer);
+  }, [ready, phase]);
+
   const loadCourse = useCallback(async (id: number) => {
     const detail = await api<{ course: SchemeCourse }>(`/api/courses/${id}`);
     setSelectedCourse(detail.course);
     setCourseQueryDraft(detail.course.name);
-    setScores({});
-    setOverall("");
     return detail.course;
   }, []);
 
@@ -188,17 +234,24 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     if (key == null) {
       setSelectedCourse(null);
       setTeacherId("");
-      setScores({});
-      setOverall("");
+      setScores((current) => keepApplicable(current, COMMON_CORE_QUESTIONS));
       return;
     }
     try {
-      await loadCourse(Number(key));
+      const course = await loadCourse(Number(key));
       setTeacherId("");
+      setScores((current) =>
+        keepApplicable(current, course.applicableQuestions),
+      );
       setMsg("");
     } catch (error) {
       setMsg((error as Error).message);
     }
+  }
+
+  function enterForm() {
+    setMsg("");
+    setPhase("form");
   }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -237,16 +290,17 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           turnstileToken,
         }),
       });
-      setMsg(result.message);
       setSelectedCourse(null);
       setTeacherId("");
       setScores({});
       setOverall("");
       setComment("");
-      if (widgetRef.current != null) {
-        window.turnstile?.reset(widgetRef.current);
-        setReady(!config?.turnstileSiteKey);
-      }
+      setCourseQueryDraft("");
+      // The consumed token cannot be reused; the gate widget remounts and
+      // re-verifies automatically, re-enabling the entry button.
+      setReady(!config?.turnstileSiteKey);
+      setMsg(result.message);
+      setPhase("gate");
     } catch (error) {
       setMsg((error as Error).message);
     } finally {
@@ -254,10 +308,43 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     }
   }
 
-  const relationReady = Boolean(selectedCourse && teacherId);
-
   if (!viewerReady || !viewer.authenticated) {
     return null;
+  }
+
+  if (phase === "gate") {
+    return (
+      <section
+        aria-labelledby="submit-gate-heading"
+        className="mx-auto max-w-xl py-8"
+      >
+        <Card role="article" aria-labelledby="submit-gate-heading">
+          <Card.Header>
+            <Card.Title id="submit-gate-heading">写评价</Card.Title>
+            <Card.Description>
+              {config?.turnstileSiteKey
+                ? "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题；补充说明选填。开始填写前请先完成下方人机验证。"
+                : "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题；补充说明选填。"}
+            </Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <div className="flex flex-col gap-4">
+              <StatusMessage msg={msg} />
+              {config?.turnstileSiteKey ? (
+                <TurnstileBox
+                  siteKey={config.turnstileSiteKey}
+                  widgetRef={widgetRef}
+                  onReadyChange={onReadyChange}
+                />
+              ) : null}
+              <Button isDisabled={!ready} onPress={enterForm}>
+                开始填写
+              </Button>
+            </div>
+          </Card.Content>
+        </Card>
+      </section>
+    );
   }
 
   return (
@@ -320,74 +407,82 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           </ComboBox.Popover>
         </ComboBox>
 
-        {selectedCourse ? (
-          <Select
-            isRequired
-            className="w-full"
-            name="teacherId"
-            value={teacherId || null}
-            onChange={(value) => setTeacherId(value ? String(value) : "")}
-          >
-            <Label>任课教师</Label>
-            <Description>评价必须绑定具体任课教师</Description>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {teachers.map((teacher) => (
-                  <ListBox.Item
-                    key={teacher.id}
-                    id={String(teacher.id)}
-                    textValue={teacher.name}
-                  >
-                    {teacher.name}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-            <FieldError>请选择任课教师</FieldError>
-          </Select>
+        <Select
+          isRequired
+          isDisabled={!selectedCourse}
+          className="w-full"
+          name="teacherId"
+          value={teacherId || null}
+          onChange={(value) => setTeacherId(value ? String(value) : "")}
+        >
+          <Label>任课教师</Label>
+          <Description>
+            {selectedCourse
+              ? "评价必须绑定具体任课教师"
+              : "先选择课程，再选择任课教师"}
+          </Description>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {teachers.map((teacher) => (
+                <ListBox.Item
+                  key={teacher.id}
+                  id={String(teacher.id)}
+                  textValue={teacher.name}
+                >
+                  {teacher.name}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+          <FieldError>请选择任课教师</FieldError>
+        </Select>
+
+        {hiddenCoreLabels.length ? (
+          <p className="m-0 text-sm text-muted">
+            该课程为网课（MOOC），
+            {hiddenCoreLabels.map((label) => `「${label}」`).join("、")}
+            等仅线下适用的题目无需作答。
+          </p>
         ) : null}
 
-        {relationReady ? (
-          <>
-            {questions.map((question) => (
-              <ScaleRadios
-                key={question.id}
-                name={`score-${question.id}`}
-                label={question.prompt}
-                description={question.scale}
-                value={scores[question.id] || ""}
-                onChange={(value) =>
-                  setScores((current) => ({ ...current, [question.id]: value }))
-                }
-              />
-            ))}
-            <ScaleRadios
-              name="overall"
-              label="本次推荐度"
-              description="1 到 5，分数越高表示越推荐"
-              value={overall}
-              onChange={setOverall}
-            />
-            <TextField name="comment">
-              <Label>补充说明</Label>
-              <Description>选填。不写补充说明也可以提交有效评分</Description>
-              <TextArea
-                fullWidth
-                rows={4}
-                value={comment}
-                onChange={(event) => setComment(event.target.value)}
-              />
-            </TextField>
-          </>
-        ) : null}
+        {questions.map((question) => (
+          <ScaleRadios
+            key={question.id}
+            name={`score-${question.id}`}
+            label={question.prompt}
+            description={question.scale}
+            value={scores[question.id] || ""}
+            onChange={(value) =>
+              setScores((current) => ({ ...current, [question.id]: value }))
+            }
+          />
+        ))}
+        <ScaleRadios
+          name="overall"
+          label="本次推荐度"
+          description="1 到 5，分数越高表示越推荐"
+          value={overall}
+          onChange={setOverall}
+        />
+        <TextField name="comment">
+          <Label>补充说明</Label>
+          <Description>选填。不写补充说明也可以提交有效评分</Description>
+          <TextArea
+            fullWidth
+            rows={4}
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+          />
+        </TextField>
 
         {config?.turnstileSiteKey ? (
           <TurnstileBox
+            collapsed={!revealWidget}
             siteKey={config.turnstileSiteKey}
             widgetRef={widgetRef}
             onReadyChange={onReadyChange}
@@ -397,11 +492,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         <Button isPending={submitting} type="submit">
           提交评价
         </Button>
-        {msg ? (
-          <p className="m-0 text-sm" role="status">
-            {msg}
-          </p>
-        ) : null}
+        <StatusMessage msg={msg} />
       </Form>
     </section>
   );

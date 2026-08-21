@@ -128,6 +128,30 @@ export function applicableDimensions(
   );
 }
 
+const toApplicableQuestion = ({
+  id,
+  label,
+  prompt,
+  scale,
+}: DimensionDef): ApplicableQuestion => ({ id, label, prompt, scale });
+
+/**
+ * Questions shared by every scheme, rendered by the submit form before a
+ * course is chosen so the full questionnaire is visible up front (issue
+ * #361). Computed as the intersection across schemes: if scheme-specific
+ * dimensions are ever added, this degrades to the true common core.
+ */
+export const COMMON_CORE_QUESTIONS: ApplicableQuestion[] = (() => {
+  const [first, ...rest] = Object.values(REVIEW_SCHEMES);
+  return first.dimensions
+    .filter((dimension) =>
+      rest.every((scheme) =>
+        scheme.dimensions.some((other) => other.id === dimension.id),
+      ),
+    )
+    .map(toApplicableQuestion);
+})();
+
 export function courseSchemeView(
   schemeKey: string | null | undefined,
   category: string,
@@ -140,12 +164,7 @@ export function courseSchemeView(
     schemeVersion: REVIEW_SCHEMES[resolved].version,
     tags: knownTags,
     applicableQuestions: applicableDimensions(resolved, knownTags).map(
-      ({ id, label, prompt, scale }): ApplicableQuestion => ({
-        id,
-        label,
-        prompt,
-        scale,
-      }),
+      toApplicableQuestion,
     ),
   };
 }
