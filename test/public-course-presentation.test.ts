@@ -3,9 +3,13 @@ import {
   isPublicSportsSkillName,
   isUmbrellaPeCourseName,
   isVirtualPeSportId,
+  publicBrowseFamilySql,
   publicCourseCategory,
   publicCourseDisplayName,
   publicCourseVisibleSql,
+  publicEnglishFamilyLabel,
+  publicEnglishFamilySql,
+  publicOptionDisplayName,
   publicPeSkillLabel,
   isPublicListCategoryFilter,
   publicCategoryFilterSql,
@@ -24,6 +28,9 @@ describe("public PE course presentation", () => {
     expect(isUmbrellaPeCourseName("体育I（留）")).toBe(true);
     expect(isUmbrellaPeCourseName("网球")).toBe(false);
     expect(isUmbrellaPeCourseName("大学体育")).toBe(false);
+    expect(isUmbrellaPeCourseName("大学体育1")).toBe(true);
+    expect(isUmbrellaPeCourseName("大学体育4")).toBe(true);
+    expect(isUmbrellaPeCourseName("大学体育与健康生活（MOOC）")).toBe(false);
   });
 
   it("promotes skill-style PE titles to sports without using 体育1/2", () => {
@@ -60,9 +67,31 @@ describe("public PE course presentation", () => {
     expect(publicCourseDisplayName("线性代数")).toBe("线性代数");
   });
 
+  it("collapses exact 大学英语 1–4 / I–IV onto 大学英语", () => {
+    expect(publicEnglishFamilyLabel("大学英语1")).toBe("大学英语");
+    expect(publicEnglishFamilyLabel("大学英语4")).toBe("大学英语");
+    expect(publicEnglishFamilyLabel("大学英语I")).toBe("大学英语");
+    expect(publicEnglishFamilyLabel("大学英语II")).toBe("大学英语");
+    expect(publicEnglishFamilyLabel("大学英语III")).toBe("大学英语");
+    expect(publicEnglishFamilyLabel("大学英语IV")).toBe("大学英语");
+    expect(publicEnglishFamilyLabel("大学英语Ⅰ")).toBe("大学英语");
+    expect(publicEnglishFamilyLabel("大学英语I(涉外)")).toBe(null);
+    expect(publicEnglishFamilyLabel("大学英语I(艺体）")).toBe(null);
+    expect(publicEnglishFamilyLabel("大学英语I（运训）")).toBe(null);
+    expect(publicEnglishFamilyLabel("大学英语预备级")).toBe(null);
+    expect(publicCourseDisplayName("大学英语II")).toBe("大学英语");
+    expect(publicCourseDisplayName("大学英语I(涉外)")).toBe("大学英语I(涉外)");
+    expect(publicOptionDisplayName("大学英语II")).toBe("大学英语II");
+    expect(publicOptionDisplayName("击剑专项理论与实践1")).toBe("击剑");
+    expect(publicEnglishFamilySql("c")).toContain("'大学英语I'");
+    expect(publicEnglishFamilySql("c")).not.toContain("大学英语I(涉外)");
+    expect(publicBrowseFamilySql("c")).toContain("大学英语");
+  });
+
   it("keeps sports SQL inside the public visibility gate", () => {
     expect(publicSportsMatchSql("c")).toContain(publicCourseVisibleSql("c"));
     expect(publicCourseVisibleSql("c")).toContain("'体育1'");
+    expect(publicCourseVisibleSql("c")).toContain("'大学体育1'");
     expect(publicSportsMatchSql("c")).toContain("'网球%'");
   });
 

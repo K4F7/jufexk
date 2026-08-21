@@ -14,6 +14,42 @@ export const UMBRELLA_PE_COURSE_NAMES = [
   "体育Ⅱ（留）",
   "体育I（留）",
   "体育II（留）",
+  "大学体育1",
+  "大学体育2",
+  "大学体育3",
+  "大学体育4",
+  "大学体育I",
+  "大学体育II",
+  "大学体育III",
+  "大学体育IV",
+  "大学体育Ⅰ",
+  "大学体育Ⅱ",
+  "大学体育Ⅲ",
+  "大学体育Ⅳ",
+] as const;
+
+/** Exact 大学英语 1–4 / I–IV titles that collapse to one public name. */
+export const ENGLISH_PUBLIC_LABEL = "大学英语";
+
+export const ENGLISH_LEVEL_COURSE_NAMES = [
+  "大学英语1",
+  "大学英语2",
+  "大学英语3",
+  "大学英语4",
+  "大学英语I",
+  "大学英语II",
+  "大学英语III",
+  "大学英语IV",
+  "大学英语Ⅰ",
+  "大学英语Ⅱ",
+  "大学英语Ⅲ",
+  "大学英语Ⅳ",
+] as const;
+
+export const ENGLISH_FIRST_LEVEL_NAMES = [
+  "大学英语1",
+  "大学英语I",
+  "大学英语Ⅰ",
 ] as const;
 
 /**
@@ -113,7 +149,23 @@ export function isPublicSportsSkillName(name?: string | null): boolean {
   return publicPeSkillLabel(name) !== null;
 }
 
+export function publicEnglishFamilyLabel(name?: string | null): string | null {
+  const trimmed = name?.trim() ?? "";
+  if (!trimmed) return null;
+  return (ENGLISH_LEVEL_COURSE_NAMES as readonly string[]).includes(trimmed)
+    ? ENGLISH_PUBLIC_LABEL
+    : null;
+}
+
 export function publicCourseDisplayName(name?: string | null): string {
+  const trimmed = name?.trim() ?? "";
+  return (
+    publicPeSkillLabel(trimmed) ?? publicEnglishFamilyLabel(trimmed) ?? trimmed
+  );
+}
+
+/** 投稿选项只折叠体育专项，保留大学英语 I–IV 教务名。 */
+export function publicOptionDisplayName(name?: string | null): string {
   const trimmed = name?.trim() ?? "";
   return publicPeSkillLabel(trimmed) ?? trimmed;
 }
@@ -141,6 +193,15 @@ export function publicPeSkillFamilySql(alias = "c"): string {
     return `WHEN ${conds.join(" OR ")} THEN ${sqlStringLiteral(family.label)}`;
   });
   return `CASE ${branches.join(" ")} ELSE NULL END`;
+}
+
+export function publicEnglishFamilySql(alias = "c"): string {
+  const names = ENGLISH_LEVEL_COURSE_NAMES.map(sqlStringLiteral).join(",");
+  return `CASE WHEN ${alias}.name IN (${names}) THEN ${sqlStringLiteral(ENGLISH_PUBLIC_LABEL)} ELSE NULL END`;
+}
+
+export function publicBrowseFamilySql(alias = "c"): string {
+  return `COALESCE(${publicPeSkillFamilySql(alias)}, ${publicEnglishFamilySql(alias)})`;
 }
 
 export function publicPeHasTextReviewSql(alias: string): string {
