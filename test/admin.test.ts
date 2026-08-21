@@ -1,5 +1,9 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
+import {
+  ordinaryWriteHeaders,
+  ordinaryWriteSession,
+} from "./ordinary-write-session";
 
 const origin = "https://example.com";
 let loginSequence = 10;
@@ -700,12 +704,12 @@ describe("review protection", () => {
 
   it("handles all four Turnstile configuration states explicitly", async () => {
     const mutableEnv = env as Record<string, unknown>;
+    const writer = await ordinaryWriteSession("admin-turnstile-writer");
     const submit = (ip: string, comment: string) =>
       SELF.fetch(`${origin}/api/reviews`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Origin: origin,
+          ...ordinaryWriteHeaders(writer),
           "CF-Connecting-IP": ip,
         },
         body: JSON.stringify({
@@ -744,8 +748,7 @@ describe("review protection", () => {
       const crossSite = await SELF.fetch(`${origin}/api/reviews`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Origin: "https://attacker.example",
+          ...ordinaryWriteHeaders(writer, { Origin: "https://attacker.example" }),
           "CF-Connecting-IP": "203.0.113.245",
         },
         body: JSON.stringify({
@@ -756,7 +759,9 @@ describe("review protection", () => {
         }),
       });
       expect(crossSite.status).toBe(403);
-      expect(await crossSite.json()).toEqual({ error: "来源校验失败" });
+      expect(await crossSite.json()).toEqual({
+        error: "安全校验失败，请刷新后重试",
+      });
     } finally {
       mutableEnv.TURNSTILE_SITE_KEY = "";
       mutableEnv.TURNSTILE_SECRET = "";
@@ -766,7 +771,7 @@ describe("review protection", () => {
     }
   });
 
-  it("blocks cross-site browser writes when Turnstile is degraded", async () => {
+  it("blocks anonymous and cross-site browser writes when Turnstile is degraded", async () => {
     const headers = {
       "Content-Type": "text/plain",
       Origin: "https://attacker.example",
@@ -777,7 +782,7 @@ describe("review protection", () => {
       headers,
       body: JSON.stringify({ courseId: 1, teacherId: 1, overall: 5 }),
     });
-    expect(review.status).toBe(403);
+    expect(review.status).toBe(401);
     const request = await SELF.fetch(`${origin}/api/catalog-requests`, {
       method: "POST",
       headers,
@@ -787,7 +792,22 @@ describe("review protection", () => {
         department: "测试学院",
       }),
     });
-    expect(request.status).toBe(403);
+    expect(request.status).toBe(401);
+
+    const writer = await ordinaryWriteSession("admin-cross-site-writer");
+    const authedReview = await SELF.fetch(`${origin}/api/reviews`, {
+      method: "POST",
+      headers: ordinaryWriteHeaders(writer, {
+        Origin: "https://attacker.example",
+        "Content-Type": "text/plain",
+        "CF-Connecting-IP": "203.0.113.240",
+      }),
+      body: JSON.stringify({ courseId: 1, teacherId: 1, overall: 5 }),
+    });
+    expect(authedReview.status).toBe(403);
+    expect(await authedReview.json()).toEqual({
+      error: "安全校验失败，请刷新后重试",
+    });
   });
 });
 

@@ -16,9 +16,11 @@ import {
   type Key,
 } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { TurnstileBox } from "../components/TurnstileBox";
+import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
+import { backTargetFrom } from "../lib/back-target";
 import type {
   ApplicableQuestion,
   CourseOption,
@@ -76,6 +78,9 @@ function ScaleRadios({
 }
 
 export function SubmitPage({ config }: { config: SiteConfig | null }) {
+  const { viewer, ready: viewerReady } = useViewer();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [courseQueryDraft, setCourseQueryDraft] = useState("");
   const [courseQuery, setCourseQuery] = useState("");
@@ -99,6 +104,22 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const questions: ApplicableQuestion[] =
     selectedCourse?.applicableQuestions ?? [];
   const teachers = selectedCourse?.teachers ?? [];
+
+  useEffect(() => {
+    if (!viewerReady || viewer.authenticated) return;
+    const from = backTargetFrom(`${location.pathname}${location.search}`);
+    navigate(
+      `${viewer.loginPath}?from=${encodeURIComponent(from)}`,
+      { replace: true },
+    );
+  }, [
+    viewerReady,
+    viewer.authenticated,
+    viewer.loginPath,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -234,6 +255,10 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }
 
   const relationReady = Boolean(selectedCourse && teacherId);
+
+  if (!viewerReady || !viewer.authenticated) {
+    return null;
+  }
 
   return (
     <section className="mx-auto max-w-[720px]">

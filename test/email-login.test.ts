@@ -274,6 +274,46 @@ describe("school-email login", () => {
     });
   });
 
+  it("lets cookie+CSRF post a review without the HMAC test headers", async () => {
+    installMailMock();
+    await requestEmail(studentEmail);
+    const { code } = parseMailSecrets(capturedMail[0]?.body.text || "");
+    const verified = await verifyBody({ email: studentEmail, code });
+    const body = await verified.json<{ csrfToken?: string }>();
+    const cookies = cookieHeader(verified);
+    const before = await env.DB.prepare(
+      "SELECT COUNT(*) n FROM reviews",
+    ).first<{ n: number }>();
+    const submitted = await SELF.fetch(`${origin}/api/reviews`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: origin,
+        Cookie: cookies,
+        "X-CSRF-Token": body.csrfToken || "",
+        "CF-Connecting-IP": nextIp(),
+      },
+      body: JSON.stringify({
+        courseId: 1,
+        teacherId: 1,
+        overall: 5,
+        scores: {
+          teaching: 4,
+          attendance: 3,
+          grading: 5,
+          workload: 2,
+        },
+        comment: "邮箱会话可投稿",
+      }),
+    });
+    expect(submitted.status).toBe(200);
+    expect(await submitted.json()).toMatchObject({ ok: true });
+    const after = await env.DB.prepare(
+      "SELECT COUNT(*) n FROM reviews",
+    ).first<{ n: number }>();
+    expect(after?.n).toBe((before?.n || 0) + 1);
+  });
+
   it("does not leak tokens when delivery is unconfigured and keeps callback closed", async () => {
     const previousUrl = (env as { MAIL_DELIVERY_URL?: string }).MAIL_DELIVERY_URL;
     (env as { MAIL_DELIVERY_URL?: string }).MAIL_DELIVERY_URL = "";

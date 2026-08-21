@@ -59,9 +59,10 @@ const moocCourse = {
 
 async function mockSubmitApi(
   page: Page,
-  options: { campusEnabled?: boolean } = {},
+  options: { campusEnabled?: boolean; authenticated?: boolean } = {},
 ) {
   const posted: Record<string, unknown>[] = [];
+  const authenticated = options.authenticated ?? true;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config")
@@ -71,7 +72,8 @@ async function mockSubmitApi(
     if (url.pathname === "/api/user/session")
       return route.fulfill({
         json: {
-          authenticated: false,
+          authenticated,
+          csrfToken: authenticated ? "csrf-submit" : undefined,
           loginPath: "/login",
           logoutPath: "/logout",
         },
@@ -147,10 +149,10 @@ async function pickTeacher(page: Page, name: string) {
   await page.getByRole("option", { name }).click();
 }
 
-test("site nav always opens the write-review page without a login gate", async ({
+test("site nav always shows write-review and guests are sent to login", async ({
   page,
 }) => {
-  await mockSubmitApi(page);
+  await mockSubmitApi(page, { authenticated: false });
   await page.goto("/courses");
   const submitLink = page
     .getByRole("navigation", { name: "主导航" })
@@ -158,10 +160,24 @@ test("site nav always opens the write-review page without a login gate", async (
   await expect(submitLink).toBeVisible();
   await expect(submitLink.getByText("需要登录")).toHaveCount(0);
   await submitLink.click();
-  await expect(page).toHaveURL(/\/submit$/);
-  await expect(page.getByRole("heading", { name: "写评价" })).toBeVisible();
-  await expect(page.getByText("需要登录")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "提交补充申请" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/login\?from=%2Fsubmit$/);
+  await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.getByText("评价已发布")).toHaveCount(0);
+});
+
+test("logged-out /submit redirects to login with a sanitized from return", async ({
+  page,
+}) => {
+  const posted = await mockSubmitApi(page, { authenticated: false });
+  await page.goto("/submit?courseId=8");
+  await expect(page).toHaveURL(/\/login\?from=/);
+  const url = new URL(page.url());
+  expect(url.pathname).toBe("/login");
+  expect(url.searchParams.get("from")).toBe("/submit?courseId=8");
+  await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
+  await expect(page.getByText("评价已发布")).toHaveCount(0);
+  expect(posted).toHaveLength(0);
 });
 
 test("offline course requires the four dimensions plus overall", async ({

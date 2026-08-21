@@ -1,6 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { OFFLINE_SCORES } from "./review-score-fixtures";
+import {
+  ordinaryWriteHeaders,
+  ordinaryWriteSession,
+  type OrdinaryWriteSession,
+} from "./ordinary-write-session";
 
 const origin = "https://example.com";
 let loginSequence = 180;
@@ -35,12 +40,14 @@ async function login() {
   };
 }
 
-function submitReviewFromIp(body: Record<string, unknown>, ip: string) {
+let writeSession: OrdinaryWriteSession | undefined;
+
+async function submitReviewFromIp(body: Record<string, unknown>, ip: string) {
+  writeSession ??= await ordinaryWriteSession("backend-fixes-writer");
   return SELF.fetch(`${origin}/api/reviews`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
+      ...ordinaryWriteHeaders(writeSession),
       "CF-Connecting-IP": ip,
     },
     body: JSON.stringify(body),
@@ -348,11 +355,11 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
 
   it("atomically approves a catalog request and creates one attached review", async () => {
     const code = unique("CONCURRENT");
+    writeSession ??= await ordinaryWriteSession("backend-fixes-writer");
     const submitted = await SELF.fetch(`${origin}/api/catalog-requests`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Origin: origin,
+        ...ordinaryWriteHeaders(writeSession),
         "CF-Connecting-IP": `198.18.0.${ipSequence++}`,
       },
       body: JSON.stringify({

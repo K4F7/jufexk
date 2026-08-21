@@ -1,17 +1,23 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { MOOC_SCORES, OFFLINE_SCORES } from "./review-score-fixtures";
+import {
+  ordinaryWriteHeaders,
+  ordinaryWriteSession,
+  type OrdinaryWriteSession,
+} from "./ordinary-write-session";
 
 const origin = "https://example.com";
 let ipSequence = 60;
 let loginSequence = 60;
+let writeSession: OrdinaryWriteSession | undefined;
 
-function publicPost(path: string, body: Record<string, unknown>) {
+async function publicPost(path: string, body: Record<string, unknown>) {
+  writeSession ??= await ordinaryWriteSession("catalog-request-writer");
   return SELF.fetch(`${origin}${path}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
+      ...ordinaryWriteHeaders(writeSession),
       "CF-Connecting-IP": `198.18.0.${ipSequence++}`,
     },
     body: JSON.stringify(body),

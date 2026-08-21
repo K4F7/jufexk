@@ -1,10 +1,5 @@
 import type { Context } from "hono";
-import {
-  canOrdinaryUserWrite,
-  ordinaryUserCsrfOk,
-  originOk,
-  resolveOrdinaryUser,
-} from "./ordinary-user-session";
+import { requireOrdinaryWriteUser } from "./ordinary-user-session";
 
 const fail = (
   c: Context,
@@ -129,13 +124,7 @@ function parseIdempotencyKey(raw: string | undefined) {
 }
 
 async function requireWriteUser(c: Context) {
-  const user = await resolveOrdinaryUser(c);
-  if (!user) return { error: fail(c, "请先登录后再认可", 401) };
-  if (!canOrdinaryUserWrite(user))
-    return { error: fail(c, "当前账号无法认可评价", 403) };
-  if (!originOk(c) || !ordinaryUserCsrfOk(c))
-    return { error: fail(c, "安全校验失败，请刷新后重试", 403) };
-  return { user };
+  return requireOrdinaryWriteUser(c, "请先登录后再认可", "当前账号无法认可评价");
 }
 
 export async function decoratePublicReviews(
