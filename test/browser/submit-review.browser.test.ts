@@ -206,10 +206,10 @@ test("gate comes first and the full form appears after entry", async ({
   const teacherSelect = page.getByRole("button", { name: /任课教师/ });
   await expect(teacherSelect).toBeVisible();
   await expect(teacherSelect).toBeDisabled();
-  await expect(page.getByRole("radiogroup", { name: "上课表现" })).toBeVisible();
-  await expect(page.getByRole("radiogroup", { name: "点名频率" })).toBeVisible();
-  await expect(page.getByRole("radiogroup", { name: "你感受到的给分" })).toBeVisible();
-  await expect(page.getByRole("radiogroup", { name: "考核压力" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "课程难度" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "作业多少" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "给分好坏" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "收获多少" })).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "本次推荐度" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "补充说明" })).toBeVisible();
   await expect(page.getByRole("button", { name: "提交评价" })).toBeVisible();
@@ -281,43 +281,24 @@ test("offline course requires the four dimensions plus overall", async ({
   await expect(page.getByRole("combobox", { name: "课程" })).toHaveValue("");
   await expect(
     page
-      .getByRole("radiogroup", { name: "上课表现" })
+      .getByRole("radiogroup", { name: "课程难度" })
       .getByRole("radio", { checked: true }),
   ).toHaveCount(0);
 });
 
-test("mooc course drops offline-only questions and keeps common scores", async ({
+test("mooc course drops offline-only questions", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
   await passGate(page);
-
-  await pickScore(page, "上课表现", "4");
-  await pickScore(page, "点名频率", "3");
-  await pickScore(page, "你感受到的给分", "5");
-  await pickScore(page, "考核压力", "2");
-
   await chooseCourse(page, "思政", "思政网课");
 
   await expect(page.getByRole("radiogroup", { name: "点名频率" })).toHaveCount(0);
   await expect(page.getByText(/仅线下适用/)).toBeVisible();
-  await expect(
-    page
-      .getByRole("radiogroup", { name: "上课表现" })
-      .getByRole("radio", { name: "4", exact: true }),
-  ).toBeChecked();
-  await expect(
-    page
-      .getByRole("radiogroup", { name: "你感受到的给分" })
-      .getByRole("radio", { name: "5", exact: true }),
-  ).toBeChecked();
-  await expect(
-    page
-      .getByRole("radiogroup", { name: "考核压力" })
-      .getByRole("radio", { name: "2", exact: true }),
-  ).toBeChecked();
-
+  await pickScore(page, "上课表现", "4");
+  await pickScore(page, "你感受到的给分", "5");
+  await pickScore(page, "考核压力", "2");
   await pickTeacher(page, "网课教师");
   await pickScore(page, "本次推荐度", "4");
   await page.getByRole("button", { name: "提交评价" }).click();
