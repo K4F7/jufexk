@@ -53,6 +53,7 @@ PROTECTED_OUT_MARKERS = (
     "frozen-historical-v5-candidate-v6",
     "frozen-historical-v5-candidate-v7",
     "frozen-historical-v5-candidate-v8",
+    "frozen-historical-v5-candidate-v9",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -282,6 +283,66 @@ def load_owner_discard_keys(path: Path | None) -> set[str]:
     return discarded
 
 
+def _matrix_key(value: object, label: str) -> str:
+    if not isinstance(value, str) or value.count("|") != 2:
+        raise V5FreezeError(f"{label} must be worksheet|row|column")
+    return value
+
+
+def load_owner_verdicts(
+    path: Path | None,
+) -> tuple[set[str], dict[str, str], set[tuple[str, str]]]:
+    if path is None:
+        return set(), {}, set()
+    raw = read_json(path)
+    if not isinstance(raw, dict):
+        raise V5FreezeError("owner verdicts file must be an object")
+    discard_raw = raw.get("discard_labeled_keys", [])
+    override_raw = raw.get("course_overrides", [])
+    relation_raw = raw.get("approved_relations", [])
+    if not isinstance(discard_raw, list) or not isinstance(override_raw, list) or not isinstance(relation_raw, list):
+        raise V5FreezeError("owner verdicts lists are invalid")
+    if not discard_raw and not override_raw and not relation_raw:
+        raise V5FreezeError("owner verdicts file is empty")
+
+    labeled_discard: set[str] = set()
+    for key in discard_raw:
+        matrix_key = _matrix_key(key, "labeled owner discard key")
+        if matrix_key in labeled_discard:
+            raise V5FreezeError(f"duplicate labeled owner discard key: {matrix_key}")
+        labeled_discard.add(matrix_key)
+
+    course_overrides: dict[str, str] = {}
+    for item in override_raw:
+        if not isinstance(item, dict):
+            raise V5FreezeError("owner course override must be an object")
+        key = _matrix_key(item.get("key"), "owner course override key")
+        code = item.get("catalog_course_code")
+        if not isinstance(code, str) or not code.strip():
+            raise V5FreezeError(f"owner course override needs a catalog course code: {key}")
+        if key in course_overrides and course_overrides[key] != code:
+            raise V5FreezeError(f"conflicting owner course override: {key}")
+        if key in course_overrides:
+            raise V5FreezeError(f"duplicate owner course override: {key}")
+        if key in labeled_discard:
+            raise V5FreezeError(f"owner course override overlaps labeled discard: {key}")
+        course_overrides[key] = code
+
+    approved_relations: set[tuple[str, str]] = set()
+    for item in relation_raw:
+        if not isinstance(item, dict):
+            raise V5FreezeError("owner approved relation must be an object")
+        code = item.get("catalog_course_code")
+        label = item.get("catalog_teacher_label")
+        if not isinstance(code, str) or not code.strip() or not isinstance(label, str) or not label.strip():
+            raise V5FreezeError("owner approved relation needs course code and teacher label")
+        pair = (code, label)
+        if pair in approved_relations:
+            raise V5FreezeError(f"duplicate owner approved relation: {code} × {label}")
+        approved_relations.add(pair)
+    return labeled_discard, course_overrides, approved_relations
+
+
 def english_prefix_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     if visible == "学术英语":
         prefixes: tuple[str, ...] = ("学术英语",)
@@ -471,6 +532,9 @@ def freeze_v5_production_candidate(
     imported_packages: tuple[tuple[str, int], ...] = IMPORTED_PACKAGES,
     teacher_overrides: dict[tuple[str, int], str] | None = None,
     owner_discarded_keys: set[str] | None = None,
+    owner_labeled_discard_keys: set[str] | None = None,
+    owner_course_overrides: dict[str, str] | None = None,
+    owner_approved_relations: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     if out.exists():
         raise V5FreezeError(f"refusing existing output: {out}")
@@ -490,10 +554,33 @@ def freeze_v5_production_candidate(
         raise V5FreezeError("approved catalog manifest hash mismatch")
     if (catalog_manifest.get("artifact") or {}).get("sha256") != expected_catalog_artifact_sha256:
         raise V5FreezeError("approved catalog artifact hash mismatch")
-    courses, _teachers, relations, course_names, teacher_names = catalog_indexes(catalog_rows)
+    courses, teachers, relations, course_names, teacher_names = catalog_indexes(catalog_rows)
     overrides = teacher_overrides or {}
     discarded_keys = set(owner_discarded_keys or ())
     remaining_discard = set(discarded_keys)
+    labeled_discard = set(owner_labeled_discard_keys or ())
+    remaining_labeled = set(labeled_discard)
+    course_overrides = dict(owner_course_overrides or {})
+    remaining_overrides = set(course_overrides)
+    approved_relations = set(owner_approved_relations or ())
+    remaining_approved = set(approved_relations)
+    overlap = discarded_keys & labeled_discard
+    if overlap:
+        raise V5FreezeError(f"owner discard key is also a labeled discard: {sorted(overlap)[0]}")
+    overlap = discarded_keys & remaining_overrides
+    if overlap:
+        raise V5FreezeError(f"owner discard key also has a course override: {sorted(overlap)[0]}")
+    overlap = labeled_discard & remaining_overrides
+    if overlap:
+        raise V5FreezeError(f"labeled discard key also has a course override: {sorted(overlap)[0]}")
+    for key, code in course_overrides.items():
+        if code not in courses:
+            raise V5FreezeError(f"owner course override is not in catalog: {key} -> {code}")
+    for pair in approved_relations:
+        if pair in relations:
+            raise V5FreezeError(f"owner approved relation already exists in catalog: {pair[0]} × {pair[1]}")
+        if pair[0] not in courses or pair[1] not in teachers:
+            raise V5FreezeError(f"owner approved relation is missing catalog identity: {pair[0]} × {pair[1]}")
 
     importable: list[dict[str, Any]] = []
     pending_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
@@ -524,7 +611,7 @@ def freeze_v5_production_candidate(
             "legacy_teacher_name": row.get("teacher"),
         }
         if key in imported_keys:
-            if key in discarded_keys:
+            if key in discarded_keys or key in labeled_discard or key in course_overrides:
                 raise V5FreezeError(f"owner discard key already imported: {key}")
             excluded.append({**common, "reason": "already_imported", "detail": "replay_forbidden_batch"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
@@ -545,6 +632,13 @@ def freeze_v5_production_candidate(
             excluded.append({**common, "reason": "owner_discarded", "detail": "empty_teacher_owner_discard"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
             continue
+        if key in labeled_discard:
+            if not cleaned_teacher:
+                raise V5FreezeError(f"labeled owner discard key has no teacher label: {key}")
+            remaining_labeled.discard(key)
+            excluded.append({**common, "reason": "owner_discarded", "detail": "labeled_teacher_owner_discard"})
+            lineage.append({**common, "partition": "excluded", "review_id": None})
+            continue
         if not str(mapped_row.get("teacher") or "").strip():
             excluded.append({**common, "reason": "missing_teacher", "detail": "empty_source_teacher_label"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
@@ -557,6 +651,12 @@ def freeze_v5_production_candidate(
         course, teacher, course_method, teacher_method, course_name = match_row(
             mapped_row, courses, relations, course_names, teacher_names
         )
+        if key in course_overrides:
+            remaining_overrides.discard(key)
+            course = courses[course_overrides[key]]
+            if not teacher:
+                raise V5FreezeError(f"owner course override needs a matched teacher: {key}")
+            course_method = "owner_course_remap"
         if not course or not teacher:
             if not course:
                 unresolved_key = ("course", course_name)
@@ -597,41 +697,46 @@ def freeze_v5_production_candidate(
 
         pair = (course["courseCode"], teacher["sourceTeacherLabel"])
         if pair not in relations:
-            pending = pending_by_pair.setdefault(
-                pair,
-                {
-                    "schema_version": "legacy-catalog-addition-request-v1",
-                    "request_kind": "relation",
-                    "catalog_course_code": pair[0],
-                    "catalog_teacher_label": pair[1],
-                    "reason": "approved_catalog_relation_missing",
-                    "terminal_status": "owner_review_required",
-                    "keys": [],
-                },
-            )
-            pending["keys"].append(key)
-            lineage.append(
-                {
-                    **common,
-                    "partition": "pending_relation",
-                    "review_id": None,
-                    "catalog_course_code": pair[0],
-                    "catalog_teacher_label": pair[1],
-                }
-            )
-            continue
-
-        basis = {
-            "exact_source_identity": "existing_catalog_relation",
-            "stable_normalized_alias": "existing_catalog_relation",
-            "pair_relation_unique": "pair_relation_unique",
-            "pe_public_display_unique": "pe_one_teacher_one_course",
-            "pe_public_display_family": "pe_one_teacher_one_course",
-            "pe_one_teacher_one_course": "pe_one_teacher_one_course",
-            "english_teacher_unique": "english_teacher_unique",
-            "english_teacher_level": "english_teacher_level",
-            "official_alias_unique": "official_alias_unique",
-        }.get(course_method, "existing_catalog_relation")
+            if pair in approved_relations:
+                remaining_approved.discard(pair)
+                basis = "owner_approved_relation_addition"
+            else:
+                pending = pending_by_pair.setdefault(
+                    pair,
+                    {
+                        "schema_version": "legacy-catalog-addition-request-v1",
+                        "request_kind": "relation",
+                        "catalog_course_code": pair[0],
+                        "catalog_teacher_label": pair[1],
+                        "reason": "approved_catalog_relation_missing",
+                        "terminal_status": "owner_review_required",
+                        "keys": [],
+                    },
+                )
+                pending["keys"].append(key)
+                lineage.append(
+                    {
+                        **common,
+                        "partition": "pending_relation",
+                        "review_id": None,
+                        "catalog_course_code": pair[0],
+                        "catalog_teacher_label": pair[1],
+                    }
+                )
+                continue
+        else:
+            basis = {
+                "exact_source_identity": "existing_catalog_relation",
+                "stable_normalized_alias": "existing_catalog_relation",
+                "pair_relation_unique": "pair_relation_unique",
+                "pe_public_display_unique": "pe_one_teacher_one_course",
+                "pe_public_display_family": "pe_one_teacher_one_course",
+                "pe_one_teacher_one_course": "pe_one_teacher_one_course",
+                "english_teacher_unique": "english_teacher_unique",
+                "english_teacher_level": "english_teacher_level",
+                "official_alias_unique": "official_alias_unique",
+                "owner_course_remap": "owner_course_remap",
+            }.get(course_method, "existing_catalog_relation")
         projected = project_importable(row, course, teacher, basis)
         importable.append(projected)
         lineage.append(
@@ -664,6 +769,15 @@ def freeze_v5_production_candidate(
     if remaining_discard:
         leftover = ", ".join(sorted(remaining_discard))
         raise V5FreezeError(f"owner discard keys were not empty-teacher evaluations: {leftover}")
+    if remaining_labeled:
+        leftover = ", ".join(sorted(remaining_labeled))
+        raise V5FreezeError(f"labeled owner discard keys were not used: {leftover}")
+    if remaining_overrides:
+        leftover = ", ".join(sorted(remaining_overrides))
+        raise V5FreezeError(f"owner course overrides were not used: {leftover}")
+    if remaining_approved:
+        leftover = ", ".join(f"{code} × {label}" for code, label in sorted(remaining_approved))
+        raise V5FreezeError(f"owner approved relations were not used: {leftover}")
     if len(importable) + len(excluded) + sum(len(item["keys"]) for item in pending_relations) != expected_rows:
         raise V5FreezeError("v5 partition counts do not cover every evaluation")
     if any(item["partition"] is None for item in lineage):
@@ -724,7 +838,11 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--teacher-overrides")
     parser.add_argument("--owner-discard-keys")
+    parser.add_argument("--owner-verdicts")
     args = parser.parse_args()
+    labeled_discard, course_overrides, approved_relations = load_owner_verdicts(
+        Path(args.owner_verdicts) if args.owner_verdicts else None
+    )
     result = freeze_v5_production_candidate(
         Path(args.source),
         Path(args.catalog),
@@ -734,6 +852,9 @@ def main() -> int:
         owner_discarded_keys=load_owner_discard_keys(
             Path(args.owner_discard_keys) if args.owner_discard_keys else None
         ),
+        owner_labeled_discard_keys=labeled_discard,
+        owner_course_overrides=course_overrides,
+        owner_approved_relations=approved_relations,
     )
     print(json.dumps({"status": result["status"], "counts": result["counts"]}, ensure_ascii=False))
     return 0

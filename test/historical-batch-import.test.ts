@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { V5_IMPORTABLE_COUNT } from "../src/historical-batch-imports";
 
 const origin = "https://example.com";
 
@@ -216,12 +217,12 @@ describe("issue111 historical batch import", () => {
 const v5Manifest = {
   contractVersion: "legacy-v5-historical-freeze-v1",
   status: "package_ready",
-  counts: { importable: 357 },
+  counts: { importable: V5_IMPORTABLE_COUNT },
   schemas: {
     "importable-legacy-reviews.jsonl": "legacy-approved-review-v1",
   },
   files: {
-    "importable-legacy-reviews.jsonl": { rows: 357, sha256: "" },
+    "importable-legacy-reviews.jsonl": { rows: V5_IMPORTABLE_COUNT, sha256: "" },
   },
   lineage: {
     approvedPackageContract: "legacy-review-approved-package-v1",
@@ -256,7 +257,7 @@ async function importV5Package(
 }
 
 describe("v5 historical batch import", () => {
-  it("imports 357 reviews on the v5 path and stays idempotent", async () => {
+  it("imports the authorized v5 package size and stays idempotent", async () => {
     const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const courseCode = `V5IMP-${suffix}`;
     const teacherLabel = `v5教师-${suffix}`;
@@ -280,7 +281,7 @@ describe("v5 historical batch import", () => {
       .run();
 
     try {
-      const records = Array.from({ length: 357 }, (_, index) =>
+      const records = Array.from({ length: V5_IMPORTABLE_COUNT }, (_, index) =>
         record(index ? `${reviewId}-${index}` : reviewId, courseCode, teacherLabel),
       );
       const approvedPackage = await importV5Package(records);
@@ -301,7 +302,7 @@ describe("v5 historical batch import", () => {
       expect(wrongContract.status).toBe(422);
 
       let created = 0;
-      for (let offset = 0; offset < 357; offset += 50) {
+      for (let offset = 0; offset < V5_IMPORTABLE_COUNT; offset += 50) {
         const response = await SELF.fetch(
           `${origin}/api/admin/historical-review-v5-imports`,
           {
@@ -313,10 +314,10 @@ describe("v5 historical batch import", () => {
         expect([200, 201]).toContain(response.status);
         created += (await response.json<{ created: number }>()).created;
       }
-      expect(created).toBe(357);
+      expect(created).toBe(V5_IMPORTABLE_COUNT);
 
       let existing = 0;
-      for (let offset = 0; offset < 357; offset += 50) {
+      for (let offset = 0; offset < V5_IMPORTABLE_COUNT; offset += 50) {
         const response = await SELF.fetch(
           `${origin}/api/admin/historical-review-v5-imports`,
           {
@@ -328,7 +329,7 @@ describe("v5 historical batch import", () => {
         expect(response.status).toBe(200);
         existing += (await response.json<{ existing: number }>()).existing;
       }
-      expect(existing).toBe(357);
+      expect(existing).toBe(V5_IMPORTABLE_COUNT);
     } finally {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(

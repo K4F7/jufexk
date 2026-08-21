@@ -8,7 +8,7 @@ export const APPROVED_CATALOG_CONTENT_SHA256 =
   "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588";
 export const V5_FREEZE_CONTRACT = "legacy-v5-historical-freeze-v1";
 export const V5_SOURCE_CONTRACT = "legacy-review-approved-package-v1";
-export const V5_IMPORTABLE_COUNT = 357;
+export const V5_IMPORTABLE_COUNT = 35;
 export const V5_APPROVED_PACKAGE_MANIFEST_SHA256 =
   "81566854cb1b4a0d13507364552ae3152fc30929ca01065523f97ad1b8f18034";
 

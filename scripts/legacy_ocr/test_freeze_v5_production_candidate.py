@@ -12,6 +12,7 @@ from freeze_v5_production_candidate import (
     is_modified_college_english,
     is_plain_college_english,
     load_owner_discard_keys,
+    load_owner_verdicts,
     sha256_text,
 )
 
@@ -182,6 +183,9 @@ def freeze(
     imported: list[dict],
     teacher_overrides=None,
     owner_discarded_keys=None,
+    owner_labeled_discard_keys=None,
+    owner_course_overrides=None,
+    owner_approved_relations=None,
     **catalog_kwargs,
 ):
     source, evaluations_sha = write_source(root, rows)
@@ -200,6 +204,9 @@ def freeze(
         imported_packages=(("already.jsonl", len(imported)),),
         teacher_overrides=teacher_overrides,
         owner_discarded_keys=owner_discarded_keys,
+        owner_labeled_discard_keys=owner_labeled_discard_keys,
+        owner_course_overrides=owner_course_overrides,
+        owner_approved_relations=owner_approved_relations,
     )
 
 
@@ -391,6 +398,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 "frozen-historical-v5-candidate-v6",
                 "frozen-historical-v5-candidate-v7",
                 "frozen-historical-v5-candidate-v8",
+                "frozen-historical-v5-candidate-v9",
             ):
                 with self.assertRaises(V5FreezeError):
                     freeze_v5_production_candidate(
@@ -699,6 +707,181 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                     course_name="音乐鉴赏",
                     owner_discarded_keys={"主要课程|56|F"},
                 )
+
+    def test_labeled_owner_discard_excludes_filled_teacher(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [
+                    evaluation("思政课|42|G", "近代史", "汪乐"),
+                    evaluation("思政课|8|F", "货币银行学", "孙爱琳"),
+                ],
+                [],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "汪乐",
+                        "normalizedTeacherLabel": "汪乐",
+                    }
+                ],
+                extra_courses=[course("1012100193", "中国近现代史纲要")],
+                owner_labeled_discard_keys={"思政课|42|G"},
+            )
+            excluded = [
+                json.loads(line)
+                for line in (root / "out" / "excluded.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            discarded = [row for row in excluded if row["reason"] == "owner_discarded"]
+            self.assertEqual(discarded[0]["key"], "思政课|42|G")
+            self.assertEqual(discarded[0]["detail"], "labeled_teacher_owner_discard")
+            pending = (root / "out" / "catalog-relation-pending.jsonl").read_text(encoding="utf-8")
+            self.assertEqual(pending, "")
+
+    def test_labeled_owner_discard_rejects_empty_teacher(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(V5FreezeError, "has no teacher label"):
+                freeze(
+                    root,
+                    [evaluation("思政课|42|G", "近代史", "")],
+                    [],
+                    owner_labeled_discard_keys={"思政课|42|G"},
+                )
+
+    def test_owner_course_remap_binds_existing_catalog_relation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [evaluation("思政课|12|G", "马原", "李德满")],
+                [],
+                extra_courses=[
+                    course("1012100533", "马克思主义基本原理"),
+                    course("1012100193", "中国近现代史纲要"),
+                ],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "李德满",
+                        "normalizedTeacherLabel": "李德满",
+                    }
+                ],
+                extra_relations=[("1012100193", "李德满")],
+                owner_course_overrides={"思政课|12|G": "1012100193"},
+            )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(rows[0]["catalog_course_code"], "1012100193")
+            self.assertEqual(rows[0]["catalog_teacher_label"], "李德满")
+            self.assertEqual(rows[0]["decision_basis"], "owner_course_remap")
+            pending = (root / "out" / "catalog-relation-pending.jsonl").read_text(encoding="utf-8")
+            self.assertEqual(pending, "")
+
+    def test_owner_approved_relation_is_importable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [evaluation("体育课|44|D", "篮球", "余文斌")],
+                [],
+                course_code="1005000472",
+                course_name="篮球",
+                teacher_label="余文斌",
+                relation=False,
+                owner_approved_relations={("1005000472", "余文斌")},
+            )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            pending = (root / "out" / "catalog-relation-pending.jsonl").read_text(encoding="utf-8")
+            self.assertEqual(rows[0]["catalog_course_code"], "1005000472")
+            self.assertEqual(rows[0]["catalog_teacher_label"], "余文斌")
+            self.assertEqual(rows[0]["decision_basis"], "owner_approved_relation_addition")
+            self.assertEqual(pending, "")
+
+    def test_owner_approved_relation_already_in_catalog_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(V5FreezeError, "already exists in catalog"):
+                freeze(
+                    root,
+                    [evaluation("体育课|44|D", "篮球", "余文斌")],
+                    [],
+                    course_code="1005000472",
+                    course_name="篮球",
+                    teacher_label="余文斌",
+                    owner_approved_relations={("1005000472", "余文斌")},
+                )
+
+    def test_unused_owner_verdicts_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(V5FreezeError, "labeled owner discard keys were not used"):
+                freeze(
+                    Path(temporary),
+                    [evaluation("主要课程|173|F", "货币银行学", "孙爱琳")],
+                    [],
+                    owner_labeled_discard_keys={"思政课|42|G"},
+                )
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(V5FreezeError, "owner course overrides were not used"):
+                freeze(
+                    Path(temporary),
+                    [evaluation("主要课程|173|F", "货币银行学", "孙爱琳")],
+                    [],
+                    extra_courses=[course("1012100193", "中国近现代史纲要")],
+                    owner_course_overrides={"思政课|12|G": "1012100193"},
+                )
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(V5FreezeError, "owner approved relations were not used"):
+                freeze(
+                    Path(temporary),
+                    [evaluation("主要课程|173|F", "货币银行学", "孙爱琳")],
+                    [],
+                    extra_courses=[course("1005000472", "篮球")],
+                    extra_teachers=[
+                        {
+                            "schemaVersion": "catalog-baseline-teacher/v1",
+                            "sourceTeacherLabel": "余文斌",
+                            "normalizedTeacherLabel": "余文斌",
+                        }
+                    ],
+                    owner_approved_relations={("1005000472", "余文斌")},
+                )
+
+    def test_load_owner_verdicts_rejects_bad_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "verdicts.json"
+            path.write_text(json.dumps({}), encoding="utf-8")
+            with self.assertRaisesRegex(V5FreezeError, "owner verdicts file is empty"):
+                load_owner_verdicts(path)
+            path.write_text(
+                json.dumps(
+                    {
+                        "discard_labeled_keys": ["思政课|42|G"],
+                        "course_overrides": [{"key": "思政课|42|G", "catalog_course_code": "1012100193"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(V5FreezeError, "overlaps labeled discard"):
+                load_owner_verdicts(path)
+            path.write_text(
+                json.dumps(
+                    {
+                        "approved_relations": [
+                            {"catalog_course_code": "1005000472", "catalog_teacher_label": "余文斌"},
+                            {"catalog_course_code": "1005000472", "catalog_teacher_label": "余文斌"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(V5FreezeError, "duplicate owner approved relation"):
+                load_owner_verdicts(path)
 
     def test_teacher_override_unmatched_uses_filled_label(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
