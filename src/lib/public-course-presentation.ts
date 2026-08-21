@@ -276,6 +276,7 @@ export const PUBLIC_CATEGORY_FILTERS = [
   "english",
   "ideology",
   "math",
+  "mooc",
 ] as const;
 
 export type PublicCategoryFilter = (typeof PUBLIC_CATEGORY_FILTERS)[number];
@@ -286,20 +287,34 @@ export function isPublicListCategoryFilter(
   return (PUBLIC_CATEGORY_FILTERS as readonly string[]).includes(value);
 }
 
+export function publicHasMoocTagSql(alias = "c"): string {
+  return `EXISTS (SELECT 1 FROM course_tags WHERE course_id=${alias}.id AND tag='mooc')`;
+}
+
+export function publicCategoryFilterError(): string {
+  return `公开筛选仅支持 ${PUBLIC_CATEGORY_FILTERS.join("、")}`;
+}
+
 /**
  * sports: existing PE presentation match or scheme_key=pe.
- * english / ideology / math: exact scheme_key.
+ * english / ideology / math: exact scheme_key, excluding mooc-tagged rows.
+ * mooc: every public course with the mooc tag, regardless of scheme_key.
  */
 export function publicCategoryFilterSql(
   category: string,
   alias = "c",
 ): { sql: string; args: string[] } {
   if (!category) return { sql: "1=1", args: [] };
+  const moocTag = publicHasMoocTagSql(alias);
+  if (category === "mooc") return { sql: moocTag, args: [] };
   if (category === "sports") {
     return {
-      sql: `(${publicSportsMatchSql(alias)} OR ${alias}.scheme_key='pe')`,
+      sql: `((${publicSportsMatchSql(alias)} OR ${alias}.scheme_key='pe') AND NOT ${moocTag})`,
       args: [],
     };
   }
-  return { sql: `${alias}.scheme_key=?`, args: [category] };
+  return {
+    sql: `(${alias}.scheme_key=? AND NOT ${moocTag})`,
+    args: [category],
+  };
 }
