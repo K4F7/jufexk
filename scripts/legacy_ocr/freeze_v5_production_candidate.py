@@ -52,6 +52,7 @@ PROTECTED_OUT_MARKERS = (
     "frozen-historical-v5-candidate-v5",
     "frozen-historical-v5-candidate-v6",
     "frozen-historical-v5-candidate-v7",
+    "frozen-historical-v5-candidate-v8",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -59,6 +60,7 @@ IMPORTED_PACKAGES = (
     ("issue111-isolated-usable-v1/reviews.jsonl", 120),
     ("issue111-isolated-shorthand-v1/reviews.jsonl", 12),
     ("issue111-pe-course-teacher-v1/reviews.jsonl", 64),
+    ("frozen-historical-v5-candidate-v7/importable-legacy-reviews.jsonl", 357),
 )
 APPROVED_FIELDS = (
     "catalog_course_code",
@@ -263,6 +265,23 @@ def load_teacher_overrides(path: Path | None) -> dict[tuple[str, int], str]:
     return overrides
 
 
+def load_owner_discard_keys(path: Path | None) -> set[str]:
+    if path is None:
+        return set()
+    raw = read_json(path)
+    keys = raw.get("keys") if isinstance(raw, dict) else None
+    if not isinstance(keys, list) or not keys:
+        raise V5FreezeError("owner discard file must contain keys")
+    discarded: set[str] = set()
+    for key in keys:
+        if not isinstance(key, str) or key.count("|") != 2:
+            raise V5FreezeError("owner discard key must be worksheet|row|column")
+        if key in discarded:
+            raise V5FreezeError(f"duplicate owner discard key: {key}")
+        discarded.add(key)
+    return discarded
+
+
 def english_prefix_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     if visible == "学术英语":
         prefixes: tuple[str, ...] = ("学术英语",)
@@ -451,6 +470,7 @@ def freeze_v5_production_candidate(
     expected_catalog_artifact_sha256: str = APPROVED_CATALOG_ARTIFACT_SHA256,
     imported_packages: tuple[tuple[str, int], ...] = IMPORTED_PACKAGES,
     teacher_overrides: dict[tuple[str, int], str] | None = None,
+    owner_discarded_keys: set[str] | None = None,
 ) -> dict[str, Any]:
     if out.exists():
         raise V5FreezeError(f"refusing existing output: {out}")
@@ -472,6 +492,8 @@ def freeze_v5_production_candidate(
         raise V5FreezeError("approved catalog artifact hash mismatch")
     courses, _teachers, relations, course_names, teacher_names = catalog_indexes(catalog_rows)
     overrides = teacher_overrides or {}
+    discarded_keys = set(owner_discarded_keys or ())
+    remaining_discard = set(discarded_keys)
 
     importable: list[dict[str, Any]] = []
     pending_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
@@ -502,6 +524,8 @@ def freeze_v5_production_candidate(
             "legacy_teacher_name": row.get("teacher"),
         }
         if key in imported_keys:
+            if key in discarded_keys:
+                raise V5FreezeError(f"owner discard key already imported: {key}")
             excluded.append({**common, "reason": "already_imported", "detail": "replay_forbidden_batch"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
             continue
@@ -514,6 +538,13 @@ def freeze_v5_production_candidate(
         mapped_row["teacher"] = cleaned_teacher
         if cleaned_teacher:
             common["legacy_teacher_name"] = cleaned_teacher
+        if key in discarded_keys:
+            if cleaned_teacher:
+                raise V5FreezeError(f"owner discard key has a teacher label: {key}")
+            remaining_discard.discard(key)
+            excluded.append({**common, "reason": "owner_discarded", "detail": "empty_teacher_owner_discard"})
+            lineage.append({**common, "partition": "excluded", "review_id": None})
+            continue
         if not str(mapped_row.get("teacher") or "").strip():
             excluded.append({**common, "reason": "missing_teacher", "detail": "empty_source_teacher_label"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
@@ -630,6 +661,9 @@ def freeze_v5_production_candidate(
         item["keys"] = sorted(item["keys"])
     lineage.sort(key=lambda row: str(row["key"]))
 
+    if remaining_discard:
+        leftover = ", ".join(sorted(remaining_discard))
+        raise V5FreezeError(f"owner discard keys were not empty-teacher evaluations: {leftover}")
     if len(importable) + len(excluded) + sum(len(item["keys"]) for item in pending_relations) != expected_rows:
         raise V5FreezeError("v5 partition counts do not cover every evaluation")
     if any(item["partition"] is None for item in lineage):
@@ -689,6 +723,7 @@ def main() -> int:
     parser.add_argument("--imported-root", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--teacher-overrides")
+    parser.add_argument("--owner-discard-keys")
     args = parser.parse_args()
     result = freeze_v5_production_candidate(
         Path(args.source),
@@ -696,6 +731,9 @@ def main() -> int:
         Path(args.imported_root),
         Path(args.out),
         teacher_overrides=load_teacher_overrides(Path(args.teacher_overrides) if args.teacher_overrides else None),
+        owner_discarded_keys=load_owner_discard_keys(
+            Path(args.owner_discard_keys) if args.owner_discard_keys else None
+        ),
     )
     print(json.dumps({"status": result["status"], "counts": result["counts"]}, ensure_ascii=False))
     return 0

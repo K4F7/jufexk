@@ -11,6 +11,7 @@ from freeze_v5_production_candidate import (
     freeze_v5_production_candidate,
     is_modified_college_english,
     is_plain_college_english,
+    load_owner_discard_keys,
     sha256_text,
 )
 
@@ -175,7 +176,14 @@ def course(code: str, name: str) -> dict:
     }
 
 
-def freeze(root: Path, rows: list[dict], imported: list[dict], teacher_overrides=None, **catalog_kwargs):
+def freeze(
+    root: Path,
+    rows: list[dict],
+    imported: list[dict],
+    teacher_overrides=None,
+    owner_discarded_keys=None,
+    **catalog_kwargs,
+):
     source, evaluations_sha = write_source(root, rows)
     catalog, hashes = write_catalog(root, **catalog_kwargs)
     imported_root = write_imported(root, imported)
@@ -191,6 +199,7 @@ def freeze(root: Path, rows: list[dict], imported: list[dict], teacher_overrides
         expected_catalog_artifact_sha256=hashes["artifact"],
         imported_packages=(("already.jsonl", len(imported)),),
         teacher_overrides=teacher_overrides,
+        owner_discarded_keys=owner_discarded_keys,
     )
 
 
@@ -381,6 +390,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 "frozen-historical-v5-candidate-v5",
                 "frozen-historical-v5-candidate-v6",
                 "frozen-historical-v5-candidate-v7",
+                "frozen-historical-v5-candidate-v8",
             ):
                 with self.assertRaises(V5FreezeError):
                     freeze_v5_production_candidate(
@@ -608,6 +618,87 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
             self.assertEqual([row["source_row"] for row in importable], [55])
             self.assertEqual(excluded[0]["reason"], "missing_teacher")
             self.assertEqual(excluded[0]["key"], "主要课程|56|F")
+
+    def test_owner_discard_empty_teacher_is_not_missing_teacher(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [
+                    evaluation("主要课程|55|F", "音乐鉴赏", "郑洁"),
+                    evaluation("主要课程|56|F", "音乐鉴赏", ""),
+                ],
+                [],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "郑洁",
+                        "normalizedTeacherLabel": "郑洁",
+                    }
+                ],
+                extra_relations=[("C001", "郑洁")],
+                course_name="音乐鉴赏",
+                owner_discarded_keys={"主要课程|56|F"},
+            )
+            excluded = [
+                json.loads(line)
+                for line in (root / "out" / "excluded.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(excluded[0]["reason"], "owner_discarded")
+            self.assertEqual(excluded[0]["key"], "主要课程|56|F")
+            self.assertEqual(excluded[0]["detail"], "empty_teacher_owner_discard")
+
+    def test_load_owner_discard_keys_rejects_bad_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "discard.json"
+            path.write_text(json.dumps({"keys": ["主要课程|56|F", "主要课程|56|F"]}), encoding="utf-8")
+            with self.assertRaisesRegex(V5FreezeError, "duplicate owner discard key"):
+                load_owner_discard_keys(path)
+            path.write_text(json.dumps({"keys": ["主要课程|56"]}), encoding="utf-8")
+            with self.assertRaisesRegex(V5FreezeError, "worksheet\\|row\\|column"):
+                load_owner_discard_keys(path)
+
+    def test_owner_discard_rejects_filled_teacher(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(V5FreezeError, "has a teacher label"):
+                freeze(
+                    root,
+                    [evaluation("主要课程|56|F", "音乐鉴赏", "")],
+                    [],
+                    teacher_overrides={("主要课程", 56): "樊凤龙"},
+                    course_name="音乐鉴赏",
+                    owner_discarded_keys={"主要课程|56|F"},
+                )
+
+    def test_owner_discard_rejects_already_imported_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(V5FreezeError, "already imported"):
+                freeze(
+                    root,
+                    [evaluation("主要课程|173|F", "货币银行学", "孙爱琳")],
+                    [
+                        {
+                            "worksheet": "主要课程",
+                            "source_row": 173,
+                            "source_column": "F",
+                        }
+                    ],
+                    owner_discarded_keys={"主要课程|173|F"},
+                )
+
+    def test_owner_discard_rejects_unused_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(V5FreezeError, "were not empty-teacher evaluations"):
+                freeze(
+                    root,
+                    [evaluation("主要课程|55|F", "音乐鉴赏", "孙爱琳")],
+                    [],
+                    course_name="音乐鉴赏",
+                    owner_discarded_keys={"主要课程|56|F"},
+                )
 
     def test_teacher_override_unmatched_uses_filled_label(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

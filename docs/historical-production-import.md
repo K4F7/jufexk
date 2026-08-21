@@ -164,19 +164,9 @@ uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py -
 pnpm run historical-import:v5
 ```
 
-## Issue 352：导入 v6 并丢弃剩余空教师格
+## Issue 352：导入 v7
 
-#352 把 v6 的 356 条写入生产。公开历史评价 `882 → 1238`。目录 3740 / 1951 / 11572 与 marker 不变。不重放 522 / 164 / 120 / 12 / 64。正式写入必须用尚不存在的新备份路径。
-
-```powershell
-$env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
-$env:JUFEXK_ADMIN_PASSWORD = '...'
-$env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\v6-historical-<UTC_TIMESTAMP>.sql'
-pnpm run historical-import:v5
-pnpm run historical-import:v5 -- --apply
-```
-
-腾讯表已封存，不能改格。剩余 57 格空教师评价在导入后标为所有者丢弃，不再当 missing_teacher 待办。已补名但目录未绑上的樊凤龙 / Christine / carl 不丢弃。
+#352 已把当时线上钉的 v7（357 条）写入生产。公开历史评价 `882 → 1239`。目录 3740 / 1951 / 11572 与 marker 不变。不重放 522 / 164 / 120 / 12 / 64。**不要再对该包 `--apply`。**
 
 ## Issue 354：候选包内表上带括号教师名一律清洗（v8）
 
@@ -186,6 +176,16 @@ pnpm run historical-import:v5 -- --apply
 
 ```powershell
 uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v8' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json'
+```
+
+## Issue 358：丢弃剩余空教师格（v9）
+
+#358 在 v7 已导入之后，把仍空的 57 格标为 `owner_discarded`。腾讯表已封存，不能改格。樊凤龙 / Christine / carl 已补名，保持 `catalog_identity_unmatched`。v7 的 357 条记入 already_imported。新候选包 v9，不覆盖 v8。不二次 `--apply`。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v9`
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v9' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json' --owner-discard-keys 'D:\19016\Documents\Workload\jufexk-production-inputs\v7-owner-discard-empty-teachers.json'
 ```
 
 
