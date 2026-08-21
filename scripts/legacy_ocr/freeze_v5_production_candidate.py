@@ -80,6 +80,7 @@ PE_PUBLIC_ALIASES = {
 VISIBLE_COURSE_ALIASES = {
     "足球69": "足球",
     "散打上课": "散打",
+    "中国古典诗词歌曲赏析与演唱MOOC": "中国古典诗词歌曲赏析与演唱（MOOC)",
 }
 TRAILING_TEACHER_NOTE = re.compile(r"[（(][^（）()]+[）)]$")
 OFFICIAL_COURSE_ALIASES = {

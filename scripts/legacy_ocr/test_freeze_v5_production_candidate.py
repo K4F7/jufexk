@@ -631,6 +631,32 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
             self.assertEqual(excluded[0]["reason"], "catalog_identity_unmatched")
             self.assertEqual(excluded[0]["legacy_teacher_name"], "表上原名")
 
+    def test_mooc_visible_alias_binds_unique_teacher_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [evaluation("MOOC|18|G", "中国古典诗词歌曲赏析与演唱MOOC", "")],
+                [],
+                teacher_overrides={("MOOC", 18): "李珺"},
+                extra_courses=[course("1504808611", "中国古典诗词歌曲赏析与演唱（MOOC)")],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "李珺",
+                        "normalizedTeacherLabel": "李珺",
+                    }
+                ],
+                extra_relations=[("1504808611", "李珺")],
+            )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(rows[0]["catalog_course_code"], "1504808611")
+            self.assertEqual(rows[0]["catalog_teacher_label"], "李珺")
+            self.assertEqual(rows[0]["comment"], "已批准正文")
+
     def test_strips_course_notes_from_english_teacher_names(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
