@@ -45,6 +45,7 @@ PROTECTED_OUT_MARKERS = (
     "issue111-isolated-usable-v1",
     "issue111-isolated-shorthand-v1",
     "issue111-pe-course-teacher-v1",
+    "frozen-historical-v5-candidate-v1",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -71,8 +72,32 @@ APPROVED_FIELDS = (
 PE_PUBLIC_ALIASES = {
     "健美操": frozenset({"健美操", "健身教练"}),
 }
+VISIBLE_COURSE_ALIASES = {
+    "足球69": "足球",
+    "散打上课": "散打",
+}
+OFFICIAL_COURSE_ALIASES = {
+    "毛概": "毛泽东思想和中国特色社会主义理论体系概论",
+    "马原": "马克思主义基本原理",
+    "近代史": "中国近现代史纲要",
+    "思修": "思想道德与法治",
+    "习概": "习近平新时代中国特色社会主义思想概论",
+}
+UMBRELLA_PE_NAMES = frozenset({
+    "体育1",
+    "体育2",
+    "体育3",
+    "体育4",
+    "体育Ⅰ（留）",
+    "体育Ⅱ（留）",
+    "体育I（留）",
+    "体育II（留）",
+})
+ENGLISH_COLLEGE_PREFIXES = ("大学英语",)
+ENGLISH_LISTENING_PREFIXES = ("英语视听说", "视听说", "高级口语")
 SPECIAL_THEORY_SUFFIX = re.compile(r"专项理论与实践[1-6]$")
 LEVEL_SUFFIX = re.compile(r"[1-6]$")
+ONE_SUFFIX = re.compile(r"(?:专项理论与实践)?1$")
 
 
 class V5FreezeError(ValueError):
@@ -102,18 +127,77 @@ def public_display_family(name: str) -> str:
     return LEVEL_SUFFIX.sub("", value)
 
 
+def visible_course_name(raw: str) -> str:
+    value = normalize_source_label(raw)
+    return VISIBLE_COURSE_ALIASES.get(value, value)
+
+
 def sports_family_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     aliases = PE_PUBLIC_ALIASES.get(visible, frozenset({visible}))
     hits: list[dict[str, Any]] = []
     for course in courses.values():
         current = course.get("currentName")
-        if not isinstance(current, str) or not current:
+        if not isinstance(current, str) or not current or current in UMBRELLA_PE_NAMES:
             continue
         family = public_display_family(current)
+        if family == "体育":
+            continue
         if current in aliases or family in aliases:
             hits.append(course)
     unique = {course["courseCode"]: course for course in hits}
     return [unique[code] for code in sorted(unique)]
+
+
+def pick_canonical(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    def name(course: dict[str, Any]) -> str:
+        return str(course.get("currentName") or "")
+
+    unnumbered = [
+        course for course in candidates
+        if not LEVEL_SUFFIX.search(name(course)) and not SPECIAL_THEORY_SUFFIX.search(name(course))
+    ]
+    ones = [course for course in candidates if ONE_SUFFIX.search(name(course))]
+    ranked = unnumbered or ones or sorted(candidates, key=lambda course: course["courseCode"])
+    return ranked[0]
+
+
+def load_teacher_overrides(path: Path | None) -> dict[tuple[str, int], str]:
+    if path is None:
+        return {}
+    raw = read_json(path)
+    items = raw.get("items") if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        raise V5FreezeError("teacher overrides must contain items")
+    overrides: dict[tuple[str, int], str] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            raise V5FreezeError("invalid teacher override item")
+        worksheet = item.get("worksheet")
+        row = item.get("row")
+        teacher = str(item.get("teacher") or "").strip()
+        if not isinstance(worksheet, str) or not isinstance(row, int) or not teacher:
+            raise V5FreezeError("teacher override needs worksheet, row, and teacher")
+        key = (worksheet, row)
+        if key in overrides and overrides[key] != teacher:
+            raise V5FreezeError(f"conflicting teacher override: {worksheet}|{row}")
+        overrides[key] = teacher
+    return overrides
+
+
+def english_prefix_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    if visible == "学术英语":
+        prefixes = ("学术英语",)
+    elif visible == "高级口语":
+        prefixes = ("高级口语",)
+    elif visible in {"视听说", "英语口语"}:
+        prefixes = ("英语口语", "英语视听说", "视听说") if visible == "英语口语" else ENGLISH_LISTENING_PREFIXES
+    else:
+        prefixes = ENGLISH_COLLEGE_PREFIXES
+    hits = [
+        course for course in courses.values()
+        if isinstance(course.get("currentName"), str) and course["currentName"].startswith(prefixes)
+    ]
+    return hits
 
 
 def verify_v5_source(
@@ -213,17 +297,35 @@ def match_row(
     course_names: dict[str, list[dict[str, Any]]],
     teacher_names: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str, str, str]:
-    course_name = str(row.get("course") or "")
+    raw_course_name = str(row.get("course") or "")
+    course_name = visible_course_name(raw_course_name)
+    official_name = OFFICIAL_COURSE_ALIASES.get(course_name, course_name)
     teacher_name = str(row.get("teacher") or "")
-    course, course_method, _course_candidates = match_identity(course_name, course_names, "currentName")
+    course, course_method, _course_candidates = match_identity(official_name, course_names, "currentName")
+    if course is None and official_name != course_name:
+        course, course_method, _course_candidates = match_identity(course_name, course_names, "currentName")
     teacher, teacher_method, _teacher_candidates = match_identity(teacher_name, teacher_names, "sourceTeacherLabel")
-    pair_course_candidates = course_names.get(normalize_source_label(course_name), [])
-    exact_pair = [candidate for candidate in pair_course_candidates if candidate.get("currentName") == course_name]
+    pair_course_candidates = course_names.get(normalize_source_label(official_name), [])
+    exact_pair = [candidate for candidate in pair_course_candidates if candidate.get("currentName") == official_name]
     pair_course_candidates = exact_pair or pair_course_candidates
-    if not pair_course_candidates and row.get("worksheet") == "体育课" and course_name:
+    worksheet = row.get("worksheet")
+    if not pair_course_candidates and worksheet == "体育课" and course_name:
         pair_course_candidates = sports_family_candidates(course_name, courses)
         if pair_course_candidates and course is None:
             course_method = "pe_public_display_family"
+    if course_name == "形势与政策" and not pair_course_candidates:
+        pair_course_candidates = [
+            item for item in courses.values()
+            if str(item.get("currentName") or "").startswith("形势与政策")
+        ]
+    if (
+        not pair_course_candidates
+        and worksheet == "大英和视听说"
+        and course_name in {"大英和视听说", "视听说", "英语口语", "高级口语", "学术英语"}
+    ):
+        pair_course_candidates = english_prefix_candidates(course_name, courses)
+        if pair_course_candidates and course is None:
+            course_method = "english_teacher_unique"
     if teacher and course is None and pair_course_candidates:
         relation_matches = [
             candidate
@@ -233,11 +335,20 @@ def match_row(
         if len(relation_matches) == 1:
             course = relation_matches[0]
             course_method = (
-                "pe_public_display_unique"
+                "pe_one_teacher_one_course"
                 if course_method == "pe_public_display_family"
+                else "english_teacher_unique"
+                if course_method == "english_teacher_unique"
+                else "official_alias_unique"
+                if official_name != raw_course_name
                 else "pair_relation_unique"
             )
-    return course, teacher, course_method, teacher_method, course_name
+        elif relation_matches and worksheet == "体育课":
+            families = {public_display_family(str(item.get("currentName") or "")) for item in relation_matches}
+            if len(families) == 1:
+                course = pick_canonical(relation_matches)
+                course_method = "pe_one_teacher_one_course"
+    return course, teacher, course_method, teacher_method, raw_course_name
 
 
 def freeze_v5_production_candidate(
@@ -252,6 +363,7 @@ def freeze_v5_production_candidate(
     expected_catalog_manifest_sha256: str = APPROVED_CATALOG_MANIFEST_SHA256,
     expected_catalog_artifact_sha256: str = APPROVED_CATALOG_ARTIFACT_SHA256,
     imported_packages: tuple[tuple[str, int], ...] = IMPORTED_PACKAGES,
+    teacher_overrides: dict[tuple[str, int], str] | None = None,
 ) -> dict[str, Any]:
     if out.exists():
         raise V5FreezeError(f"refusing existing output: {out}")
@@ -272,6 +384,7 @@ def freeze_v5_production_candidate(
     if (catalog_manifest.get("artifact") or {}).get("sha256") != expected_catalog_artifact_sha256:
         raise V5FreezeError("approved catalog artifact hash mismatch")
     courses, _teachers, relations, course_names, teacher_names = catalog_indexes(catalog_rows)
+    overrides = teacher_overrides or {}
 
     importable: list[dict[str, Any]] = []
     pending_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
@@ -305,7 +418,13 @@ def freeze_v5_production_candidate(
             excluded.append({**common, "reason": "already_imported", "detail": "replay_forbidden_batch"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
             continue
-        if not str(row.get("teacher") or "").strip():
+        filled_teacher = overrides.get((str(row.get("worksheet")), int(row["row"])))
+        mapped_row = dict(row)
+        if filled_teacher:
+            mapped_row["teacher"] = filled_teacher
+            common["legacy_teacher_name"] = filled_teacher
+            common["teacher_source"] = "table_recapture"
+        if not str(mapped_row.get("teacher") or "").strip():
             excluded.append({**common, "reason": "missing_teacher", "detail": "empty_source_teacher_label"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
             continue
@@ -315,7 +434,7 @@ def freeze_v5_production_candidate(
             continue
 
         course, teacher, course_method, teacher_method, course_name = match_row(
-            row, courses, relations, course_names, teacher_names
+            mapped_row, courses, relations, course_names, teacher_names
         )
         if not course or not teacher:
             if not course:
@@ -385,8 +504,11 @@ def freeze_v5_production_candidate(
             "exact_source_identity": "existing_catalog_relation",
             "stable_normalized_alias": "existing_catalog_relation",
             "pair_relation_unique": "pair_relation_unique",
-            "pe_public_display_unique": "pe_public_display_unique",
-            "pe_public_display_family": "pe_public_display_unique",
+            "pe_public_display_unique": "pe_one_teacher_one_course",
+            "pe_public_display_family": "pe_one_teacher_one_course",
+            "pe_one_teacher_one_course": "pe_one_teacher_one_course",
+            "english_teacher_unique": "english_teacher_unique",
+            "official_alias_unique": "official_alias_unique",
         }.get(course_method, "existing_catalog_relation")
         projected = project_importable(row, course, teacher, basis)
         importable.append(projected)
@@ -475,12 +597,14 @@ def main() -> int:
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--imported-root", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--teacher-overrides")
     args = parser.parse_args()
     result = freeze_v5_production_candidate(
         Path(args.source),
         Path(args.catalog),
         Path(args.imported_root),
         Path(args.out),
+        teacher_overrides=load_teacher_overrides(Path(args.teacher_overrides) if args.teacher_overrides else None),
     )
     print(json.dumps({"status": result["status"], "counts": result["counts"]}, ensure_ascii=False))
     return 0

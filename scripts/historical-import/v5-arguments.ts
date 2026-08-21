@@ -1,7 +1,7 @@
 import { win32 } from "node:path";
 
 export const V5_CANDIDATE_PACKAGE_ROOT = win32.resolve(
-  "D:/19016/Documents/Workload/jufexk-production-inputs/frozen-historical-v5-candidate-v1",
+  "D:/19016/Documents/Workload/jufexk-production-inputs/frozen-historical-v5-candidate-v2",
 );
 
 export function parseV5ImportArguments(

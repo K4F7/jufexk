@@ -173,7 +173,7 @@ def course(code: str, name: str) -> dict:
     }
 
 
-def freeze(root: Path, rows: list[dict], imported: list[dict], **catalog_kwargs):
+def freeze(root: Path, rows: list[dict], imported: list[dict], teacher_overrides=None, **catalog_kwargs):
     source, evaluations_sha = write_source(root, rows)
     catalog, hashes = write_catalog(root, **catalog_kwargs)
     imported_root = write_imported(root, imported)
@@ -188,6 +188,7 @@ def freeze(root: Path, rows: list[dict], imported: list[dict], **catalog_kwargs)
         expected_catalog_manifest_sha256=hashes["manifest"],
         expected_catalog_artifact_sha256=hashes["artifact"],
         imported_packages=(("already.jsonl", len(imported)),),
+        teacher_overrides=teacher_overrides,
     )
 
 
@@ -295,7 +296,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual(rows[0]["catalog_course_code"], "1005001892")
-            self.assertEqual(rows[0]["decision_basis"], "pe_public_display_unique")
+            self.assertEqual(rows[0]["decision_basis"], "pe_one_teacher_one_course")
 
     def test_rejects_hash_mismatch_and_existing_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -327,7 +328,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                     source, catalog, imported_root, root / "out", **kwargs
                 )
 
-    def test_refuses_to_guess_abbreviated_course_names(self) -> None:
+    def test_binds_official_political_alias_when_teacher_relation_is_unique(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             freeze(
@@ -346,13 +347,12 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 ],
                 extra_relations=[("1012100085", "某老师")],
             )
-            importable = (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8")
-            excluded = [
+            rows = [
                 json.loads(line)
-                for line in (root / "out" / "excluded.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
             ]
-            self.assertEqual(importable, "")
-            self.assertEqual(excluded[0]["reason"], "catalog_identity_unmatched")
+            self.assertEqual(rows[0]["catalog_course_code"], "1012100085")
+            self.assertEqual(rows[0]["decision_basis"], "existing_catalog_relation")
 
     def test_refuses_protected_output_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -375,6 +375,105 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                     expected_catalog_artifact_sha256=hashes["artifact"],
                     imported_packages=(("already.jsonl", 0),),
                 )
+
+    def test_maps_football69_and_sanda_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [
+                    evaluation("体育课|48|D", "足球69", "谭刚"),
+                    evaluation("体育课|31|D", "散打上课", "甲"),
+                ],
+                [],
+                course_code="1005002252",
+                course_name="足球1",
+                teacher_label="谭刚",
+                extra_courses=[
+                    course("1005002262", "足球2"),
+                    course("1005002662", "散打"),
+                ],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "甲",
+                        "normalizedTeacherLabel": "甲",
+                    }
+                ],
+                extra_relations=[
+                    ("1005002262", "谭刚"),
+                    ("1005002662", "甲"),
+                ],
+            )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            by_row = {row["source_row"]: row for row in rows}
+            self.assertEqual(by_row[48]["catalog_course_code"], "1005002252")
+            self.assertEqual(by_row[31]["catalog_course_code"], "1005002662")
+
+    def test_english_binds_unique_teacher_course_and_skips_multi_level(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [
+                    evaluation("大英和视听说|10|H", "大英和视听说", "张晓花"),
+                    evaluation("大英和视听说|11|H", "大英和视听说", "张生萍"),
+                ],
+                [],
+                extra_courses=[
+                    course("1004600332", "大学英语III"),
+                    course("1004600232", "大学英语I"),
+                    course("1004600282", "大学英语II"),
+                ],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "张晓花",
+                        "normalizedTeacherLabel": "张晓花",
+                    },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "张生萍",
+                        "normalizedTeacherLabel": "张生萍",
+                    },
+                ],
+                extra_relations=[
+                    ("1004600332", "张晓花"),
+                    ("1004600232", "张生萍"),
+                    ("1004600282", "张生萍"),
+                ],
+            )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            excluded = [
+                json.loads(line)
+                for line in (root / "out" / "excluded.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(rows[0]["catalog_course_code"], "1004600332")
+            self.assertEqual(rows[0]["decision_basis"], "english_teacher_unique")
+            self.assertEqual(excluded[0]["key"], "大英和视听说|11|H")
+
+    def test_teacher_override_fills_blank_table_teacher(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [evaluation("主要课程|56|F", "音乐鉴赏", "")],
+                [],
+                teacher_overrides={("主要课程", 56): "孙爱琳"},
+                course_name="音乐鉴赏",
+            )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(rows[0]["catalog_teacher_label"], "孙爱琳")
+            self.assertEqual(rows[0]["catalog_course_code"], "C001")
 
 
 if __name__ == "__main__":
