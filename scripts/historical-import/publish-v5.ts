@@ -25,11 +25,11 @@ const expectedCatalogArtifact =
 const expectedEvaluationsSha256 =
   "27ba8bff846bb74b77728ccf23075a193385c9d01157c77fea785d4ee04bdfae";
 const expectedFreezeManifest =
-  "2217cbbf1efa1867a69ce5d91f55b859f5f2a60c3bf5c8b28b62b23f27f7a624";
-const expectedImportable = 356;
-const expectedBeforeReviews = 882;
-const expectedAfterReviews = 1238;
-const expectedCatalogCounts = { courses: 3740, teachers: 1951, relations: 11572 };
+  "a0889ee7ebba559af4179ff4331de5c3324ae7da89ab1d17b6c735afe0576266";
+const expectedImportable = 35;
+const expectedBeforeReviews = 1239;
+const expectedAfterReviews = 1274;
+const expectedCatalogCounts = { courses: 3740, teachers: 1951, relations: 11579 };
 const target = {
   worker: "jufexk",
   d1: "jufexk",
@@ -124,7 +124,7 @@ if (
   before.catalog?.relations !== expectedCatalogCounts.relations ||
   before.historicalReviews !== expectedBeforeReviews
 )
-  throw new Error("生产目录 marker、现场计数或既有 882 条历史评价不匹配");
+  throw new Error("生产目录 marker、现场计数或既有 1239 条历史评价不匹配");
 
 if (!apply) {
   console.log(
@@ -182,7 +182,7 @@ if (
   JSON.stringify(after.marker) !== JSON.stringify(before.marker) ||
   JSON.stringify(after.catalog) !== JSON.stringify(before.catalog)
 )
-  throw new Error("v6 导入计数、幂等复核或目录计数不一致");
+  throw new Error("v10 导入计数、幂等复核或目录计数不一致");
 
 console.log(
   JSON.stringify({

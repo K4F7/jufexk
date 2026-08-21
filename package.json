@@ -45,6 +45,7 @@
     "db:import-remote-local": "python3 scripts/import-remote-export-local.py",
     "historical-import:production": "tsx scripts/historical-import/publish-production.ts",
     "catalog-relations:production": "tsx scripts/catalog-relation-additions/publish-production.ts",
+    "catalog-relations:v10": "tsx scripts/catalog-relation-additions/publish-v10.ts",
     "historical-import:issue111": "tsx scripts/historical-import/publish-issue111.ts",
     "historical-import:v5": "tsx scripts/historical-import/publish-v5.ts",
     "secrets:sync-local": "tsx scripts/secrets/sync-local.ts"

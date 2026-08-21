@@ -188,4 +188,28 @@ uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py -
 uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v9' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json' --owner-discard-keys 'D:\19016\Documents\Workload\jufexk-production-inputs\v7-owner-discard-empty-teachers.json'
 ```
 
+## Issue 365：裁定 v9 待补任课后编 v10 并写入
+
+#365 按所有者裁定编 **v10**，不覆盖 v1–v9。汪乐 / 曾劲 3 格 `owner_discarded`；李德满 4 格改绑近代史 `1012100193`；体育 6 对 + 黄三生为所有者批准补任课后可导入。腾讯表已封存，不改表。不写 #200。不重放 522 / 164 / 120 / 12 / 64 / 357。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v10`。任课关系包：`D:\19016\Documents\Workload\jufexk-production-inputs\issue365-relation-addition-v1`。
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v10' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json' --owner-discard-keys 'D:\19016\Documents\Workload\jufexk-production-inputs\v7-owner-discard-empty-teachers.json' --owner-verdicts 'D:\19016\Documents\Workload\jufexk-production-inputs\v10-owner-verdicts.json'
+```
+
+生产先补 7 条任课（`11572 → 11579`），再导入 35 条（公开历史评价 `1239 → 1274`）。目录课程 / 教师 / marker 不变。幂等复核：关系 `existing=7`，本批评价 `existing=35`。
+
+```powershell
+$env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
+$env:JUFEXK_ADMIN_PASSWORD = '...' # 或 $env:ADMIN_PASSWORD
+$env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\issue365-relations-<UTC_TIMESTAMP>.sql'
+pnpm run catalog-relations:v10
+pnpm run catalog-relations:v10 -- --apply
+
+$env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\issue365-historical-<UTC_TIMESTAMP>.sql'
+pnpm run historical-import:v5
+pnpm run historical-import:v5 -- --apply
+```
+
 
