@@ -102,5 +102,5 @@ test("write-review nav stays visible without a login gate", async ({
   await expect(nav.getByRole("link")).toHaveCount(3);
 
   await submitLink.click();
-  await expect(page).toHaveURL(/\/submit$/);
+  await expect(page).toHaveURL(/\/login\?from=%2Fsubmit$/);
 });
