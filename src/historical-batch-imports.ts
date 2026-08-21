@@ -6,6 +6,41 @@ export const APPROVED_HISTORICAL_MANIFEST_SHA256 =
   "edcf142cbd0380e734da0cde1923ee976ea9e25ab48147d0b78e218a64bb51af";
 export const APPROVED_CATALOG_CONTENT_SHA256 =
   "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588";
+export const V5_FREEZE_CONTRACT = "legacy-v5-historical-freeze-v1";
+export const V5_SOURCE_CONTRACT = "legacy-review-approved-package-v1";
+export const V5_IMPORTABLE_COUNT = 357;
+export const V5_APPROVED_PACKAGE_MANIFEST_SHA256 =
+  "81566854cb1b4a0d13507364552ae3152fc30929ca01065523f97ad1b8f18034";
+
+export type HistoricalBatchImportProfile = {
+  freezeContract: string;
+  sourceContract: string;
+  recordSchema: string;
+  importableCount: number;
+  approvedPackageManifestSha256: string;
+  approvedCatalogContentSha256: string;
+  checkImportableContentSha256: boolean;
+};
+
+export const ISSUE111_IMPORT_PROFILE: HistoricalBatchImportProfile = {
+  freezeContract: ISSUE111_FREEZE_CONTRACT,
+  sourceContract: ISSUE111_SOURCE_CONTRACT,
+  recordSchema: ISSUE111_RECORD_SCHEMA,
+  importableCount: ISSUE111_IMPORTABLE_COUNT,
+  approvedPackageManifestSha256: APPROVED_HISTORICAL_MANIFEST_SHA256,
+  approvedCatalogContentSha256: APPROVED_CATALOG_CONTENT_SHA256,
+  checkImportableContentSha256: true,
+};
+
+export const V5_IMPORT_PROFILE: HistoricalBatchImportProfile = {
+  freezeContract: V5_FREEZE_CONTRACT,
+  sourceContract: V5_SOURCE_CONTRACT,
+  recordSchema: ISSUE111_RECORD_SCHEMA,
+  importableCount: V5_IMPORTABLE_COUNT,
+  approvedPackageManifestSha256: V5_APPROVED_PACKAGE_MANIFEST_SHA256,
+  approvedCatalogContentSha256: APPROVED_CATALOG_CONTENT_SHA256,
+  checkImportableContentSha256: false,
+};
 
 export class HistoricalBatchImportError extends Error {
   constructor(
@@ -183,6 +218,7 @@ export async function importIssue111HistoricalBatch(
   body: { manifest?: unknown; artifact?: unknown; offset?: unknown },
   configuredManifestSha256 = "manifest",
   configuredArtifactSha256 = "manifest",
+  profile: HistoricalBatchImportProfile = ISSUE111_IMPORT_PROFILE,
 ): Promise<HistoricalBatchImportResult> {
   if (typeof body.manifest !== "string")
     throw new HistoricalBatchImportError("历史评价冻结 manifest 缺失");
@@ -199,21 +235,22 @@ export async function importIssue111HistoricalBatch(
     throw new HistoricalBatchImportError("历史评价冻结 manifest 不是有效 JSON");
   }
   if (
-    manifest.contractVersion !== ISSUE111_FREEZE_CONTRACT ||
+    manifest.contractVersion !== profile.freezeContract ||
     manifest.status !== "package_ready" ||
-    manifest.counts?.importable !== ISSUE111_IMPORTABLE_COUNT ||
+    manifest.counts?.importable !== profile.importableCount ||
     manifest.schemas?.["importable-legacy-reviews.jsonl"] !==
-      ISSUE111_RECORD_SCHEMA ||
-    manifest.lineage?.approvedPackageContract !== ISSUE111_SOURCE_CONTRACT ||
+      profile.recordSchema ||
+    manifest.lineage?.approvedPackageContract !== profile.sourceContract ||
     manifest.lineage?.approvedPackageManifestSha256 !==
-      APPROVED_HISTORICAL_MANIFEST_SHA256 ||
+      profile.approvedPackageManifestSha256 ||
     manifest.lineage?.approvedCatalogContentSha256 !==
-      APPROVED_CATALOG_CONTENT_SHA256
+      profile.approvedCatalogContentSha256
   )
     throw new HistoricalBatchImportError(
       "历史评价追加冻结包身份或内容哈希不匹配",
     );
   if (
+    profile.checkImportableContentSha256 &&
     typeof manifest.contentSha256 === "string" &&
     manifest.contentSha256 !==
       (await digest(
@@ -233,7 +270,7 @@ export async function importIssue111HistoricalBatch(
   if (
     typeof body.artifact !== "string" ||
     !body.artifact.endsWith("\n") ||
-    artifactDescriptor?.rows !== ISSUE111_IMPORTABLE_COUNT ||
+    artifactDescriptor?.rows !== profile.importableCount ||
     typeof expectedArtifactSha256 !== "string" ||
     artifactDescriptor.sha256 !== expectedArtifactSha256 ||
     (await digest(body.artifact)) !== expectedArtifactSha256
@@ -251,13 +288,13 @@ export async function importIssue111HistoricalBatch(
   } catch {
     throw new HistoricalBatchImportError("历史评价 artifact 不是有效 JSONL");
   }
-  if (records.length !== ISSUE111_IMPORTABLE_COUNT)
+  if (records.length !== profile.importableCount)
     throw new HistoricalBatchImportError("历史评价 artifact 行数不匹配");
   if (
     typeof body.offset !== "number" ||
     !Number.isInteger(body.offset) ||
     body.offset < 0 ||
-    body.offset >= ISSUE111_IMPORTABLE_COUNT ||
+    body.offset >= profile.importableCount ||
     body.offset % 50 !== 0
   )
     throw new HistoricalBatchImportError("历史评价批次偏移量不合法");
@@ -277,7 +314,7 @@ export async function importIssue111HistoricalBatch(
       !record ||
       Object.keys(record).length !== REQUIRED_FIELDS.size ||
       Object.keys(record).some((field) => !REQUIRED_FIELDS.has(field)) ||
-      record.schema_version !== ISSUE111_RECORD_SCHEMA
+      record.schema_version !== profile.recordSchema
     )
       throw new HistoricalBatchImportError("历史评价记录不符合批准包固定 schema");
 
@@ -336,9 +373,9 @@ export async function importIssue111HistoricalBatch(
             courseId,
             teacherId,
             comment,
-            ISSUE111_FREEZE_CONTRACT,
-            APPROVED_HISTORICAL_MANIFEST_SHA256,
-            APPROVED_CATALOG_CONTENT_SHA256,
+            profile.freezeContract,
+            profile.approvedPackageManifestSha256,
+            profile.approvedCatalogContentSha256,
           ),
       ),
     );
@@ -354,4 +391,19 @@ export async function importIssue111HistoricalBatch(
     created: createdCount,
     existing: existingCount,
   };
+}
+
+export async function importV5HistoricalBatch(
+  db: D1Database,
+  body: { manifest?: unknown; artifact?: unknown; offset?: unknown },
+  configuredManifestSha256 = "manifest",
+  configuredArtifactSha256 = "manifest",
+): Promise<HistoricalBatchImportResult> {
+  return importIssue111HistoricalBatch(
+    db,
+    body,
+    configuredManifestSha256,
+    configuredArtifactSha256,
+    V5_IMPORT_PROFILE,
+  );
 }

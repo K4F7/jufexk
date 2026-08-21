@@ -46,6 +46,7 @@ import {
   HistoricalBatchImportError,
   type HistoricalBatchLookupRow,
   importIssue111HistoricalBatch,
+  importV5HistoricalBatch,
   resolveHistoricalBatchRows,
 } from "./historical-batch-imports";
 import { handleCampusAuthStatus } from "./campus-jwt";
@@ -107,6 +108,8 @@ type Bindings = {
   ISSUE111_RELATION_MANIFEST_SHA256?: string;
   ISSUE111_IMPORT_ARTIFACT_SHA256?: string;
   ISSUE111_IMPORT_MANIFEST_SHA256?: string;
+  V5_IMPORT_ARTIFACT_SHA256?: string;
+  V5_IMPORT_MANIFEST_SHA256?: string;
   ADMIN_PASSWORD?: string | { get(): Promise<string> };
   IP_HASH_SECRET: string | { get(): Promise<string> };
   TURNSTILE_SECRET?: string | { get(): Promise<string> };
@@ -1540,6 +1543,19 @@ app.post("/api/admin/historical-review-batch-imports", async (c) => {
       await c.req.json(),
       c.env.ISSUE111_IMPORT_MANIFEST_SHA256 || "manifest",
       c.env.ISSUE111_IMPORT_ARTIFACT_SHA256 || "manifest",
+    );
+    return c.json(result, result.created ? 201 : 200);
+  } catch (error) {
+    return historicalBatchFailure(c, error);
+  }
+});
+app.post("/api/admin/historical-review-v5-imports", async (c) => {
+  try {
+    const result = await importV5HistoricalBatch(
+      c.env.DB,
+      await c.req.json(),
+      c.env.V5_IMPORT_MANIFEST_SHA256 || "manifest",
+      c.env.V5_IMPORT_ARTIFACT_SHA256 || "manifest",
     );
     return c.json(result, result.created ? 201 : 200);
   } catch (error) {
