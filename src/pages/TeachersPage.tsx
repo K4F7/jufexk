@@ -229,6 +229,7 @@ export function TeachersPage() {
         onRetry={() => setReloadToken((n) => n + 1)}
         onClearFilters={clearSearch}
         copy={TEACHER_CATALOG_COPY}
+        skeleton="teacher"
         rescue={
           rescueTotal && rescueTotal > 0 ? (
             <CatalogEmptyRescueLink to={`/courses?q=${encodeURIComponent(q)}`}>

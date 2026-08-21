@@ -146,7 +146,7 @@ export function TeacherDetailPage() {
   if (!data) {
     return (
       <section className="mx-auto w-full max-w-[880px]">
-        <DetailPageSkeleton label="教师资料加载中…" />
+        <DetailPageSkeleton label="教师资料加载中…" kind="teacher" />
       </section>
     );
   }

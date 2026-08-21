@@ -274,7 +274,10 @@ export function CourseDetailPage() {
   if (!data) {
     return (
       <section className="mx-auto w-full max-w-[880px]">
-        <DetailPageSkeleton label="课程加载中…" />
+        <DetailPageSkeleton
+          label="课程加载中…"
+          kind={selectedTeacherId ? "course-reviews" : "course"}
+        />
       </section>
     );
   }
