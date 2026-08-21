@@ -1,6 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { MOOC_SCORES, OFFLINE_SCORES } from "./review-score-fixtures";
+import {
+  CURRENT_SCORES,
+  CURRENT_SCORES_JSON,
+  REQUIRED_NOTE,
+  V1_OFFLINE_SCORES,
+} from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -221,7 +226,7 @@ describe("catalog addition requests", () => {
         overall: 5,
         comment: "随申请一起提交的评价",
         term: "2025 秋",
-        scores: OFFLINE_SCORES,
+        scores: CURRENT_SCORES,
         schemeKey: "pe",
       },
     });
@@ -265,13 +270,8 @@ describe("catalog addition requests", () => {
       course_id: catalogBody.items[0].id,
       term: "2025 秋",
       scheme_key: "major",
-      scheme_version: 1,
-      scores: JSON.stringify({
-        attendance: 3,
-        grading: 5,
-        teaching: 4,
-        workload: 2,
-      }),
+      scheme_version: 2,
+      scores: CURRENT_SCORES_JSON,
     });
   });
 
@@ -283,9 +283,32 @@ describe("catalog addition requests", () => {
       category: "general",
       department: "测试学院",
       teacherSourceLabel: "缺维度的申请教师",
-      review: { overall: 5, comment: "只有推荐度" },
+      review: { overall: 5, comment: REQUIRED_NOTE },
     });
     expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "请答完本次适用的评分题",
+    });
+  });
+
+  it("rejects an attached review whose note is shorter than 10 characters", async () => {
+    const response = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-SHORT-NOTE",
+      courseName: "过短补充说明的申请课程",
+      category: "general",
+      department: "测试学院",
+      teacherSourceLabel: "过短补充说明的申请教师",
+      review: {
+        overall: 5,
+        comment: "123456789",
+        scores: CURRENT_SCORES,
+      },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "请填写至少 10 字补充说明",
+    });
   });
 
   it("validates an attached review against an existing course scheme and tags", async () => {
@@ -308,11 +331,25 @@ describe("catalog addition requests", () => {
       teacherSourceLabel: "已存在网课教师",
       review: {
         overall: 4,
-        comment: "网课不应再交点名",
-        scores: OFFLINE_SCORES,
+        comment: REQUIRED_NOTE,
+        scores: { ...CURRENT_SCORES, attendance: 3 },
       },
     });
     expect(leftover.status).toBe(400);
+    const oldKeys = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-EXIST-MOOC",
+      courseName: "已存在网课申请名",
+      category: "general",
+      department: "测试学院",
+      teacherSourceLabel: "已存在网课教师",
+      review: {
+        overall: 4,
+        comment: REQUIRED_NOTE,
+        scores: V1_OFFLINE_SCORES,
+      },
+    });
+    expect(oldKeys.status).toBe(400);
 
     const submitted = await publicPost("/api/catalog-requests", {
       kind: "course",
@@ -323,8 +360,8 @@ describe("catalog addition requests", () => {
       teacherSourceLabel: "已存在网课教师",
       review: {
         overall: 4,
-        comment: "沿用已有课程规则",
-        scores: MOOC_SCORES,
+        comment: "沿用已有课程规则和题目",
+        scores: CURRENT_SCORES,
       },
     });
     expect(submitted.status).toBe(200);
@@ -488,7 +525,7 @@ describe("catalog addition requests", () => {
       review: {
         overall: 5,
         comment: "并发审批只应创建一次",
-        scores: OFFLINE_SCORES,
+        scores: CURRENT_SCORES,
       },
     });
     const { id } = await submitted.json<{ id: number }>();

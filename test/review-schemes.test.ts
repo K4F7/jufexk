@@ -1,14 +1,43 @@
 import { describe, expect, it } from "vitest";
 import {
   applicableDimensions,
+  COMMON_CORE_QUESTIONS,
   courseSchemeView,
   defaultSchemeKey,
   dimensionAverage,
+  latestSchemeVersion,
   publicDimensionAverage,
+  REVIEW_NOTE_MAX_LENGTH,
   REVIEW_SCHEMES,
   snapshotReviewScores,
+  validateReviewNote,
   validateSubmittedScores,
 } from "../src/lib/review-schemes";
+import {
+  CURRENT_SCORES,
+  REQUIRED_NOTE,
+  TIER3_IDS,
+  TIER3_QUESTIONS,
+  V1_MOOC_SCORES,
+  V1_OFFLINE_SCORES,
+} from "./review-score-fixtures";
+
+const publicQuestions = (
+  questions: ReadonlyArray<{
+    id: string;
+    label: string;
+    prompt: string;
+    scale: string;
+    options: ReadonlyArray<{ value: number; label: string }>;
+  }>,
+) =>
+  questions.map(({ id, label, prompt, scale, options }) => ({
+    id,
+    label,
+    prompt,
+    scale,
+    options: options.map((option) => ({ ...option })),
+  }));
 
 describe("review scheme defaults and applicable questions", () => {
   it("defaults unclassified sports courses to pe and others to major", () => {
@@ -17,129 +46,152 @@ describe("review scheme defaults and applicable questions", () => {
     expect(defaultSchemeKey("pe")).toBe("major");
   });
 
-  it("drops attendance only when the course has the mooc tag", () => {
-    const offline = applicableDimensions("major", []).map((item) => item.id);
-    const mooc = applicableDimensions("major", ["mooc"]).map((item) => item.id);
-    expect(offline).toEqual(["teaching", "attendance", "grading", "workload"]);
-    expect(mooc).toEqual(["teaching", "grading", "workload"]);
+  it("keeps the same latest four three-tier questions for major, pe and mooc", () => {
+    const expected = publicQuestions(TIER3_QUESTIONS);
+    expect(publicQuestions(applicableDimensions("major", []))).toEqual(expected);
+    expect(publicQuestions(applicableDimensions("pe", []))).toEqual(expected);
     expect(
-      applicableDimensions("pe", ["mooc"]).map((item) => item.id),
-    ).toEqual(["teaching", "grading", "workload"]);
+      publicQuestions(applicableDimensions("major", ["mooc"])),
+    ).toEqual(expected);
+    expect(publicQuestions(applicableDimensions("pe", ["mooc"]))).toEqual(
+      expected,
+    );
+    expect(COMMON_CORE_QUESTIONS).toEqual(expected);
   });
 
-  it("keeps the first-version core shared across scheme keys", () => {
+  it("keeps published v1 read-only and writes the latest version", () => {
     for (const scheme of Object.values(REVIEW_SCHEMES)) {
-      expect(scheme.version).toBe(1);
-      expect(scheme.dimensions.map((item) => item.id)).toEqual([
+      expect(scheme.versions[0]?.version).toBe(1);
+      expect(scheme.versions[0]?.averagesDimensions).toBe(true);
+      expect(scheme.versions[0]?.dimensions.map((item) => item.id)).toEqual([
         "teaching",
         "attendance",
         "grading",
         "workload",
       ]);
+      expect(latestSchemeVersion(scheme.key).version).toBe(2);
+      expect(latestSchemeVersion(scheme.key).averagesDimensions).toBe(false);
+      expect(latestSchemeVersion(scheme.key).dimensions.map((item) => item.id)).toEqual(
+        TIER3_IDS,
+      );
     }
   });
 
-  it("exposes resolved scheme, tags and questions for course reads", () => {
-    expect(courseSchemeView(null, "general", [])).toMatchObject({
+  it("exposes resolved scheme, tags and three-tier options for course reads", () => {
+    const general = courseSchemeView(null, "general", []);
+    expect(general).toMatchObject({
       schemeKey: "major",
-      schemeVersion: 1,
+      schemeVersion: 2,
       tags: [],
     });
-    expect(courseSchemeView(null, "sports", ["mooc"]).applicableQuestions.map((item) => item.id)).toEqual([
-      "teaching",
-      "grading",
-      "workload",
-    ]);
+    expect(general.applicableQuestions).toEqual(publicQuestions(TIER3_QUESTIONS));
+    expect(
+      courseSchemeView(null, "sports", ["mooc"]).applicableQuestions,
+    ).toEqual(publicQuestions(TIER3_QUESTIONS));
     expect(courseSchemeView("ideology", "general", []).schemeKey).toBe("ideology");
   });
 });
 
 describe("submitted score validation", () => {
-  const offline = applicableDimensions("major", []);
+  const latest = applicableDimensions("major", []);
   const mooc = applicableDimensions("major", ["mooc"]);
 
-  it("rejects missing dimensions and out-of-range scores", () => {
-    expect(validateSubmittedScores(undefined, offline).ok).toBe(false);
+  it("rejects missing dimensions and scores outside that question's options", () => {
+    expect(validateSubmittedScores(undefined, latest).ok).toBe(false);
     expect(
       validateSubmittedScores(
-        { teaching: 4, attendance: 3, grading: 5 },
-        offline,
+        { difficulty: 1, homework: 2, grading: 3 },
+        latest,
       ).ok,
     ).toBe(false);
     expect(
-      validateSubmittedScores(
-        { teaching: 4, attendance: 3, grading: 5, workload: 9 },
-        offline,
-      ),
-    ).toEqual({ ok: false, error: "评分必须在 1 到 5 之间" });
+      validateSubmittedScores({ ...CURRENT_SCORES, grading: 5 }, latest),
+    ).toEqual({ ok: false, error: "评分必须是题目给出的选项" });
   });
 
-  it("rejects attendance on mooc courses and accepts the rest", () => {
+  it("rejects leftover v1 dimension keys on mooc and latest courses", () => {
     expect(
       validateSubmittedScores(
-        { teaching: 4, attendance: 3, grading: 5, workload: 2 },
+        { ...CURRENT_SCORES, attendance: 3 },
         mooc,
       ),
     ).toEqual({ ok: false, error: "提交了不适用的评分维度" });
-    expect(
-      validateSubmittedScores(
-        { teaching: 4, grading: 5, workload: 2 },
-        mooc,
-      ),
-    ).toEqual({
+    expect(validateSubmittedScores(V1_OFFLINE_SCORES, latest)).toEqual({
+      ok: false,
+      error: "提交了不适用的评分维度",
+    });
+    expect(validateSubmittedScores(CURRENT_SCORES, mooc)).toEqual({
       ok: true,
-      scores: { teaching: 4, grading: 5, workload: 2 },
+      scores: { ...CURRENT_SCORES },
     });
   });
 
-  it("snapshots the resolved scheme and ignores a client-supplied key", () => {
+  it("snapshots the resolved scheme, latest version and ignores a client-supplied key", () => {
     const snapshot = snapshotReviewScores({
       schemeKey: "ideology",
       category: "general",
       tags: ["mooc"],
-      scores: { teaching: 4, grading: 5, workload: 2 },
+      scores: CURRENT_SCORES,
+      comment: REQUIRED_NOTE,
     });
     expect(snapshot).toMatchObject({
       ok: true,
       schemeKey: "ideology",
-      schemeVersion: 1,
+      schemeVersion: 2,
+      comment: REQUIRED_NOTE,
+    });
+  });
+
+  it("rejects a trimmed note shorter than 10 or longer than 1200 characters", () => {
+    expect(validateReviewNote("         ").ok).toBe(false);
+    expect(validateReviewNote("123456789")).toEqual({
+      ok: false,
+      error: "请填写至少 10 字补充说明",
+    });
+    expect(validateReviewNote("  1234567890  ")).toEqual({
+      ok: true,
+      comment: "1234567890",
+    });
+    expect(validateReviewNote("x".repeat(REVIEW_NOTE_MAX_LENGTH + 1))).toEqual({
+      ok: false,
+      error: "补充说明不能超过 1200 字",
     });
   });
 });
 
 describe("dimension average from a scheme snapshot", () => {
   it("averages the snapshot scores to one decimal", () => {
-    expect(
-      dimensionAverage({ teaching: 4, attendance: 3, grading: 5, workload: 2 }),
-    ).toBe(3.5);
-    expect(dimensionAverage({ teaching: 4, grading: 5, workload: 2 })).toBe(3.7);
+    expect(dimensionAverage({ ...V1_OFFLINE_SCORES })).toBe(3.5);
+    expect(dimensionAverage({ ...V1_MOOC_SCORES })).toBe(3.7);
   });
 
-  it("returns an average only when the row has a scheme snapshot", () => {
+  it("returns an average only for published versions that still average dimensions", () => {
     expect(
       publicDimensionAverage({
         schemeKey: "major",
         schemeVersion: 1,
-        scores: JSON.stringify({
-          attendance: 3,
-          grading: 5,
-          teaching: 4,
-          workload: 2,
-        }),
+        scores: JSON.stringify(V1_OFFLINE_SCORES),
       }),
     ).toBe(3.5);
     expect(
       publicDimensionAverage({
         schemeKey: "ideology",
         schemeVersion: 1,
-        scores: JSON.stringify({ teaching: 4, grading: 5, workload: 2 }),
+        scores: JSON.stringify(V1_MOOC_SCORES),
       }),
     ).toBe(3.7);
     expect(
       publicDimensionAverage({
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: JSON.stringify(CURRENT_SCORES),
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionAverage({
         schemeKey: null,
         schemeVersion: null,
-        scores: JSON.stringify({ teaching: 4, attendance: 3, grading: 5, workload: 2 }),
+        scores: JSON.stringify(V1_OFFLINE_SCORES),
       }),
     ).toBeNull();
   });

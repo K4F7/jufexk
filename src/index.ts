@@ -1280,6 +1280,7 @@ app.post("/api/reviews", async (c) => {
     category: course.category,
     tags: parseTagCsv(course.tag_csv),
     scores: b.scores,
+    comment: b.comment,
   });
   if (!snapshot.ok) return fail(c, snapshot.error);
   if (!(await takeRateLimit(c.env.DB, `review-submit:${ipHash}`, 3600, 5)))
@@ -1309,7 +1310,7 @@ app.post("/api/reviews", async (c) => {
         offeringId,
         course.category,
         overall,
-        clean(b.comment, 1200),
+        snapshot.comment,
         term,
         ipHash,
         snapshot.schemeKey,
@@ -1383,12 +1384,13 @@ app.post("/api/catalog-requests", async (c) => {
       category: existingCourse?.category ?? category,
       tags: parseTagCsv(existingCourse?.tag_csv),
       scores: review.scores,
+      comment: review.comment,
     });
     if (!snapshot.ok) return fail(c, snapshot.error);
     stashedReview = {
       scores: snapshot.scores,
       overall: overall as number,
-      comment: clean(review.comment, 1200),
+      comment: snapshot.comment,
       term: clean(review.term, 30),
     };
   }
@@ -2011,6 +2013,7 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       category: existingCourse?.category ?? request.category,
       tags: parseTagCsv(existingCourse?.tag_csv),
       scores: stashed.scores,
+      comment: stashed.comment,
     });
     if (!snapshot.ok) return fail(c, "暂存评价数据无效", 409);
     statements.push(
@@ -2026,7 +2029,7 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
         stashed.overall,
-        stashed.comment || "",
+        snapshot.comment,
         stashed.term || "",
         request.submitter_hash,
         snapshot.schemeKey,

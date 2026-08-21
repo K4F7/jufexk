@@ -298,12 +298,12 @@ describe("school-email login", () => {
         teacherId: 1,
         overall: 5,
         scores: {
-          teaching: 4,
-          attendance: 3,
-          grading: 5,
-          workload: 2,
+          difficulty: 1,
+          homework: 2,
+          grading: 3,
+          gain: 2,
         },
-        comment: "邮箱会话可投稿",
+        comment: "邮箱会话可以正常投稿",
       }),
     });
     expect(submitted.status).toBe(200);

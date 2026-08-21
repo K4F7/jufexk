@@ -1,6 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { MOOC_SCORES, OFFLINE_SCORES } from "./review-score-fixtures";
+import {
+  CURRENT_SCORES,
+  CURRENT_SCORES_JSON,
+  REQUIRED_NOTE,
+  V1_OFFLINE_SCORES,
+} from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -186,8 +191,8 @@ describe("admin review scheme and mooc tag maintenance", () => {
       courseId: id,
       teacherId: 1,
       overall: 4,
-      scores: OFFLINE_SCORES,
-      comment: "改规则前",
+      scores: CURRENT_SCORES,
+      comment: REQUIRED_NOTE,
     });
     expect(first.status).toBe(200);
     const before = await env.DB.prepare(
@@ -202,13 +207,8 @@ describe("admin review scheme and mooc tag maintenance", () => {
       }>();
     expect(before).toMatchObject({
       scheme_key: "major",
-      scheme_version: 1,
-      scores: JSON.stringify({
-        attendance: 3,
-        grading: 5,
-        teaching: 4,
-        workload: 2,
-      }),
+      scheme_version: 2,
+      scores: CURRENT_SCORES_JSON,
     });
 
     const updated = await SELF.fetch(`${origin}/api/admin/courses`, {
@@ -225,22 +225,23 @@ describe("admin review scheme and mooc tag maintenance", () => {
     });
     expect(updated.status).toBe(200);
 
-    const stillHasAttendance = await submit({
+    const leftoverV1 = await submit({
       courseId: id,
       teacherId: 1,
       overall: 5,
-      scores: OFFLINE_SCORES,
+      scores: V1_OFFLINE_SCORES,
+      comment: REQUIRED_NOTE,
     });
-    expect(stillHasAttendance.status).toBe(400);
+    expect(leftoverV1.status).toBe(400);
 
-    const moocOk = await submit({
+    const latestOk = await submit({
       courseId: id,
       teacherId: 1,
       overall: 5,
-      scores: MOOC_SCORES,
-      comment: "改规则后",
+      scores: CURRENT_SCORES,
+      comment: REQUIRED_NOTE,
     });
-    expect(moocOk.status).toBe(200);
+    expect(latestOk.status).toBe(200);
 
     const afterOld = await env.DB.prepare(
       "SELECT scheme_key,scheme_version,scores FROM reviews WHERE id=?",
@@ -260,12 +261,8 @@ describe("admin review scheme and mooc tag maintenance", () => {
       .first();
     expect(newest).toMatchObject({
       scheme_key: "ideology",
-      scheme_version: 1,
-      scores: JSON.stringify({
-        grading: 5,
-        teaching: 4,
-        workload: 2,
-      }),
+      scheme_version: 2,
+      scores: CURRENT_SCORES_JSON,
     });
   });
 

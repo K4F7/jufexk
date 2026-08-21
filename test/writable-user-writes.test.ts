@@ -1,6 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { OFFLINE_SCORES } from "./review-score-fixtures";
+import { CURRENT_SCORES, REQUIRED_NOTE } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -13,8 +13,8 @@ const reviewPayload = {
   courseId: 1,
   teacherId: 1,
   overall: 5,
-  scores: OFFLINE_SCORES,
-  comment: "可写会话投稿",
+  scores: CURRENT_SCORES,
+  comment: REQUIRED_NOTE,
 };
 
 const catalogPayload = {
@@ -73,7 +73,7 @@ describe("writable ordinary-user writes", () => {
       }),
       body: JSON.stringify({
         ...reviewPayload,
-        comment: "HMAC 回归投稿",
+        comment: "HMAC 回归投稿成功",
       }),
     });
     expect(review.status).toBe(200);
