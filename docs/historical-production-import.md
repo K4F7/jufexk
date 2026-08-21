@@ -93,4 +93,20 @@ $env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\
 pnpm run historical-import:v5
 ```
 
+## Issue 340：所有者裁定后的 v2 候选包
+
+#340 按所有者裁定重映射，编 v2，不覆盖 v1。`--apply` 仍拒绝，除非本票另有授权。
+
+- 思政简称对正式名；一对多用老师唯一任课
+- 大英/视听说按老师唯一大学英语或视听说课绑定，不猜 I/II/III/IV
+- 体育一师一课（忽略体育1–4）；`足球69`=`足球`，`散打上课`=`散打`
+- 空教师只接受回表公式栏补值，不从邻行继承
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v2`
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v2'
+pnpm run historical-import:v5
+```
+
 
