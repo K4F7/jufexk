@@ -5,13 +5,20 @@ export function TurnstileBox({
   siteKey,
   onReadyChange,
   widgetRef,
+  collapsed = false,
 }: {
   siteKey: string;
   onReadyChange: (ready: boolean, message: string) => void;
   widgetRef: React.MutableRefObject<string | number | null>;
+  /**
+   * Hide the widget iframe but keep it mounted so `refresh-expired: auto`
+   * keeps renewing the token; only the status line stays visible.
+   */
+  collapsed?: boolean;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState("人机验证加载中，请稍候…");
+  const [solved, setSolved] = useState(false);
 
   useEffect(() => {
     if (!siteKey || !elRef.current) return;
@@ -30,15 +37,17 @@ export function TurnstileBox({
           action: "turnstile-spin-v2",
           "refresh-expired": "auto",
           callback: () => {
+            setSolved(true);
             setStatus("人机验证已完成。");
             onReadyChange(true, "人机验证已完成。");
           },
           "expired-callback": () => {
+            setSolved(false);
             setStatus("验证已过期，正在自动刷新…");
             onReadyChange(false, "验证已过期，正在自动刷新…");
-            if (widgetRef.current != null) window.turnstile?.reset(widgetRef.current);
           },
           "error-callback": () => {
+            setSolved(false);
             setStatus("人机验证失败，请检查网络后重试。");
             onReadyChange(false, "人机验证失败，请检查网络后重试。");
             return true;
@@ -62,8 +71,10 @@ export function TurnstileBox({
 
   return (
     <div className="space-y-1">
-      <div ref={elRef} />
-      <p className="m-0 text-[13px] text-muted">{status}</p>
+      <div ref={elRef} className={collapsed ? "hidden" : undefined} />
+      <p className="m-0 text-[13px] text-muted">
+        {collapsed ? (solved ? "已通过人机验证" : "人机验证处理中…") : status}
+      </p>
     </div>
   );
 }
