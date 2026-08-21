@@ -21,6 +21,7 @@ type CapturedMail = {
     to?: string[];
     subject?: string;
     text?: string;
+    html?: string;
   };
 };
 
@@ -123,7 +124,11 @@ describe("school-email login", () => {
     expect(capturedMail[0]?.authorization).toBe("Bearer test-mail-token");
     expect(capturedMail[0]?.body.from).toContain("noreply@sein.moe");
     expect(capturedMail[0]?.body.to).toEqual([studentEmail]);
-    parseMailSecrets(capturedMail[0]?.body.text || "");
+    const { code, token } = parseMailSecrets(capturedMail[0]?.body.text || "");
+    expect(capturedMail[0]?.body.subject).toContain("非官方课评@JUFE");
+    expect(capturedMail[0]?.body.subject).toContain(code);
+    expect(capturedMail[0]?.body.html).toContain(code);
+    expect(capturedMail[0]?.body.html).toContain(token);
   });
 
   it("does not deliver for disallowed addresses and keeps the same success shape", async () => {

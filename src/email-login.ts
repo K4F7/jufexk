@@ -13,6 +13,7 @@ import {
   sessionPayloadForUser,
 } from "./ordinary-user-session";
 import { readSecret } from "./secrets";
+import { buildVerificationEmail } from "./verification-email";
 
 export const EMAIL_REQUEST_PATH = "/api/auth/email";
 export const EMAIL_VERIFY_PATH = "/api/auth/verify";
@@ -113,17 +114,12 @@ async function deliverVerificationEmail(
   const from = typeof env.MAIL_FROM === "string" ? env.MAIL_FROM.trim() : "";
   const token = await readSecret(env.MAIL_DELIVERY_TOKEN);
   if (!url || !from || !token) return;
-  const siteName = env.SITE_NAME || "非官方课评@JUFE";
-  const text = [
-    `验证码：${input.code}`,
-    "",
-    "此验证码 15 分钟内有效，使用一次后即失效。",
-    "",
-    "也可以打开此链接完成登录：",
-    input.magicUrl,
-    "",
-    "如果不是你本人的操作，请忽略这封邮件。",
-  ].join("\n");
+  const mail = buildVerificationEmail({
+    siteName: env.SITE_NAME || "非官方课评@JUFE",
+    code: input.code,
+    magicUrl: input.magicUrl,
+    ttlMinutes: CHALLENGE_TTL_SECONDS / 60,
+  });
   await fetch(url, {
     method: "POST",
     headers: {
@@ -133,8 +129,9 @@ async function deliverVerificationEmail(
     body: JSON.stringify({
       from,
       to: [input.to],
-      subject: `${siteName} 登录验证`,
-      text,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
     }),
   }).catch(() => undefined);
 }
