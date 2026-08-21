@@ -131,4 +131,15 @@ uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py -
 pnpm run historical-import:v5
 ```
 
+## Issue 346：剥掉教师名后的课目标注（v5）
+
+#346 把 `（大英）` / `（经典英语视听说）` 当课目标注从可见教师名去掉，再按 #343 规则落课：`邱垂亿（大英）`→`邱垂亿`，`黄荃（大英）`→`黄荃`，`赵娟（经典英语视听说）`→`赵娟`。不拆 `萨曼莎/温华`，不剥 `孙伟(求评价!!!)`。新候选包 v5，不覆盖 v4。`--apply` 仍拒绝。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v5`
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v5' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v3.json'
+pnpm run historical-import:v5
+```
+
 

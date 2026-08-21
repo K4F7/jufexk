@@ -377,6 +377,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 "frozen-historical-v5-candidate-v1",
                 "frozen-historical-v5-candidate-v2",
                 "frozen-historical-v5-candidate-v3",
+                "frozen-historical-v5-candidate-v4",
             ):
                 with self.assertRaises(V5FreezeError):
                     freeze_v5_production_candidate(
@@ -628,7 +629,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
             self.assertEqual(excluded[0]["reason"], "catalog_identity_unmatched")
             self.assertEqual(excluded[0]["legacy_teacher_name"], "表上原名")
 
-    def test_does_not_split_annotated_english_teacher_names(self) -> None:
+    def test_strips_course_notes_from_english_teacher_names(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             freeze(
@@ -636,9 +637,15 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 [
                     evaluation("大英和视听说|36|H", "大英和视听说", "邱垂亿（大英）"),
                     evaluation("大英和视听说|9|H", "大英和视听说", "赵娟（经典英语视听说）"),
+                    evaluation("大英和视听说|52|H", "大英和视听说", "黄荃（大英）"),
+                    evaluation("大英和视听说|8|H", "大英和视听说", "萨曼莎/温华"),
+                    evaluation("主要课程|10|F", "货币银行学", "孙伟(求评价!!!)"),
                 ],
                 [],
-                extra_courses=[course("1004600232", "大学英语I")],
+                extra_courses=[
+                    course("1004600232", "大学英语I"),
+                    course("1004600282", "大学英语II"),
+                ],
                 extra_teachers=[
                     {
                         "schemaVersion": "catalog-baseline-teacher/v1",
@@ -650,21 +657,36 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                         "sourceTeacherLabel": "赵娟",
                         "normalizedTeacherLabel": "赵娟",
                     },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "黄荃",
+                        "normalizedTeacherLabel": "黄荃",
+                    },
                 ],
                 extra_relations=[
                     ("1004600232", "邱垂亿"),
+                    ("1004600282", "邱垂亿"),
                     ("1004600232", "赵娟"),
+                    ("1004600232", "黄荃"),
                 ],
             )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
             excluded = [
                 json.loads(line)
                 for line in (root / "out" / "excluded.jsonl").read_text(encoding="utf-8").splitlines()
             ]
+            by_row = {row["source_row"]: row for row in rows}
+            self.assertEqual(by_row[36]["catalog_teacher_label"], "邱垂亿")
+            self.assertEqual(by_row[36]["catalog_course_code"], "1004600232")
+            self.assertEqual(by_row[9]["catalog_teacher_label"], "赵娟")
+            self.assertEqual(by_row[52]["catalog_teacher_label"], "黄荃")
             self.assertEqual(
-                [row["key"] for row in excluded],
-                ["大英和视听说|36|H", "大英和视听说|9|H"],
+                {row["key"] for row in excluded},
+                {"大英和视听说|8|H", "主要课程|10|F"},
             )
-            self.assertTrue(all(row["reason"] == "catalog_identity_unmatched" for row in excluded))
 
 
 if __name__ == "__main__":
