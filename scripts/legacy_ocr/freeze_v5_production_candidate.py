@@ -49,6 +49,7 @@ PROTECTED_OUT_MARKERS = (
     "frozen-historical-v5-candidate-v2",
     "frozen-historical-v5-candidate-v3",
     "frozen-historical-v5-candidate-v4",
+    "frozen-historical-v5-candidate-v5",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -78,6 +79,7 @@ PE_PUBLIC_ALIASES = {
 VISIBLE_COURSE_ALIASES = {
     "足球69": "足球",
     "散打上课": "散打",
+    "中国古典诗词歌曲赏析与演唱MOOC": "中国古典诗词歌曲赏析与演唱（MOOC)",
 }
 TEACHER_COURSE_NOTE_SUFFIXES = (
     "（大英）",

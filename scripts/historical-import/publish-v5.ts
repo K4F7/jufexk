@@ -22,8 +22,8 @@ const expectedCatalogArtifact =
 const expectedEvaluationsSha256 =
   "27ba8bff846bb74b77728ccf23075a193385c9d01157c77fea785d4ee04bdfae";
 const expectedFreezeManifest =
-  "af4f570a86455f42ae9936d457d3192fffca933d675bc281fa6eaa124ae81912";
-const expectedImportable = 354;
+  "2217cbbf1efa1867a69ce5d91f55b859f5f2a60c3bf5c8b28b62b23f27f7a624";
+const expectedImportable = 356;
 const expectedCatalogCounts = { courses: 3740, teachers: 1951 };
 
 const manifestText = await readFile(resolve(root, "manifest.json"), "utf8");
