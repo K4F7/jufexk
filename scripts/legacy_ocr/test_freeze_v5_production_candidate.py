@@ -380,6 +380,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 "frozen-historical-v5-candidate-v4",
                 "frozen-historical-v5-candidate-v5",
                 "frozen-historical-v5-candidate-v6",
+                "frozen-historical-v5-candidate-v7",
             ):
                 with self.assertRaises(V5FreezeError):
                     freeze_v5_production_candidate(
@@ -721,6 +722,16 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
             self.assertEqual(by_row[41]["catalog_teacher_label"], "孙伟")
             self.assertEqual(by_row[41]["catalog_course_code"], "1012100193")
             self.assertEqual({row["key"] for row in excluded}, {"大英和视听说|8|H"})
+            lineage = [
+                json.loads(line)
+                for line in (root / "out" / "lineage.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            by_key = {row["key"]: row for row in lineage}
+            self.assertEqual(by_key["大英和视听说|36|H"]["legacy_teacher_name"], "邱垂亿")
+            self.assertEqual(by_key["大英和视听说|9|H"]["legacy_teacher_name"], "赵娟")
+            self.assertEqual(by_key["大英和视听说|52|H"]["legacy_teacher_name"], "黄荃")
+            self.assertEqual(by_key["思政课|41|G"]["legacy_teacher_name"], "孙伟")
+            self.assertEqual(by_key["大英和视听说|8|H"]["legacy_teacher_name"], "萨曼莎/温华")
 
 
 if __name__ == "__main__":

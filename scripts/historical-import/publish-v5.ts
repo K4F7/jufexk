@@ -22,7 +22,7 @@ const expectedCatalogArtifact =
 const expectedEvaluationsSha256 =
   "27ba8bff846bb74b77728ccf23075a193385c9d01157c77fea785d4ee04bdfae";
 const expectedFreezeManifest =
-  "6a730be465022ce36fcf6fb12927a8de5cdb8e1a93383ef2a66da2b2881b52c2";
+  "8f65196dbc5c2fed0fa0115ffab137b5d97445d39499c3bc6c741054e92b1e7b";
 const expectedImportable = 357;
 const expectedCatalogCounts = { courses: 3740, teachers: 1951 };
 

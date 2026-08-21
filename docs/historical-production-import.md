@@ -164,4 +164,15 @@ uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py -
 pnpm run historical-import:v5
 ```
 
+## Issue 354：候选包内表上带括号教师名一律清洗（v8）
+
+#354 在 #349 匹配规则之上，把清洗后的教师名写进 lineage / 排除标签：`邱垂亿（大英）` 记作 `邱垂亿`，不再保留括号旁注。绑定与 v7 相同。不拆 `萨曼莎/温华`。新候选包 v8，不覆盖 v7。`--apply` 仍拒绝。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v8`
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v8' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json'
+pnpm run historical-import:v5
+```
+
 
