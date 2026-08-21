@@ -20,7 +20,8 @@ describe("verification email copy", () => {
     expect(mail.text).toContain(sample.magicUrl);
     expect(mail.text).toContain("15 分钟");
     expect(mail.html).toContain("123456");
-    expect(mail.html).toContain("打开登录链接");
+    expect(mail.html).toContain("登录验证");
+    expect(mail.html).toContain(">登录</a>");
     expect(mail.html).toContain(`href="${sample.magicUrl.replaceAll("&", "&amp;")}"`);
   });
 
@@ -32,6 +33,6 @@ describe("verification email copy", () => {
     expect(mail.html).not.toContain("<script>");
     expect(mail.html).toContain("&lt;script&gt;");
     expect(mail.html).toContain("&amp;from=");
-    expect(mail.text).toContain("<script>");
+    expect(mail.subject).toContain("<script>");
   });
 });
