@@ -1,7 +1,7 @@
 # 选课志（jufexk）
 
 <p align="center">
-  <img src="public/icon-512.png" width="128" height="128" alt="JUFE评课社区">
+  <img src="public/icon-512.png" width="128" height="128" alt="非官方课评@JUFE">
 </p>
 
 [![Deploy](https://github.com/K4F7/jufexk/actions/workflows/deploy.yml/badge.svg)](https://github.com/K4F7/jufexk/actions/workflows/deploy.yml)
@@ -11,7 +11,7 @@
 [![pnpm](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-江西财经大学课程—教师评价站（站内名称「JUFE评课社区」）。评价必须绑定课程的具体任课教师，公开内容均经管理员人工审核后匿名展示。
+江西财经大学课程—教师评价站（站内名称「非官方课评@JUFE」）。评价必须绑定课程的具体任课教师，公开内容均经管理员人工审核后匿名展示。
 
 线上站点：[xk.sein.moe](https://xk.sein.moe)
 

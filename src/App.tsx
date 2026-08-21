@@ -82,7 +82,7 @@ export function App() {
       })
       .catch(() => {
         setConfig({
-          siteName: "JUFE评课社区",
+          siteName: "非官方课评@JUFE",
           universityName: "江西财经大学",
         });
       });
