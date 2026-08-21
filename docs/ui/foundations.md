@@ -1,4 +1,4 @@
-# JUFE评课社区 UI 基础
+# 非官方课评@JUFE UI 基础
 
 本文记录当前 UI 改版的已确认方向、Prototype 工作方式与视觉冻结规则。领域术语以 [`CONTEXT.md`](../../CONTEXT.md) 为准；既有产品旅程和后端约束可追溯至 [GitHub Issue #2](https://github.com/K4F7/jufexk/issues/2)。
 
@@ -6,7 +6,7 @@
 
 ## 目标与边界
 
-- 产品公开名称统一为「JUFE评课社区」。
+- 产品公开名称统一为「非官方课评@JUFE」。
 - UI 使用 HeroUI v3、Tailwind CSS v4 和 React Aria 的可访问交互语义。
 - 保留现有 Vite、React Router、Cloudflare Worker、D1、API 与业务状态逻辑。
 - HeroUI 官方 Vite Template 只作为布局、导航、主题切换和视觉原语的 donor，不整体迁移。

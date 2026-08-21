@@ -87,7 +87,7 @@ function DefaultShell({
   const [params] = useSearchParams();
   const selectedKey = navSelectedKey(location.pathname);
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
-  const siteName = config?.siteName || "JUFE评课社区";
+  const siteName = config?.siteName || "非官方课评@JUFE";
   const universityName = config?.universityName || "江西财经大学";
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);

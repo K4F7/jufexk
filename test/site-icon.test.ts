@@ -16,9 +16,9 @@ describe("site and repository icon", () => {
   });
 
   it("shows the public site name on the document and README icon", () => {
-    expect(indexHtml).toContain('property="og:title" content="JUFE评课社区"');
-    expect(indexHtml).toContain("<title>JUFE评课社区</title>");
+    expect(indexHtml).toContain('property="og:title" content="非官方课评@JUFE"');
+    expect(indexHtml).toContain("<title>非官方课评@JUFE</title>");
     expect(readme).toContain('src="public/icon-512.png"');
-    expect(readme).toContain('alt="JUFE评课社区"');
+    expect(readme).toContain('alt="非官方课评@JUFE"');
   });
 });

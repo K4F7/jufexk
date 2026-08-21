@@ -113,7 +113,7 @@ async function deliverVerificationEmail(
   const from = typeof env.MAIL_FROM === "string" ? env.MAIL_FROM.trim() : "";
   const token = await readSecret(env.MAIL_DELIVERY_TOKEN);
   if (!url || !from || !token) return;
-  const siteName = env.SITE_NAME || "JUFE评课社区";
+  const siteName = env.SITE_NAME || "非官方课评@JUFE";
   const text = [
     `验证码：${input.code}`,
     "",
