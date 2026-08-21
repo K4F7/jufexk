@@ -35,7 +35,7 @@ const NAV_LINKS = [
 ] as const;
 
 function brandName(config: SiteConfig | null) {
-  return config?.siteName || "江财选课参考";
+  return config?.siteName || "JUFE评课社区";
 }
 
 function uniName(config: SiteConfig | null) {

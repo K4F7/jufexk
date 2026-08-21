@@ -14,8 +14,10 @@ describe("site and repository icon", () => {
     );
   });
 
-  it("shows the same icon on the repository README", () => {
+  it("shows the public site name on the document and README icon", () => {
+    expect(indexHtml).toContain('property="og:title" content="JUFE评课社区"');
+    expect(indexHtml).toContain("<title>JUFE评课社区</title>");
     expect(readme).toContain('src="public/icon-512.png"');
-    expect(readme).toContain('alt="江财选课参考"');
+    expect(readme).toContain('alt="JUFE评课社区"');
   });
 });
