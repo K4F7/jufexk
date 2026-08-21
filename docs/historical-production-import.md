@@ -178,5 +178,14 @@ pnpm run historical-import:v5 -- --apply
 
 腾讯表已封存，不能改格。剩余 57 格空教师评价在导入后标为所有者丢弃，不再当 missing_teacher 待办。已补名但目录未绑上的樊凤龙 / Christine / carl 不丢弃。
 
+## Issue 354：候选包内表上带括号教师名一律清洗（v8）
+
+#354 在 #349 匹配规则之上，把清洗后的教师名写进 lineage / 排除标签：`邱垂亿（大英）` 记作 `邱垂亿`，不再保留括号旁注。绑定与 v7 相同。不拆 `萨曼莎/温华`。新候选包 v8，不覆盖 v7。`historical-import:v5` 仍钉 v6，不对 v8 `--apply`。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v8`
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v8' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json'
+```
 
 

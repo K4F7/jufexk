@@ -51,6 +51,7 @@ PROTECTED_OUT_MARKERS = (
     "frozen-historical-v5-candidate-v4",
     "frozen-historical-v5-candidate-v5",
     "frozen-historical-v5-candidate-v6",
+    "frozen-historical-v5-candidate-v7",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -508,8 +509,11 @@ def freeze_v5_production_candidate(
         mapped_row = dict(row)
         if filled_teacher:
             mapped_row["teacher"] = filled_teacher
-            common["legacy_teacher_name"] = filled_teacher
             common["teacher_source"] = "table_recapture"
+        cleaned_teacher = visible_teacher_name(str(mapped_row.get("teacher") or ""))
+        mapped_row["teacher"] = cleaned_teacher
+        if cleaned_teacher:
+            common["legacy_teacher_name"] = cleaned_teacher
         if not str(mapped_row.get("teacher") or "").strip():
             excluded.append({**common, "reason": "missing_teacher", "detail": "empty_source_teacher_label"})
             lineage.append({**common, "partition": "excluded", "review_id": None})
