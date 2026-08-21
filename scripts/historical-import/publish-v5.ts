@@ -23,7 +23,7 @@ const expectedEvaluationsSha256 =
   "27ba8bff846bb74b77728ccf23075a193385c9d01157c77fea785d4ee04bdfae";
 const expectedFreezeManifest =
   "567fdd8d71f6672c631ff24fdae6002a0da0324fffe9e9cfa095cf23ae2feca2";
-const expectedImportable = 195;
+const expectedImportable = 195; // v3 == v2: live teacher cells were empty
 const expectedCatalogCounts = { courses: 3740, teachers: 1951 };
 
 const manifestText = await readFile(resolve(root, "manifest.json"), "utf8");
