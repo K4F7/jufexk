@@ -4,6 +4,7 @@ import {
   CURRENT_SCORES,
   CURRENT_SCORES_JSON,
   REQUIRED_NOTE,
+  TIER3_QUESTIONS,
   V1_OFFLINE_SCORES,
 } from "./review-score-fixtures";
 import {
@@ -126,7 +127,7 @@ describe("review submission required scheme scores", () => {
     });
   });
 
-  it("accepts a mooc course without attendance and rejects leftover v1 keys", async () => {
+  it("accepts a mooc course on the latest four questions and rejects leftover v1 keys", async () => {
     const courseId = await createBoundCourse("general", "REQ-MOOC", {
       mooc: true,
     });
@@ -347,13 +348,7 @@ describe("review submission required scheme scores", () => {
 
 describe("course scheme reads for submit", () => {
   it("returns the same four three-tier questions for major, pe and mooc courses", async () => {
-    const questionsOf = (
-      questions: Array<{
-        id: string;
-        prompt: string;
-        options: Array<{ value: number; label: string }>;
-      }>,
-    ) => questions.map((item) => item.id);
+    type Question = (typeof TIER3_QUESTIONS)[number];
 
     const majorId = await createBoundCourse("general", "OPT-MAJOR");
     const peId = await createBoundCourse("sports", "OPT-PE");
@@ -369,11 +364,7 @@ describe("course scheme reads for submit", () => {
               schemeKey: string;
               schemeVersion: number;
               tags: string[];
-              applicableQuestions: Array<{
-                id: string;
-                prompt: string;
-                options: Array<{ value: number; label: string }>;
-              }>;
+              applicableQuestions: Question[];
             };
           }>(),
         ),
@@ -395,28 +386,9 @@ describe("course scheme reads for submit", () => {
       schemeVersion: 2,
       tags: ["mooc"],
     });
-    expect(questionsOf(major.course.applicableQuestions)).toEqual([
-      "difficulty",
-      "homework",
-      "grading",
-      "gain",
-    ]);
-    expect(questionsOf(pe.course.applicableQuestions)).toEqual(
-      questionsOf(major.course.applicableQuestions),
-    );
-    expect(questionsOf(mooc.course.applicableQuestions)).toEqual(
-      questionsOf(major.course.applicableQuestions),
-    );
-    expect(
-      major.course.applicableQuestions.find((item) => item.id === "grading"),
-    ).toMatchObject({
-      prompt: "给分好坏",
-      options: [
-        { value: 1, label: "超好" },
-        { value: 2, label: "一般" },
-        { value: 3, label: "杀手" },
-      ],
-    });
+    expect(major.course.applicableQuestions).toEqual(TIER3_QUESTIONS);
+    expect(pe.course.applicableQuestions).toEqual(TIER3_QUESTIONS);
+    expect(mooc.course.applicableQuestions).toEqual(TIER3_QUESTIONS);
 
     const options = await SELF.fetch(
       `${origin}/api/courses/options?q=${encodeURIComponent("OPT-MOOC")}`,
@@ -425,15 +397,13 @@ describe("course scheme reads for submit", () => {
       items: Array<{
         schemeKey: string;
         tags: string[];
-        applicableQuestions: Array<{ id: string }>;
+        applicableQuestions: Question[];
       }>;
     }>();
     expect(optionsBody.items[0]).toMatchObject({
       schemeKey: "major",
       tags: ["mooc"],
     });
-    expect(optionsBody.items[0].applicableQuestions.map((item) => item.id)).toEqual(
-      ["difficulty", "homework", "grading", "gain"],
-    );
+    expect(optionsBody.items[0].applicableQuestions).toEqual(TIER3_QUESTIONS);
   });
 });

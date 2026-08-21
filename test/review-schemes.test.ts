@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applicableDimensions,
+  COMMON_CORE_QUESTIONS,
   courseSchemeView,
   defaultSchemeKey,
   dimensionAverage,
@@ -15,11 +16,28 @@ import {
 import {
   CURRENT_SCORES,
   REQUIRED_NOTE,
+  TIER3_IDS,
+  TIER3_QUESTIONS,
   V1_MOOC_SCORES,
   V1_OFFLINE_SCORES,
 } from "./review-score-fixtures";
 
-const TIER3_IDS = ["difficulty", "homework", "grading", "gain"];
+const publicQuestions = (
+  questions: ReadonlyArray<{
+    id: string;
+    label: string;
+    prompt: string;
+    scale: string;
+    options: ReadonlyArray<{ value: number; label: string }>;
+  }>,
+) =>
+  questions.map(({ id, label, prompt, scale, options }) => ({
+    id,
+    label,
+    prompt,
+    scale,
+    options: options.map((option) => ({ ...option })),
+  }));
 
 describe("review scheme defaults and applicable questions", () => {
   it("defaults unclassified sports courses to pe and others to major", () => {
@@ -29,19 +47,16 @@ describe("review scheme defaults and applicable questions", () => {
   });
 
   it("keeps the same latest four three-tier questions for major, pe and mooc", () => {
-    const expected = TIER3_IDS;
-    expect(applicableDimensions("major", []).map((item) => item.id)).toEqual(
+    const expected = publicQuestions(TIER3_QUESTIONS);
+    expect(publicQuestions(applicableDimensions("major", []))).toEqual(expected);
+    expect(publicQuestions(applicableDimensions("pe", []))).toEqual(expected);
+    expect(
+      publicQuestions(applicableDimensions("major", ["mooc"])),
+    ).toEqual(expected);
+    expect(publicQuestions(applicableDimensions("pe", ["mooc"]))).toEqual(
       expected,
     );
-    expect(
-      applicableDimensions("pe", []).map((item) => item.id),
-    ).toEqual(expected);
-    expect(
-      applicableDimensions("major", ["mooc"]).map((item) => item.id),
-    ).toEqual(expected);
-    expect(
-      applicableDimensions("pe", ["mooc"]).map((item) => item.id),
-    ).toEqual(expected);
+    expect(COMMON_CORE_QUESTIONS).toEqual(expected);
   });
 
   it("keeps published v1 read-only and writes the latest version", () => {
@@ -69,19 +84,10 @@ describe("review scheme defaults and applicable questions", () => {
       schemeVersion: 2,
       tags: [],
     });
-    expect(general.applicableQuestions.map((item) => item.id)).toEqual(TIER3_IDS);
+    expect(general.applicableQuestions).toEqual(publicQuestions(TIER3_QUESTIONS));
     expect(
-      general.applicableQuestions.find((item) => item.id === "difficulty")?.options,
-    ).toEqual([
-      { value: 1, label: "简单" },
-      { value: 2, label: "中等" },
-      { value: 3, label: "困难" },
-    ]);
-    expect(
-      courseSchemeView(null, "sports", ["mooc"]).applicableQuestions.map(
-        (item) => item.id,
-      ),
-    ).toEqual(TIER3_IDS);
+      courseSchemeView(null, "sports", ["mooc"]).applicableQuestions,
+    ).toEqual(publicQuestions(TIER3_QUESTIONS));
     expect(courseSchemeView("ideology", "general", []).schemeKey).toBe("ideology");
   });
 });

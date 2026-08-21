@@ -286,6 +286,9 @@ describe("catalog addition requests", () => {
       review: { overall: 5, comment: REQUIRED_NOTE },
     });
     expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "请答完本次适用的评分题",
+    });
   });
 
   it("rejects an attached review whose note is shorter than 10 characters", async () => {
