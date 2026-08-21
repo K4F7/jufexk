@@ -6,7 +6,7 @@
 
 权威规格：GitHub issue #66
 
-修订：[ADR-0012](./0012-general-sports-review-template-kinds.md) 中 `courses.category` 作为评价模板二值（`general | sports`）的语义。课程分类改为六类评价规则；「修读属性不入课程分类、来源文字仅作溯源、课程特点用独立多值标签表达」的结论继续有效。
+修订：[ADR-0012](./0012-general-sports-review-template-kinds.md) 中 `courses.category` 作为评价模板二值（`general | sports`）的语义。课程分类改为六类评价规则；「修读属性不入课程分类、来源文字仅作溯源、课程特点用独立多值标签表达」的结论继续有效。第一版问卷题目、补充说明必填与维度均分范围见 [ADR-0023](./0023-ustc-aligned-four-tier-questions.md)。
 
 ## 背景
 

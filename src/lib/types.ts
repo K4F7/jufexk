@@ -25,6 +25,7 @@ export type ApplicableQuestion = {
   label: string;
   prompt: string;
   scale: string;
+  options: Array<{ value: number; label: string }>;
 };
 
 export type CourseReviewScheme = {

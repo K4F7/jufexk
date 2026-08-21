@@ -1,6 +1,10 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { MOOC_SCORES, OFFLINE_SCORES } from "./review-score-fixtures";
+import {
+  CURRENT_SCORES,
+  V1_MOOC_SCORES,
+  V1_OFFLINE_SCORES,
+} from "./review-score-fixtures";
 
 const origin = "https://example.com";
 
@@ -307,18 +311,23 @@ describe("public course-teacher review projection", () => {
     await insertTextReview("线下课补充说明", {
       schemeKey: "major",
       schemeVersion: 1,
-      scores: OFFLINE_SCORES,
+      scores: V1_OFFLINE_SCORES,
     });
     await insertTextReview("网课补充说明", {
       schemeKey: "ideology",
       schemeVersion: 1,
-      scores: MOOC_SCORES,
+      scores: V1_MOOC_SCORES,
+    });
+    await insertTextReview("三档题补充说明", {
+      schemeKey: "major",
+      schemeVersion: 2,
+      scores: CURRENT_SCORES,
     });
     await insertTextReview("没有规则快照的旧评价");
     await insertTextReview("", {
       schemeKey: "major",
       schemeVersion: 1,
-      scores: OFFLINE_SCORES,
+      scores: V1_OFFLINE_SCORES,
       overall: 1,
     });
 
@@ -352,6 +361,7 @@ describe("public course-teacher review projection", () => {
         "冻结历史评价",
         "线下课补充说明",
         "网课补充说明",
+        "三档题补充说明",
         "没有规则快照的旧评价",
       ]);
       expect(body.items[0]).not.toHaveProperty("dimensionAverage");
@@ -363,7 +373,11 @@ describe("public course-teacher review projection", () => {
         comment: "网课补充说明",
         dimensionAverage: 3.7,
       });
+      expect(body.items[3]).toMatchObject({
+        comment: "三档题补充说明",
+      });
       expect(body.items[3]).not.toHaveProperty("dimensionAverage");
+      expect(body.items[4]).not.toHaveProperty("dimensionAverage");
       const publicJson = JSON.stringify(body.items);
       expect(publicJson).not.toContain("teaching");
       expect(publicJson).not.toContain("attendance");
@@ -376,9 +390,9 @@ describe("public course-teacher review projection", () => {
         reviewCount: number;
         course: { rating: number; teachers: Array<{ rating: number }> };
       }>();
-      expect(courseBody.reviewCount).toBe(4);
-      expect(courseBody.course.rating).toBe(4);
-      expect(courseBody.course.teachers[0]?.rating).toBe(4);
+      expect(courseBody.reviewCount).toBe(5);
+      expect(courseBody.course.rating).toBe(4.2);
+      expect(courseBody.course.teachers[0]?.rating).toBe(4.2);
     } finally {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(

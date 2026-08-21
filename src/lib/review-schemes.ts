@@ -14,37 +14,48 @@ export type SchemeKey = (typeof SCHEME_KEYS)[number];
 export const COURSE_TAGS = ["mooc"] as const;
 export type CourseTag = (typeof COURSE_TAGS)[number];
 
-export const DIMENSION_IDS = [
-  "teaching",
-  "attendance",
-  "grading",
-  "workload",
-] as const;
-
-export type DimensionId = (typeof DIMENSION_IDS)[number];
+export type DimensionOption = {
+  value: number;
+  label: string;
+};
 
 export type DimensionDef = {
-  id: DimensionId;
+  id: string;
   label: string;
   prompt: string;
   scale: string;
+  options: readonly DimensionOption[];
   offlineOnly?: boolean;
 };
 
 export type ApplicableQuestion = Omit<DimensionDef, "offlineOnly">;
 
-const CORE_DIMENSIONS: DimensionDef[] = [
+export const REVIEW_NOTE_MIN_LENGTH = 10;
+export const REVIEW_NOTE_MAX_LENGTH = 1200;
+
+const FIVE_POINT_OPTIONS: readonly DimensionOption[] = [
+  { value: 1, label: "1" },
+  { value: 2, label: "2" },
+  { value: 3, label: "3" },
+  { value: 4, label: "4" },
+  { value: 5, label: "5" },
+];
+
+/** Published v1 core. Immutable; new submits use a later version. */
+const V1_CORE_DIMENSIONS: readonly DimensionDef[] = [
   {
     id: "teaching",
     label: "上课表现",
     prompt: "上课表现",
     scale: "1 到 5，分数越高表示上课表现越好",
+    options: FIVE_POINT_OPTIONS,
   },
   {
     id: "attendance",
     label: "点名频率",
     prompt: "点名频率",
     scale: "1 到 5，分数越高表示点名越频繁",
+    options: FIVE_POINT_OPTIONS,
     offlineOnly: true,
   },
   {
@@ -52,27 +63,91 @@ const CORE_DIMENSIONS: DimensionDef[] = [
     label: "给分情况",
     prompt: "你感受到的给分",
     scale: "1 到 5，分数越高表示你感受到的给分越宽松",
+    options: FIVE_POINT_OPTIONS,
   },
   {
     id: "workload",
     label: "考核压力",
     prompt: "考核压力",
     scale: "1 到 5，分数越高表示考核压力越大",
+    options: FIVE_POINT_OPTIONS,
   },
 ];
 
+const TIER3_CORE_DIMENSIONS: readonly DimensionDef[] = [
+  {
+    id: "difficulty",
+    label: "课程难度",
+    prompt: "课程难度",
+    scale: "简单 / 中等 / 困难",
+    options: [
+      { value: 1, label: "简单" },
+      { value: 2, label: "中等" },
+      { value: 3, label: "困难" },
+    ],
+  },
+  {
+    id: "homework",
+    label: "作业多少",
+    prompt: "作业多少",
+    scale: "不多 / 中等 / 超多",
+    options: [
+      { value: 1, label: "不多" },
+      { value: 2, label: "中等" },
+      { value: 3, label: "超多" },
+    ],
+  },
+  {
+    id: "grading",
+    label: "给分好坏",
+    prompt: "给分好坏",
+    scale: "超好 / 一般 / 杀手",
+    options: [
+      { value: 1, label: "超好" },
+      { value: 2, label: "一般" },
+      { value: 3, label: "杀手" },
+    ],
+  },
+  {
+    id: "gain",
+    label: "收获多少",
+    prompt: "收获多少",
+    scale: "很多 / 一般 / 没有",
+    options: [
+      { value: 1, label: "很多" },
+      { value: 2, label: "一般" },
+      { value: 3, label: "没有" },
+    ],
+  },
+];
+
+type SchemeVersionDef = {
+  version: number;
+  dimensions: readonly DimensionDef[];
+  averagesDimensions: boolean;
+};
+
 type SchemeDef = {
   key: SchemeKey;
-  version: number;
   label: string;
-  dimensions: readonly DimensionDef[];
+  versions: readonly SchemeVersionDef[];
 };
 
 const scheme = (key: SchemeKey, label: string): SchemeDef => ({
   key,
-  version: 1,
   label,
-  dimensions: CORE_DIMENSIONS,
+  versions: [
+    {
+      version: 1,
+      dimensions: V1_CORE_DIMENSIONS,
+      averagesDimensions: true,
+    },
+    {
+      version: 2,
+      dimensions: TIER3_CORE_DIMENSIONS,
+      averagesDimensions: false,
+    },
+  ],
 });
 
 export const REVIEW_SCHEMES: Record<SchemeKey, SchemeDef> = {
@@ -112,6 +187,23 @@ export function parseCourseTags(values: readonly string[]): CourseTag[] {
   return values.filter(isCourseTag);
 }
 
+export function publishedSchemeVersion(
+  schemeKey: SchemeKey,
+  version: number,
+): SchemeVersionDef | null {
+  return (
+    REVIEW_SCHEMES[schemeKey].versions.find((item) => item.version === version) ??
+    null
+  );
+}
+
+export function latestSchemeVersion(schemeKey: SchemeKey): SchemeVersionDef {
+  const versions = REVIEW_SCHEMES[schemeKey].versions;
+  const latest = versions[versions.length - 1];
+  if (!latest) throw new Error(`评价规则 ${schemeKey} 没有已发布版本`);
+  return latest;
+}
+
 /**
  * Unique calculation point for the required dimension set of one submission.
  * Input is the course scheme plus course tags; output is this attempt's
@@ -123,7 +215,7 @@ export function applicableDimensions(
   tags: readonly string[],
 ): DimensionDef[] {
   const mooc = tags.includes("mooc");
-  return REVIEW_SCHEMES[schemeKey].dimensions.filter(
+  return latestSchemeVersion(schemeKey).dimensions.filter(
     (dimension) => !(dimension.offlineOnly && mooc),
   );
 }
@@ -133,20 +225,31 @@ const toApplicableQuestion = ({
   label,
   prompt,
   scale,
-}: DimensionDef): ApplicableQuestion => ({ id, label, prompt, scale });
+  options,
+}: DimensionDef): ApplicableQuestion => ({
+  id,
+  label,
+  prompt,
+  scale,
+  options: options.map((option) => ({ ...option })),
+});
 
 /**
  * Questions shared by every scheme, rendered by the submit form before a
  * course is chosen so the full questionnaire is visible up front (issue
- * #361). Computed as the intersection across schemes: if scheme-specific
- * dimensions are ever added, this degrades to the true common core.
+ * #361). Computed as the intersection across latest versions: if
+ * scheme-specific dimensions are ever added, this degrades to the true
+ * common core.
  */
 export const COMMON_CORE_QUESTIONS: ApplicableQuestion[] = (() => {
-  const [first, ...rest] = Object.values(REVIEW_SCHEMES);
-  return first.dimensions
+  const [first, ...rest] = Object.values(REVIEW_SCHEMES).map((item) =>
+    latestSchemeVersion(item.key).dimensions,
+  );
+  if (!first) return [];
+  return first
     .filter((dimension) =>
-      rest.every((scheme) =>
-        scheme.dimensions.some((other) => other.id === dimension.id),
+      rest.every((dimensions) =>
+        dimensions.some((other) => other.id === dimension.id),
       ),
     )
     .map(toApplicableQuestion);
@@ -161,7 +264,7 @@ export function courseSchemeView(
   const knownTags = parseCourseTags(tags);
   return {
     schemeKey: resolved,
-    schemeVersion: REVIEW_SCHEMES[resolved].version,
+    schemeVersion: latestSchemeVersion(resolved).version,
     tags: knownTags,
     applicableQuestions: applicableDimensions(resolved, knownTags).map(
       toApplicableQuestion,
@@ -169,15 +272,19 @@ export function courseSchemeView(
   };
 }
 
-const scoreValue = (value: unknown): number | null => {
-  if (value === "" || value == null) return null;
+const optionValue = (
+  value: unknown,
+  options: readonly DimensionOption[],
+): number | null => {
+  let n: number | null = null;
   if (typeof value === "number")
-    return Number.isSafeInteger(value) && value >= 1 && value <= 5 ? value : null;
-  if (typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)) {
-    const n = Number(value);
-    return Number.isSafeInteger(n) && n >= 1 && n <= 5 ? n : null;
+    n = Number.isSafeInteger(value) ? value : null;
+  else if (typeof value === "string" && /^(?:0|[1-9]\d*)$/.test(value)) {
+    const parsed = Number(value);
+    n = Number.isSafeInteger(parsed) ? parsed : null;
   }
-  return null;
+  if (n === null) return null;
+  return options.some((option) => option.value === n) ? n : null;
 };
 
 export function validateSubmittedScores(
@@ -188,19 +295,34 @@ export function validateSubmittedScores(
     return { ok: false, error: "请答完本次适用的评分题" };
   if (typeof raw !== "object" || Array.isArray(raw))
     return { ok: false, error: "评分格式无效" };
-  const required = new Set(dimensions.map((dimension) => dimension.id));
+  const required = new Map(
+    dimensions.map((dimension) => [dimension.id, dimension]),
+  );
   const scores: Record<string, number> = {};
   for (const [key, value] of Object.entries(raw)) {
-    if (!required.has(key as DimensionId))
-      return { ok: false, error: "提交了不适用的评分维度" };
-    const n = scoreValue(value);
-    if (n === null) return { ok: false, error: "评分必须在 1 到 5 之间" };
+    const dimension = required.get(key);
+    if (!dimension) return { ok: false, error: "提交了不适用的评分维度" };
+    const n = optionValue(value, dimension.options);
+    if (n === null) return { ok: false, error: "评分必须是题目给出的选项" };
     scores[key] = n;
   }
-  for (const id of required) {
+  for (const id of required.keys()) {
     if (!(id in scores)) return { ok: false, error: "请答完本次适用的评分题" };
   }
   return { ok: true, scores };
+}
+
+export function validateReviewNote(
+  raw: unknown,
+): { ok: true; comment: string } | { ok: false; error: string } {
+  if (typeof raw !== "string")
+    return { ok: false, error: "请填写至少 10 字补充说明" };
+  const comment = raw.trim();
+  if (comment.length < REVIEW_NOTE_MIN_LENGTH)
+    return { ok: false, error: "请填写至少 10 字补充说明" };
+  if (comment.length > REVIEW_NOTE_MAX_LENGTH)
+    return { ok: false, error: "补充说明不能超过 1200 字" };
+  return { ok: true, comment };
 }
 
 export function serializeScores(scores: Record<string, number>): string {
@@ -216,6 +338,7 @@ export function snapshotReviewScores(input: {
   category: string;
   tags: readonly string[];
   scores: unknown;
+  comment: unknown;
 }):
   | {
       ok: true;
@@ -223,6 +346,7 @@ export function snapshotReviewScores(input: {
       schemeVersion: number;
       scores: Record<string, number>;
       scoresJson: string;
+      comment: string;
     }
   | { ok: false; error: string } {
   const schemeKey = resolveSchemeKey(input.schemeKey, input.category);
@@ -231,12 +355,15 @@ export function snapshotReviewScores(input: {
     applicableDimensions(schemeKey, input.tags),
   );
   if (!validated.ok) return validated;
+  const note = validateReviewNote(input.comment);
+  if (!note.ok) return note;
   return {
     ok: true,
     schemeKey,
-    schemeVersion: REVIEW_SCHEMES[schemeKey].version,
+    schemeVersion: latestSchemeVersion(schemeKey).version,
     scores: validated.scores,
     scoresJson: serializeScores(validated.scores),
+    comment: note.comment,
   };
 }
 
@@ -272,8 +399,9 @@ export function dimensionAverage(scores: Record<string, number>): number | null 
 }
 
 /**
- * Public-feed average: only rows with a stored scheme snapshot.
- * Averages the snapshot scores (the applicable set at submit time).
+ * Public-feed average: only rows with a stored scheme snapshot whose
+ * published version still averages its dimensions. The current four
+ * three-tier questions are not averaged.
  */
 export function publicDimensionAverage(input: {
   schemeKey?: unknown;
@@ -284,6 +412,8 @@ export function publicDimensionAverage(input: {
     return null;
   const version = Number(input.schemeVersion);
   if (!Number.isInteger(version) || version < 1) return null;
+  const published = publishedSchemeVersion(input.schemeKey, version);
+  if (!published?.averagesDimensions) return null;
   const scores = parseStoredScores(input.scores);
   if (!scores) return null;
   return dimensionAverage(scores);
