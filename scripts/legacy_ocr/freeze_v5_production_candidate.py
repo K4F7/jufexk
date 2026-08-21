@@ -46,6 +46,7 @@ PROTECTED_OUT_MARKERS = (
     "issue111-isolated-shorthand-v1",
     "issue111-pe-course-teacher-v1",
     "frozen-historical-v5-candidate-v1",
+    "frozen-historical-v5-candidate-v2",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -451,7 +452,7 @@ def freeze_v5_production_candidate(
                     },
                 )["keys"].append(key)
             if not teacher:
-                teacher_name = str(row.get("teacher") or "")
+                teacher_name = str(mapped_row.get("teacher") or "")
                 unresolved_key = ("teacher", teacher_name)
                 unresolved_by_key.setdefault(
                     unresolved_key,
