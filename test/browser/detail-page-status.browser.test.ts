@@ -62,10 +62,11 @@ test("course detail page error uses official Alert", async ({ page }) => {
   await expect(page.getByRole("status", { name: "加载中…", exact: true })).toHaveCount(0);
 });
 
-test("course detail first load uses official Spinner", async ({ page }) => {
+test("course detail first load uses a reserved-height skeleton", async ({ page }) => {
   await page.route("**/api/courses/8", () => new Promise(() => {}));
   await page.goto("/courses/8");
   await expect(page.getByRole("status", { name: "课程加载中…" })).toBeVisible();
+  await expect(page.locator("[data-detail-skeleton-row]")).toHaveCount(12);
   await expect(page.getByRole("status", { name: "加载中…", exact: true })).toHaveCount(0);
 });
 
@@ -86,10 +87,11 @@ test("course review feed error uses official Alert", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("评价接口失败");
 });
 
-test("teacher detail first load uses official Spinner", async ({ page }) => {
+test("teacher detail first load uses a reserved-height skeleton", async ({ page }) => {
   await page.route("**/api/teachers/9", () => new Promise(() => {}));
   await page.goto("/teachers/9");
   await expect(page.getByRole("status", { name: "教师资料加载中…" })).toBeVisible();
+  await expect(page.locator("[data-detail-skeleton-row]")).toHaveCount(12);
   await expect(page.getByRole("status", { name: "加载中…", exact: true })).toHaveCount(0);
 });
 

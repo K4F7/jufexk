@@ -69,13 +69,14 @@ type MockOptions = {
   /** Pages beyond 1 return no rows but keep the total (deep-linked
    *  out-of-range page; the real API does not clamp page). */
   emptyBeyondFirstPage?: boolean;
+  courses?: typeof COURSES;
 };
 
 async function mockCatalogApi(page: Page, options: MockOptions = {}) {
   const departments = options.departments ?? ["人文学院", "体育学院"];
-  const catalog = options.deepLinkTeacher
-    ? [...COURSES, DEEP_LINK_COURSE]
-    : COURSES;
+  const catalog =
+    options.courses ??
+    (options.deepLinkTeacher ? [...COURSES, DEEP_LINK_COURSE] : COURSES);
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config")
@@ -339,8 +340,9 @@ test("first load shows skeleton rows and keeps the header height stable", async 
   const header = page.locator('header[aria-label="目录标题与搜索"]');
   await page.goto("/courses");
 
-  // 首屏加载是骨架行，不再只有一句「加载中…」。
+  // 首屏加载是骨架行，不再只有一句「加载中…」。行数对齐默认 pageSize。
   await expect(page.getByRole("status", { name: "加载中…" })).toBeVisible();
+  await expect(page.locator("[data-catalog-skeleton-row]")).toHaveCount(20);
   const before = await header.boundingBox();
 
   await expect(
@@ -352,6 +354,29 @@ test("first load shows skeleton rows and keeps the header height stable", async 
   // 标题/计数区域高度从首开到数据到达保持不变（无 CLS）。
   const after = await header.boundingBox();
   expect(before?.height).toBe(after?.height);
+});
+
+test("catalog teacher cells mount a short preview instead of every name", async ({
+  page,
+}) => {
+  const teacherRefs = [1, 2, 3, 4, 5, 6]
+    .map((id) => `${id}:教师${String(id).padStart(2, "0")}`)
+    .join(",");
+  await mockCatalogApi(page, {
+    courses: [
+      {
+        ...COURSES[0],
+        teachers: "教师01,教师02,教师03,教师04,教师05,教师06",
+        teacher_refs: teacherRefs,
+      },
+    ],
+  });
+  await page.goto("/courses");
+  const row = page.getByRole("row").filter({ hasText: "中国传统文化导论" });
+  await expect(row.getByRole("link", { name: "教师01" })).toBeVisible();
+  await expect(row.getByRole("link", { name: "教师03" })).toBeVisible();
+  await expect(row.getByRole("link", { name: "教师04" })).toHaveCount(0);
+  await expect(row.getByText("等3人")).toBeVisible();
 });
 
 test("filtered empty state names every active filter and both clear buttons share one label", async ({

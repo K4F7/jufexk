@@ -20,7 +20,7 @@ import {
 } from "react-router-dom";
 import {
   DetailErrorAlert,
-  DetailLoadingStatus,
+  DetailPageSkeleton,
 } from "../components/DetailFeedback";
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
@@ -146,7 +146,7 @@ export function TeacherDetailPage() {
   if (!data) {
     return (
       <section className="mx-auto w-full max-w-[880px]">
-        <DetailLoadingStatus label="教师资料加载中…" />
+        <DetailPageSkeleton label="教师资料加载中…" kind="teacher" />
       </section>
     );
   }

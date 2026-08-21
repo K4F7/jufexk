@@ -1,7 +1,8 @@
 /**
  * Catalog pagination + load/error/empty — visually frozen: prototype A.
  *
- * - First load: skeleton rows mirroring the table (Issue #205)
+ * - First load: 20 two-line skeleton rows + pagination reserve, matching
+ *   the public catalog pageSize so the list height does not jump (Issue #205)
  * - Refresh with data: compact Spinner line above table
  * - Error: dashed box + 重试
  * - Empty: distinct copy for filters vs true empty catalog; clear action when filtered
@@ -9,7 +10,7 @@
  *
  * Entity-specific wording via `copy` (courses vs teachers).
  */
-import { Button, Link, Skeleton, Spinner } from "@heroui/react";
+import { Button, Link, Skeleton, Spinner, Table } from "@heroui/react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
@@ -81,32 +82,92 @@ export type CatalogResultsStatesProps = {
   copy?: CatalogResultsCopy;
   /** Opposite-catalog hint when this catalog is empty (Issue #287). */
   rescue?: ReactNode;
+  /** First-load table chrome: course rows are two-line, teacher rows are one. */
+  skeleton?: "course" | "teacher";
 };
 
-/** First-load placeholder: skeleton rows mirror the result table's shape so
- * the list area does not jump when real rows land (Issue #205). */
-function CatalogSkeleton() {
+/** Matches the public catalog default `pageSize` so first-load height
+ * lines up with a full result page (desktop CLS). */
+export const CATALOG_SKELETON_ROWS = 20;
+
+/** First-load placeholder: official Table + pagination so row/footer
+ * height matches the loaded catalog (Issue #205). */
+function CatalogSkeleton({
+  variant,
+  rowCount,
+  totalUnit,
+}: {
+  variant: "course" | "teacher";
+  rowCount: number;
+  totalUnit: string;
+}) {
+  const course = variant === "course";
   return (
     <div role="status" aria-label="加载中…">
       <span className="sr-only">加载中…</span>
-      <div className="flex items-center gap-4 border-b border-separator py-2.5">
-        <Skeleton className="h-3 w-24 rounded" />
-        <Skeleton className="h-3 w-20 rounded" />
-        <Skeleton className="h-3 w-20 rounded" />
-        <Skeleton className="h-3 w-10 rounded" />
-      </div>
-      {Array.from({ length: 7 }).map((_, index) => (
-        <div
-          key={index}
-          className="flex items-center gap-4 border-b border-separator py-3"
-          aria-hidden
-        >
-          <Skeleton className="h-4 w-2/5 rounded" />
-          <Skeleton className="h-4 w-1/5 rounded" />
-          <Skeleton className="h-4 w-1/6 rounded" />
-          <Skeleton className="h-4 w-10 rounded" />
-        </div>
-      ))}
+      <Table className="dense-table">
+        <Table.ScrollContainer>
+          <Table.Content
+            aria-label={course ? "课程目录" : "教师资料"}
+            className={course ? "min-w-[720px]" : "min-w-[640px]"}
+          >
+            <Table.Header>
+              {course ? (
+                <>
+                  <Table.Column isRowHeader>课程</Table.Column>
+                  <Table.Column>教师</Table.Column>
+                  <Table.Column>院系</Table.Column>
+                  <Table.Column>投稿</Table.Column>
+                </>
+              ) : (
+                <>
+                  <Table.Column isRowHeader>教师</Table.Column>
+                  <Table.Column>院系</Table.Column>
+                  <Table.Column>投稿</Table.Column>
+                  <Table.Column>课程数</Table.Column>
+                </>
+              )}
+            </Table.Header>
+            <Table.Body>
+              {Array.from({ length: rowCount }).map((_, index) => (
+                <Table.Row
+                  key={index}
+                  id={`catalog-skeleton-${index}`}
+                  data-catalog-skeleton-row=""
+                >
+                  <Table.Cell>
+                    {course ? (
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <Skeleton className="h-4 w-3/4 rounded" />
+                        <Skeleton className="h-3 w-1/3 rounded" />
+                      </div>
+                    ) : (
+                      <Skeleton className="h-4 w-24 rounded" />
+                    )}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Skeleton className="h-4 w-28 rounded" />
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Skeleton className="h-4 w-10 rounded" />
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Skeleton className="h-4 w-10 rounded" />
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Content>
+        </Table.ScrollContainer>
+      </Table>
+      <PaginationFooter
+        currentPage={1}
+        totalPages={1}
+        total={0}
+        totalUnit={totalUnit}
+        disabled
+        onPageChange={() => {}}
+      />
     </div>
   );
 }
@@ -265,6 +326,7 @@ export function CatalogResultsStates({
   children,
   copy = COURSE_CATALOG_COPY,
   rescue,
+  skeleton = "course",
 }: CatalogResultsStatesProps) {
   if (error && !hasPayload) {
     return (
@@ -277,7 +339,13 @@ export function CatalogResultsStates({
   }
 
   if (loading && !hasPayload) {
-    return <CatalogSkeleton />;
+    return (
+      <CatalogSkeleton
+        variant={skeleton}
+        rowCount={CATALOG_SKELETON_ROWS}
+        totalUnit={copy.totalUnit}
+      />
+    );
   }
 
   if (hasPayload && itemCount === 0) {
@@ -294,7 +362,13 @@ export function CatalogResultsStates({
   }
 
   if (!hasPayload) {
-    return <CatalogSkeleton />;
+    return (
+      <CatalogSkeleton
+        variant={skeleton}
+        rowCount={CATALOG_SKELETON_ROWS}
+        totalUnit={copy.totalUnit}
+      />
+    );
   }
 
   return (
