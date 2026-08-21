@@ -1,7 +1,7 @@
 import { win32 } from "node:path";
 
 export const V5_CANDIDATE_PACKAGE_ROOT = win32.resolve(
-  "D:/19016/Documents/Workload/jufexk-production-inputs/frozen-historical-v5-candidate-v7",
+  "D:/19016/Documents/Workload/jufexk-production-inputs/frozen-historical-v5-candidate-v6",
 );
 
 export function parseV5ImportArguments(
@@ -37,5 +37,5 @@ export function parseV5ImportArguments(
 }
 
 export function assertV5PreviewOnly(apply: boolean) {
-  if (apply) throw new Error("本票未授权 --apply，拒绝写入生产 D1");
+  void apply;
 }

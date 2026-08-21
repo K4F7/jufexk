@@ -7,6 +7,7 @@ describe("public list precompute invalidation", () => {
     ["POST", "/api/admin/catalog-relation-additions"],
     ["POST", "/api/admin/import/relations"],
     ["POST", "/api/admin/historical-review-batch-imports"],
+    ["POST", "/api/admin/historical-review-v5-imports"],
     ["POST", "/api/admin/historical-review-imports"],
     ["POST", "/api/admin/offerings"],
     ["DELETE", "/api/admin/offerings/42"],

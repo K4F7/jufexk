@@ -29,6 +29,8 @@ export default defineConfig(async () => {
             ISSUE111_RELATION_MANIFEST_SHA256: "manifest",
             ISSUE111_IMPORT_ARTIFACT_SHA256: "manifest",
             ISSUE111_IMPORT_MANIFEST_SHA256: "manifest",
+            V5_IMPORT_ARTIFACT_SHA256: "manifest",
+            V5_IMPORT_MANIFEST_SHA256: "manifest",
             IP_HASH_SECRET: "test-ip-hash-secret",
             ORDINARY_USER_TEST_AUTH_SECRET: "test-ordinary-user-auth",
             CAMPUS_JWT_SECRET: "test-campus-jwt-secret",

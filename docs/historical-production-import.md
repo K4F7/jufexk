@@ -155,7 +155,7 @@ pnpm run historical-import:v5
 
 ## Issue 349：清洗教师名末尾括号旁注（v7）
 
-#349 把可见教师名末尾 `（…）` / `(…)` 当旁注去掉后再匹配目录教师，例如 `孙伟(求评价!!!)`→`孙伟`。课目标注（`（大英）` 等）走同一规则。不拆 `萨曼莎/温华`。#348 占用 v6，本票编 v7，编译时带上 v6 的 `--teacher-overrides`。`--apply` 仍拒绝。
+#349 把可见教师名末尾 `（…）` / `(…)` 当旁注去掉后再匹配目录教师，例如 `孙伟(求评价!!!)`→`孙伟`。课目标注（`（大英）` 等）走同一规则。不拆 `萨曼莎/温华`。#348 占用 v6，本票编 v7，编译时带上 v6 的 `--teacher-overrides`。`--apply` 仍拒绝。本 PR（#353 / #352）授权的是 v6 写入，不对本 v7 候选执行 apply。
 
 候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v7`
 
@@ -163,5 +163,20 @@ pnpm run historical-import:v5
 uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v7' --teacher-overrides 'D:\19016\Documents\Workload\jufexk-production-inputs\v5-teacher-overrides-v6.json'
 pnpm run historical-import:v5
 ```
+
+## Issue 352：导入 v6 并丢弃剩余空教师格
+
+#352 把 v6 的 356 条写入生产。公开历史评价 `882 → 1238`。目录 3740 / 1951 / 11572 与 marker 不变。不重放 522 / 164 / 120 / 12 / 64。正式写入必须用尚不存在的新备份路径。
+
+```powershell
+$env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
+$env:JUFEXK_ADMIN_PASSWORD = '...'
+$env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\v6-historical-<UTC_TIMESTAMP>.sql'
+pnpm run historical-import:v5
+pnpm run historical-import:v5 -- --apply
+```
+
+腾讯表已封存，不能改格。剩余 57 格空教师评价在导入后标为所有者丢弃，不再当 missing_teacher 待办。已补名但目录未绑上的樊凤龙 / Christine / carl 不丢弃。
+
 
 
