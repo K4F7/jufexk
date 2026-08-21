@@ -50,6 +50,7 @@ PROTECTED_OUT_MARKERS = (
     "frozen-historical-v5-candidate-v3",
     "frozen-historical-v5-candidate-v4",
     "frozen-historical-v5-candidate-v5",
+    "frozen-historical-v5-candidate-v6",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -81,12 +82,7 @@ VISIBLE_COURSE_ALIASES = {
     "散打上课": "散打",
     "中国古典诗词歌曲赏析与演唱MOOC": "中国古典诗词歌曲赏析与演唱（MOOC)",
 }
-TEACHER_COURSE_NOTE_SUFFIXES = (
-    "（大英）",
-    "(大英)",
-    "（经典英语视听说）",
-    "(经典英语视听说)",
-)
+TRAILING_TEACHER_NOTE = re.compile(r"[（(][^（）()]+[）)]$")
 OFFICIAL_COURSE_ALIASES = {
     "毛概": "毛泽东思想和中国特色社会主义理论体系概论",
     "马原": "马克思主义基本原理",
@@ -151,12 +147,8 @@ def visible_course_name(raw: str) -> str:
 
 def visible_teacher_name(raw: str) -> str:
     value = normalize_source_label(raw)
-    for suffix in TEACHER_COURSE_NOTE_SUFFIXES:
-        if value.endswith(suffix):
-            stripped = value[: -len(suffix)].strip()
-            if stripped:
-                return stripped
-    return value
+    stripped = TRAILING_TEACHER_NOTE.sub("", value).strip()
+    return stripped or value
 
 
 def sports_family_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:

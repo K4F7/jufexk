@@ -379,6 +379,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 "frozen-historical-v5-candidate-v3",
                 "frozen-historical-v5-candidate-v4",
                 "frozen-historical-v5-candidate-v5",
+                "frozen-historical-v5-candidate-v6",
             ):
                 with self.assertRaises(V5FreezeError):
                     freeze_v5_production_candidate(
@@ -666,12 +667,13 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                     evaluation("大英和视听说|9|H", "大英和视听说", "赵娟（经典英语视听说）"),
                     evaluation("大英和视听说|52|H", "大英和视听说", "黄荃（大英）"),
                     evaluation("大英和视听说|8|H", "大英和视听说", "萨曼莎/温华"),
-                    evaluation("主要课程|10|F", "货币银行学", "孙伟(求评价!!!)"),
+                    evaluation("思政课|41|G", "近代史", "孙伟(求评价!!!)"),
                 ],
                 [],
                 extra_courses=[
                     course("1004600232", "大学英语I"),
                     course("1004600282", "大学英语II"),
+                    course("1012100193", "中国近现代史纲要"),
                 ],
                 extra_teachers=[
                     {
@@ -689,12 +691,18 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                         "sourceTeacherLabel": "黄荃",
                         "normalizedTeacherLabel": "黄荃",
                     },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "孙伟",
+                        "normalizedTeacherLabel": "孙伟",
+                    },
                 ],
                 extra_relations=[
                     ("1004600232", "邱垂亿"),
                     ("1004600282", "邱垂亿"),
                     ("1004600232", "赵娟"),
                     ("1004600232", "黄荃"),
+                    ("1012100193", "孙伟"),
                 ],
             )
             rows = [
@@ -710,10 +718,9 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
             self.assertEqual(by_row[36]["catalog_course_code"], "1004600232")
             self.assertEqual(by_row[9]["catalog_teacher_label"], "赵娟")
             self.assertEqual(by_row[52]["catalog_teacher_label"], "黄荃")
-            self.assertEqual(
-                {row["key"] for row in excluded},
-                {"大英和视听说|8|H", "主要课程|10|F"},
-            )
+            self.assertEqual(by_row[41]["catalog_teacher_label"], "孙伟")
+            self.assertEqual(by_row[41]["catalog_course_code"], "1012100193")
+            self.assertEqual({row["key"] for row in excluded}, {"大英和视听说|8|H"})
 
 
 if __name__ == "__main__":
