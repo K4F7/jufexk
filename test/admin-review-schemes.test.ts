@@ -1,6 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { MOOC_SCORES, OFFLINE_SCORES } from "./review-score-fixtures";
+import {
+  ordinaryWriteHeaders,
+  ordinaryWriteSession,
+  type OrdinaryWriteSession,
+} from "./ordinary-write-session";
 
 const origin = "https://example.com";
 let loginSequence = 40;
@@ -30,12 +35,14 @@ async function login() {
   };
 }
 
-function submit(body: Record<string, unknown>) {
+let writeSession: OrdinaryWriteSession | undefined;
+
+async function submit(body: Record<string, unknown>) {
+  writeSession ??= await ordinaryWriteSession("admin-scheme-writer");
   return SELF.fetch(`${origin}/api/reviews`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
+      ...ordinaryWriteHeaders(writeSession),
       "CF-Connecting-IP": `203.0.113.${ipSequence++}`,
     },
     body: JSON.stringify(body),

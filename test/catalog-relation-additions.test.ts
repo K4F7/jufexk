@@ -1,5 +1,9 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import {
+  ordinaryWriteHeaders,
+  ordinaryWriteSession,
+} from "./ordinary-write-session";
 
 const origin = "https://example.com";
 
@@ -289,11 +293,11 @@ describe("official relation-only catalog additions", () => {
       );
       expect(pairsOnly.status).toBe(422);
 
+      const writer = await ordinaryWriteSession("relation-addition-writer");
       const relationRequest = await SELF.fetch(`${origin}/api/catalog-requests`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Origin: origin,
+          ...ordinaryWriteHeaders(writer),
           "CF-Connecting-IP": "198.18.61.250",
         },
         body: JSON.stringify({

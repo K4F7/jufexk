@@ -64,6 +64,7 @@ import {
   handleCampusAuthCallback,
   handleOrdinaryUserLogout,
   handleOrdinaryUserSession,
+  requireOrdinaryWriteUser,
   resolveOrdinaryUser,
 } from "./ordinary-user-session";
 import {
@@ -1167,6 +1168,12 @@ app.get("/api/offerings/:id", async (c) => {
 });
 app.post("/api/reviews", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
+  const writer = await requireOrdinaryWriteUser(
+    c,
+    "请先登录后再投稿",
+    "当前账号无法投稿",
+  );
+  if ("error" in writer) return writer.error;
   if (clean(b.website)) return c.json({ ok: true });
   const captchaMode = turnstileMode(
     c.env.TURNSTILE_SITE_KEY,
@@ -1281,6 +1288,12 @@ app.post("/api/reviews", async (c) => {
 });
 app.post("/api/catalog-requests", async (c) => {
   const b = await c.req.json<Record<string, unknown>>();
+  const writer = await requireOrdinaryWriteUser(
+    c,
+    "请先登录后再申请补充",
+    "当前账号无法申请补充",
+  );
+  if ("error" in writer) return writer.error;
   if (clean(b.website)) return c.json({ ok: true });
   const captchaMode = turnstileMode(
     c.env.TURNSTILE_SITE_KEY,

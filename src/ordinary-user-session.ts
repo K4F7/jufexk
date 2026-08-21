@@ -282,6 +282,26 @@ export function canOrdinaryUserWrite(user: OrdinaryUser) {
   return user.status === "active";
 }
 
+/**
+ * Shared write gate for ordinary-user mutations (reviews, catalog requests,
+ * endorsements). Guests 401; banned / pending_deletion / deleted 403; origin
+ * and CSRF must both pass. Call this before any INSERT, including honeypot
+ * short-circuits so anonymous bots cannot get a fake ok.
+ */
+export async function requireOrdinaryWriteUser(
+  c: Context,
+  loginError: string,
+  forbiddenError: string,
+): Promise<{ user: OrdinaryUser } | { error: Response }> {
+  const user = await resolveOrdinaryUser(c);
+  if (!user) return { error: c.json({ error: loginError }, 401) };
+  if (!canOrdinaryUserWrite(user))
+    return { error: c.json({ error: forbiddenError }, 403) };
+  if (!originOk(c) || !ordinaryUserCsrfOk(c))
+    return { error: c.json({ error: "安全校验失败，请刷新后重试" }, 403) };
+  return { user };
+}
+
 function restoreUntilFrom(pendingDeletionAt: string | null | undefined) {
   const start = pendingDeletionAt ? Date.parse(pendingDeletionAt) : Number.NaN;
   const from = Number.isFinite(start) ? start : Date.now();
