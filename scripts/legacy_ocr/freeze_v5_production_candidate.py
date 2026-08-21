@@ -48,6 +48,7 @@ PROTECTED_OUT_MARKERS = (
     "frozen-historical-v5-candidate-v1",
     "frozen-historical-v5-candidate-v2",
     "frozen-historical-v5-candidate-v3",
+    "frozen-historical-v5-candidate-v4",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -78,6 +79,12 @@ VISIBLE_COURSE_ALIASES = {
     "足球69": "足球",
     "散打上课": "散打",
 }
+TEACHER_COURSE_NOTE_SUFFIXES = (
+    "（大英）",
+    "(大英)",
+    "（经典英语视听说）",
+    "(经典英语视听说)",
+)
 OFFICIAL_COURSE_ALIASES = {
     "毛概": "毛泽东思想和中国特色社会主义理论体系概论",
     "马原": "马克思主义基本原理",
@@ -138,6 +145,16 @@ def public_display_family(name: str) -> str:
 def visible_course_name(raw: str) -> str:
     value = normalize_source_label(raw)
     return VISIBLE_COURSE_ALIASES.get(value, value)
+
+
+def visible_teacher_name(raw: str) -> str:
+    value = normalize_source_label(raw)
+    for suffix in TEACHER_COURSE_NOTE_SUFFIXES:
+        if value.endswith(suffix):
+            stripped = value[: -len(suffix)].strip()
+            if stripped:
+                return stripped
+    return value
 
 
 def sports_family_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -370,7 +387,7 @@ def match_row(
     raw_course_name = str(row.get("course") or "")
     course_name = visible_course_name(raw_course_name)
     official_name = OFFICIAL_COURSE_ALIASES.get(course_name, course_name)
-    teacher_name = str(row.get("teacher") or "")
+    teacher_name = visible_teacher_name(str(row.get("teacher") or ""))
     course, course_method, _course_candidates = match_identity(official_name, course_names, "currentName")
     if course is None and official_name != course_name:
         course, course_method, _course_candidates = match_identity(course_name, course_names, "currentName")
