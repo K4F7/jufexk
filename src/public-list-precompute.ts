@@ -1,21 +1,38 @@
 import { catalogPinyinText } from "./lib/catalog-pinyin";
 import {
+  ENGLISH_FIRST_LEVEL_NAMES,
+  ENGLISH_PUBLIC_LABEL,
   PE_SKILL_FAMILIES,
+  publicBrowseFamilySql,
   publicPeHasTextReviewSql,
-  publicPeSkillFamilySql,
   publicCourseVisibleSql,
 } from "./lib/public-course-presentation";
 
 const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
+const unnumberedPreference = [
+  ...PE_SKILL_FAMILIES.flatMap((family) => family.keys),
+  ENGLISH_PUBLIC_LABEL,
+]
+  .map(sqlLiteral)
+  .join(",");
+const firstNumberedPreference = [
+  ...PE_SKILL_FAMILIES.flatMap((family) =>
+    family.keys.flatMap((key) => [`${key}1`, `${key}专项理论与实践1`]),
+  ),
+  ...ENGLISH_FIRST_LEVEL_NAMES,
+]
+  .map(sqlLiteral)
+  .join(",");
+
 const canonicalInsert = `
   WITH classified AS (
     SELECT c.id,c.name,c.code,c.department,
-      (${publicPeSkillFamilySql("c")}) family_label,
+      (${publicBrowseFamilySql("c")}) family_label,
       CASE WHEN ${publicPeHasTextReviewSql("c")} THEN 0 ELSE 1 END has_text,
       CASE
-        WHEN c.name IN (${PE_SKILL_FAMILIES.flatMap((f) => f.keys).map(sqlLiteral).join(",")}) THEN 0
-        WHEN c.name IN (${PE_SKILL_FAMILIES.flatMap((f) => f.keys.flatMap((k) => [`${k}1`, `${k}专项理论与实践1`])).map(sqlLiteral).join(",")}) THEN 1
+        WHEN c.name IN (${unnumberedPreference}) THEN 0
+        WHEN c.name IN (${firstNumberedPreference}) THEN 1
         ELSE 2
       END preference
     FROM courses c

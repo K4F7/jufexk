@@ -31,12 +31,12 @@ import {
   isPublicListCategoryFilter,
   isVirtualPeSportId,
   publicCategoryFilterSql,
+  publicBrowseFamilySql,
   publicCourseCategory,
   publicCourseDisplayName,
   publicCourseVisibleSql,
+  publicOptionDisplayName,
   publicPeCanonicalCourseSql,
-  publicPeResolveCanonicalIdSql,
-  publicPeSkillFamilySql,
   VIRTUAL_PE_SPORTS,
   virtualPeSportById,
   virtualPeSportForTeacherName,
@@ -293,13 +293,13 @@ const publicCourseRawName = (row: {
     : typeof row.course_name === "string"
       ? row.course_name
       : "";
-const withPublicCourseCategory = <
+const withMappedCourseNames = <
   T extends { category?: unknown; name?: unknown; course_name?: unknown },
 >(
   row: T,
+  displayName: string,
 ) => {
   const rawName = publicCourseRawName(row);
-  const displayName = publicCourseDisplayName(rawName);
   return {
     ...row,
     ...(typeof row.name === "string" ? { name: displayName } : {}),
@@ -308,6 +308,37 @@ const withPublicCourseCategory = <
       rawName,
       typeof row.category === "string" ? row.category : "",
     ),
+  };
+};
+const withPublicCourseCategory = <
+  T extends { category?: unknown; name?: unknown; course_name?: unknown },
+>(
+  row: T,
+) =>
+  withMappedCourseNames(row, publicCourseDisplayName(publicCourseRawName(row)));
+const withPublicCourseOption = <
+  T extends {
+    scheme_key?: unknown;
+    category?: unknown;
+    tag_csv?: unknown;
+    name?: unknown;
+    course_name?: unknown;
+  },
+>(
+  row: T,
+) => {
+  const view = courseSchemeView(
+    typeof row.scheme_key === "string" ? row.scheme_key : null,
+    typeof row.category === "string" ? row.category : "",
+    parseTagCsv(row.tag_csv),
+  );
+  const { scheme_key: _schemeKey, tag_csv: _tagCsv, ...rest } = row;
+  return {
+    ...withMappedCourseNames(
+      rest,
+      publicOptionDisplayName(publicCourseRawName(rest)),
+    ),
+    ...view,
   };
 };
 const virtualPeSportItem = (
@@ -680,7 +711,7 @@ app.get("/api/courses", async (c) => {
       : { sql: "", args: [] };
   const relevanceOrder = `CASE
        WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? OR (${publicPeSkillFamilySql("c")})=? THEN 0
+       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? THEN 0
        WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} THEN 1
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
@@ -847,13 +878,16 @@ app.get("/api/teachers", async (c) => {
   });
 });
 app.get("/api/teachers/:id", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
   const id = integer(c.req.param("id"));
   const teacher = await c.env.DB.prepare(
     `SELECT t.*,
-       (SELECT COUNT(DISTINCT ${publicPeResolveCanonicalIdSql("c")}) FROM course_teachers ct JOIN courses c ON c.id=ct.course_id WHERE ct.teacher_id=t.id AND ${publicCourseVisibleSql("c")}) course_count,
+       COALESCE(public_teacher_course_counts.course_count,0) course_count,
        (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) review_count,
        (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
-     FROM teachers t WHERE t.id=?`,
+     FROM teachers t
+     LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
+     WHERE t.id=?`,
   )
     .bind(id)
     .first();
@@ -866,7 +900,8 @@ app.get("/api/teachers/:id", async (c) => {
          (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${publicReviewBinding}) rating
        FROM course_teachers ct
        JOIN courses taught ON taught.id=ct.course_id
-       JOIN courses c ON c.id=${publicPeResolveCanonicalIdSql("taught")}
+       JOIN public_course_canonicals pcc ON pcc.course_id=taught.id
+       JOIN courses c ON c.id=pcc.canonical_course_id
        LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=c.id AND visible_counts.teacher_id=ct.teacher_id
        WHERE ct.teacher_id=? AND ${publicCourseVisibleSql("taught")} AND ${publicCourseVisibleSql("c")}
        GROUP BY c.id
@@ -957,7 +992,7 @@ app.get("/api/courses/options", async (c) => {
   const totalCount = pageRows.total;
   setPublicCatalogCacheHeaders(c);
   return c.json({
-    items: pageRows.items.map((row) => withCourseReviewScheme(row)),
+    items: pageRows.items.map((row) => withPublicCourseOption(row)),
     page,
     pageSize: size,
     total: totalCount,
@@ -977,6 +1012,7 @@ app.get("/api/courses/departments", async (c) => {
   return c.json({ items: results.map((row) => row.department) });
 });
 app.get("/api/courses/:id", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
   const id = integer(c.req.param("id"));
   const virtual = id ? virtualPeSportById(id) : null;
   if (virtual) {
@@ -1021,11 +1057,11 @@ app.get("/api/courses/:id", async (c) => {
        JOIN course_teachers ct ON ct.teacher_id=t.id
        JOIN courses taught ON taught.id=ct.course_id
        JOIN courses requested ON requested.id=?
+       JOIN public_course_canonicals taught_pcc ON taught_pcc.course_id=taught.id
+       JOIN public_course_canonicals requested_pcc ON requested_pcc.course_id=requested.id
        LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=requested.id AND visible_counts.teacher_id=t.id
        WHERE ${publicCourseVisibleSql("taught")}
-         AND (taught.id=requested.id
-           OR ((${publicPeSkillFamilySql("taught")}) IS NOT NULL
-             AND (${publicPeSkillFamilySql("taught")}) = (${publicPeSkillFamilySql("requested")})))
+         AND taught_pcc.canonical_course_id=requested_pcc.canonical_course_id
        GROUP BY t.id
        ORDER BY review_count DESC,t.name,t.id`,
     )

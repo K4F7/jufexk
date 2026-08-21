@@ -70,7 +70,7 @@ describe("review template kind API contract", () => {
     ).toBe("general");
 
     for (const [category, name] of [
-      ["english", "大学英语1"],
+      ["english", "大学英语"],
       ["ideology", "思想道德与法治"],
       ["math", "高等数学A"],
     ] as const) {
@@ -221,14 +221,24 @@ describe("review template kind API contract", () => {
           (18112,'1005000492','篮球2','general'),
           (18113,'1005000242','健身教练2','general'),
           (18114,'1005002192','健身教练','general'),
-          (18105,'1004001943','会计学','general')`,
+          (18105,'1004001943','会计学','general'),
+          (18116,'1005000701','大学体育1','sports'),
+          (18117,'1005000731','大学体育4','sports')`,
       ),
       env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(18101,18101),(18102,18101),(18103,18101),(18104,18101),(18105,18101),(18106,18101),(18107,18101),(18108,18101),(18110,18101),(18111,18101),(18112,18101),(18113,18101),(18114,18101),(18115,18101)",
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(18101,18101),(18102,18101),(18103,18101),(18104,18101),(18105,18101),(18106,18101),(18107,18101),(18108,18101),(18110,18101),(18111,18101),(18112,18101),(18113,18101),(18114,18101),(18115,18101),(18116,18101),(18117,18101)",
       ),
     ]);
 
-    const hiddenNames = ["体育1", "体育2", "体育3", "体育4", "体育Ⅰ（留）"];
+    const hiddenNames = [
+      "体育1",
+      "体育2",
+      "体育3",
+      "体育4",
+      "体育Ⅰ（留）",
+      "大学体育1",
+      "大学体育4",
+    ];
     for (const name of hiddenNames) {
       const hidden = await SELF.fetch(
         `${origin}/api/courses?q=${encodeURIComponent(name)}`,
@@ -451,5 +461,111 @@ describe("review template kind API contract", () => {
       "SELECT name FROM courses WHERE id=19410",
     ).first<{ name: string }>();
     expect(stored?.name).toBe("体育1");
+  });
+
+  it("collapses 大学英语 I–IV in public browse but keeps option and catalog names", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(36701,'英语教师','英语教师')",
+      ),
+      env.DB.prepare(
+        `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
+          (36701,'1004600232','大学英语I','general','外国语学院','english'),
+          (36702,'1004600282','大学英语II','general','外国语学院','english'),
+          (36703,'1004600332','大学英语III','general','外国语学院','english'),
+          (36704,'1004600382','大学英语IV','general','外国语学院','english'),
+          (36705,'1004600262','大学英语I(涉外)','general','外国语学院','english'),
+          (36706,'1004606742','大学英语I(艺体）','general','外国语学院','english'),
+          (36707,'1004606782','大学英语I（运训）','general','外国语学院','english'),
+          (36708,'1004600502','大学英语预备级','general','外国语学院','english')`,
+      ),
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(36701,36701),(36702,36701),(36703,36701),(36704,36701),(36705,36701),(36706,36701),(36707,36701),(36708,36701)",
+      ),
+    ]);
+
+    const listed = await SELF.fetch(
+      `${origin}/api/courses?q=${encodeURIComponent("大学英语")}&category=english`,
+    );
+    const listedBody = await listed.json<{ items: Array<{ name: string }> }>();
+    expect(listed.status).toBe(200);
+    const listedNames = listedBody.items.map((item) => item.name);
+    expect(listedNames.filter((name) => name === "大学英语")).toHaveLength(1);
+    expect(listedNames).not.toContain("大学英语I");
+    expect(listedNames).not.toContain("大学英语II");
+    expect(listedNames).not.toContain("大学英语III");
+    expect(listedNames).not.toContain("大学英语IV");
+    expect(listedNames).toContain("大学英语I(涉外)");
+    expect(listedNames).toContain("大学英语I(艺体）");
+    expect(listedNames).toContain("大学英语I（运训）");
+    expect(listedNames).toContain("大学英语预备级");
+
+    const searchTwo = await SELF.fetch(
+      `${origin}/api/courses?q=${encodeURIComponent("大学英语II")}`,
+    );
+    const searchTwoBody = await searchTwo.json<{
+      items: Array<{ name: string }>;
+    }>();
+    expect(searchTwo.status).toBe(200);
+    expect(searchTwoBody.items.map((item) => item.name)).toContain("大学英语");
+    expect(searchTwoBody.items.map((item) => item.name)).not.toContain(
+      "大学英语II",
+    );
+
+    const options = await SELF.fetch(
+      `${origin}/api/courses/options?q=${encodeURIComponent("大学英语")}`,
+    );
+    const optionsBody = await options.json<{ items: Array<{ name: string }> }>();
+    expect(options.status).toBe(200);
+    const optionNames = optionsBody.items.map((item) => item.name);
+    expect(optionNames).toEqual(
+      expect.arrayContaining([
+        "大学英语I",
+        "大学英语II",
+        "大学英语III",
+        "大学英语IV",
+      ]),
+    );
+
+    const teacher = await SELF.fetch(`${origin}/api/teachers/36701`);
+    const teacherBody = await teacher.json<{
+      teacher: { course_count: number };
+      courses: Array<{ name: string }>;
+    }>();
+    expect(teacher.status).toBe(200);
+    expect(
+      teacherBody.courses.filter((course) => course.name === "大学英语"),
+    ).toHaveLength(1);
+    expect(teacherBody.courses.map((course) => course.name)).toEqual(
+      expect.arrayContaining([
+        "大学英语",
+        "大学英语I(涉外)",
+        "大学英语I(艺体）",
+        "大学英语I（运训）",
+        "大学英语预备级",
+      ]),
+    );
+    expect(teacherBody.teacher.course_count).toBe(5);
+
+    const detail = await SELF.fetch(`${origin}/api/courses/36702`);
+    const detailBody = await detail.json<{
+      course: {
+        name: string;
+        teachers: Array<{ name: string }>;
+      };
+    }>();
+    expect(detail.status).toBe(200);
+    expect(detailBody.course.name).toBe("大学英语");
+    expect(detailBody.course.teachers.map((teacher) => teacher.name)).toContain(
+      "英语教师",
+    );
+
+    const stored = await env.DB.prepare(
+      "SELECT name FROM courses WHERE id IN (36701,36702) ORDER BY id",
+    ).all<{ name: string }>();
+    expect(stored.results.map((row) => row.name)).toEqual([
+      "大学英语I",
+      "大学英语II",
+    ]);
   });
 });
