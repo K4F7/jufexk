@@ -109,4 +109,15 @@ uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py -
 pnpm run historical-import:v5
 ```
 
+## Issue 343：一师多编号大学英语按已有任课落课（v3）
+
+#343 在 v2 之上给多编号英语老师定级：可见「视听说」只在 `英语视听说*` / `视听说*` 里选；可见「大英和视听说」先无括号 `大学英语I–IV`，再含修饰大学英语，再视听说族；同族优先 `I` / `1`，否则课号最小。只绑该老师已有任课，一格一个课号，不拆 `邱垂亿（大英）` / `萨曼莎/温华` / `赵娟（经典英语视听说）`。新候选包 v3，不覆盖 v2。`--apply` 仍拒绝。
+
+候选包：`D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v3`
+
+```powershell
+uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py --source 'D:\19016\Documents\Workload\jufexk\scripts\legacy_evidence\output\review-approved-20260820-v5' --catalog 'D:\19016\Documents\Workload\jufexk\scripts\catalog-baseline\captures\full-approved-v2' --imported-root 'D:\19016\Documents\Workload\jufexk-production-inputs' --out 'D:\19016\Documents\Workload\jufexk-production-inputs\frozen-historical-v5-candidate-v3'
+pnpm run historical-import:v5
+```
+
 

@@ -46,6 +46,7 @@ PROTECTED_OUT_MARKERS = (
     "issue111-isolated-shorthand-v1",
     "issue111-pe-course-teacher-v1",
     "frozen-historical-v5-candidate-v1",
+    "frozen-historical-v5-candidate-v2",
 )
 IMPORTED_PACKAGES = (
     ("frozen-historical-production-v2/importable-legacy-reviews.jsonl", 522),
@@ -94,7 +95,13 @@ UMBRELLA_PE_NAMES = frozenset({
     "体育II（留）",
 })
 ENGLISH_COLLEGE_PREFIXES = ("大学英语",)
-ENGLISH_LISTENING_PREFIXES = ("英语视听说", "视听说", "高级口语")
+ENGLISH_LISTENING_PREFIXES = ("英语视听说", "视听说")
+PLAIN_COLLEGE_ENGLISH = re.compile(
+    r"^大学英语(?:IV|III|II|I|Ⅳ|Ⅲ|Ⅱ|Ⅰ|4|3|2|1)$"
+)
+ENGLISH_HIGHER_LEVEL = re.compile(r"(?:IV|III|II|4|3|2|Ⅳ|Ⅲ|Ⅱ)$")
+ENGLISH_LEVEL_ONE = re.compile(r"(?:I|Ⅰ|1)$")
+ENGLISH_PAREN_SUFFIX = re.compile(r"[（(].*$")
 SPECIAL_THEORY_SUFFIX = re.compile(r"专项理论与实践[1-6]$")
 LEVEL_SUFFIX = re.compile(r"[1-6]$")
 ONE_SUFFIX = re.compile(r"(?:专项理论与实践)?1$")
@@ -161,6 +168,65 @@ def pick_canonical(candidates: list[dict[str, Any]]) -> dict[str, Any]:
     return ranked[0]
 
 
+def is_listening_english(name: str) -> bool:
+    return name.startswith(ENGLISH_LISTENING_PREFIXES)
+
+
+def is_plain_college_english(name: str) -> bool:
+    return bool(PLAIN_COLLEGE_ENGLISH.match(name))
+
+
+def is_modified_college_english(name: str) -> bool:
+    return name.startswith(ENGLISH_COLLEGE_PREFIXES) and not is_plain_college_english(name)
+
+
+def is_english_level_one(name: str) -> bool:
+    base = ENGLISH_PAREN_SUFFIX.sub("", name).strip()
+    if ENGLISH_HIGHER_LEVEL.search(base):
+        return False
+    return bool(ENGLISH_LEVEL_ONE.search(base))
+
+
+def pick_english_canonical(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    ones = [
+        course
+        for course in candidates
+        if is_english_level_one(str(course.get("currentName") or ""))
+    ]
+    pool = ones or candidates
+    return sorted(pool, key=lambda course: course["courseCode"])[0]
+
+
+def pick_english_existing(
+    visible: str,
+    matches: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, str]:
+    def named(predicate) -> list[dict[str, Any]]:
+        return [
+            course
+            for course in matches
+            if predicate(str(course.get("currentName") or ""))
+        ]
+
+    if visible == "视听说":
+        pool = named(is_listening_english)
+    elif visible == "大英和视听说":
+        pool = (
+            named(is_plain_college_english)
+            or named(is_modified_college_english)
+            or named(is_listening_english)
+        )
+    elif len(matches) == 1:
+        pool = matches
+    else:
+        pool = []
+    if not pool:
+        return None, "english_teacher_unique"
+    picked = pick_english_canonical(pool)
+    method = "english_teacher_unique" if len(pool) == 1 else "english_teacher_level"
+    return picked, method
+
+
 def load_teacher_overrides(path: Path | None) -> dict[tuple[str, int], str]:
     if path is None:
         return {}
@@ -186,18 +252,21 @@ def load_teacher_overrides(path: Path | None) -> dict[tuple[str, int], str]:
 
 def english_prefix_candidates(visible: str, courses: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     if visible == "学术英语":
-        prefixes = ("学术英语",)
+        prefixes: tuple[str, ...] = ("学术英语",)
     elif visible == "高级口语":
         prefixes = ("高级口语",)
-    elif visible in {"视听说", "英语口语"}:
-        prefixes = ("英语口语", "英语视听说", "视听说") if visible == "英语口语" else ENGLISH_LISTENING_PREFIXES
+    elif visible == "英语口语":
+        prefixes = ("英语口语", *ENGLISH_LISTENING_PREFIXES)
+    elif visible == "视听说":
+        prefixes = ENGLISH_LISTENING_PREFIXES
+    elif visible == "大英和视听说":
+        prefixes = (*ENGLISH_COLLEGE_PREFIXES, *ENGLISH_LISTENING_PREFIXES)
     else:
         prefixes = ENGLISH_COLLEGE_PREFIXES
-    hits = [
+    return [
         course for course in courses.values()
         if isinstance(course.get("currentName"), str) and course["currentName"].startswith(prefixes)
     ]
-    return hits
 
 
 def verify_v5_source(
@@ -332,7 +401,12 @@ def match_row(
             for candidate in pair_course_candidates
             if (candidate["courseCode"], teacher["sourceTeacherLabel"]) in relations
         ]
-        if len(relation_matches) == 1:
+        if worksheet == "大英和视听说" and relation_matches:
+            picked, english_method = pick_english_existing(course_name, relation_matches)
+            if picked is not None:
+                course = picked
+                course_method = english_method
+        elif len(relation_matches) == 1:
             course = relation_matches[0]
             course_method = (
                 "pe_one_teacher_one_course"
@@ -508,6 +582,7 @@ def freeze_v5_production_candidate(
             "pe_public_display_family": "pe_one_teacher_one_course",
             "pe_one_teacher_one_course": "pe_one_teacher_one_course",
             "english_teacher_unique": "english_teacher_unique",
+            "english_teacher_level": "english_teacher_level",
             "official_alias_unique": "official_alias_unique",
         }.get(course_method, "existing_catalog_relation")
         projected = project_importable(row, course, teacher, basis)
