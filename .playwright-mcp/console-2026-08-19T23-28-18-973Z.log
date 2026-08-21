@@ -1,0 +1,101 @@
+[     459ms] [WARNING] document.domain mutation is ignored because the surrounding agent cluster is origin-keyed. @ https://docs.qq.com/sheet/DUFVCWkdsRU5BdEhH:119
+[     627ms] [WARNING] 初始化拦截器-2.0 @ https://docs.gtimg.com/sheet/js/initial_vendors_tencent_2.054afb5aa02958eb.js:0
+[     628ms] [INFO] ----- re add user index @ https://docs.gtimg.com/sheet/js/initial_vendors_tencent_2.054afb5aa02958eb.js:0
+[     628ms] [WARNING] 初始化拦截器-2.0 @ https://docs.gtimg.com/sheet/js/initial_vendors_tencent_2.054afb5aa02958eb.js:0
+[     694ms] [WARNING] 没有 mqq，无法使用 support bridge！ @ https://docs.gtimg.com/sheet/js/initial_vendors_public_2.3131f59e8396b41b.js:67
+[     743ms] [LOG] %c表格 display:inline-block;background-color:#2a65f5;color:#fff;padding:2px 4px;font-size:14px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[     743ms] [LOG] %c数据版本%c3.0.0 display:inline-block;background-color:#e07800;color:#fff;padding:2px 4px;font-size:12px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px;font-size:12px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[     743ms] [LOG] %c代码版本%c3.0.29778193 display:inline-block;background-color:#e07800;color:#fff;padding:2px 4px;font-size:12px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px;font-size:12px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[     743ms] [LOG] %c分支版本%chotfix-20260814_1511-aa5bb969 display:inline-block;background-color:#e07800;color:#fff;padding:2px 4px;font-size:12px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px;font-size:12px;  @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[     743ms] [LOG] %c温馨提示：请勿在此控制台输入来源不明的代码，以免您的文档数据或账号信息遭到泄漏 display:inline-block;background-color:#e02424;color:#fff;padding:2px 4px;font-size:14px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[     746ms] [INFO] [2026-08-20T07:28:19.718] [INFO ] [LifecycleScheduler] - lifecycle scheduler starup @ https://docs.gtimg.com/sheet/js/initial_vendors_public_2.3131f59e8396b41b.js:67
+[     791ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[     792ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[     792ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[     793ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[     794ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[     794ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[     987ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://docs.qq.com/assets/jquery/api100.js?type=1:0
+[     991ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    1768ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ https://docs.gtimg.com/sheet/js/initial_core_4.c7d2e97b8928bb70.js:1
+[    1797ms] [INFO] %cINFO%cTDWebOffice 2026/08/20 07:28:20 display:inline-block;background-color:#1e6fff;color:#fff;padding:2px 4px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px; 
+web-office-application version: 1.2.3 @ https://docs.gtimg.com/sheet/js/initial_vendors_public_2.3131f59e8396b41b.js:68
+[    1831ms] [TABLE] {dep: / /} @ https://staticfile.qq.com/qimei/qimeisdk-web/0.9.5/index.js:1
+[    2317ms] [ERROR] 加载 AppConfig 配置出错 @ https://docs.gtimg.com/sheet/js/public-worker.00e31a7f327bb8fd.js?:0
+[    3087ms] [INFO] [2026-08-20T07:28:22.059] [INFO ] [readonly-tips] - component bootstrap @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    3087ms] [INFO] [2026-08-20T07:28:22.059] [INFO ] [readonly-tips] - show readonly-tips @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    3238ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    3239ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    3239ms] [WARNING] [wl]socket_roomstatechange_CONNECTING_v3超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    3239ms] [WARNING] [wl]socket_roomstatechange_SHUTDOWN_v3超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    3239ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    3239ms] [WARNING] [wl]galileo_k_main_thread_sheet_has_formula超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    3260ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    3260ms] [WARNING] [wl]galileo_k_calc_thread_consumer_task超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    3260ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    3261ms] [WARNING] [wl]galileo_k_main_thread_formula_result_use_source超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    3261ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    3261ms] [WARNING] [wl]galileo_k_calc_thread_need_calc超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    3304ms] [INFO] [2026-08-20T07:28:22.277] [INFO ] [docs-component-ad] - both of uid and posId are required to fetch ad. get uid:  posId: 1305 @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    3556ms] [INFO] [2026-08-20T07:28:22.528] [INFO ] [help-center] - help-center component show @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    4086ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    4086ms] [WARNING] [wl]galileo_k_quality_doc-excel_detail-open_time_cost超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    4130ms] [INFO] %c[common-loader](localStorageSize) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    4136ms] [INFO] %c[common-loader](shareInfo) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    4136ms] [INFO] %c[common-loader](showTips) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    4153ms] [INFO] %c[common-loader](navigateDesktopClient) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    4164ms] [INFO] %c[common-loader](copilotOnboarding) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    4217ms] [TABLE] [l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l] @ https://docs.gtimg.com/sheet/js/page-main.5ff8fa1350159dbf.js:79
+[    4236ms] [INFO] [title] - The title on this page is applying styles from tbs. @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    4270ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[    4270ms] [WARNING] [wl]galileo_k_首屏打开信息超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[    5133ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    5136ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    5137ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    5138ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    5138ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    5139ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    5177ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://docs.qq.com/assets/jquery/api100.js?type=1:0
+[    5314ms] [TABLE] {dep: / /} @ https://staticfile.qq.com/qimei/qimeisdk-web/0.9.5/index.js:1
+[60096902ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=8663652934833500:0
+[60097713ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=14202483322013692:0
+[60131174ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=2651060647434625:0
+[60131938ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=1872634496000779:0
+[60542901ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=11965032487024148:0
+[60543838ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=6645196979325133:0
+[60685096ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=9439747498518224:0
+[60685849ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=1024975547806782:0
+[75702354ms] [ERROR] Failed to load resource: net::ERR_HTTP2_PROTOCOL_ERROR @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=17600681027842546:0
+[76541876ms] [ERROR] Failed to load resource: net::ERR_HTTP2_PROTOCOL_ERROR @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=16471608743711030:0
+[77321849ms] [ERROR] Failed to load resource: net::ERR_HTTP2_PROTOCOL_ERROR @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=13906614634119964:0
+[98023067ms] [ERROR] Failed to load resource: net::ERR_HTTP2_PING_FAILED @ https://docs.qq.com/websocket/bind?sid=beda25d2a5f749d7a6ce33ef0a06cc7e&token=098e843cdd7afdc2a5e4f5a57bb25ee1&routeKey=300000000$PUBZGlENAtHG&taskId=7441037514203173:0
+[122438384ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ https://docs.gtimg.com/sheet/js/bundle_FloatObjectManager.58266f4bb6a7062e.js:0
+[122440028ms] [INFO] [2026-08-21T17:28:59.000] [INFO ] [help-center] - help-center component destroy @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[122440029ms] [INFO] [2026-08-21T17:28:59.002] [INFO ] [help-center] - help-center component show @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[122440081ms] [LOG] [wl]report key cache is expired @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122440181ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[122440181ms] [WARNING] [wl]galileo_k_calc_thread_consumer_task超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122440198ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://report.idqqimg.com/api/7/envelope/?sentry_key=2412865c25bf4e3ebe258fd222923c9d&sentry_version=7&sentry_client=sentry.javascript.browser%2F7.77.0:0
+[122440222ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://report.idqqimg.com/api/7/envelope/?sentry_key=2412865c25bf4e3ebe258fd222923c9d&sentry_version=7&sentry_client=sentry.javascript.browser%2F7.77.0:0
+[122440285ms] [WARNING] [wl]galileo_k_calc_thread_consumer_task超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122440291ms] [LOG] [wl]report key cache is expired @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122440342ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[122440342ms] [WARNING] [wl]galileo_k_main_thread_formula_result_use_source超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122440343ms] [WARNING] [wl]galileo_k_main_thread_formula_result_use_source超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122440728ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[122440729ms] [WARNING] [wl]galileo_k_DSI_ASF超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122446692ms] [WARNING] Blocked aria-hidden on an element because its descendant retained focus. The focus must not be hidden from assistive technology users. Avoid using aria-hidden on a focused element or its ancestor. Consider using the inert attribute instead, which will also prevent focus. For more details, see the aria-hidden section of the WAI-ARIA specification at https://w3c.github.io/aria/#aria-hidden.
+Element with focus: <div.operate-board>
+Ancestor with aria-hidden: <div.operate-board> @ https://docs.qq.com/sheet/DUFVCWkdsRU5BdEhH?tab=BB08J8:0
+[122448530ms] [INFO] [2026-08-21T17:29:07.502] [INFO ] [help-center] - help-center component destroy @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[122448531ms] [INFO] [2026-08-21T17:29:07.503] [INFO ] [help-center] - help-center component show @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[122448559ms] [WARNING] [wl]galileo_k_calc_thread_consumer_task超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122448653ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://report.idqqimg.com/api/7/envelope/?sentry_key=2412865c25bf4e3ebe258fd222923c9d&sentry_version=7&sentry_client=sentry.javascript.browser%2F7.77.0:0
+[122448682ms] [ERROR] Failed to load resource: the server responded with a status of 503 () @ https://report.idqqimg.com/api/7/envelope/?sentry_key=2412865c25bf4e3ebe258fd222923c9d&sentry_version=7&sentry_client=sentry.javascript.browser%2F7.77.0:0
+[122448740ms] [WARNING] [wl]galileo_k_main_thread_formula_result_use_source超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122449167ms] [WARNING] [wl]galileo_k_DSI_ASF超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122449506ms] [WARNING] [wl]galileo_k_DSI_ASF超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122449803ms] [WARNING] [wl]galileo_k_DSI_ASF超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122450628ms] [WARNING] [wl]galileo_k_DSI_ASF超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[122460081ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ https://docs.gtimg.com/sheet/js/bundle_FloatObjectManager.58266f4bb6a7062e.js:0
+[122462718ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ https://docs.gtimg.com/sheet/js/bundle_FloatObjectManager.58266f4bb6a7062e.js:0

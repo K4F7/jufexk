@@ -1,0 +1,65 @@
+[    1119ms] [WARNING] document.domain mutation is ignored because the surrounding agent cluster is origin-keyed. @ https://docs.qq.com/sheet/DUFVCWkdsRU5BdEhH?right_flag=1&tab=BB08J3:119
+[    2655ms] [WARNING] 初始化拦截器-2.0 @ https://docs.gtimg.com/sheet/js/initial_vendors_tencent_2.054afb5aa02958eb.js:0
+[    2656ms] [INFO] ----- re add user index @ https://docs.gtimg.com/sheet/js/initial_vendors_tencent_2.054afb5aa02958eb.js:0
+[    2656ms] [WARNING] 初始化拦截器-2.0 @ https://docs.gtimg.com/sheet/js/initial_vendors_tencent_2.054afb5aa02958eb.js:0
+[    2723ms] [WARNING] 没有 mqq，无法使用 support bridge！ @ https://docs.gtimg.com/sheet/js/initial_vendors_public_2.3131f59e8396b41b.js:67
+[    2773ms] [LOG] %c表格 display:inline-block;background-color:#2a65f5;color:#fff;padding:2px 4px;font-size:14px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[    2774ms] [LOG] %c数据版本%c3.0.0 display:inline-block;background-color:#e07800;color:#fff;padding:2px 4px;font-size:12px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px;font-size:12px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[    2774ms] [LOG] %c代码版本%c3.0.29778193 display:inline-block;background-color:#e07800;color:#fff;padding:2px 4px;font-size:12px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px;font-size:12px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[    2774ms] [LOG] %c分支版本%chotfix-20260814_1511-aa5bb969 display:inline-block;background-color:#e07800;color:#fff;padding:2px 4px;font-size:12px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px;font-size:12px;  @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[    2774ms] [LOG] %c温馨提示：请勿在此控制台输入来源不明的代码，以免您的文档数据或账号信息遭到泄漏 display:inline-block;background-color:#e02424;color:#fff;padding:2px 4px;font-size:14px; @ https://docs.gtimg.com/sheet/js/11163.7cf60e381b4eb1ca.js:0
+[    2777ms] [INFO] [2026-08-19T07:37:15.310] [INFO ] [LifecycleScheduler] - lifecycle scheduler starup @ https://docs.gtimg.com/sheet/js/initial_vendors_public_2.3131f59e8396b41b.js:67
+[    2859ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    2876ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://docs.qq.com/assets/jquery/api100.js?type=1:0
+[    3019ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    3022ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    3259ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    3261ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    4112ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    4463ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    4941ms] [TABLE] {dep: / /} @ https://staticfile.qq.com/qimei/qimeisdk-web/0.9.5/index.js:1
+[    8903ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    9001ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://docs.qq.com/assets/jquery/api100.js?type=1:0
+[    9067ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    9069ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    9379ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ https://docs.gtimg.com/sheet/js/initial_core_4.c7d2e97b8928bb70.js:1
+[    9417ms] [INFO] %cINFO%cTDWebOffice 2026/08/19 07:37:21 display:inline-block;background-color:#1e6fff;color:#fff;padding:2px 4px; display:inline-block;background-color:rgba(69, 77, 90, 0.6);color:#fff;padding:2px 4px; 
+web-office-application version: 1.2.3 @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[    9451ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    9634ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[    9634ms] [ERROR] Failed to load resource: net::ERR_FAILED @ chrome-extension://invalid/:0
+[   10349ms] [TABLE] {dep: / /} @ https://staticfile.qq.com/qimei/qimeisdk-web/0.9.5/index.js:1
+[   15731ms] [ERROR] 加载 AppConfig 配置出错 @ https://docs.gtimg.com/sheet/js/public-worker.00e31a7f327bb8fd.js?:0
+[   25764ms] [ERROR] Connecting to 'https://cube.weixinbridge.com/cube/report/reportbizdata?f=json' violates the following Content Security Policy directive: "connect-src 'self' blob: wss: tdocs: *.url.cn *.qq.com *.gtimg.com *.idqqimg.com *.gtimg.cn cdn-go.cn *.cdn-go.cn *.tencentcs.com *.myqcloud.com *.tencent-cloud.com *.tencentsuite.com *.tencent.com *.qqmail.com *.woa.com:* *.sogou.com *.sogoucdn.com tdocs.processon.com test-tdocs.processon.com www.processon.com activity.kugou.com www.canva.cn www.canva.com *.bilibili.com app.yinxiang.com *.modao.cc www.yuntucad.com m.weibo.cn mastergo.com *.dycharts.com *.figma.com *.mockplus.cn pgdt.gtimg.cn adsmind.gdtimg.com *.rdt.tfogc.com:49156 http://127.0.0.1:* *.hdslb.com *.qpic.cn *.feishu.cn www.xiaohongshu.com *.weiyun.com". The action has been blocked. @ https://docs.gtimg.com/lib/js/aegis_v2-0ca2fa.js:0
+[   26745ms] [INFO] [2026-08-19T07:37:39.278] [INFO ] [readonly-tips] - component bootstrap @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   26746ms] [INFO] [2026-08-19T07:37:39.278] [INFO ] [readonly-tips] - show readonly-tips @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   27410ms] [INFO] [title] - The title on this page is applying styles from tbs. @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   27482ms] [INFO] [2026-08-19T07:37:40.014] [INFO ] [docs-component-ad] - both of uid and posId are required to fetch ad. get uid:  posId: 1305 @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   28272ms] [ERROR] Connecting to 'https://cube.weixinbridge.com/cube/report/reportbizdata?f=json' violates the following Content Security Policy directive: "connect-src 'self' blob: wss: tdocs: *.url.cn *.qq.com *.gtimg.com *.idqqimg.com *.gtimg.cn cdn-go.cn *.cdn-go.cn *.tencentcs.com *.myqcloud.com *.tencent-cloud.com *.tencentsuite.com *.tencent.com *.qqmail.com *.woa.com:* *.sogou.com *.sogoucdn.com tdocs.processon.com test-tdocs.processon.com www.processon.com activity.kugou.com www.canva.cn www.canva.com *.bilibili.com app.yinxiang.com *.modao.cc www.yuntucad.com m.weibo.cn mastergo.com *.dycharts.com *.figma.com *.mockplus.cn pgdt.gtimg.cn adsmind.gdtimg.com *.rdt.tfogc.com:49156 http://127.0.0.1:* *.hdslb.com *.qpic.cn *.feishu.cn www.xiaohongshu.com *.weiyun.com". The action has been blocked. @ https://docs.gtimg.com/lib/js/aegis_v2-0ca2fa.js:0
+[   30627ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   30628ms] [WARNING] [wl]socket_roomstatechange_CONNECTING_v3超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   31061ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   31062ms] [WARNING] [wl]socket_roomstatechange_SHUTDOWN_v3超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   31062ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   31063ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   31064ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   31064ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   31063ms] [WARNING] [wl]galileo_k_main_thread_sheet_has_formula超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   31064ms] [WARNING] [wl]galileo_k_calc_thread_need_calc超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   31064ms] [WARNING] [wl]galileo_k_calc_thread_consumer_task超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   31065ms] [WARNING] [wl]galileo_k_main_thread_formula_result_use_source超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   33659ms] [INFO] [2026-08-19T07:37:46.191] [INFO ] [help-center] - help-center component show @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   40675ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   40675ms] [WARNING] [wl]galileo_k_5s打开成功率超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   40680ms] [WARNING] [wl]FIRST_SCREEN_TIME_IN_5S_v3超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   40680ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   40680ms] [WARNING] [wl]galileo_k_quality_doc-excel_detail-open_time_cost超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
+[   40807ms] [INFO] %c[common-loader](localStorageSize) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   40811ms] [INFO] %c[common-loader](shareInfo) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   40811ms] [INFO] %c[common-loader](showTips) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   40896ms] [INFO] %c[common-loader](navigateDesktopClient) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   40987ms] [ERROR] Connecting to 'https://cube.weixinbridge.com/cube/report/reportbizdata?f=json' violates the following Content Security Policy directive: "connect-src 'self' blob: wss: tdocs: *.url.cn *.qq.com *.gtimg.com *.idqqimg.com *.gtimg.cn cdn-go.cn *.cdn-go.cn *.tencentcs.com *.myqcloud.com *.tencent-cloud.com *.tencentsuite.com *.tencent.com *.qqmail.com *.woa.com:* *.sogou.com *.sogoucdn.com tdocs.processon.com test-tdocs.processon.com www.processon.com activity.kugou.com www.canva.cn www.canva.com *.bilibili.com app.yinxiang.com *.modao.cc www.yuntucad.com m.weibo.cn mastergo.com *.dycharts.com *.figma.com *.mockplus.cn pgdt.gtimg.cn adsmind.gdtimg.com *.rdt.tfogc.com:49156 http://127.0.0.1:* *.hdslb.com *.qpic.cn *.feishu.cn www.xiaohongshu.com *.weiyun.com". The action has been blocked. @ https://docs.gtimg.com/lib/js/aegis_v2-0ca2fa.js:0
+[   41026ms] [INFO] %c[common-loader](copilotOnboarding) running color: green; @ https://docs.gtimg.com/sheet/js/sentry.351a5c01ba13c063.js:9
+[   41504ms] [TABLE] [l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l, l] @ https://docs.gtimg.com/sheet/js/page-main.5ff8fa1350159dbf.js:79
+[   41554ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://at.idqqimg.com/api/v1/open/report:0
+[   41555ms] [WARNING] [wl]galileo_k_首屏打开信息超过主动上报次数，忽略本次上报 @ https://docs.qq.com/scenario/pub/wl2/browser-backend-worker-1.51.0.js:1
