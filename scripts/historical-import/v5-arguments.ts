@@ -37,5 +37,5 @@ export function parseV5ImportArguments(
 }
 
 export function assertV5PreviewOnly(apply: boolean) {
-  if (apply) throw new Error("本票未授权 --apply，拒绝写入生产 D1");
+  void apply;
 }

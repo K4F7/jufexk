@@ -164,4 +164,18 @@ uv run --directory scripts/legacy_ocr python freeze_v5_production_candidate.py -
 pnpm run historical-import:v5
 ```
 
+## Issue 352：导入 v7 并丢弃剩余空教师格
+
+#352 把当前候选包 v7 的 357 条写入生产。公开历史评价 `882 → 1239`。目录 3740 / 1951 / 11572 与 marker 不变。不重放 522 / 164 / 120 / 12 / 64。正式写入必须用尚不存在的新备份路径。
+
+```powershell
+$env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
+$env:JUFEXK_ADMIN_PASSWORD = '...'
+$env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\v7-historical-<UTC_TIMESTAMP>.sql'
+pnpm run historical-import:v5
+pnpm run historical-import:v5 -- --apply
+```
+
+腾讯表已封存，不能改格。剩余空教师评价在导入后标为所有者丢弃，不再当 missing_teacher 待办。已补名但目录未绑上的樊凤龙 / Christine / carl 不丢弃。
+
 

@@ -35,8 +35,8 @@ describe("v5 production candidate import arguments", () => {
     );
   });
 
-  it("refuses --apply until the issue authorizes a production write", () => {
-    expect(() => assertV5PreviewOnly(true)).toThrow("未授权 --apply");
+  it("allows --apply after the owner authorizes a production write", () => {
+    expect(() => assertV5PreviewOnly(true)).not.toThrow();
     expect(() => assertV5PreviewOnly(false)).not.toThrow();
   });
 });
