@@ -31,6 +31,7 @@ const CATEGORY_OPTIONS = [
   { id: "english", label: "英语课" },
   { id: "ideology", label: "思政课" },
   { id: "math", label: "数学课" },
+  { id: "mooc", label: "网课" },
 ] as const;
 
 const SORT_OPTIONS = [

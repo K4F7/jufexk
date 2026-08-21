@@ -12,7 +12,9 @@ import {
   publicOptionDisplayName,
   publicPeSkillLabel,
   isPublicListCategoryFilter,
+  publicCategoryFilterError,
   publicCategoryFilterSql,
+  publicHasMoocTagSql,
   publicSportsMatchSql,
   virtualPeSportForTeacherName,
 } from "../src/lib/public-course-presentation";
@@ -100,18 +102,29 @@ describe("public PE course presentation", () => {
     expect(isPublicListCategoryFilter("english")).toBe(true);
     expect(isPublicListCategoryFilter("ideology")).toBe(true);
     expect(isPublicListCategoryFilter("math")).toBe(true);
+    expect(isPublicListCategoryFilter("mooc")).toBe(true);
     expect(isPublicListCategoryFilter("major")).toBe(false);
     expect(isPublicListCategoryFilter("pe")).toBe(false);
     expect(isPublicListCategoryFilter("public_basic")).toBe(false);
+    expect(publicCategoryFilterError()).toBe(
+      "公开筛选仅支持 sports、english、ideology、math、mooc",
+    );
     expect(publicCategoryFilterSql("", "c")).toEqual({ sql: "1=1", args: [] });
+    expect(publicCategoryFilterSql("mooc", "c")).toEqual({
+      sql: publicHasMoocTagSql("c"),
+      args: [],
+    });
     expect(publicCategoryFilterSql("sports", "c").sql).toContain(
       "c.scheme_key='pe'",
     );
     expect(publicCategoryFilterSql("sports", "c").sql).toContain(
       publicSportsMatchSql("c"),
     );
+    expect(publicCategoryFilterSql("sports", "c").sql).toContain(
+      `NOT ${publicHasMoocTagSql("c")}`,
+    );
     expect(publicCategoryFilterSql("english", "c")).toEqual({
-      sql: "c.scheme_key=?",
+      sql: `(c.scheme_key=? AND NOT ${publicHasMoocTagSql("c")})`,
       args: ["english"],
     });
   });

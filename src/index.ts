@@ -30,6 +30,7 @@ import {
 import {
   isPublicListCategoryFilter,
   isVirtualPeSportId,
+  publicCategoryFilterError,
   publicCategoryFilterSql,
   publicBrowseFamilySql,
   publicCourseCategory,
@@ -674,7 +675,7 @@ app.get("/api/courses", async (c) => {
     // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
     sort = clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews";
   if (cat && !isPublicListCategoryFilter(cat))
-    return fail(c, "公开筛选仅支持 sports、english、ideology、math");
+    return fail(c, publicCategoryFilterError());
   const categoryFilter = publicCategoryFilterSql(cat, "c");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
   // 单个词条打预计算 match_text；ASCII 字母词条再 OR 拼音面。

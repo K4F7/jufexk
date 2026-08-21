@@ -109,6 +109,69 @@ describe("review template kind API contract", () => {
     ).run();
   });
 
+  it("groups mooc-tagged courses under 网课 and keeps them out of other chips", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
+          (38101,'ID38101','思政网课样本','general','马克思主义学院','ideology'),
+          (38102,'EN38102','英语网课样本','general','外国语学院','english'),
+          (38103,'EN38103','线下英语样本','general','外国语学院','english'),
+          (38104,'PE38104','网球网课样本','sports','体育学院','pe')`,
+      ),
+      env.DB.prepare(
+        "INSERT INTO course_tags(course_id,tag) VALUES(38101,'mooc'),(38102,'mooc'),(38104,'mooc')",
+      ),
+    ]);
+
+    const mooc = await SELF.fetch(`${origin}/api/courses?category=mooc`);
+    const moocBody = await mooc.json<{ items: Array<{ name: string }> }>();
+    expect(mooc.status).toBe(200);
+    const moocNames = moocBody.items.map((item) => item.name);
+    expect(moocNames).toContain("思政网课样本");
+    expect(moocNames).toContain("英语网课样本");
+    expect(moocNames).toContain("网球网课样本");
+    expect(moocNames).not.toContain("线下英语样本");
+
+    const ideology = await SELF.fetch(
+      `${origin}/api/courses?category=ideology`,
+    );
+    expect(
+      (await ideology.json<{ items: Array<{ name: string }> }>()).items.map(
+        (item) => item.name,
+      ),
+    ).not.toContain("思政网课样本");
+
+    const english = await SELF.fetch(`${origin}/api/courses?category=english`);
+    const englishNames = (
+      await english.json<{ items: Array<{ name: string }> }>()
+    ).items.map((item) => item.name);
+    expect(englishNames).toContain("线下英语样本");
+    expect(englishNames).not.toContain("英语网课样本");
+
+    const sportsNames = (
+      await (
+        await SELF.fetch(`${origin}/api/courses?category=sports`)
+      ).json<{ items: Array<{ name: string }> }>()
+    ).items.map((item) => item.name);
+    expect(sportsNames).not.toContain("网球网课样本");
+
+    const allNames = (
+      await (
+        await SELF.fetch(`${origin}/api/courses`)
+      ).json<{ items: Array<{ name: string }> }>()
+    ).items.map((item) => item.name);
+    expect(allNames).toContain("思政网课样本");
+    expect(allNames).toContain("英语网课样本");
+    expect(allNames).toContain("线下英语样本");
+
+    await env.DB.batch([
+      env.DB.prepare(
+        "DELETE FROM course_tags WHERE course_id IN (38101,38102,38104)",
+      ),
+      env.DB.prepare("DELETE FROM courses WHERE id BETWEEN 38101 AND 38104"),
+    ]);
+  });
+
   it("accepts all new values and rejects old or missing values on writes", async () => {
     const headers = await login();
     for (const [index, category] of ["general", "sports"].entries()) {

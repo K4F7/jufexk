@@ -9,11 +9,11 @@ async function mockCatalogApi(page: Page) {
       });
     if (url.pathname === "/api/courses") {
       const category = url.searchParams.get("category") || "";
-      const allowed = new Set(["sports", "english", "ideology", "math"]);
+      const allowed = new Set(["sports", "english", "ideology", "math", "mooc"]);
       if (category && !allowed.has(category)) {
         return route.fulfill({
           status: 400,
-          json: { error: "公开筛选仅支持 sports、english、ideology、math" },
+          json: { error: "公开筛选仅支持 sports、english、ideology、math、mooc" },
         });
       }
       const items = [
@@ -28,6 +28,7 @@ async function mockCatalogApi(page: Page) {
           review_count: 1,
           rating: 4.6,
           scheme: "",
+          mooc: false,
         },
         {
           id: 11,
@@ -76,15 +77,31 @@ async function mockCatalogApi(page: Page) {
           review_count: 1,
           rating: 4.3,
           scheme: "math",
+          mooc: false,
+        },
+        {
+          id: 51,
+          code: "MOOC0101",
+          name: "思政网课",
+          category: "general",
+          department: "马克思主义学院",
+          teachers: "网课教师",
+          teacher_refs: "52:网课教师",
+          review_count: 1,
+          rating: 4.0,
+          scheme: "ideology",
+          mooc: true,
         },
       ]
         .filter((item) => {
           if (!category) return true;
+          if (category === "mooc") return item.mooc;
+          if (item.mooc) return false;
           if (category === "sports")
             return item.category === "sports" || item.scheme === "pe";
           return item.scheme === category;
         })
-        .map(({ scheme: _scheme, ...item }) => item);
+        .map(({ scheme: _scheme, mooc: _mooc, ...item }) => item);
       return route.fulfill({
         json: {
           items,
@@ -109,7 +126,7 @@ function catalogFirstRow(page: Page) {
 
 test.beforeEach(async ({ page }) => mockCatalogApi(page));
 
-test("course catalog exposes sports, english, ideology, and math filters", async ({
+test("course catalog exposes sports, english, ideology, math, and 网课 filters", async ({
   page,
 }) => {
   await page.goto("/courses");
@@ -119,9 +136,11 @@ test("course catalog exposes sports, english, ideology, and math filters", async
   await expect(categoryBar.getByRole("button", { name: "英语课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "思政课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "数学课" })).toBeVisible();
+  await expect(categoryBar.getByRole("button", { name: "网课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "专业课" })).toHaveCount(0);
   await expect(categoryBar.getByRole("button", { name: "公共选修" })).toHaveCount(0);
   await expect(categoryBar.getByRole("button", { name: /sports/i })).toHaveCount(0);
+  await expect(categoryBar.getByRole("button", { name: /mooc/i })).toHaveCount(0);
 
   await categoryBar.getByRole("button", { name: "英语课" }).click();
   await expect(page).toHaveURL(/category=english/);
@@ -138,6 +157,18 @@ test("course catalog exposes sports, english, ideology, and math filters", async
   await expect(page).toHaveURL(/category=math/);
   await expect(page.getByRole("link", { name: "高等数学" })).toBeVisible();
   await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
+
+  await categoryBar.getByRole("button", { name: "网课" }).click();
+  await expect(page).toHaveURL(/category=mooc/);
+  await expect(page.getByRole("link", { name: "思政网课" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "篮球" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "思想道德与法治" })).toHaveCount(0);
+  await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
+
+  await categoryBar.getByRole("button", { name: "思政课" }).click();
+  await expect(page).toHaveURL(/category=ideology/);
+  await expect(page.getByRole("link", { name: "思想道德与法治" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "思政网课" })).toHaveCount(0);
 });
 
 test("sports category deep link still works", async ({ page }) => {
