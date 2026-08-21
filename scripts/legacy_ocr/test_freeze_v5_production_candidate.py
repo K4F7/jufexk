@@ -9,6 +9,8 @@ from freeze_v5_production_candidate import (
     SOURCE_CONTRACT,
     V5FreezeError,
     freeze_v5_production_candidate,
+    is_modified_college_english,
+    is_plain_college_english,
     sha256_text,
 )
 
@@ -374,6 +376,7 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 "review-approved-20260820-v5",
                 "frozen-historical-v5-candidate-v1",
                 "frozen-historical-v5-candidate-v2",
+                "frozen-historical-v5-candidate-v3",
             ):
                 with self.assertRaises(V5FreezeError):
                     freeze_v5_production_candidate(
@@ -421,7 +424,13 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
             self.assertEqual(by_row[48]["catalog_course_code"], "1005002252")
             self.assertEqual(by_row[31]["catalog_course_code"], "1005002662")
 
-    def test_english_binds_unique_teacher_course_and_skips_multi_level(self) -> None:
+    def test_plain_college_english_does_not_treat_bare_name_as_level(self) -> None:
+        self.assertTrue(is_plain_college_english("大学英语I"))
+        self.assertFalse(is_plain_college_english("大学英语"))
+        self.assertTrue(is_modified_college_english("大学英语"))
+        self.assertTrue(is_modified_college_english("大学英语I(涉外)"))
+
+    def test_english_binds_unique_teacher_course_and_prefers_level_one(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             freeze(
@@ -458,13 +467,93 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
                 json.loads(line)
                 for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
             ]
+            by_row = {row["source_row"]: row for row in rows}
+            self.assertEqual(by_row[10]["catalog_course_code"], "1004600332")
+            self.assertEqual(by_row[10]["decision_basis"], "english_teacher_unique")
+            self.assertEqual(by_row[11]["catalog_course_code"], "1004600232")
+            self.assertEqual(by_row[11]["decision_basis"], "english_teacher_level")
+            self.assertEqual(len(rows), 2)
+
+    def test_english_falls_back_modified_then_listening_and_ignores_oral(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [
+                    evaluation("大英和视听说|12|H", "大英和视听说", "张洁琼"),
+                    evaluation("大英和视听说|13|H", "大英和视听说", "王南"),
+                    evaluation("大英和视听说|14|H", "大英和视听说", "张萍萍"),
+                    evaluation("大英和视听说|15|H", "视听说", "史希平"),
+                    evaluation("大英和视听说|16|H", "视听说", "余丽文"),
+                ],
+                [],
+                extra_courses=[
+                    course("1004600262", "大学英语I(涉外)"),
+                    course("1004600362", "大学英语III(涉外)"),
+                    course("1004600232", "大学英语I"),
+                    course("1004603781", "英语视听说2"),
+                    course("1004603801", "英语视听说3"),
+                    course("1004603821", "英语视听说4"),
+                    course("1004606732", "英语视听说"),
+                    course("1004603642", "英语口语II"),
+                ],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "张洁琼",
+                        "normalizedTeacherLabel": "张洁琼",
+                    },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "王南",
+                        "normalizedTeacherLabel": "王南",
+                    },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "张萍萍",
+                        "normalizedTeacherLabel": "张萍萍",
+                    },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "史希平",
+                        "normalizedTeacherLabel": "史希平",
+                    },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "余丽文",
+                        "normalizedTeacherLabel": "余丽文",
+                    },
+                ],
+                extra_relations=[
+                    ("1004600262", "张洁琼"),
+                    ("1004600362", "张洁琼"),
+                    ("1004606732", "张洁琼"),
+                    ("1004603781", "王南"),
+                    ("1004603801", "王南"),
+                    ("1004606732", "王南"),
+                    ("1004603642", "张萍萍"),
+                    ("1004603821", "史希平"),
+                    ("1004606732", "史希平"),
+                    ("1004600232", "余丽文"),
+                    ("1004603821", "余丽文"),
+                ],
+            )
+            rows = [
+                json.loads(line)
+                for line in (root / "out" / "importable-legacy-reviews.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
             excluded = [
                 json.loads(line)
                 for line in (root / "out" / "excluded.jsonl").read_text(encoding="utf-8").splitlines()
             ]
-            self.assertEqual(rows[0]["catalog_course_code"], "1004600332")
-            self.assertEqual(rows[0]["decision_basis"], "english_teacher_unique")
-            self.assertEqual(excluded[0]["key"], "大英和视听说|11|H")
+            by_row = {row["source_row"]: row for row in rows}
+            self.assertEqual(by_row[12]["catalog_course_code"], "1004600262")
+            self.assertEqual(by_row[13]["catalog_course_code"], "1004603781")
+            self.assertEqual(by_row[15]["catalog_course_code"], "1004603821")
+            self.assertEqual(by_row[16]["catalog_course_code"], "1004603821")
+            self.assertEqual([row["key"] for row in excluded], ["大英和视听说|14|H"])
+            self.assertEqual(by_row[12]["decision_basis"], "english_teacher_level")
+            self.assertEqual(by_row[16]["decision_basis"], "english_teacher_unique")
 
     def test_teacher_override_fills_blank_table_teacher(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -538,6 +627,44 @@ class FreezeV5ProductionCandidateTests(unittest.TestCase):
             self.assertEqual(teacher_unresolved[0]["legacy_source_label"], "表上原名")
             self.assertEqual(excluded[0]["reason"], "catalog_identity_unmatched")
             self.assertEqual(excluded[0]["legacy_teacher_name"], "表上原名")
+
+    def test_does_not_split_annotated_english_teacher_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            freeze(
+                root,
+                [
+                    evaluation("大英和视听说|36|H", "大英和视听说", "邱垂亿（大英）"),
+                    evaluation("大英和视听说|9|H", "大英和视听说", "赵娟（经典英语视听说）"),
+                ],
+                [],
+                extra_courses=[course("1004600232", "大学英语I")],
+                extra_teachers=[
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "邱垂亿",
+                        "normalizedTeacherLabel": "邱垂亿",
+                    },
+                    {
+                        "schemaVersion": "catalog-baseline-teacher/v1",
+                        "sourceTeacherLabel": "赵娟",
+                        "normalizedTeacherLabel": "赵娟",
+                    },
+                ],
+                extra_relations=[
+                    ("1004600232", "邱垂亿"),
+                    ("1004600232", "赵娟"),
+                ],
+            )
+            excluded = [
+                json.loads(line)
+                for line in (root / "out" / "excluded.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(
+                [row["key"] for row in excluded],
+                ["大英和视听说|36|H", "大英和视听说|9|H"],
+            )
+            self.assertTrue(all(row["reason"] == "catalog_identity_unmatched" for row in excluded))
 
 
 if __name__ == "__main__":
