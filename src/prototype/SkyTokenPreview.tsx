@@ -1,6 +1,6 @@
 /**
  * PROTOTYPE — token swatches + live primitive samples for module "sky-tokens".
- * Question: which density / surface treatment of official Sky for 江财选课参考?
+ * Question: which density / surface treatment of official Sky for JUFE评课社区?
  */
 import {
   Button,
