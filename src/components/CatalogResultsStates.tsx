@@ -1,7 +1,8 @@
 /**
  * Catalog pagination + load/error/empty — visually frozen: prototype A.
  *
- * - First load: skeleton rows mirroring the table (Issue #205)
+ * - First load: 20 two-line skeleton rows + pagination reserve, matching
+ *   the public catalog pageSize so the list height does not jump (Issue #205)
  * - Refresh with data: compact Spinner line above table
  * - Error: dashed box + 重试
  * - Empty: distinct copy for filters vs true empty catalog; clear action when filtered
@@ -83,9 +84,13 @@ export type CatalogResultsStatesProps = {
   rescue?: ReactNode;
 };
 
+/** Matches the public catalog default `pageSize` so first-load height
+ * lines up with a full result page (desktop CLS). */
+export const CATALOG_SKELETON_ROWS = 20;
+
 /** First-load placeholder: skeleton rows mirror the result table's shape so
  * the list area does not jump when real rows land (Issue #205). */
-function CatalogSkeleton() {
+function CatalogSkeleton({ rowCount }: { rowCount: number }) {
   return (
     <div role="status" aria-label="加载中…">
       <span className="sr-only">加载中…</span>
@@ -95,18 +100,30 @@ function CatalogSkeleton() {
         <Skeleton className="h-3 w-20 rounded" />
         <Skeleton className="h-3 w-10 rounded" />
       </div>
-      {Array.from({ length: 7 }).map((_, index) => (
+      {Array.from({ length: rowCount }).map((_, index) => (
         <div
           key={index}
-          className="flex items-center gap-4 border-b border-separator py-3"
+          data-catalog-skeleton-row=""
+          className="flex items-center gap-4 border-b border-separator py-2.5"
           aria-hidden
         >
-          <Skeleton className="h-4 w-2/5 rounded" />
+          <div className="w-2/5 min-w-0 space-y-1">
+            <Skeleton className="h-4 w-3/4 rounded" />
+            <Skeleton className="h-3 w-1/3 rounded" />
+          </div>
           <Skeleton className="h-4 w-1/5 rounded" />
           <Skeleton className="h-4 w-1/6 rounded" />
           <Skeleton className="h-4 w-10 rounded" />
         </div>
       ))}
+      <div
+        className="mt-3 flex min-h-9 flex-wrap items-center justify-center gap-3"
+        aria-hidden
+      >
+        <Skeleton className="h-8 w-16 rounded" />
+        <Skeleton className="h-4 w-28 rounded" />
+        <Skeleton className="h-8 w-16 rounded" />
+      </div>
     </div>
   );
 }
@@ -277,7 +294,7 @@ export function CatalogResultsStates({
   }
 
   if (loading && !hasPayload) {
-    return <CatalogSkeleton />;
+    return <CatalogSkeleton rowCount={CATALOG_SKELETON_ROWS} />;
   }
 
   if (hasPayload && itemCount === 0) {
@@ -294,7 +311,7 @@ export function CatalogResultsStates({
   }
 
   if (!hasPayload) {
-    return <CatalogSkeleton />;
+    return <CatalogSkeleton rowCount={CATALOG_SKELETON_ROWS} />;
   }
 
   return (

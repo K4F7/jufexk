@@ -7,9 +7,11 @@
  * review page (`/courses/:id?teacher=`). Teacher pairs come from
  * `teacher_refs`.
  * The teacher cell is a single line clipped with an ellipsis so row heights
- * stay consistent; the full teacher list lives on the course detail page
- * (Issue #155). Ratings bind to 教师×课程 and are never shown on course rows
- * (Issue #140); the last column carries the public review count only.
+ * stay consistent; only the first few names are mounted as links, and the
+ * full teacher list lives on the course detail page (Issue #155). Search
+ * hits stay among those visible names. Ratings bind to 教师×课程 and are
+ * never shown on course rows (Issue #140); the last column carries the
+ * public review count only.
  *
  * Intent (not implemented): unfiltered high-density scan could use a
  * seven-column layout (prototype A); production ships B only this batch.
@@ -20,6 +22,10 @@ import {
   HighlightSearchTerms,
   highlightTermsFromSearch,
 } from "../lib/catalog-search-highlight";
+import {
+  previewCatalogTeachers,
+  teacherNameMatchesTerms,
+} from "../lib/catalog-teacher-preview";
 import { categoryLabel } from "../lib/labels";
 import type { Course } from "../lib/types";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -82,6 +88,12 @@ function TeacherLinks({
     return <span className="text-muted">待补充</span>;
   }
 
+  const { visible, hiddenCount } = previewCatalogTeachers(teachers, {
+    isPriority: highlightTerms.length
+      ? (teacher) => teacherNameMatchesTerms(teacher.name, highlightTerms)
+      : undefined,
+  });
+
   // max-w-lg caps the cell's intrinsic max-content, so auto table layout
   // keeps the column bounded (no horizontal table scroll) and other columns
   // keep their natural width; text-overflow then renders the ellipsis.
@@ -89,7 +101,7 @@ function TeacherLinks({
   // so the links' focus ring/outline is not clipped by overflow-hidden.
   return (
     <span className="-m-1 block max-w-lg min-w-0 overflow-hidden p-1 text-ellipsis whitespace-nowrap">
-      {teachers.map((t, i) => (
+      {visible.map((t, i) => (
         <Fragment key={t.id != null ? `${t.id}-${t.name}` : `${t.name}-${i}`}>
           {i > 0 ? " " : null}
           {t.id != null ? (
@@ -107,6 +119,9 @@ function TeacherLinks({
           )}
         </Fragment>
       ))}
+      {hiddenCount > 0 ? (
+        <span className="text-muted">{` 等${hiddenCount}人`}</span>
+      ) : null}
     </span>
   );
 }

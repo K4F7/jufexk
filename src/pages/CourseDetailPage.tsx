@@ -5,6 +5,7 @@ import { CourseTeacherTable } from "../components/CourseTeacherTable";
 import {
   DetailErrorAlert,
   DetailLoadingStatus,
+  DetailPageSkeleton,
 } from "../components/DetailFeedback";
 import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
@@ -273,7 +274,7 @@ export function CourseDetailPage() {
   if (!data) {
     return (
       <section className="mx-auto w-full max-w-[880px]">
-        <DetailLoadingStatus label="课程加载中…" />
+        <DetailPageSkeleton label="课程加载中…" />
       </section>
     );
   }
