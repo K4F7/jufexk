@@ -22,6 +22,8 @@ describe("verification email copy", () => {
     expect(mail.html).toContain("123456");
     expect(mail.html).toContain("登录验证");
     expect(mail.html).toContain(">登录</a>");
+    expect(mail.html).toContain("#0485f7");
+    expect(mail.html).not.toContain("background:#18181b");
     expect(mail.html).toContain(`href="${sample.magicUrl.replaceAll("&", "&amp;")}"`);
   });
 
