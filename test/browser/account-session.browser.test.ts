@@ -144,7 +144,7 @@ async function mockApi(page: Page, mock: MockState) {
   });
 }
 
-test("guest nav shows a login link into the email form", async ({
+test("guest nav shows a login link into the CAS form", async ({
   page,
 }) => {
   await mockApi(page, state());
@@ -155,7 +155,9 @@ test("guest nav shows a login link into the email form", async ({
   await login.click();
   await expect(page).toHaveURL(/\/login\?from=%2Fcourses$/);
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
-  await expect(page.getByLabel("校学生邮箱")).toBeVisible();
+  await expect(page.getByLabel("学号")).toBeVisible();
+  await expect(page.getByLabel("校园密码")).toBeVisible();
+  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toBeVisible();
 
   await page.getByRole("link", { name: "返回继续浏览" }).click();
   await expect(page).toHaveURL(/\/courses$/);
