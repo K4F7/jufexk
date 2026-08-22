@@ -24,11 +24,7 @@ export default defineConfig(async () => {
           ],
           bindings: {
             ADMIN_PASSWORD: "test-password",
-            HISTORICAL_IMPORT_ARTIFACT_SHA256: "manifest",
-            HISTORICAL_IMPORT_MANIFEST_SHA256: "manifest",
             ISSUE111_RELATION_MANIFEST_SHA256: "manifest",
-            ISSUE111_IMPORT_ARTIFACT_SHA256: "manifest",
-            ISSUE111_IMPORT_MANIFEST_SHA256: "manifest",
             V5_IMPORT_ARTIFACT_SHA256: "manifest",
             V5_IMPORT_MANIFEST_SHA256: "manifest",
             IP_HASH_SECRET: "test-ip-hash-secret",

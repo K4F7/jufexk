@@ -2,7 +2,7 @@ import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const OFFLINE_PREFIXES = ["scripts/legacy_ocr/", "scripts/legacy_evidence/", ".grok/"];
+const OFFLINE_PREFIXES = [".grok/"];
 
 const SKIP_WEB_PREFIXES = ["docs/", ".agents/", ...OFFLINE_PREFIXES];
 

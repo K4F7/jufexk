@@ -67,7 +67,6 @@ pnpm run dev
 | `pnpm run build` / `pnpm run deploy` | 构建 / 构建并部署到 Cloudflare |
 | `pnpm run db:local` | 应用本地 D1 迁移 |
 | `pnpm run catalog-baseline` | 目录基线采集 CLI |
-| `pnpm run legacy-evidence` | 历史评价证据处理 CLI |
 
 ## 配置
 
@@ -79,7 +78,7 @@ pnpm run dev
 | `TURNSTILE_SITE_KEY` | Turnstile 公开 Site Key |
 | `CAMPUS_JWT_AUD` / `CAMPUS_APP_ID` / `AUTHBRIDGE_BASE_URL` | 校内身份认证参数 |
 | `MAIL_DELIVERY_URL` / `MAIL_FROM` | 验证信 HTTPS 投递端点与发件人（Resend） |
-| `HISTORICAL_IMPORT_*` / `ISSUE111_*` | 历史导入制品的内容哈希校验值 |
+| `V5_IMPORT_*` / `ISSUE111_RELATION_MANIFEST_SHA256` | 唯一生产历史评价导入包与任课追加包的内容哈希 |
 
 ### 密钥（Cloudflare Secrets Store）
 
@@ -117,121 +116,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 
 课程、教师与任课关系由审核通过的原子目录基线包统一发布。基线发布后，旧式 CSV 合并/跳过入口永久返回 `409`；新增目录实体必须走目录补充申请及管理员审核。当前 JUFE 权威包为 `scripts/catalog-baseline/captures/full-approved-v2/manifest.json` 对应的 v2 基线。采集、派生、审核与发布流程见 `docs/catalog-baseline-acquisition.md`。
 
-<details>
-<summary><strong>教务课程快照与 OCR 校对工作簿</strong></summary>
-
-`scripts/legacy_ocr/build_review_workbook.py` 可合并金智教务系统保存的分页 HTML，并结合已有 OCR 输出生成：
-
-- `course_overview_review.xlsx`：课程、教师、任课关系、开课班、OCR 别名候选和历史评价人工校对页；
-- `import_samples/01_courses.csv` 至 `04_offerings.csv`：符合后台协议的 UTF-8 BOM CSV；
-- `import_samples/catalog_reference_sample.json`：仅供本地 OCR 重新匹配使用的临时 ID 快照，不可当作远端 D1 ID。
-
-分页参数可重复传入，必须按页码顺序排列，以便正确继承跨页课程行：
-
-```powershell
-uv run python scripts/legacy_ocr/build_review_workbook.py `
-  --catalog-html "<第1页目录>/saved_resource(1).html" `
-  --catalog-html "<第2页目录>/saved_resource(1).html" `
-  --catalog-html "<第3页目录>/saved_resource(1).html"
-```
-
-生成器会校验重复键、枚举、字段长度和课程/教师引用。生成的 CSV 仅用于离线核对和历史管道兼容，不得提交到已禁用的旧式目录导入接口。OCR 课程别名和重匹配结果始终需要人工确认，不得直接作为批准数据。
-
-人工在工作簿 `OCR课程别名核对` 页的 `decision` 列选择 `approve`、`reject` 或 `skip` 并保存后，使用以下命令生成新的评价预览。每个 OCR 课程名最多只能批准一个目标；课程代码和名称必须同时存在于匹配快照中：
-
-```powershell
-uv run python scripts/legacy_ocr/apply_alias_decisions.py `
-  --workbook scripts/legacy_ocr/output/course_overview_review.xlsx `
-  --preview scripts/legacy_ocr/output/rematched/legacy_reviews_preview.csv `
-  --reference scripts/legacy_ocr/output/import_samples/catalog_reference_sample.json `
-  --out scripts/legacy_ocr/output/rematched/alias_applied_preview.csv `
-  --report scripts/legacy_ocr/output/rematched/alias_apply_report.json
-```
-
-该命令不覆盖原始 OCR 预览；应用别名后的记录仍保持 `needs_review=true`，必须继续经过 `approval.py prepare/finalize` 的逐行人工审核。
-
-</details>
-
-<details>
-<summary><strong>腾讯表格历史评价 OCR 流水线（试验）</strong></summary>
-
-历史文字评价使用独立的 `legacy_reviews` 模型，不写入要求 `overall` 的学生投稿表，也不伪造评分。
-
-本机建议使用 Python 3.12。CPU 环境安装 `requirements.txt`；RTX 50 系 Windows 环境安装 `requirements-gpu.txt`，其中 PyTorch CUDA 12.8 用于向 ONNX Runtime 预加载 CUDA/cuDNN DLL。脚本在 `--cuda` 模式下会检查检测、方向分类和文字识别三个会话的首 provider，任何一个不是 `CUDAExecutionProvider` 都直接失败，禁止静默回退 CPU。
-
-```powershell
-uv venv --python 3.12 .venv
-uv pip install --python .venv scripts/legacy_ocr/requirements.txt
-./scripts/legacy_ocr/export_reference.ps1
-# 截图命名示例：主要课程_001.png、主要课程_002.png
-.venv/Scripts/python scripts/legacy_ocr/pipeline.py `
-  --input scripts/legacy_ocr/input `
-  --reference scripts/legacy_ocr/reference.json `
-  --out scripts/legacy_ocr/output `
-  --max-rows 30
-```
-
-GPU 安装与运行：
-
-```powershell
-uv pip install --python .venv -r scripts/legacy_ocr/requirements-gpu.txt
-.venv/Scripts/python scripts/legacy_ocr/pipeline.py `
-  --input scripts/legacy_ocr/input `
-  --reference scripts/legacy_ocr/reference.json `
-  --out scripts/legacy_ocr/output `
-  --max-rows 30 `
-  --cuda
-```
-
-RTX 5060 Ti 实测环境为 PyTorch 2.11.0+cu128、ONNX Runtime GPU 1.23.2、RapidOCR 3.9.1。51 张截图全量预览使用约 4.6GB 显存，GPU 负责 OCR 推理，OpenCV/img2table 的网格恢复和 CSV 汇总仍主要使用 CPU，因此 CPU 占用较高属于正常现象。
-
-输入截图必须是腾讯表格 PNG 原图，并尽量保留表头。程序只读取截图和课程、教师、任课关系、开课班快照；不会连接或写入 D1。输出包括：
-
-- `legacy_reviews_preview.csv`：完整预览和人工确认原因；
-- `unmatched_courses.csv`、`unmatched_teachers.csv`：只报告，不自动创建；
-- `ambiguous_matches.csv`：保留候选 ID、名称与分数；
-- `duplicates.csv`：只标记疑似重复，不删除；
-- `teacher_candidates_review.csv`、`course_candidates_review.csv`：实体原文聚合清单，形态初筛不等于批准；
-- `relation_candidates_review.csv`：只依据结构化课程/教师列生成的任课关系候选，不从评价正文猜教师；
-- `teacher_catalog_review_queue.csv`、`course_catalog_review_queue.csv`、`relation_catalog_review_queue.csv`：决策栏全空的基础目录人工确认队列；
-- `ocr_report.json`：模型、置信度、工作表统计、处理时间和错误。
-
-只有课程与教师均唯一匹配、OCR 平均置信度达标、教师已有该课程任课关系，且不存在继承/截断/重复/开课班歧义时，`needs_review` 才可能为 `false`。人工确认时只修改预览副本；批准文件另存为 `legacy_reviews_approved.csv`，后续再由带事务、批次记录和批次回滚的专用导入器写入，默认仍为 `pending`。
-
-全量 OCR 后可通过 `--ocr-cache scripts/legacy_ocr/output/raw_ocr_tokens.jsonl` 复用 token 调整结构恢复，不会再次占用 GPU。实体候选聚合命令为：
-
-```powershell
-.venv/Scripts/python scripts/legacy_ocr/aggregate_candidates.py `
-  --preview scripts/legacy_ocr/output/legacy_reviews_preview.csv `
-  --out scripts/legacy_ocr/output
-```
-
-人工确认必须经过显式队列，不能直接把预览文件当成批准文件：
-
-```powershell
-.venv/Scripts/python scripts/legacy_ocr/approval.py prepare `
-  --preview scripts/legacy_ocr/output/legacy_reviews_preview.csv `
-  --out scripts/legacy_ocr/output/legacy_reviews_review_queue.csv
-
-.venv/Scripts/python scripts/legacy_ocr/approval.py finalize `
-  --queue scripts/legacy_ocr/output/legacy_reviews_review_queue.csv `
-  --reference scripts/legacy_ocr/reference.json `
-  --approved scripts/legacy_ocr/output/legacy_reviews_approved.csv `
-  --errors scripts/legacy_ocr/output/approval_errors.csv `
-  --payload-dir scripts/legacy_ocr/output/import_payloads
-```
-
-审核人员逐行填写 `decision=approve|reject|skip`、现有课程/教师 ID 和 `review_note`；疑似重复但仍保留时还要填写 `duplicate_action=keep`。存在任意批准错误时不会生成批准文件。校验包括对象存在性、课程—教师关系、开课班归属、原始 OCR 证据和重复确认，输出字段不包含 `overall`。
-
-基础目录队列与评价批准队列相互独立。先人工确认教师、课程和任课关系，并将批准结果编译进原子目录基线或目录补充申请；不要调用已永久禁用的旧式两阶段 CSV 接口。开课班必须单独提供明确的学期和班次数据，不能虚构空学期或"导入默认班"。
-
-每个生成的 JSON payload 最多 40 条，并包含内容哈希幂等键，以兼容 D1 免费计划每次 Worker 调用的查询额度并避免重复提交。先提交到管理员接口 `/api/admin/legacy-imports/preview`，再提交 `/api/admin/legacy-imports`。D1 `batch()` 保证单个导入批次原子写入，记录默认 `pending`；`POST /api/admin/legacy-imports/:id/rollback` 可原子删除该批次记录并保留回滚审计状态。不要在未审核前调用导入接口。
-
-管理员后台的"历史评价"标签已封装上述流程：选择批准 JSON 后只执行预览，服务端校验全部通过才显示"确认导入为待审核"；同一页面列出批次及待审/通过/驳回数量，并仅允许回滚仍为 `imported` 的批次。批次列表不返回 manifest、OCR 原文或 token，避免在列表接口暴露大段历史内容。
-
-导入后的每条历史记录仍需在该页面逐条通过或驳回，驳回必须填写理由，并记录不可重复的审核事件。批次中一旦有记录完成审核，整批就禁止回滚，以免删除已公开内容和审核证据。只有 `approved` 的历史记录会在课程页和教师页的"历史文字资料"区块展示；该区块没有 `overall`，不参与任何评分、评价数量或排序统计。
-
-</details>
+当前唯一保留的历史评价生产导入包是 `frozen-historical-v5-candidate-v10`，由 `pnpm run historical-import:v5` 写入 `/api/admin/historical-review-v5-imports`。更早的 v2 / issue111 / v5-candidate-v1..v9 与 OCR 抽取流水线已退役，不得重放。操作说明见 `docs/historical-production-import.md` 与 [ADR-0024](./docs/adr/0024-retire-ocr-and-old-import-packages.md)。
 
 ### 投稿问卷（已定方向）
 
@@ -258,9 +143,7 @@ RTX 5060 Ti 实测环境为 PyTorch 2.11.0+cu128、ONNX Runtime GPU 1.23.2、Rap
 ├── migrations/             # D1 数据库迁移
 ├── scripts/
 │   ├── catalog-baseline/   # 目录基线采集、派生、审核与发布
-│   ├── legacy_ocr/         # 腾讯表格截图 OCR 与人工校对流水线（Python）
-│   ├── legacy_evidence/    # 历史评价证据处理（TypeScript）
-│   ├── historical-import/  # 历史评价生产导入
+│   ├── historical-import/  # 唯一生产历史评价导入包（v10）
 │   └── secrets/            # 本地密钥同步
 ├── test/                   # Vitest 单元/集成测试与 Playwright 浏览器测试
 ├── docs/
@@ -276,6 +159,7 @@ RTX 5060 Ti 实测环境为 PyTorch 2.11.0+cu128、ONNX Runtime GPU 1.23.2、Rap
 - `CONTEXT.md`：领域词汇表——课程、任课关系、评价、认可、目录基线等核心概念的唯一权威定义
 - `docs/adr/`：架构决策记录（目录身份、审核分层、密钥来源、校内邮箱身份等）
 - `docs/catalog-baseline-acquisition.md`：目录基线采集与发布全流程
+- `docs/historical-production-import.md`：唯一保留的 v10 历史评价生产导入包
 - `docs/secrets.md`：密钥清单与轮换说明
 - `docs/agents/`：Issue 跟踪、triage 标签等协作约定
 

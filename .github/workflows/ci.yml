@@ -46,7 +46,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: astral-sh/setup-uv@v7
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run check
@@ -69,12 +68,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: astral-sh/setup-uv@v7
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec wrangler types
       - run: pnpm exec tsc --noEmit
-      - run: pnpm exec vitest run --config vitest.legacy-evidence.config.ts
-      - run: pnpm run test:legacy-ocr-contract
 
   check:
     name: check

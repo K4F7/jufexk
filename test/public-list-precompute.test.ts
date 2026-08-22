@@ -6,9 +6,7 @@ describe("public list precompute invalidation", () => {
   it.each([
     ["POST", "/api/admin/catalog-relation-additions"],
     ["POST", "/api/admin/import/relations"],
-    ["POST", "/api/admin/historical-review-batch-imports"],
     ["POST", "/api/admin/historical-review-v5-imports"],
-    ["POST", "/api/admin/historical-review-imports"],
     ["POST", "/api/admin/offerings"],
     ["DELETE", "/api/admin/offerings/42"],
     ["POST", "/api/admin/courses"],
@@ -34,7 +32,6 @@ describe("public list precompute invalidation", () => {
     ["PATCH", "/api/admin/reviews/42"],
     ["PATCH", "/api/admin/reviews/42/content"],
     ["PATCH", "/api/admin/legacy-reviews/42"],
-    ["POST", "/api/admin/legacy-imports"],
     ["POST", "/api/admin/catalog-baseline/uploads"],
     ["PUT", "/api/admin/catalog-baseline/uploads/batch-42/chunks/0"],
     ["POST", "/api/admin/catalog-baseline/uploads/batch-42/finalize"],

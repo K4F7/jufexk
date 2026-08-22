@@ -1,9 +1,4 @@
-export const ISSUE111_FREEZE_CONTRACT = "legacy-issue111-historical-freeze-v1";
-export const ISSUE111_SOURCE_CONTRACT = "legacy-historical-approved-package-v1";
-export const ISSUE111_RECORD_SCHEMA = "legacy-approved-review-v1";
-export const ISSUE111_IMPORTABLE_COUNT = 164;
-export const APPROVED_HISTORICAL_MANIFEST_SHA256 =
-  "edcf142cbd0380e734da0cde1923ee976ea9e25ab48147d0b78e218a64bb51af";
+export const V5_RECORD_SCHEMA = "legacy-approved-review-v1";
 export const APPROVED_CATALOG_CONTENT_SHA256 =
   "1c761d5e52dff1dc11ba019773184cc2c07f529d9dbe4ecbd906bd56eae20588";
 export const V5_FREEZE_CONTRACT = "legacy-v5-historical-freeze-v1";
@@ -22,20 +17,10 @@ export type HistoricalBatchImportProfile = {
   checkImportableContentSha256: boolean;
 };
 
-export const ISSUE111_IMPORT_PROFILE: HistoricalBatchImportProfile = {
-  freezeContract: ISSUE111_FREEZE_CONTRACT,
-  sourceContract: ISSUE111_SOURCE_CONTRACT,
-  recordSchema: ISSUE111_RECORD_SCHEMA,
-  importableCount: ISSUE111_IMPORTABLE_COUNT,
-  approvedPackageManifestSha256: APPROVED_HISTORICAL_MANIFEST_SHA256,
-  approvedCatalogContentSha256: APPROVED_CATALOG_CONTENT_SHA256,
-  checkImportableContentSha256: true,
-};
-
 export const V5_IMPORT_PROFILE: HistoricalBatchImportProfile = {
   freezeContract: V5_FREEZE_CONTRACT,
   sourceContract: V5_SOURCE_CONTRACT,
-  recordSchema: ISSUE111_RECORD_SCHEMA,
+  recordSchema: V5_RECORD_SCHEMA,
   importableCount: V5_IMPORTABLE_COUNT,
   approvedPackageManifestSha256: V5_APPROVED_PACKAGE_MANIFEST_SHA256,
   approvedCatalogContentSha256: APPROVED_CATALOG_CONTENT_SHA256,
@@ -213,12 +198,12 @@ type Issue111Manifest = {
   };
 };
 
-export async function importIssue111HistoricalBatch(
+async function importHistoricalBatch(
   db: D1Database,
   body: { manifest?: unknown; artifact?: unknown; offset?: unknown },
   configuredManifestSha256 = "manifest",
   configuredArtifactSha256 = "manifest",
-  profile: HistoricalBatchImportProfile = ISSUE111_IMPORT_PROFILE,
+  profile: HistoricalBatchImportProfile,
 ): Promise<HistoricalBatchImportResult> {
   if (typeof body.manifest !== "string")
     throw new HistoricalBatchImportError("历史评价冻结 manifest 缺失");
@@ -399,7 +384,7 @@ export async function importV5HistoricalBatch(
   configuredManifestSha256 = "manifest",
   configuredArtifactSha256 = "manifest",
 ): Promise<HistoricalBatchImportResult> {
-  return importIssue111HistoricalBatch(
+  return importHistoricalBatch(
     db,
     body,
     configuredManifestSha256,
