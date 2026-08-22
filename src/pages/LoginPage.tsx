@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Description,
-  Disclosure,
   FieldError,
   Form,
   Input,
@@ -11,14 +10,12 @@ import {
   Spinner,
   TextField,
 } from "@heroui/react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
 import { ApiError, api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
-
-const SENT_HINT = "若该邮箱符合条件，我们已发送验证信";
 
 type CasStart =
   | {
@@ -32,6 +29,10 @@ type CasStart =
       maskedPhone?: string;
     };
 
+function shouldReturnToCredentials(message: string) {
+  return /请重新登录|学号或密码|用户名或密码/.test(message);
+}
+
 export function LoginPage() {
   const [searchParams] = useSearchParams();
   const backTarget = backTargetFrom(searchParams.get("from"));
@@ -43,12 +44,10 @@ export function LoginPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [challenge, setChallenge] = useState("");
   const [maskedPhone, setMaskedPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [redeeming, setRedeeming] = useState(Boolean(magicToken));
   const [error, setError] = useState("");
+  const casRequestId = useRef(0);
 
   useEffect(() => {
     if (!magicToken || viewer.authenticated) {
@@ -85,6 +84,7 @@ export function LoginPage() {
 
   async function submitCas(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const requestId = ++casRequestId.current;
     setError("");
     setBusy(true);
     try {
@@ -92,17 +92,20 @@ export function LoginPage() {
         method: "POST",
         body: JSON.stringify({ username, password }),
       });
+      if (requestId !== casRequestId.current) return;
       setPassword("");
       if (body.needsMfa) {
+        setError("");
         setChallenge(body.challenge);
         setMaskedPhone(body.maskedPhone || "");
         return;
       }
       await finishLogin();
     } catch (err: unknown) {
+      if (requestId !== casRequestId.current) return;
       setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
     } finally {
-      setBusy(false);
+      if (requestId === casRequestId.current) setBusy(false);
     }
   }
 
@@ -117,43 +120,14 @@ export function LoginPage() {
       });
       await finishLogin();
     } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "验证码不正确");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function requestEmail(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setBusy(true);
-    try {
-      await api("/api/auth/email", {
-        method: "POST",
-        body: JSON.stringify({ email, from: backTarget }),
-      });
-      setSent(true);
-    } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "发送失败，请稍后重试");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verifyCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setBusy(true);
-    try {
-      await api("/api/auth/verify", {
-        method: "POST",
-        body: JSON.stringify({ email, code }),
-      });
-      await finishLogin();
-    } catch (err: unknown) {
-      setError(
-        err instanceof ApiError ? err.message : "验证失败，请重新获取验证信",
-      );
+      const message =
+        err instanceof ApiError ? err.message : "验证码不正确";
+      setError(message);
+      if (shouldReturnToCredentials(message)) {
+        setChallenge("");
+        setMfaCode("");
+        setMaskedPhone("");
+      }
     } finally {
       setBusy(false);
     }
@@ -165,7 +139,7 @@ export function LoginPage() {
         <Card.Header>
           <Card.Title id="login-heading">普通用户登录</Card.Title>
           <Card.Description>
-            大多数访问者是游客，课程、教师和公开评价可直接浏览。投稿或认可需要先用江财统一身份登录；也可以改用校学生邮箱验证。管理员后台使用单独的口令登录。
+            大多数访问者是游客，课程、教师和公开评价可直接浏览。投稿或认可需要先用江财统一身份登录。管理员后台使用单独的口令登录。
           </Card.Description>
         </Card.Header>
         <Card.Content>
@@ -200,11 +174,11 @@ export function LoginPage() {
                   <Alert status="accent">
                     <Alert.Indicator />
                     <Alert.Content>
-                      <Alert.Title>请输入短信验证码</Alert.Title>
+                      <Alert.Title>请输入验证码</Alert.Title>
                       <Alert.Description>
                         {maskedPhone
-                          ? `验证码已发送到 ${maskedPhone}`
-                          : "验证码已发送到安全手机"}
+                          ? `学校会把验证码发到企业微信（绑定手机 ${maskedPhone}），不是本站短信。`
+                          : "学校会把验证码发到企业微信（统一身份绑定的手机），不是本站短信。"}
                       </Alert.Description>
                     </Alert.Content>
                   </Alert>
@@ -215,8 +189,8 @@ export function LoginPage() {
                     value={mfaCode}
                     onChange={setMfaCode}
                   >
-                    <Label>短信验证码</Label>
-                    <Input inputMode="numeric" placeholder="6 位验证码" />
+                    <Label>验证码</Label>
+                    <Input inputMode="numeric" placeholder="4–8 位验证码" />
                     <FieldError />
                   </TextField>
                   <Button isDisabled={busy} type="submit">
@@ -256,63 +230,6 @@ export function LoginPage() {
                   </Button>
                 </Form>
               )}
-              <Disclosure>
-                <Disclosure.Heading>
-                  <Button slot="trigger" variant="tertiary">
-                    使用校学生邮箱验证
-                    <Disclosure.Indicator />
-                  </Button>
-                </Disclosure.Heading>
-                <Disclosure.Content>
-                  <Disclosure.Body className="flex flex-col gap-4 pt-2">
-                    {sent ? (
-                      <Alert status="accent">
-                        <Alert.Indicator />
-                        <Alert.Content>
-                          <Alert.Title>请查收验证信</Alert.Title>
-                          <Alert.Description>{SENT_HINT}</Alert.Description>
-                        </Alert.Content>
-                      </Alert>
-                    ) : null}
-                    <Form className="flex flex-col gap-4" onSubmit={requestEmail}>
-                      <TextField
-                        isRequired
-                        name="email"
-                        type="email"
-                        value={email}
-                        onChange={setEmail}
-                      >
-                        <Label>校学生邮箱</Label>
-                        <Input placeholder="学号@stu.jxufe.edu.cn" />
-                        <Description>
-                          仅接受精确的 @stu.jxufe.edu.cn 地址。
-                        </Description>
-                        <FieldError />
-                      </TextField>
-                      <Button isDisabled={busy} type="submit" variant="secondary">
-                        {busy ? "发送中…" : "发送验证信"}
-                      </Button>
-                    </Form>
-                    <Form className="flex flex-col gap-4" onSubmit={verifyCode}>
-                      <TextField
-                        isRequired
-                        name="code"
-                        autoComplete="one-time-code"
-                        value={code}
-                        onChange={setCode}
-                      >
-                        <Label>验证码</Label>
-                        <Input inputMode="numeric" placeholder="6 位验证码" />
-                        <Description>也可以直接打开邮件里的登录链接。</Description>
-                        <FieldError />
-                      </TextField>
-                      <Button isDisabled={busy} type="submit" variant="secondary">
-                        {busy ? "登录中…" : "用邮箱登录"}
-                      </Button>
-                    </Form>
-                  </Disclosure.Body>
-                </Disclosure.Content>
-              </Disclosure>
             </div>
           )}
         </Card.Content>

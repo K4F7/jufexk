@@ -30,6 +30,9 @@ export type CasLoginFail = {
 };
 export type CasLoginResult = CasLoginOk | CasLoginMfa | CasLoginFail;
 
+export const CAS_MFA_CONSUMED_LOGIN_FAILED =
+  "验证码已核销，但学号或密码未通过。请确认后重新登录。";
+
 const LOGIN_URL = `${CAS_BASE_URL}login?service=${encodeURIComponent(CAS_SERVICE_URL)}`;
 const PUBLIC_KEY_URL = `${CAS_BASE_URL}jwt/publicKey`;
 const MFA_DETECT_URL = `${CAS_BASE_URL}mfa/detect`;
@@ -192,8 +195,22 @@ async function readJson(response: Response): Promise<Record<string, unknown> | n
   }
 }
 
-async function loadLoginPage(jar: CasCookieJar) {
+function isRedirectStatus(status: number) {
+  return [301, 302, 303, 307, 308].includes(status);
+}
+
+function isPasswordishCasError(error: string) {
+  return /学号或密码|用户名或密码/.test(error);
+}
+
+async function fetchLoginPage(
+  jar: CasCookieJar,
+): Promise<CasLoginOk | { ok: false; page: ReturnType<typeof parseLoginPage> }> {
   const response = await casFetch(LOGIN_URL, jar, { followRedirects: true });
+  const location = response.headers.get("location") || "";
+  if (isRedirectStatus(response.status) && isSuccessfulCasRedirect(location)) {
+    return { ok: true };
+  }
   const html = await readText(response);
   if (/not found in service registry/i.test(html)) {
     throw new Error("cas_service_unregistered");
@@ -201,7 +218,13 @@ async function loadLoginPage(jar: CasCookieJar) {
   const page = parseLoginPage(html);
   if (page.captchaRequired) throw new Error("cas_captcha_required");
   if (!page.execution) throw new Error("cas_execution_missing");
-  return page;
+  return { ok: false, page };
+}
+
+async function loadLoginPage(jar: CasCookieJar) {
+  const loaded = await fetchLoginPage(jar);
+  if (loaded.ok) throw new Error("cas_already_authenticated");
+  return loaded.page;
 }
 
 async function passwordToSend(
@@ -380,14 +403,19 @@ export async function completeCasPasswordLogin(
       return fail("验证码不正确", 401);
     }
     const mfa = await detectMfa(jar, hold.username, hold.password, hold.fpVisitorId);
-    const page = await loadLoginPage(jar);
-    return submitLogin(jar, {
+    const loaded = await fetchLoginPage(jar);
+    if (loaded.ok) return loaded;
+    const result = await submitLogin(jar, {
       username: hold.username,
       password: hold.password,
-      execution: page.execution || hold.execution,
+      execution: loaded.page.execution || hold.execution,
       mfaState: mfa.state || hold.mfaState,
       fpVisitorId: hold.fpVisitorId,
     });
+    if (!result.ok && !result.needsMfa && isPasswordishCasError(result.error)) {
+      return fail(CAS_MFA_CONSUMED_LOGIN_FAILED, result.status);
+    }
+    return result;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "";
     if (reason === "cas_captcha_required") {

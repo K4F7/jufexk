@@ -10,6 +10,7 @@ import {
   ORDINARY_USER_CSRF_COOKIE,
 } from "../src/ordinary-user-session";
 import {
+  CAS_MFA_CONSUMED_LOGIN_FAILED,
   isAllowedCasUrl,
   isSuccessfulCasRedirect,
   normalizeCasUsername,
@@ -37,12 +38,16 @@ let mode:
   | "wrong-password-200"
   | "mfa"
   | "mfa-bad-code"
+  | "mfa-ticket-after-valid"
+  | "mfa-login-fails-after-valid"
   | "blocked-attest"
   | "encrypt" = "success";
 let mfaCodeAccepted = "654321";
+let loginGets = 0;
 
 function installCasMock() {
   calls = [];
+  loginGets = 0;
   globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
@@ -55,7 +60,19 @@ function installCasMock() {
 
     if (url.hostname === "ssl.jxufe.edu.cn" && url.pathname === "/cas/login") {
       if (request.method === "GET") {
-        return new Response(loginHtml(mode === "mfa" ? "e1s2" : "e1s1", mode === "encrypt"), {
+        loginGets += 1;
+        if (mode === "mfa-ticket-after-valid" && loginGets >= 2) {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "http://ehall.jxufe.edu.cn/?ticket=ST-mfa-2" },
+          });
+        }
+        const mfaLike =
+          mode === "mfa" ||
+          mode === "mfa-bad-code" ||
+          mode === "mfa-ticket-after-valid" ||
+          mode === "mfa-login-fails-after-valid";
+        return new Response(loginHtml(mfaLike ? "e1s2" : "e1s1", mode === "encrypt"), {
           status: 200,
           headers: {
             "content-type": "text/html",
@@ -69,7 +86,7 @@ function installCasMock() {
           { status: 401, headers: { "content-type": "text/html" } },
         );
       }
-      if (mode === "wrong-password-200") {
+      if (mode === "wrong-password-200" || mode === "mfa-login-fails-after-valid") {
         return new Response(
           `<html><title>登录 - 江西财经大学统一身份认证</title><form><input name="execution" value="e1s9"></form></html>`,
           { status: 200, headers: { "content-type": "text/html" } },
@@ -86,7 +103,12 @@ function installCasMock() {
     }
 
     if (url.hostname === "ssl.jxufe.edu.cn" && url.pathname === "/cas/mfa/detect") {
-      const need = mode === "mfa" || mode === "mfa-bad-code" || mode === "blocked-attest";
+      const need =
+        mode === "mfa" ||
+        mode === "mfa-bad-code" ||
+        mode === "mfa-ticket-after-valid" ||
+        mode === "mfa-login-fails-after-valid" ||
+        mode === "blocked-attest";
       return Response.json({
         code: 0,
         data: { need, state: need ? "mfa-state-1" : "" },
@@ -130,6 +152,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   calls = [];
   mode = "success";
+  mfaCodeAccepted = "654321";
+  loginGets = 0;
 });
 
 function assertNoIdentityLeak(value: unknown) {
@@ -353,6 +377,36 @@ describe("jxufe cas login", () => {
     });
     expect(logout.status).toBe(200);
     expect(await logout.json()).toMatchObject({ authenticated: false });
+  });
+
+  it("treats a ticket redirect after MFA as login success", async () => {
+    mode = "mfa-ticket-after-valid";
+    mfaCodeAccepted = "8765";
+    installCasMock();
+    const started = await startCas({ username: studentId, password });
+    const first = await started.json<{ challenge?: string }>();
+    const verified = await finishMfa({
+      challenge: first.challenge,
+      code: "8765",
+    });
+    expect(verified.status).toBe(200);
+    expect(await verified.json()).toMatchObject({ authenticated: true });
+    mfaCodeAccepted = "654321";
+  });
+
+  it("does not map a post-OTP login failure to a leftover password error", async () => {
+    mode = "mfa-login-fails-after-valid";
+    installCasMock();
+    const started = await startCas({ username: studentId, password });
+    const first = await started.json<{ challenge?: string }>();
+    const failed = await finishMfa({
+      challenge: first.challenge,
+      code: mfaCodeAccepted,
+    });
+    expect(failed.status).toBe(401);
+    expect(await failed.json()).toMatchObject({
+      error: CAS_MFA_CONSUMED_LOGIN_FAILED,
+    });
   });
 
   it("fails closed when MFA attest is off campus", async () => {

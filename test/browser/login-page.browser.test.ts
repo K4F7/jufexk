@@ -102,7 +102,8 @@ test("direct visit shows the CAS form and a way back to the catalog", async ({
   await expect(page.getByLabel("学号")).toBeVisible();
   await expect(page.getByLabel("校园密码")).toBeVisible();
   await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(0);
+  await expect(page.getByText("也可以改用校学生邮箱验证")).toHaveCount(0);
   await expect(page.getByText("校园 JWT 登录尚未开放")).toHaveCount(0);
 
   const back = page.getByRole("link", { name: "返回继续浏览" });
@@ -111,15 +112,105 @@ test("direct visit shows the CAS form and a way back to the catalog", async ({
   await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("submitting an email shows the check-inbox hint", async ({ page }) => {
+test("hides the school-email login entry on the ordinary-user card", async ({
+  page,
+}) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: "使用校学生邮箱验证" }).click();
-  const emailField = page.getByRole("textbox", { name: /校学生邮箱/ });
-  await expect(emailField).toBeVisible();
-  await emailField.fill("2202100001@stu.jxufe.edu.cn");
-  await page.getByRole("button", { name: "发送验证信" }).click();
-  await expect(page.getByText("若该邮箱符合条件，我们已发送验证信")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "验证码" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("textbox", { name: /校学生邮箱/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "发送验证信" })).toHaveCount(0);
+});
+
+test("MFA step drops a leftover password error and names 企业微信", async ({
+  page,
+}) => {
+  let casCount = 0;
+  let mfaPayload = "";
+  await page.route("**/api/auth/cas", async (route) => {
+    casCount += 1;
+    if (casCount === 1) {
+      return route.fulfill({
+        status: 401,
+        json: { error: "学号或密码不正确" },
+      });
+    }
+    return route.fulfill({
+      json: {
+        needsMfa: true,
+        challenge: "ab".repeat(16),
+        maskedPhone: "135****5634",
+      },
+    });
+  });
+  await page.route("**/api/auth/cas/mfa", async (route) => {
+    mfaPayload = route.request().postData() || "";
+    return route.fulfill({
+      json: {
+        authenticated: true,
+        csrfToken: "csrf-user",
+        loginPath: "/login",
+        logoutPath: "/logout",
+      },
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("学号").fill("2202100001");
+  await page.getByLabel("校园密码").fill("secret-pass");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByText("学号或密码不正确")).toBeVisible();
+
+  await page.getByLabel("校园密码").fill("secret-pass");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByText("学号或密码不正确")).toHaveCount(0);
+  await expect(page.getByText("请输入验证码")).toBeVisible();
+  await expect(page.getByText(/企业微信/)).toBeVisible();
+  await expect(page.getByText(/不是本站短信/)).toBeVisible();
+  await expect(page.getByText("短信验证码")).toHaveCount(0);
+  await expect(page.getByText("验证码已发送到")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(
+    0,
+  );
+
+  await page.getByLabel("验证码").fill("8765");
+  await page.getByRole("button", { name: "完成登录" }).click();
+  await expect(page).toHaveURL(/\/courses$/);
+  expect(mfaPayload).toContain("8765");
+});
+
+test("post-OTP password failure returns to the credential form", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/cas", async (route) => {
+    return route.fulfill({
+      json: {
+        needsMfa: true,
+        challenge: "cd".repeat(16),
+        maskedPhone: "135****5634",
+      },
+    });
+  });
+  await page.route("**/api/auth/cas/mfa", async (route) => {
+    return route.fulfill({
+      status: 401,
+      json: {
+        error: "验证码已核销，但学号或密码未通过。请确认后重新登录。",
+      },
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("学号").fill("2202100001");
+  await page.getByLabel("校园密码").fill("secret-pass");
+  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByLabel("验证码").fill("8765");
+  await page.getByRole("button", { name: "完成登录" }).click();
+  await expect(page.getByLabel("学号")).toBeVisible();
+  await expect(page.getByLabel("校园密码")).toBeVisible();
+  await expect(page.getByText("请确认后重新登录")).toBeVisible();
+  await expect(page.getByLabel("验证码")).toHaveCount(0);
 });
 
 test("submitting campus credentials shows the CAS login control", async ({
