@@ -2,8 +2,9 @@ import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 
 /**
- * AuthBridge HS256 callback contract.
- * Production stays closed until CAMPUS_JWT_ENABLED=1 after the school whitelist.
+ * Abandoned AuthBridge HS256 callback contract.
+ * Campus login is jufe_cas password proxy only. This callback stays 503.
+ * Leftover JWT verify still accepts an already-issued cookie in tests.
  * @see https://github.com/Mine-JUFE/AuthBridge
  */
 export const CAMPUS_JWT_COOKIE = "jufexk_campus_jwt";
@@ -24,7 +25,7 @@ const CAMPUS_AUTH_CONTRACT = {
 
 export type CampusAuthStatus = {
   enabled: boolean;
-  reason: "not_whitelisted" | "live";
+  reason: "abandoned";
   loginPath: string;
   logoutPath: string;
   callbackPath: string;
@@ -34,39 +35,25 @@ export type CampusAuthStatus = {
   authBridgeBaseUrl?: string;
 };
 
-export function campusJwtLive(env: { CAMPUS_JWT_ENABLED?: string } | undefined) {
-  return env?.CAMPUS_JWT_ENABLED === "1";
+export function campusJwtLive(_env?: { CAMPUS_JWT_ENABLED?: string }) {
+  return false;
 }
 
 export function campusAuthStatus(
-  env?: {
+  _env?: {
     CAMPUS_JWT_ENABLED?: string;
     CAMPUS_APP_ID?: string;
     CAMPUS_JWT_AUD?: string;
     AUTHBRIDGE_BASE_URL?: string;
   },
 ): CampusAuthStatus {
-  if (!campusJwtLive(env)) {
-    return {
-      enabled: false,
-      reason: "not_whitelisted",
-      loginPath: "/login",
-      logoutPath: "/logout",
-      callbackPath: CAMPUS_AUTH_CALLBACK_PATH,
-      contract: CAMPUS_AUTH_CONTRACT,
-    };
-  }
   return {
-    enabled: true,
-    reason: "live",
+    enabled: false,
+    reason: "abandoned",
     loginPath: "/login",
     logoutPath: "/logout",
     callbackPath: CAMPUS_AUTH_CALLBACK_PATH,
     contract: CAMPUS_AUTH_CONTRACT,
-    appId: typeof env?.CAMPUS_APP_ID === "string" ? env.CAMPUS_APP_ID : "",
-    audience: typeof env?.CAMPUS_JWT_AUD === "string" ? env.CAMPUS_JWT_AUD : "",
-    authBridgeBaseUrl:
-      typeof env?.AUTHBRIDGE_BASE_URL === "string" ? env.AUTHBRIDGE_BASE_URL : "",
   };
 }
 

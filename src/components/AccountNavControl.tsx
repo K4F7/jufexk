@@ -7,8 +7,8 @@ import { RouterAriaLink } from "./RouterAriaLink";
  * Low-emphasis login / account entry in the shell nav (issue #139 / #325).
  * The session payload carries no email, sub or users.id, so the authenticated
  * entry is a generic account menu — nothing identifying is ever rendered.
- * Guests always get a real login link: school-email verification is the
- * production path, independent of the parked AuthBridge callback.
+ * Guests always get a real login link: CAS password proxy is the
+ * production path. AuthBridge callback is abandoned.
  */
 export function AccountNavControl() {
   const { viewer, ready } = useViewer();

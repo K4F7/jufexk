@@ -57,7 +57,7 @@ describe("campus AuthBridge placeholder", () => {
     );
     expect(campusJwtLive(undefined)).toBe(false);
     expect(campusJwtLive({})).toBe(false);
-    expect(campusJwtLive({ CAMPUS_JWT_ENABLED: "1" })).toBe(true);
+    expect(campusJwtLive({ CAMPUS_JWT_ENABLED: "1" })).toBe(false);
     expect(safeCampusReturnPath("/courses/1")).toBe("/courses/1");
     expect(safeCampusReturnPath("//evil.example")).toBe("/");
     expect(safeCampusReturnPath("https://evil.example")).toBe("/");
@@ -105,7 +105,7 @@ describe("campus AuthBridge placeholder", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       enabled: false,
-      reason: "not_whitelisted",
+      reason: "abandoned",
       loginPath: "/login",
       logoutPath: "/logout",
       callbackPath: "/api/auth/callback",
@@ -180,7 +180,7 @@ describe("campus AuthBridge placeholder", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
       error: "普通用户认证尚未开放接入",
-      reason: "not_whitelisted",
+      reason: "abandoned",
     });
     expect(response.headers.get("set-cookie")).toBeNull();
   });

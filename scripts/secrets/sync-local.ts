@@ -5,6 +5,7 @@ import {
   SECRETS_STORE_ID,
   WORKER_SECRETS,
   parseDotenv,
+  parseSecretStoreList,
   selectWorkerDevVars,
 } from "./inventory";
 
@@ -68,12 +69,5 @@ function listLocalSecretIds() {
     ["exec", "wrangler", "secrets-store", "secret", "list", SECRETS_STORE_ID],
     { encoding: "utf8", shell: process.platform === "win32" },
   );
-  const ids = new Map<string, string>();
-  const text = `${result.stdout || ""}\n${result.stderr || ""}`;
-  const row = new RegExp(
-    `^\\|\\s*(${WORKER_SECRETS.join("|")})\\s*\\|\\s*([0-9a-f]{32})\\s*\\|`,
-    "gim",
-  );
-  for (const match of text.matchAll(row)) ids.set(match[1], match[2]);
-  return ids;
+  return parseSecretStoreList(`${result.stdout || ""}\n${result.stderr || ""}`);
 }

@@ -8,6 +8,7 @@ export const WORKER_SECRETS = [
   "CAMPUS_JWT_AES_KEY",
   "CAMPUS_IDENTITY_SECRET",
   "MAIL_DELIVERY_TOKEN",
+  "CAS_CHALLENGE_SECRET",
 ] as const;
 
 export const GITHUB_DEPLOY_SECRETS = [
@@ -35,6 +36,16 @@ export function parseDotenv(text: string): Record<string, string> {
     values[key] = unquoteDotenvValue(line.slice(separator + 1).trim());
   }
   return values;
+}
+
+export function parseSecretStoreList(text: string) {
+  const ids = new Map<string, string>();
+  const row = new RegExp(
+    `^\\|\\s*(${WORKER_SECRETS.join("|")})\\s*\\|\\s*([0-9a-f]{32})\\s*\\|`,
+    "gim",
+  );
+  for (const match of text.matchAll(row)) ids.set(match[1], match[2]);
+  return ids;
 }
 
 export function selectWorkerDevVars(secrets: Record<string, string>) {

@@ -1,20 +1,6 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import {
-  CAMPUS_JWT_COOKIE,
-  type CampusJwtClaims,
-  campusJwtLive,
-  issueCampusJwtCookie,
-  readAuthBridgeCallbackToken,
-  readCampusJwt,
-  safeCampusReturnPath,
-  verifyCampusJwtHs256,
-} from "./campus-jwt";
-import {
-  AUTH_PROVIDER_AUTHBRIDGE,
-  campusIdentitySubject,
-  resolveOrCreateIdentityUser,
-} from "./ordinary-user-identity";
+import { CAMPUS_JWT_COOKIE } from "./campus-jwt";
 import { readSecret } from "./secrets";
 
 export const ORDINARY_USER_CSRF_COOKIE = "jufexk_user_csrf";
@@ -28,15 +14,8 @@ export const USER_LOGOUT_PATH = "/api/user/logout";
 const EMAIL_SESSION_TTL_SECONDS = 86400;
 
 /**
- * Campus JWT issued after JXUFE CAS, via Mine-JUFE/AuthBridge.
- * Public contract (no local AuthBridge source in this repo):
- * - login: GET {authbridge}/login?appid=…&mode=callback
- * - callback POST field: `token` (HS256, per-app key; optional AES/ECC wrap)
- * - verify on the Worker: signature, `exp`, `aud`, and a stable subject
- * - AuthBridge `sub` is ciphertext when `enc=aes`; decrypt then hash
- * - do not trust decode-only payload; do not log the raw token
- * AuthBridge callback stays closed until CAMPUS_JWT_ENABLED=1.
- * @see https://github.com/Mine-JUFE/AuthBridge
+ * Ordinary-user session types. Campus login is CAS password proxy.
+ * AuthBridge JWT is abandoned and does not authenticate.
  */
 export type OrdinaryUserStatus =
   | "active"
@@ -129,59 +108,6 @@ async function loadOrCreateUser(
   return { id: userId, status: "active" };
 }
 
-function campusSecrets(env: {
-  CAMPUS_JWT_SECRET?: string | { get(): Promise<string> };
-  CAMPUS_JWT_AUD?: string;
-  CAMPUS_JWT_AES_KEY?: string | { get(): Promise<string> };
-  CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
-  CAMPUS_JWT_ENABLED?: string;
-}) {
-  return {
-    jwtSecret: env.CAMPUS_JWT_SECRET,
-    audience: typeof env.CAMPUS_JWT_AUD === "string" ? env.CAMPUS_JWT_AUD : "",
-    aesKey: env.CAMPUS_JWT_AES_KEY,
-    identitySecret: env.CAMPUS_IDENTITY_SECRET,
-    enabled: campusJwtLive(env),
-  };
-}
-
-async function mapCampusJwtToken(
-  env: Parameters<typeof campusSecrets>[0] & { DB: D1Database },
-  token: string,
-): Promise<{ user: OrdinaryUser; claims: CampusJwtClaims } | null> {
-  const secrets = campusSecrets(env);
-  const jwtSecret = await readSecret(secrets.jwtSecret);
-  const identitySecret = await readSecret(secrets.identitySecret);
-  if (!jwtSecret || !identitySecret || !secrets.audience) return null;
-  const claims = await verifyCampusJwtHs256(token, jwtSecret, secrets.audience);
-  if (!claims) return null;
-  const subject = await campusIdentitySubject(claims, {
-    identitySecret,
-    aesKeyHex: await readSecret(secrets.aesKey),
-  });
-  if (!subject) return null;
-  const user = await resolveOrCreateIdentityUser(env.DB, {
-    provider: AUTH_PROVIDER_AUTHBRIDGE,
-    issuer: claims.aud || secrets.audience || AUTH_PROVIDER_AUTHBRIDGE,
-    subject,
-  });
-  return user ? { user, claims } : null;
-}
-
-/**
- * Verify a campus AuthBridge JWT and map it to a stable users.id.
- * Encrypted `sub` is decrypted then hashed; raw campus handles never persist.
- * Missing secrets, bad signatures, and `enc=ecc` fail closed.
- */
-export async function resolveCampusJwt(
-  c: Context,
-): Promise<OrdinaryUser | null> {
-  const token = readCampusJwt(c);
-  if (!token) return null;
-  const mapped = await mapCampusJwtToken(c.env, token);
-  return mapped?.user ?? null;
-}
-
 async function resolveTestHmacUser(c: Context): Promise<OrdinaryUser | null> {
   const secret =
     typeof c.env.ORDINARY_USER_TEST_AUTH_SECRET === "string"
@@ -237,18 +163,16 @@ async function resolveEmailSessionUser(c: Context): Promise<OrdinaryUser | null>
 
 /**
  * Session boundary for ordinary-user writes.
- * Guests stay anonymous. Test HMAC, the email session cookie, or campus JWT
- * can authenticate; admin cookies, IP hashes and submitter hashes never
- * authenticate here.
+ * Guests stay anonymous. Test HMAC or the CAS/email session cookie can
+ * authenticate; AuthBridge JWT, admin cookies, IP hashes and submitter
+ * hashes never authenticate here.
  */
 export async function resolveOrdinaryUser(
   c: Context,
 ): Promise<OrdinaryUser | null> {
   const hmacUser = await resolveTestHmacUser(c);
   if (hmacUser) return hmacUser;
-  const emailUser = await resolveEmailSessionUser(c);
-  if (emailUser) return emailUser;
-  return resolveCampusJwt(c);
+  return resolveEmailSessionUser(c);
 }
 
 export function ordinaryUserCsrfOk(c: Context) {
@@ -365,40 +289,13 @@ export async function handleOrdinaryUserLogout(c: Context) {
 
 const closedCampusCallback = () => ({
   error: "普通用户认证尚未开放接入",
-  reason: "not_whitelisted",
+  reason: "abandoned",
 });
 
 /**
- * AuthBridge demo-backend shape: POST form/JSON `token`, verify HS256,
- * then set an HttpOnly cookie on this origin and redirect. Closed until
- * CAMPUS_JWT_ENABLED=1; missing secrets stay 503.
- * @see https://github.com/Mine-JUFE/AuthBridge/blob/main/demo-backend/app.js
+ * Abandoned AuthBridge callback. Campus login is jufe_cas password proxy.
+ * Always 503, including when CAMPUS_JWT_ENABLED=1 is set by mistake.
  */
 export async function handleCampusAuthCallback(c: Context) {
-  const token = await readAuthBridgeCallbackToken(c);
-  const secrets = campusSecrets(c.env);
-  const jwtSecret = await readSecret(secrets.jwtSecret);
-  const identitySecret = await readSecret(secrets.identitySecret);
-  const aesKey = await readSecret(secrets.aesKey);
-  if (!secrets.enabled || !jwtSecret || !identitySecret || !aesKey) {
-    return c.json(closedCampusCallback(), 503);
-  }
-
-  const fail = () => c.redirect(`${LOGIN_PATH}?error=campus`, 303);
-  if (!token) return fail();
-  const mapped = await mapCampusJwtToken(c.env, token);
-  // pending_deletion users may still receive a cookie so session can show
-  // the recovery window and CSRF restore; banned/deleted stay rejected.
-  if (
-    !mapped ||
-    mapped.user.status === "banned" ||
-    mapped.user.status === "deleted"
-  )
-    return fail();
-  issueCampusJwtCookie(
-    c,
-    token,
-    Math.max(1, mapped.claims.exp - Math.floor(Date.now() / 1000)),
-  );
-  return c.redirect(safeCampusReturnPath(c.req.query("from")), 303);
+  return c.json(closedCampusCallback(), 503);
 }
