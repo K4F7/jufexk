@@ -83,7 +83,7 @@ pnpm run dev
 
 ### 密钥（Cloudflare Secrets Store）
 
-`ADMIN_PASSWORD`、`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_IDENTITY_SECRET`、`MAIL_DELIVERY_TOKEN`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与管理员口令、Turnstile Secret 不同的随机值。
+`ADMIN_PASSWORD`、`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_IDENTITY_SECRET`、`MAIL_DELIVERY_TOKEN`、`CAS_CHALLENGE_SECRET`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与管理员口令、Turnstile Secret 不同的随机值。
 
 ### Turnstile
 

@@ -51,6 +51,7 @@ import {
   resolveHistoricalBatchRows,
 } from "./historical-batch-imports";
 import { handleCampusAuthStatus } from "./campus-jwt";
+import { handleCasLogin, handleCasMfa } from "./cas-login";
 import {
   handleEmailLoginRequest,
   handleEmailLoginVerify,
@@ -126,6 +127,7 @@ type Bindings = {
   MAIL_DELIVERY_URL?: string;
   MAIL_FROM?: string;
   MAIL_DELIVERY_TOKEN?: string | { get(): Promise<string> };
+  CAS_CHALLENGE_SECRET?: string | { get(): Promise<string> };
 };
 type Vars = {
   adminSession?: string;
@@ -1151,6 +1153,8 @@ app.get("/api/auth/campus", handleCampusAuthStatus);
 app.post("/api/auth/callback", handleCampusAuthCallback);
 app.post("/api/auth/email", handleEmailLoginRequest);
 app.post("/api/auth/verify", handleEmailLoginVerify);
+app.post("/api/auth/cas", handleCasLogin);
+app.post("/api/auth/cas/mfa", handleCasMfa);
 app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
 app.delete("/api/reviews/:id/endorsement", handleWithdrawEndorsement);
 

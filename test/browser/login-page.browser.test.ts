@@ -37,6 +37,24 @@ async function mockApi(page: Page) {
           logoutPath: "/logout",
         },
       });
+    if (url.pathname === "/api/auth/cas")
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          csrfToken: "csrf-user",
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
+    if (url.pathname === "/api/auth/cas/mfa")
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          csrfToken: "csrf-user",
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
     if (url.pathname === "/api/auth/email")
       return route.fulfill({ json: { ok: true } });
     if (url.pathname === "/api/auth/verify")
@@ -76,13 +94,15 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockApi(page));
 
-test("direct visit shows the email form and a way back to the catalog", async ({
+test("direct visit shows the CAS form and a way back to the catalog", async ({
   page,
 }) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
-  await expect(page.getByLabel("校学生邮箱")).toBeVisible();
-  await expect(page.getByRole("button", { name: "发送验证信" })).toBeVisible();
+  await expect(page.getByLabel("学号")).toBeVisible();
+  await expect(page.getByLabel("校园密码")).toBeVisible();
+  await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toBeVisible();
   await expect(page.getByText("校园 JWT 登录尚未开放")).toHaveCount(0);
 
   const back = page.getByRole("link", { name: "返回继续浏览" });
@@ -93,11 +113,21 @@ test("direct visit shows the email form and a way back to the catalog", async ({
 
 test("submitting an email shows the check-inbox hint", async ({ page }) => {
   await page.goto("/login");
+  await page.getByRole("button", { name: "使用校学生邮箱验证" }).click();
   await expect(page.getByLabel("验证码")).toBeVisible();
   await page.getByLabel("校学生邮箱").fill("2202100001@stu.jxufe.edu.cn");
   await page.getByRole("button", { name: "发送验证信" }).click();
   await expect(page.getByText("若该邮箱符合条件，我们已发送验证信")).toBeVisible();
   await expect(page.getByLabel("验证码")).toBeVisible();
+});
+
+test("submitting campus credentials shows the CAS login control", async ({
+  page,
+}) => {
+  await page.goto("/login");
+  await page.getByLabel("学号").fill("2202100001");
+  await page.getByLabel("校园密码").fill("secret-pass");
+  await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
 });
 
 test("returns to the internal source page given by from", async ({ page }) => {

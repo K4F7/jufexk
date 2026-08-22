@@ -15,6 +15,7 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 | `CAMPUS_JWT_AES_KEY` | Secrets Store | Worker 绑定 | AuthBridge 默认 `encrypt_type=aes` 的学号 AES-GCM 密钥（64 hex） |
 | `CAMPUS_IDENTITY_SECRET` | Secrets Store | Worker 绑定 | 学号/`sub`/校学生邮箱 HMAC 摘要密钥，明文永不落库 |
 | `MAIL_DELIVERY_TOKEN` | Secrets Store | Worker 绑定 | Resend API 投递 token；只放密钥清单，不进仓库 |
+| `CAS_CHALLENGE_SECRET` | Secrets Store | Worker 绑定 | CAS 代登 MFA 中间态 AES-GCM 密钥；未绑定时回退到 `CAMPUS_IDENTITY_SECRET` |
 | `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA `wrangler deploy` / D1 迁移 | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。需含 Workers Scripts Edit、D1 Edit、Account Settings Read、**Secrets Store Write** |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
 

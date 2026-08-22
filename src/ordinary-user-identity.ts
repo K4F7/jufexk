@@ -23,7 +23,9 @@ async function hmacHex(value: string, secret: string) {
 
 export const AUTH_PROVIDER_AUTHBRIDGE = "authbridge";
 export const AUTH_PROVIDER_EMAIL = "email";
+export const AUTH_PROVIDER_CAS = "cas";
 export const EMAIL_IDENTITY_ISSUER = "stu.jxufe.edu.cn";
+export const CAS_IDENTITY_ISSUER = "ssl.jxufe.edu.cn";
 
 const newUserId = () =>
   [...crypto.getRandomValues(new Uint8Array(16))]
