@@ -35,7 +35,7 @@ Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC �
 ## 会话、注销与封禁
 
 - 普通用户 CSRF cookie 为 24 小时，`SameSite=Lax`。CAS / 邮箱登录会话 cookie（`jufexk_user_session`）由本站签发，`HttpOnly`、`Secure`、`SameSite=Lax`，寿命约 24 小时。站点不把管理员 `admin_sessions` 复用于普通用户。
-- `resolveOrdinaryUser` 解析顺序：测试 HMAC 头（仅当测试密钥已绑定）→ 本站会话 cookie → 遗留校园 JWT cookie（生产不再签发）。
+- `resolveOrdinaryUser` 解析顺序：测试 HMAC 头（仅当测试密钥已绑定）→ 本站 CAS/邮箱会话 cookie。AuthBridge JWT cookie 与 Bearer 不再认证。
 - 注销走 `POST /api/user/logout`，清除普通用户 cookie；前端 `/logout` 只是引导页。前端以 `/api/user/session` 为 viewer-state 来源，收到写接口 `401` 后清除本地状态。可写用户注销仍要 CSRF；`pending_deletion` 等不可写用户仍可注销。
 - JWT 认证通过后仍查询普通用户状态。`banned`、`pending_deletion` 和 `deleted` 一律拒绝写入。
 - `GET /api/user/session` 对 `pending_deletion` 且凭证仍能解析到该普通用户时返回 `authenticated: false`、`accountStatus: "pending_deletion"`、`restoreUntil`（`pending_deletion_at + 30` 天的 ISO-8601）和 CSRF；不因探测 session 而恢复账号。游客、`banned`、`deleted` 保持游客形状，不增加 `accountStatus`。

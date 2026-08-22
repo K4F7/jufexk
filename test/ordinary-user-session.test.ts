@@ -4,6 +4,7 @@ import { CAMPUS_JWT_COOKIE, verifyCampusJwtHs256 } from "../src/campus-jwt";
 import { campusIdentitySubject } from "../src/ordinary-user-identity";
 import {
   ORDINARY_USER_CSRF_COOKIE,
+  hmacHex,
   ordinaryUserTestHeaders,
 } from "../src/ordinary-user-session";
 
@@ -119,137 +120,45 @@ describe("ordinary user session boundary", () => {
     assertNoIdentityLeak(body);
   });
 
-  it("maps a verified campus JWT to a stable user and issues CSRF", async () => {
+  it("does not authenticate AuthBridge JWT cookies or Bearer tokens", async () => {
     const token = await campusToken();
-    const first = await SELF.fetch(`${origin}/api/user/session`, {
+    const cookieSession = await SELF.fetch(`${origin}/api/user/session`, {
       headers: { Cookie: `${CAMPUS_JWT_COOKIE}=${token}` },
     });
-    expect(first.status).toBe(200);
-    const firstBody = await first.json<{
-      authenticated: boolean;
-      csrfToken?: string;
-    }>();
-    expect(firstBody.authenticated).toBe(true);
-    expect(firstBody.csrfToken).toBeTruthy();
-    assertNoIdentityLeak(firstBody);
-
-    const second = await SELF.fetch(`${origin}/api/user/session`, {
+    expect(await cookieSession.json()).toMatchObject({ authenticated: false });
+    const bearerSession = await SELF.fetch(`${origin}/api/user/session`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    expect((await second.json<{ authenticated: boolean }>()).authenticated).toBe(
-      true,
-    );
+    expect(await bearerSession.json()).toMatchObject({ authenticated: false });
     const subject = await campusSubject(token);
     const row = await env.DB.prepare(
       "SELECT COUNT(*) count FROM auth_identities WHERE subject=?",
     )
       .bind(subject)
       .first<{ count: number }>();
-    expect(row?.count).toBe(1);
-  });
-
-  it("reuses one user across AES-wrapped tokens for the same campus handle", async () => {
-    const firstWrap = await encryptStudentId("20230001");
-    const secondWrap = await encryptStudentId("20230001");
-    expect(firstWrap.sub).not.toBe(secondWrap.sub);
-    const first = await SELF.fetch(`${origin}/api/user/session`, {
-      headers: {
-        Cookie: `${CAMPUS_JWT_COOKIE}=${await campusToken(firstWrap)}`,
-      },
-    });
-    const second = await SELF.fetch(`${origin}/api/user/session`, {
-      headers: {
-        Cookie: `${CAMPUS_JWT_COOKIE}=${await campusToken(secondWrap)}`,
-      },
-    });
-    expect((await first.json<{ authenticated: boolean }>()).authenticated).toBe(
-      true,
-    );
-    expect((await second.json<{ authenticated: boolean }>()).authenticated).toBe(
-      true,
-    );
-    const subject = await campusSubject(await campusToken(firstWrap));
-    const row = await env.DB.prepare(
-      "SELECT COUNT(*) count, COUNT(DISTINCT user_id) users FROM auth_identities WHERE subject=?",
-    )
-      .bind(subject)
-      .first<{ count: number; users: number }>();
-    expect(row?.count).toBe(1);
-    expect(row?.users).toBe(1);
-  });
-
-  it("creates only one identity and user when the same campus subject logs in concurrently", async () => {
-    const token = await campusToken({ sub: "campus-concurrent-sub" });
-    const before = await env.DB.prepare("SELECT COUNT(*) count FROM users").first<{
-      count: number;
-    }>();
-    const responses = await Promise.all(
-      Array.from({ length: 8 }, () =>
-        SELF.fetch(`${origin}/api/user/session`, {
-          headers: { Cookie: `${CAMPUS_JWT_COOKIE}=${token}` },
-        }),
-      ),
-    );
-    expect(responses.every((response) => response.status === 200)).toBe(true);
-    const bodies = await Promise.all(
-      responses.map((response) =>
-        response.json<{ authenticated: boolean }>(),
-      ),
-    );
-    expect(bodies.every((body) => body.authenticated)).toBe(true);
-    for (const body of bodies) assertNoIdentityLeak(body);
-
-    const subject = await campusSubject(token);
-    const identity = await env.DB.prepare(
-      "SELECT COUNT(*) count, COUNT(DISTINCT user_id) users FROM auth_identities WHERE subject=?",
-    )
-      .bind(subject)
-      .first<{ count: number; users: number }>();
-    expect(identity?.count).toBe(1);
-    expect(identity?.users).toBe(1);
-
-    const after = await env.DB.prepare("SELECT COUNT(*) count FROM users").first<{
-      count: number;
-    }>();
-    expect((after?.count || 0) - (before?.count || 0)).toBe(1);
-  });
-
-  it("rejects bad signatures, wrong aud, encrypted tokens without decrypt, and ecc", async () => {
-    const good = await campusToken();
-    const badSig = `${good.slice(0, -2)}ab`;
-    const wrongAud = await campusToken({ aud: "other-app" });
-    const ecc = await campusToken({ enc: "ecc" });
-    const brokenAes = await campusToken({
-      enc: "aes",
-      sub: "not-ciphertext",
-      iv: "****",
-      tag: "****",
-    });
-    for (const token of [badSig, wrongAud, ecc, brokenAes]) {
-      const response = await SELF.fetch(`${origin}/api/user/session`, {
-        headers: { Cookie: `${CAMPUS_JWT_COOKIE}=${token}` },
-      });
-      expect(await response.json()).toMatchObject({ authenticated: false });
-    }
+    expect(row?.count).toBe(0);
   });
 
   it("does not treat banned accounts or admin cookies as writable ordinary users", async () => {
-    const token = await campusToken({ sub: "banned-subject" });
-    await SELF.fetch(`${origin}/api/user/session`, {
-      headers: { Cookie: `${CAMPUS_JWT_COOKIE}=${token}` },
+    const auth = await ordinaryUserTestHeaders(
+      "banned-hmac-user",
+      "test-ordinary-user-auth",
+    );
+    const created = await SELF.fetch(`${origin}/api/user/session`, {
+      headers: auth,
     });
-    const bannedSubject = await campusSubject(token);
-    const bannedUser = await env.DB.prepare(
-      "SELECT user_id FROM auth_identities WHERE subject=?",
-    )
-      .bind(bannedSubject)
-      .first<{ user_id: string }>();
-    expect(bannedUser?.user_id).toBeTruthy();
+    expect((await created.json<{ authenticated: boolean }>()).authenticated).toBe(
+      true,
+    );
+    const bannedUserId = await hmacHex(
+      "ordinary-test-user:banned-hmac-user",
+      "test-ordinary-user-auth",
+    );
     await env.DB.prepare("UPDATE users SET status='banned' WHERE id=?")
-      .bind(bannedUser?.user_id)
+      .bind(bannedUserId)
       .run();
     const banned = await SELF.fetch(`${origin}/api/user/session`, {
-      headers: { Cookie: `${CAMPUS_JWT_COOKIE}=${token}` },
+      headers: auth,
     });
     expect(await banned.json()).toMatchObject({ authenticated: false });
 
@@ -280,7 +189,7 @@ describe("ordinary user session boundary", () => {
     });
     const bannedLogout = await SELF.fetch(`${origin}/api/user/logout`, {
       method: "POST",
-      headers: { Cookie: `${CAMPUS_JWT_COOKIE}=${token}`, Origin: origin },
+      headers: { ...auth, Origin: origin },
     });
     expect(bannedLogout.status).toBe(200);
   });

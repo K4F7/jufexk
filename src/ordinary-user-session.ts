@@ -1,16 +1,6 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import {
-  CAMPUS_JWT_COOKIE,
-  type CampusJwtClaims,
-  readCampusJwt,
-  verifyCampusJwtHs256,
-} from "./campus-jwt";
-import {
-  AUTH_PROVIDER_AUTHBRIDGE,
-  campusIdentitySubject,
-  resolveOrCreateIdentityUser,
-} from "./ordinary-user-identity";
+import { CAMPUS_JWT_COOKIE } from "./campus-jwt";
 import { readSecret } from "./secrets";
 
 export const ORDINARY_USER_CSRF_COOKIE = "jufexk_user_csrf";
@@ -24,14 +14,8 @@ export const USER_LOGOUT_PATH = "/api/user/logout";
 const EMAIL_SESSION_TTL_SECONDS = 86400;
 
 /**
- * Campus JWT issued after JXUFE CAS, via Mine-JUFE/AuthBridge.
- * Public contract (no local AuthBridge source in this repo):
- * - login: GET {authbridge}/login?appid=…&mode=callback
- * - callback POST field: `token` (HS256, per-app key; optional AES/ECC wrap)
- * - verify on the Worker: signature, `exp`, `aud`, and a stable subject
- * - AuthBridge `sub` is ciphertext when `enc=aes`; decrypt then hash
- * - do not trust decode-only payload; do not log the raw token
- * AuthBridge login is abandoned; leftover JWT cookies may still resolve.
+ * Ordinary-user session types. Campus login is CAS password proxy.
+ * AuthBridge JWT is abandoned and does not authenticate.
  */
 export type OrdinaryUserStatus =
   | "active"
@@ -124,57 +108,6 @@ async function loadOrCreateUser(
   return { id: userId, status: "active" };
 }
 
-function campusSecrets(env: {
-  CAMPUS_JWT_SECRET?: string | { get(): Promise<string> };
-  CAMPUS_JWT_AUD?: string;
-  CAMPUS_JWT_AES_KEY?: string | { get(): Promise<string> };
-  CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
-}) {
-  return {
-    jwtSecret: env.CAMPUS_JWT_SECRET,
-    audience: typeof env.CAMPUS_JWT_AUD === "string" ? env.CAMPUS_JWT_AUD : "",
-    aesKey: env.CAMPUS_JWT_AES_KEY,
-    identitySecret: env.CAMPUS_IDENTITY_SECRET,
-  };
-}
-
-async function mapCampusJwtToken(
-  env: Parameters<typeof campusSecrets>[0] & { DB: D1Database },
-  token: string,
-): Promise<{ user: OrdinaryUser; claims: CampusJwtClaims } | null> {
-  const secrets = campusSecrets(env);
-  const jwtSecret = await readSecret(secrets.jwtSecret);
-  const identitySecret = await readSecret(secrets.identitySecret);
-  if (!jwtSecret || !identitySecret || !secrets.audience) return null;
-  const claims = await verifyCampusJwtHs256(token, jwtSecret, secrets.audience);
-  if (!claims) return null;
-  const subject = await campusIdentitySubject(claims, {
-    identitySecret,
-    aesKeyHex: await readSecret(secrets.aesKey),
-  });
-  if (!subject) return null;
-  const user = await resolveOrCreateIdentityUser(env.DB, {
-    provider: AUTH_PROVIDER_AUTHBRIDGE,
-    issuer: claims.aud || secrets.audience || AUTH_PROVIDER_AUTHBRIDGE,
-    subject,
-  });
-  return user ? { user, claims } : null;
-}
-
-/**
- * Verify a campus AuthBridge JWT and map it to a stable users.id.
- * Encrypted `sub` is decrypted then hashed; raw campus handles never persist.
- * Missing secrets, bad signatures, and `enc=ecc` fail closed.
- */
-export async function resolveCampusJwt(
-  c: Context,
-): Promise<OrdinaryUser | null> {
-  const token = readCampusJwt(c);
-  if (!token) return null;
-  const mapped = await mapCampusJwtToken(c.env, token);
-  return mapped?.user ?? null;
-}
-
 async function resolveTestHmacUser(c: Context): Promise<OrdinaryUser | null> {
   const secret =
     typeof c.env.ORDINARY_USER_TEST_AUTH_SECRET === "string"
@@ -230,18 +163,16 @@ async function resolveEmailSessionUser(c: Context): Promise<OrdinaryUser | null>
 
 /**
  * Session boundary for ordinary-user writes.
- * Guests stay anonymous. Test HMAC, the email session cookie, or campus JWT
- * can authenticate; admin cookies, IP hashes and submitter hashes never
- * authenticate here.
+ * Guests stay anonymous. Test HMAC or the CAS/email session cookie can
+ * authenticate; AuthBridge JWT, admin cookies, IP hashes and submitter
+ * hashes never authenticate here.
  */
 export async function resolveOrdinaryUser(
   c: Context,
 ): Promise<OrdinaryUser | null> {
   const hmacUser = await resolveTestHmacUser(c);
   if (hmacUser) return hmacUser;
-  const emailUser = await resolveEmailSessionUser(c);
-  if (emailUser) return emailUser;
-  return resolveCampusJwt(c);
+  return resolveEmailSessionUser(c);
 }
 
 export function ordinaryUserCsrfOk(c: Context) {
