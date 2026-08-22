@@ -39,7 +39,10 @@ let mode:
   | "mfa"
   | "mfa-bad-code"
   | "mfa-ticket-after-valid"
+  | "mfa-reauth-get-after-valid"
+  | "mfa-reauth-post-after-valid"
   | "mfa-login-fails-after-valid"
+  | "reauth-without-mfa"
   | "blocked-attest"
   | "encrypt" = "success";
 let mfaCodeAccepted = "654321";
@@ -67,10 +70,21 @@ function installCasMock() {
             headers: { location: "http://ehall.jxufe.edu.cn/?ticket=ST-mfa-2" },
           });
         }
+        if (mode === "mfa-reauth-get-after-valid" && loginGets >= 2) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              location:
+                "https://ssl.jxufe.edu.cn/cas/login?service=http://ehall.jxufe.edu.cn&reAuthCheck=1",
+            },
+          });
+        }
         const mfaLike =
           mode === "mfa" ||
           mode === "mfa-bad-code" ||
           mode === "mfa-ticket-after-valid" ||
+          mode === "mfa-reauth-get-after-valid" ||
+          mode === "mfa-reauth-post-after-valid" ||
           mode === "mfa-login-fails-after-valid";
         return new Response(loginHtml(mfaLike ? "e1s2" : "e1s1", mode === "encrypt"), {
           status: 200,
@@ -92,6 +106,15 @@ function installCasMock() {
           { status: 200, headers: { "content-type": "text/html" } },
         );
       }
+      if (mode === "reauth-without-mfa" || mode === "mfa-reauth-post-after-valid") {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location:
+              "https://ssl.jxufe.edu.cn/cas/login?service=http://ehall.jxufe.edu.cn&reAuthCheck=1",
+          },
+        });
+      }
       return new Response(null, {
         status: 302,
         headers: { location: "http://ehall.jxufe.edu.cn/?ticket=ST-test-1" },
@@ -107,6 +130,8 @@ function installCasMock() {
         mode === "mfa" ||
         mode === "mfa-bad-code" ||
         mode === "mfa-ticket-after-valid" ||
+        mode === "mfa-reauth-get-after-valid" ||
+        mode === "mfa-reauth-post-after-valid" ||
         mode === "mfa-login-fails-after-valid" ||
         mode === "blocked-attest";
       return Response.json({
@@ -209,6 +234,16 @@ describe("jxufe cas helpers", () => {
       true,
     );
     expect(isSuccessfulCasRedirect("/cas/login?reAuthCheck=1")).toBe(false);
+    expect(
+      isSuccessfulCasRedirect("/cas/login?reAuthCheck=1", {
+        acceptReauthCheck: true,
+      }),
+    ).toBe(true);
+    expect(
+      isSuccessfulCasRedirect("https://evil.example/?reAuthCheck=1", {
+        acceptReauthCheck: true,
+      }),
+    ).toBe(false);
     expect(normalizeCasUsername(" 2202100099 ")).toBe("2202100099");
     expect(normalizeCasUsername("not an id")).toBeNull();
     expect(parseLoginPage(loginHtml()).execution).toBe("e1s1");
@@ -377,6 +412,41 @@ describe("jxufe cas login", () => {
     });
     expect(logout.status).toBe(200);
     expect(await logout.json()).toMatchObject({ authenticated: false });
+  });
+
+  it("treats a reAuthCheck redirect after MFA as login success", async () => {
+    for (const next of [
+      "mfa-reauth-get-after-valid",
+      "mfa-reauth-post-after-valid",
+    ] as const) {
+      mode = next;
+      mfaCodeAccepted = "4321";
+      installCasMock();
+      const started = await startCas({ username: studentId, password });
+      const first = await started.json<{ challenge?: string }>();
+      const verified = await finishMfa({
+        challenge: first.challenge,
+        code: "4321",
+      });
+      expect(verified.status).toBe(200);
+      expect(await verified.json()).toMatchObject({ authenticated: true });
+      expect(cookieHeader(verified)).toContain(`${EMAIL_LOGIN_COOKIE}=`);
+      expect(calls.some((call) => /ehall\.jxufe\.edu\.cn\/.+/.test(call.url))).toBe(
+        false,
+      );
+    }
+    mfaCodeAccepted = "654321";
+  });
+
+  it("does not treat a pre-MFA reAuthCheck redirect as a finished login", async () => {
+    mode = "reauth-without-mfa";
+    installCasMock();
+    const response = await startCas({ username: studentId, password });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "登录失败，请稍后重试",
+    });
+    expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
   });
 
   it("treats a ticket redirect after MFA as login success", async () => {

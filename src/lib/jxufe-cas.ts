@@ -66,9 +66,21 @@ export function isAllowedCasUrl(raw: string): boolean {
   return host === "jxufe.edu.cn" || host.endsWith(".jxufe.edu.cn");
 }
 
-export function isSuccessfulCasRedirect(location: string): boolean {
+function isCasReauthCheckLocation(location: string) {
+  if (!/reAuthCheck/i.test(location)) return false;
+  if (location.startsWith("/") && !location.startsWith("//")) return true;
+  return isAllowedCasUrl(location);
+}
+
+/** jufe_cas: 302 即口令通过；同域 `reAuthCheck` 只在 MFA 核销后当作本站探针成功。 */
+export function isSuccessfulCasRedirect(
+  location: string,
+  options: { acceptReauthCheck?: boolean } = {},
+): boolean {
   if (!location) return false;
-  if (/reAuthCheck/i.test(location)) return false;
+  if (isCasReauthCheckLocation(location)) {
+    return Boolean(options.acceptReauthCheck);
+  }
   if (/[?&]ticket=/.test(location)) return true;
   return /ehall\.jxufe\.edu\.cn/i.test(location);
 }
@@ -172,7 +184,11 @@ async function casFetch(
     [301, 302, 303, 307, 308].includes(response.status)
   ) {
     const next = new URL(location, url).toString();
-    if (/ehall\.jxufe\.edu\.cn/i.test(next) || /[?&]ticket=/.test(next)) {
+    if (
+      /ehall\.jxufe\.edu\.cn/i.test(next) ||
+      /[?&]ticket=/.test(next) ||
+      isCasReauthCheckLocation(next)
+    ) {
       return response;
     }
     return casFetch(next, jar, { followRedirects: true, hops: hops + 1 });
@@ -205,10 +221,14 @@ function isPasswordishCasError(error: string) {
 
 async function fetchLoginPage(
   jar: CasCookieJar,
+  options: { acceptReauthCheck?: boolean } = {},
 ): Promise<CasLoginOk | { ok: false; page: ReturnType<typeof parseLoginPage> }> {
   const response = await casFetch(LOGIN_URL, jar, { followRedirects: true });
   const location = response.headers.get("location") || "";
-  if (isRedirectStatus(response.status) && isSuccessfulCasRedirect(location)) {
+  if (
+    isRedirectStatus(response.status) &&
+    isSuccessfulCasRedirect(location, options)
+  ) {
     return { ok: true };
   }
   const html = await readText(response);
@@ -273,6 +293,7 @@ async function submitLogin(
     mfaState: string;
     fpVisitorId: string;
   },
+  options: { acceptReauthCheck?: boolean } = {},
 ): Promise<CasLoginResult> {
   const response = await casFetch(LOGIN_URL, jar, {
     method: "POST",
@@ -292,7 +313,10 @@ async function submitLogin(
     }).toString(),
     followRedirects: false,
   });
-  if (response.status === 302 && isSuccessfulCasRedirect(response.headers.get("location") || "")) {
+  if (
+    response.status === 302 &&
+    isSuccessfulCasRedirect(response.headers.get("location") || "", options)
+  ) {
     return { ok: true };
   }
   const html = await readText(response);
@@ -403,15 +427,19 @@ export async function completeCasPasswordLogin(
       return fail("验证码不正确", 401);
     }
     const mfa = await detectMfa(jar, hold.username, hold.password, hold.fpVisitorId);
-    const loaded = await fetchLoginPage(jar);
+    const loaded = await fetchLoginPage(jar, { acceptReauthCheck: true });
     if (loaded.ok) return loaded;
-    const result = await submitLogin(jar, {
-      username: hold.username,
-      password: hold.password,
-      execution: loaded.page.execution || hold.execution,
-      mfaState: mfa.state || hold.mfaState,
-      fpVisitorId: hold.fpVisitorId,
-    });
+    const result = await submitLogin(
+      jar,
+      {
+        username: hold.username,
+        password: hold.password,
+        execution: loaded.page.execution || hold.execution,
+        mfaState: mfa.state || hold.mfaState,
+        fpVisitorId: hold.fpVisitorId,
+      },
+      { acceptReauthCheck: true },
+    );
     if (!result.ok && !result.needsMfa && isPasswordishCasError(result.error)) {
       return fail(CAS_MFA_CONSUMED_LOGIN_FAILED, result.status);
     }
