@@ -38,6 +38,16 @@ export function parseDotenv(text: string): Record<string, string> {
   return values;
 }
 
+export function parseSecretStoreList(text: string) {
+  const ids = new Map<string, string>();
+  const row = new RegExp(
+    `^\\|\\s*(${WORKER_SECRETS.join("|")})\\s*\\|\\s*([0-9a-f]{32})\\s*\\|`,
+    "gim",
+  );
+  for (const match of text.matchAll(row)) ids.set(match[1], match[2]);
+  return ids;
+}
+
 export function selectWorkerDevVars(secrets: Record<string, string>) {
   const vars: Partial<Record<WorkerSecretName, string>> = {};
   for (const key of WORKER_SECRETS) {

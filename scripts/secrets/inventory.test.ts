@@ -4,6 +4,7 @@ import {
   SECRETS_STORE_ID,
   WORKER_SECRETS,
   parseDotenv,
+  parseSecretStoreList,
   resolveAdminPassword,
   selectWorkerDevVars,
 } from "./inventory";
@@ -34,6 +35,20 @@ describe("secret inventory", () => {
     expect(() => resolveAdminPassword({})).toThrow(
       /ADMIN_PASSWORD 或 JUFEXK_ADMIN_PASSWORD/,
     );
+  });
+
+  it("reads worker secret ids from a wrangler store table", () => {
+    const ids = parseSecretStoreList(`
+| Name | ID | Updated |
+| ADMIN_PASSWORD | 11111111111111111111111111111111 | yesterday |
+| CAS_CHALLENGE_SECRET | aaaabbbbccccddddeeeeffff00001111 | now |
+| IGNORE_ME | 22222222222222222222222222222222 | now |
+`);
+    expect(ids.get("ADMIN_PASSWORD")).toBe("11111111111111111111111111111111");
+    expect(ids.get("CAS_CHALLENGE_SECRET")).toBe(
+      "aaaabbbbccccddddeeeeffff00001111",
+    );
+    expect(ids.has("IGNORE_ME")).toBe(false);
   });
 
   it("selects only worker keys from a dotenv file", () => {

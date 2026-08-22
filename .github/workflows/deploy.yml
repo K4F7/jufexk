@@ -64,6 +64,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run check
+      - name: Ensure CAS challenge secret
+        run: pnpm exec tsx scripts/secrets/ensure-remote.ts
       - name: List pending D1 migrations
         run: pnpm exec wrangler d1 migrations list jufexk --remote
       - name: Apply D1 migrations

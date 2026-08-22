@@ -43,3 +43,5 @@ pnpm exec wrangler secrets-store secret update 323163a091874b07aacdf5500bff903e 
 ```
 
 更新 Secrets Store 后 Worker 绑定立即读到新值，不必重新 `wrangler secret put`。`IP_HASH_SECRET` 轮换后已落库的 IP HMAC 不再匹配。Turnstile 若在 Cloudflare 控制台轮换 widget secret，再把新值 `update` 进 Secrets Store。
+
+生产部署会执行 `pnpm exec tsx scripts/secrets/ensure-remote.ts`：若远程 store 还没有 `CAS_CHALLENGE_SECRET` 就生成一个，已有则跳过。生成值不进日志或仓库。
