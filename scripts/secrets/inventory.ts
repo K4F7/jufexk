@@ -38,14 +38,42 @@ export function parseDotenv(text: string): Record<string, string> {
   return values;
 }
 
+const ANSI_ESCAPE = /\u001b\[[0-9;]*m/g;
+const TABLE_VERTICAL = /[│┃┊┆]/g;
+const SECRET_ID =
+  /[0-9a-f]{8}(?:-?[0-9a-f]{4}){3}-?[0-9a-f]{12}|[0-9a-f]{32}/i;
+
+export function stripAnsi(text: string) {
+  return text.replace(ANSI_ESCAPE, "");
+}
+
+export function normalizeSecretStoreTable(text: string) {
+  return stripAnsi(text).replace(TABLE_VERTICAL, "|");
+}
+
 export function parseSecretStoreList(text: string) {
   const ids = new Map<string, string>();
   const row = new RegExp(
-    `^\\|\\s*(${WORKER_SECRETS.join("|")})\\s*\\|\\s*([0-9a-f]{32})\\s*\\|`,
+    `(?:^|\\|)\\s*(${WORKER_SECRETS.join("|")})\\s*\\|\\s*(${SECRET_ID.source})\\b`,
     "gim",
   );
-  for (const match of text.matchAll(row)) ids.set(match[1], match[2]);
+  for (const match of normalizeSecretStoreTable(text).matchAll(row)) {
+    ids.set(match[1], match[2]);
+  }
   return ids;
+}
+
+export function secretStoreListHasName(text: string, name: string) {
+  if (parseSecretStoreList(text).has(name)) return true;
+  const token = new RegExp(`(?:^|[^A-Z0-9_])${name}(?:[^A-Z0-9_]|$)`);
+  return token.test(normalizeSecretStoreTable(text));
+}
+
+export function isSecretAlreadyExistsError(text: string) {
+  const plain = stripAnsi(text);
+  return (
+    /secret_name_already_exists/i.test(plain) || /\[code:\s*1003\]/.test(plain)
+  );
 }
 
 export function selectWorkerDevVars(secrets: Record<string, string>) {

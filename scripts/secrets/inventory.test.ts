@@ -3,9 +3,11 @@ import {
   GITHUB_DEPLOY_SECRETS,
   SECRETS_STORE_ID,
   WORKER_SECRETS,
+  isSecretAlreadyExistsError,
   parseDotenv,
   parseSecretStoreList,
   resolveAdminPassword,
+  secretStoreListHasName,
   selectWorkerDevVars,
 } from "./inventory";
 
@@ -49,6 +51,65 @@ describe("secret inventory", () => {
       "aaaabbbbccccddddeeeeffff00001111",
     );
     expect(ids.has("IGNORE_ME")).toBe(false);
+  });
+
+  it("reads worker secret ids from wrangler unicode tables and UUID ids", () => {
+    const ids = parseSecretStoreList(`
+🔐 Listing secrets... (store-id: 323163a091874b07aacdf5500bff903e, page: 1, per-page: 50)
+┌────────────────────────┬──────────────────────────────────────┬─────────┐
+│ Name                   │ ID                                   │ Updated │
+├────────────────────────┼──────────────────────────────────────┼─────────┤
+│ ADMIN_PASSWORD         │ 11111111-1111-4111-8111-111111111111 │ now     │
+│ CAS_CHALLENGE_SECRET   │ aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee │ now     │
+│ IGNORE_ME              │ 22222222-2222-4222-8222-222222222222 │ now     │
+└────────────────────────┴──────────────────────────────────────┴─────────┘
+`);
+    expect(ids.get("ADMIN_PASSWORD")).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(ids.get("CAS_CHALLENGE_SECRET")).toBe(
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    );
+    expect(ids.has("IGNORE_ME")).toBe(false);
+    expect(
+      secretStoreListHasName(
+        "│ CAS_CHALLENGE_SECRET │ aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee │",
+        "CAS_CHALLENGE_SECRET",
+      ),
+    ).toBe(true);
+    expect(secretStoreListHasName("no secrets here", "CAS_CHALLENGE_SECRET")).toBe(
+      false,
+    );
+  });
+
+  it("reads worker secret ids from ANSI-colored wrangler tables", () => {
+    const ids = parseSecretStoreList(
+      "\u001b[90m│\u001b[39m CAS_CHALLENGE_SECRET \u001b[90m│\u001b[39m aaaabbbbccccddddeeeeffff00001111 \u001b[90m│\u001b[39m now \u001b[90m│\u001b[39m\n",
+    );
+    expect(ids.get("CAS_CHALLENGE_SECRET")).toBe(
+      "aaaabbbbccccddddeeeeffff00001111",
+    );
+    expect(
+      secretStoreListHasName(
+        "\u001b[90m│\u001b[39m CAS_CHALLENGE_SECRET \u001b[90m│\u001b[39m",
+        "CAS_CHALLENGE_SECRET",
+      ),
+    ).toBe(true);
+  });
+
+  it("treats Cloudflare already-exists create errors as present", () => {
+    const createError = `
+✘ [ERROR] A request to the Cloudflare API (/accounts/acct/secrets_store/stores/323163a091874b07aacdf5500bff903e/secrets) failed.
+
+  secret_name_already_exists: CAS_CHALLENGE_SECRET [code: 1003]
+`;
+    expect(isSecretAlreadyExistsError(createError)).toBe(true);
+    expect(
+      isSecretAlreadyExistsError(
+        "\u001b[31msecret_name_already_exists: CAS_CHALLENGE_SECRET [code: 1003]\u001b[0m",
+      ),
+    ).toBe(true);
+    expect(isSecretAlreadyExistsError("authentication failed")).toBe(false);
   });
 
   it("selects only worker keys from a dotenv file", () => {
