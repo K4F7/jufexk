@@ -1,19 +1,21 @@
 # 普通用户通过校学生邮箱验证接入，游客只读
 
-_2026-08-21：生产登录路径改为 `stu.jxufe.edu.cn` 校学生邮箱验证（#324 / #325）。验证信经可配置 HTTPS 投递端点发出（生产为 Resend）；Worker 不直连 SMTP:25。AuthBridge 仍搁置：`CAMPUS_JWT_ENABLED` 不设，callback 维持 503，占位密钥与验签代码不删除。本文的身份三元组、`users.id`、CSRF、封禁/待删除形状与管理员隔离继续有效。_
+_2026-08-22：生产主登录改为江财 CAS 代登（#389）。校学生邮箱验证降为次要入口。AuthBridge 仍搁置：`CAMPUS_JWT_ENABLED` 不设，callback 维持 503，占位密钥与验签代码不删除。本文的身份三元组、`users.id`、CSRF、封禁/待删除形状与管理员隔离继续有效。_
+
+_2026-08-21：生产登录路径曾改为 `stu.jxufe.edu.cn` 校学生邮箱验证（#324 / #325）。验证信经可配置 HTTPS 投递端点发出（生产为 Resend）；Worker 不直连 SMTP:25。该路径现为备选。_
 
 _2026-08-19：AuthBridge 开通已按 [ADR-0022](./0022-launch-without-ordinary-user-auth.md) 搁置——callback 维持 503。_
 
 _#137 已否决 Cloudflare Access OTP：Zero Trust 席位不适合全校投稿门。校园 JWT（[Mine-JUFE/AuthBridge](https://github.com/Mine-JUFE/AuthBridge)）保留为搁置占位，不作为生产登录路径。_
 
-大多数访问者是游客，课程、教师、任课关系和公开评价只读页面匿名可访问。校学生邮箱验证（或测试 HMAC 头）只在投稿、认可等写操作上构成普通用户会话。管理员后台继续使用独立口令 session，不能与普通用户身份互换。
+大多数访问者是游客，课程、教师、任课关系和公开评价只读页面匿名可访问。江财 CAS 代登、校学生邮箱验证或测试 HMAC 头只在投稿、认可等写操作上构成普通用户会话。管理员后台继续使用独立口令 session，不能与普通用户身份互换。
 
-Worker 必须核销校学生邮箱挑战（或测试 HMAC 头），并把认证主体映射到站内稳定、不可公开的普通用户身份。AuthBridge JWT 验签保留为搁置占位。明文邮箱、AuthBridge `sub`（密文）、学号、管理员会话、IP hash 和既有 `submitter_hash` 都不直接承担任课评价或认可的业务唯一性。
+Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC 头），并把认证主体映射到站内稳定、不可公开的普通用户身份。AuthBridge JWT 验签保留为搁置占位。明文邮箱、AuthBridge `sub`（密文）、学号、管理员会话、IP hash 和既有 `submitter_hash` 都不直接承担任课评价或认可的业务唯一性。
 
 ## 游客、普通用户与管理员
 
 - 公开只读不要求登录，也不把未登录当作错误。
-- 普通用户会话只证明本次请求持有已验证的校学生邮箱会话 cookie（或测试 HMAC 头；校园 JWT cookie 仍可解析但生产不签发），并对应一个 `active` 的 `users.id`。
+- 普通用户会话只证明本次请求持有已验证的本站会话 cookie（CAS 代登或校学生邮箱；或测试 HMAC 头；校园 JWT cookie 仍可解析但生产不签发），并对应一个 `active` 的 `users.id`。
 - 管理员口令登录只签发 `admin_sessions`；`jufexk_admin` cookie、校园 JWT 和测试 HMAC 头不得互相授权。
 
 ## JWT 验证边界
@@ -26,7 +28,7 @@ Worker 必须核销校学生邮箱挑战（或测试 HMAC 头），并把认证�
 ## 普通用户与身份绑定
 
 - `users.id` 是随机生成且永久稳定的站内标识。任课评价、认可、封禁和账号状态只引用该标识；公开 API 和页面永不返回它。
-- 认证身份以 `(provider, issuer, subject)` 唯一。生产邮箱登录：`provider` 为 `email`，`issuer` 为 `stu.jxufe.edu.cn`，`subject` 是规范化邮箱的 HMAC（密钥为 `CAMPUS_IDENTITY_SECRET`），不是明文邮箱。AuthBridge 占位身份仍为 `provider=authbridge`，`issuer` 为 JWT `aud`（缺省时为配置的 `CAMPUS_JWT_AUD`，再缺省为 `authbridge`），`subject` 是学号或稳定 `sub` 的 HMAC。两种身份不自动合并。
+- 认证身份以 `(provider, issuer, subject)` 唯一。生产 CAS 代登：`provider` 为 `cas`，`issuer` 为 `ssl.jxufe.edu.cn`，`subject` 是规范化学号的 HMAC（密钥为 `CAMPUS_IDENTITY_SECRET`），不是学号明文。邮箱登录：`provider` 为 `email`，`issuer` 为 `stu.jxufe.edu.cn`，`subject` 是规范化邮箱的 HMAC。AuthBridge 占位身份仍为 `provider=authbridge`，`issuer` 为 JWT `aud`（缺省时为配置的 `CAMPUS_JWT_AUD`，再缺省为 `authbridge`），`subject` 是学号或稳定 `sub` 的 HMAC。三种身份不自动合并。
 - 同一认证主体重复登录复用原普通用户。邮箱按规范化地址哈希；AuthBridge 每次加密会换 IV，因此必须解密后再哈希，不能把密文 `sub` 当主键。
 - 明文邮箱不当主键，不进公开响应或日志。多个认证主体默认是不同普通用户。
 
