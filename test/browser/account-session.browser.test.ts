@@ -157,7 +157,9 @@ test("guest nav shows a login link into the CAS form", async ({
   await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeVisible();
   await expect(page.getByLabel("校园密码")).toBeVisible();
-  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(
+    0,
+  );
 
   await page.getByRole("link", { name: "返回继续浏览" }).click();
   await expect(page).toHaveURL(/\/courses$/);
