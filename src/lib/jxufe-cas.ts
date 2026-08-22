@@ -139,6 +139,7 @@ async function casFetch(
     body?: string;
     contentType?: string;
     followRedirects?: boolean;
+    hops?: number;
   } = {},
 ): Promise<Response> {
   if (!isAllowedCasUrl(url)) throw new Error("cas_host_blocked");
@@ -160,8 +161,10 @@ async function casFetch(
   });
   applySetCookie(jar, response);
   const location = response.headers.get("location") || "";
+  const hops = init.hops ?? 0;
   if (
     init.followRedirects !== false &&
+    hops < 5 &&
     location &&
     [301, 302, 303, 307, 308].includes(response.status)
   ) {
@@ -169,7 +172,7 @@ async function casFetch(
     if (/ehall\.jxufe\.edu\.cn/i.test(next) || /[?&]ticket=/.test(next)) {
       return response;
     }
-    return casFetch(next, jar, { followRedirects: true });
+    return casFetch(next, jar, { followRedirects: true, hops: hops + 1 });
   }
   return response;
 }

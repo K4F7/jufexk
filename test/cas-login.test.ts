@@ -368,6 +368,17 @@ describe("jxufe cas login", () => {
     void privateKey;
   });
 
+  it("rate-limits repeated CAS login attempts from one IP", async () => {
+    installCasMock();
+    const ip = nextIp();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await startCas({ username: studentId, password }, ip);
+      expect(response.status).toBe(200);
+    }
+    const blocked = await startCas({ username: studentId, password }, ip);
+    expect(blocked.status).toBe(429);
+  });
+
   it("lets cookie+CSRF endorse a review after CAS login", async () => {
     installCasMock();
     const verified = await startCas({ username: studentId, password });

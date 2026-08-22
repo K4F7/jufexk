@@ -114,11 +114,12 @@ test("direct visit shows the CAS form and a way back to the catalog", async ({
 test("submitting an email shows the check-inbox hint", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: "使用校学生邮箱验证" }).click();
-  await expect(page.getByLabel("验证码")).toBeVisible();
-  await page.getByLabel("校学生邮箱").fill("2202100001@stu.jxufe.edu.cn");
+  const emailField = page.getByRole("textbox", { name: /校学生邮箱/ });
+  await expect(emailField).toBeVisible();
+  await emailField.fill("2202100001@stu.jxufe.edu.cn");
   await page.getByRole("button", { name: "发送验证信" }).click();
   await expect(page.getByText("若该邮箱符合条件，我们已发送验证信")).toBeVisible();
-  await expect(page.getByLabel("验证码")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "验证码" })).toBeVisible();
 });
 
 test("submitting campus credentials shows the CAS login control", async ({
