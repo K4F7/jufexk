@@ -34,6 +34,7 @@ let calls: CasCall[] = [];
 let mode:
   | "success"
   | "wrong-password"
+  | "wrong-password-200"
   | "mfa"
   | "mfa-bad-code"
   | "blocked-attest"
@@ -66,6 +67,12 @@ function installCasMock() {
         return new Response(
           `<html><div id="showErrorTip">用户名或密码错误</div></html>`,
           { status: 401, headers: { "content-type": "text/html" } },
+        );
+      }
+      if (mode === "wrong-password-200") {
+        return new Response(
+          `<html><title>登录 - 江西财经大学统一身份认证</title><form><input name="execution" value="e1s9"></form></html>`,
+          { status: 200, headers: { "content-type": "text/html" } },
         );
       }
       return new Response(null, {
@@ -185,6 +192,15 @@ describe("jxufe cas helpers", () => {
 });
 
 describe("jxufe cas login", () => {
+  it("treats a 200 login page after POST as a wrong password", async () => {
+    mode = "wrong-password-200";
+    installCasMock();
+    const response = await startCas({ username: studentId, password });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "学号或密码不正确" });
+    expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+  });
+
   it("rejects a wrong password without creating a session or identity", async () => {
     mode = "wrong-password";
     installCasMock();

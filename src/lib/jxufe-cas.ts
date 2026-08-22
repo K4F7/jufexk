@@ -272,8 +272,13 @@ async function submitLogin(
   if (response.status === 302 && isSuccessfulCasRedirect(response.headers.get("location") || "")) {
     return { ok: true };
   }
+  const html = await readText(response);
   if (response.status === 401) {
-    return fail(parseErrorTip(await readText(response)), 401);
+    return fail(parseErrorTip(html), 401);
+  }
+  // Live CAS often returns 200 login HTML for a rejected password instead of 401.
+  if (response.status === 200 && (parseLoginPage(html).execution || /统一身份认证/.test(html))) {
+    return fail(parseErrorTip(html), 401);
   }
   return fail("登录失败，请稍后重试", 400);
 }
