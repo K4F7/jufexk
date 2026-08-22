@@ -3,11 +3,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   CAMPUS_JWT_COOKIE,
   type CampusJwtClaims,
-  campusJwtLive,
-  issueCampusJwtCookie,
-  readAuthBridgeCallbackToken,
   readCampusJwt,
-  safeCampusReturnPath,
   verifyCampusJwtHs256,
 } from "./campus-jwt";
 import {
@@ -35,8 +31,7 @@ const EMAIL_SESSION_TTL_SECONDS = 86400;
  * - verify on the Worker: signature, `exp`, `aud`, and a stable subject
  * - AuthBridge `sub` is ciphertext when `enc=aes`; decrypt then hash
  * - do not trust decode-only payload; do not log the raw token
- * AuthBridge callback stays closed until CAMPUS_JWT_ENABLED=1.
- * @see https://github.com/Mine-JUFE/AuthBridge
+ * AuthBridge login is abandoned; leftover JWT cookies may still resolve.
  */
 export type OrdinaryUserStatus =
   | "active"
@@ -134,14 +129,12 @@ function campusSecrets(env: {
   CAMPUS_JWT_AUD?: string;
   CAMPUS_JWT_AES_KEY?: string | { get(): Promise<string> };
   CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
-  CAMPUS_JWT_ENABLED?: string;
 }) {
   return {
     jwtSecret: env.CAMPUS_JWT_SECRET,
     audience: typeof env.CAMPUS_JWT_AUD === "string" ? env.CAMPUS_JWT_AUD : "",
     aesKey: env.CAMPUS_JWT_AES_KEY,
     identitySecret: env.CAMPUS_IDENTITY_SECRET,
-    enabled: campusJwtLive(env),
   };
 }
 
@@ -365,40 +358,13 @@ export async function handleOrdinaryUserLogout(c: Context) {
 
 const closedCampusCallback = () => ({
   error: "普通用户认证尚未开放接入",
-  reason: "not_whitelisted",
+  reason: "abandoned",
 });
 
 /**
- * AuthBridge demo-backend shape: POST form/JSON `token`, verify HS256,
- * then set an HttpOnly cookie on this origin and redirect. Closed until
- * CAMPUS_JWT_ENABLED=1; missing secrets stay 503.
- * @see https://github.com/Mine-JUFE/AuthBridge/blob/main/demo-backend/app.js
+ * Abandoned AuthBridge callback. Campus login is jufe_cas password proxy.
+ * Always 503, including when CAMPUS_JWT_ENABLED=1 is set by mistake.
  */
 export async function handleCampusAuthCallback(c: Context) {
-  const token = await readAuthBridgeCallbackToken(c);
-  const secrets = campusSecrets(c.env);
-  const jwtSecret = await readSecret(secrets.jwtSecret);
-  const identitySecret = await readSecret(secrets.identitySecret);
-  const aesKey = await readSecret(secrets.aesKey);
-  if (!secrets.enabled || !jwtSecret || !identitySecret || !aesKey) {
-    return c.json(closedCampusCallback(), 503);
-  }
-
-  const fail = () => c.redirect(`${LOGIN_PATH}?error=campus`, 303);
-  if (!token) return fail();
-  const mapped = await mapCampusJwtToken(c.env, token);
-  // pending_deletion users may still receive a cookie so session can show
-  // the recovery window and CSRF restore; banned/deleted stay rejected.
-  if (
-    !mapped ||
-    mapped.user.status === "banned" ||
-    mapped.user.status === "deleted"
-  )
-    return fail();
-  issueCampusJwtCookie(
-    c,
-    token,
-    Math.max(1, mapped.claims.exp - Math.floor(Date.now() / 1000)),
-  );
-  return c.redirect(safeCampusReturnPath(c.req.query("from")), 303);
+  return c.json(closedCampusCallback(), 503);
 }

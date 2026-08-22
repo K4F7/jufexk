@@ -3,12 +3,9 @@ import { api } from "../lib/api";
 import type { CampusAuthStatus } from "../lib/campus-auth";
 
 /**
- * Whether campus auth (AuthBridge, ADR-0016) is live, per `/api/auth/campus`.
- * `null` while unknown so callers can hold back entries instead of flashing
- * a clickable control that then gets withdrawn. Fail-closed: any fetch error
- * reports `false`. Fetched once per app lifetime and shared by the shell nav
- * and the account control (Issues #204/#277); when the whitelist opens, every
- * gated entry restores automatically without a code change.
+ * AuthBridge campus JWT is abandoned. This hook stays fail-closed so leftover
+ * callers never treat `/api/auth/campus` as a live login. Ordinary users sign
+ * in on `/login` via CAS password proxy.
  */
 let campusEnabledCache: Promise<boolean> | null = null;
 
