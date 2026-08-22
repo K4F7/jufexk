@@ -6,8 +6,6 @@ on:
       - "docs/**"
       - "**/*.md"
       - ".agents/**"
-      - "scripts/legacy_ocr/**"
-      - "scripts/legacy_evidence/**"
       - ".grok/**"
   workflow_dispatch:
 concurrency:
@@ -60,7 +58,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: astral-sh/setup-uv@v7
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run check

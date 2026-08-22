@@ -10,14 +10,6 @@ worker-configuration.d.ts
 .venv/
 __pycache__/
 *.pyc
-scripts/legacy_ocr/output/
-scripts/legacy_ocr/input/
-scripts/legacy_ocr/reference.json
-scripts/legacy_evidence/input/
-scripts/legacy_evidence/output/
-scripts/legacy_evidence/runs/
-scripts/legacy_evidence/tmp/
-scripts/legacy_evidence/approvals/
 copy.xlsx
 handoff/
 # Local D1 dumps / preview data (never commit)
