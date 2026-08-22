@@ -337,8 +337,14 @@ describe("ordinary user session boundary", () => {
         enabled: false,
         reason: "abandoned",
       });
-      const wrap = await encryptStudentId("20230001");
+      const wrap = await encryptStudentId("20239999");
       const token = await campusToken({ ...wrap, aud: undefined });
+      const subject = await campusSubject(token);
+      const before = await env.DB.prepare(
+        "SELECT COUNT(*) n FROM auth_identities WHERE subject=?",
+      )
+        .bind(subject)
+        .first<{ n: number }>();
       const response = await SELF.fetch(
         `${origin}/api/auth/callback?from=/courses/1`,
         {
@@ -354,10 +360,12 @@ describe("ordinary user session boundary", () => {
         error: "普通用户认证尚未开放接入",
         reason: "abandoned",
       });
-      const identities = await env.DB.prepare(
-        "SELECT COUNT(*) n FROM auth_identities WHERE provider='authbridge'",
-      ).first<{ n: number }>();
-      expect(identities?.n).toBe(0);
+      const after = await env.DB.prepare(
+        "SELECT COUNT(*) n FROM auth_identities WHERE subject=?",
+      )
+        .bind(subject)
+        .first<{ n: number }>();
+      expect(after?.n).toBe(before?.n || 0);
     } finally {
       restore();
     }
