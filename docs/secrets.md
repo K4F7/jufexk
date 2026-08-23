@@ -16,7 +16,7 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 | `CAMPUS_IDENTITY_SECRET` | Secrets Store | Worker 绑定 | 学号/`sub`/校学生邮箱 HMAC 摘要密钥，明文永不落库 |
 | `MAIL_DELIVERY_TOKEN` | Secrets Store | Worker 绑定 | Resend API 投递 token；只放密钥清单，不进仓库 |
 | `CAS_CHALLENGE_SECRET` | Secrets Store | Worker 绑定 | CAS 代登 MFA 中间态 AES-GCM 密钥；未绑定时回退到 `CAMPUS_IDENTITY_SECRET` |
-| `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA `wrangler deploy` / D1 迁移 | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。需含 Workers Scripts Edit、D1 Edit、Account Settings Read、**Secrets Store Write** |
+| `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA deploy / migrate | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。deploy 需 Workers Scripts Edit、Account Settings Read；migrate 需 D1 Edit、Account Settings Read |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
 
 不要写入 Secrets Store：
@@ -44,4 +44,4 @@ pnpm exec wrangler secrets-store secret update 323163a091874b07aacdf5500bff903e 
 
 更新 Secrets Store 后 Worker 绑定立即读到新值，不必重新 `wrangler secret put`。`IP_HASH_SECRET` 轮换后已落库的 IP HMAC 不再匹配。Turnstile 若在 Cloudflare 控制台轮换 widget secret，再把新值 `update` 进 Secrets Store。
 
-生产部署会执行 `pnpm exec tsx scripts/secrets/ensure-remote.ts`：若远程 store 还没有 `CAS_CHALLENGE_SECRET` 就生成一个；列表已能认出该名、或 create 返回 `secret_name_already_exists` / `[code: 1003]`，都视为已存在并成功退出。生成值不进日志或仓库。
+生产部署不再自动补齐密钥。若远程 store 还没有 `CAS_CHALLENGE_SECRET`，在受控终端执行 `pnpm exec tsx scripts/secrets/ensure-remote.ts`：列表已能认出该名、或 create 返回 `secret_name_already_exists` / `[code: 1003]`，都视为已存在并成功退出。生成值不进日志或仓库。
