@@ -72,7 +72,7 @@ export function TurnstileBox({
   return (
     <div className="space-y-1">
       <div ref={elRef} className={collapsed ? "hidden" : undefined} />
-      <p className="m-0 text-[13px] text-muted">
+      <p className="m-0 text-[calc(13/15*1rem)] text-muted">
         {collapsed ? (solved ? "已通过人机验证" : "人机验证处理中…") : status}
       </p>
     </div>

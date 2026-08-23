@@ -162,7 +162,7 @@ export function RelationSignalControls({
         </Button>
       </div>
       {loginPrompted ? (
-        <p className="mb-0 mt-2 text-[12px] text-muted">
+        <p className="mb-0 mt-2 text-[calc(12/15*1rem)] text-muted">
           登录后才能关注或推荐。
           <RouterAriaLink to={loginTarget} className="ml-1 text-accent">
             去登录
@@ -170,7 +170,7 @@ export function RelationSignalControls({
         </p>
       ) : null}
       {error ? (
-        <p className="mb-0 mt-2 text-[12px] text-danger" role="alert">
+        <p className="mb-0 mt-2 text-[calc(12/15*1rem)] text-danger" role="alert">
           {error}
         </p>
       ) : null}

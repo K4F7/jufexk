@@ -472,7 +472,7 @@ export function renderSummaryHtml(markdown: string): string {
       flush();
       const level = Math.min(3 + Math.max(0, heading[1].length - 2), 4);
       blocks.push(
-        `<h${level} class="mb-1 mt-3 text-[15px] font-bold leading-snug first:mt-0">${inlineSummaryHtml(heading[2])}</h${level}>`,
+        `<h${level} class="mb-1 mt-3 text-[1rem] font-bold leading-snug first:mt-0">${inlineSummaryHtml(heading[2])}</h${level}>`,
       );
       continue;
     }

@@ -119,11 +119,11 @@ const CourseReviewItem = memo(function CourseReviewItem({
       className="scroll-mt-20 border-b border-separator py-5 last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_9rem]"
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className="flex flex-wrap items-center gap-x-2 text-[13px] font-medium text-foreground">
+        <span className="flex flex-wrap items-center gap-x-2 text-[calc(13/15*1rem)] font-medium text-foreground">
           <AnonymousAvatar seed={review.id} />
           匿名用户
           {review.overall != null ? (
-            <Stars rating={review.overall} className="text-[13px]" />
+            <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
           ) : null}
           {review.term ? (
             <span className="font-normal text-muted">{review.term}</span>
@@ -133,7 +133,7 @@ const CourseReviewItem = memo(function CourseReviewItem({
           ) : null}
         </span>
         {date ? (
-          <time className="text-[12px] text-muted" dateTime={date}>
+          <time className="text-[calc(12/15*1rem)] text-muted" dateTime={date}>
             {date}
           </time>
         ) : null}
@@ -158,7 +158,7 @@ const CourseReviewItem = memo(function CourseReviewItem({
         </div>
       ) : null}
       {review.headline ? (
-        <p className="mb-0 mt-2 break-words text-[14px] font-semibold">
+        <p className="mb-0 mt-2 break-words text-[calc(14/15*1rem)] font-semibold">
           {review.headline}
         </p>
       ) : null}
@@ -233,13 +233,13 @@ export function CourseReviewSection({
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-baseline gap-2">
           <Typography
-            className="m-0 text-[20px] font-bold leading-snug text-accent"
+            className="m-0 text-[calc(20/15*1rem)] font-bold leading-snug text-accent"
             id="course-reviews-heading"
             type="h2"
           >
             点评
           </Typography>
-          <span className="text-[13px] text-muted">{total} 条点评</span>
+          <span className="text-[calc(13/15*1rem)] text-muted">{total} 条点评</span>
         </div>
         {teacherId ? (
           <Button variant="primary" size="md" onPress={() => navigate(writeHref)}>
@@ -286,7 +286,7 @@ export function CourseReviewSection({
         </div>
       ) : reviews.length === 0 ? (
         <p
-          className="border-b border-separator py-14 text-center text-[13px] text-muted"
+          className="border-b border-separator py-14 text-center text-[calc(13/15*1rem)] text-muted"
           role="status"
         >
           {teacherId && (term !== "all" || rating !== "all")

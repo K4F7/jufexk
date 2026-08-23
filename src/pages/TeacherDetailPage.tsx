@@ -80,7 +80,7 @@ function TeacherSummary({
       ariaLabel="教师摘要"
     >
       <Typography
-        className="mb-2 mt-0 text-[26px] font-bold leading-tight tracking-tight"
+        className="mb-2 mt-0 text-[calc(26/15*1rem)] font-bold leading-tight tracking-tight"
         type="h1"
       >
         {teacher.name}
@@ -180,14 +180,14 @@ export function TeacherDetailPage() {
       <section className="mb-6" aria-labelledby="teacher-courses-heading">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
           <Typography
-            className="m-0 text-[17px] font-bold leading-snug"
+            className="m-0 text-[calc(17/15*1rem)] font-bold leading-snug"
             id="teacher-courses-heading"
             type="h2"
           >
             任课课程
           </Typography>
           {courses.length ? (
-            <span className="text-[13px] text-muted">{courses.length} 门</span>
+            <span className="text-[calc(13/15*1rem)] text-muted">{courses.length} 门</span>
           ) : null}
         </div>
         <TeacherCourseTable items={courses} />

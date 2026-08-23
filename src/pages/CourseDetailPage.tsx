@@ -117,7 +117,7 @@ function SidePanel({
 }) {
   return (
     <div className="border border-dashed border-border bg-surface-secondary/60 px-3 py-2.5">
-      <p className="m-0 text-[13px] font-bold text-foreground">{title}</p>
+      <p className="m-0 text-[calc(13/15*1rem)] font-bold text-foreground">{title}</p>
       <div className="mt-1">{children}</div>
     </div>
   );
@@ -135,7 +135,7 @@ function SideRelationRow({
   count?: number | null;
 }) {
   return (
-    <div className="flex items-baseline gap-2 py-1.5 text-[13px]">
+    <div className="flex items-baseline gap-2 py-1.5 text-[calc(13/15*1rem)]">
       <RouterAriaLink
         to={href}
         className="min-w-0 shrink truncate text-accent no-underline"
@@ -148,7 +148,7 @@ function SideRelationRow({
         </span>
       ) : null}
       {count ? (
-        <span className="tabular shrink-0 text-[12px] text-muted">
+        <span className="tabular shrink-0 text-[calc(12/15*1rem)] text-muted">
           ({count})
         </span>
       ) : null}
@@ -398,7 +398,7 @@ export function CourseDetailPage() {
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <nav aria-label="面包屑" className="text-[12px] text-muted">
+        <nav aria-label="面包屑" className="text-[calc(12/15*1rem)] text-muted">
           <RouterAriaLink to={catalogHref} className="text-muted">
             课程目录
           </RouterAriaLink>
@@ -408,7 +408,7 @@ export function CourseDetailPage() {
 
         {submitted ? (
           <p
-            className="mt-3 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[13px] text-success"
+            className="mt-3 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[calc(13/15*1rem)] text-success"
             role="status"
           >
             评价已发布，感谢分享。
@@ -418,7 +418,7 @@ export function CourseDetailPage() {
         <header className="mt-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <Typography
-              className="m-0 min-w-0 text-[22px] font-bold leading-tight text-accent"
+              className="m-0 min-w-0 text-[calc(22/15*1rem)] font-bold leading-tight text-accent"
               type="h1"
             >
               {course.name}
@@ -428,38 +428,38 @@ export function CourseDetailPage() {
                 </span>
               ) : null}
             </Typography>
-            <p className="m-0 shrink-0 text-right text-[12px] text-muted">
+            <p className="m-0 shrink-0 text-right text-[calc(12/15*1rem)] text-muted">
               课程号：{course.code || "—"}
             </p>
           </div>
 
           <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
-            <Stars rating={rating} className="text-[16px]" />
+            <Stars rating={rating} className="text-[calc(16/15*1rem)]" />
             {rating != null ? (
-              <span className="tabular text-[20px] font-semibold leading-none text-accent">
+              <span className="tabular text-[calc(20/15*1rem)] font-semibold leading-none text-accent">
                 {rating.toFixed(1)}
               </span>
             ) : null}
             {relationCount > 0 ? (
-              <span className="text-[12px] text-muted">
+              <span className="text-[calc(12/15*1rem)] text-muted">
                 （{relationCount} 人评价）
               </span>
             ) : (
-              <span className="text-[13px] text-muted">暂无评价</span>
+              <span className="text-[calc(13/15*1rem)] text-muted">暂无评价</span>
             )}
           </div>
 
           <FourDimLine
-            className="mt-2 text-[13px]"
+            className="mt-2 text-[calc(13/15*1rem)]"
             labels={fourDimLineLabels(selectedTeacher?.dimensionLabels)}
           />
           {relationTerms.length ? (
-            <p className="mb-0 mt-2 min-w-0 truncate text-[11px] text-muted">
+            <p className="mb-0 mt-2 min-w-0 truncate text-[calc(11/15*1rem)] text-muted">
               学期 {relationTerms.join(" ")}
             </p>
           ) : null}
 
-          <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[13px] sm:grid-cols-2">
+          <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[calc(13/15*1rem)] sm:grid-cols-2">
             {metaRows.map(([label, value]) => (
               <div key={label} className="flex gap-2">
                 <dt className="shrink-0 text-muted">{label}：</dt>
@@ -484,17 +484,17 @@ export function CourseDetailPage() {
           <section className="mt-10" aria-labelledby="course-ai-summary-heading">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <Typography
-                className="m-0 text-[20px] font-bold leading-snug text-accent"
+                className="m-0 text-[calc(20/15*1rem)] font-bold leading-snug text-accent"
                 id="course-ai-summary-heading"
                 type="h2"
               >
                 AI 总结
               </Typography>
-              <p className="m-0 text-[12px] text-muted">
+              <p className="m-0 text-[calc(12/15*1rem)] text-muted">
                 AI 总结为根据点评内容自动生成，仅供参考
               </p>
             </div>
-            <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-secondary/60 px-4 py-4 text-[13px] text-muted">
+            <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-secondary/60 px-4 py-4 text-[calc(13/15*1rem)] text-muted">
               {relationCount > 0
                 ? "AI 总结暂未生成：点评积累后会自动出现在这里。"
                 : "点评还不够，暂时无法生成总结。"}
@@ -547,7 +547,7 @@ export function CourseDetailPage() {
                 size="lg"
                 fallback={selectedTeacher.name.slice(0, 1)}
               />
-              <p className="m-0 mt-2 text-[16px] font-bold text-accent">
+              <p className="m-0 mt-2 text-[calc(16/15*1rem)] font-bold text-accent">
                 {selectedTeacher.name}
               </p>
             </div>
@@ -556,7 +556,7 @@ export function CourseDetailPage() {
 
         <SidePanel title={`其他老师的「${course.name}」课`}>
           {otherTeachers.length === 0 ? (
-            <p className="m-0 py-1.5 text-[12px] text-muted">
+            <p className="m-0 py-1.5 text-[calc(12/15*1rem)] text-muted">
               这门课目前只有这位老师
             </p>
           ) : (
@@ -575,9 +575,9 @@ export function CourseDetailPage() {
         {selectedTeacher ? (
           <SidePanel title={`${selectedTeacher.name}老师的其他课`}>
             {teacherCourses == null ? (
-              <p className="m-0 py-1.5 text-[12px] text-muted">加载中…</p>
+              <p className="m-0 py-1.5 text-[calc(12/15*1rem)] text-muted">加载中…</p>
             ) : teacherOtherCourses.length === 0 ? (
-              <p className="m-0 py-1.5 text-[12px] text-muted">
+              <p className="m-0 py-1.5 text-[calc(12/15*1rem)] text-muted">
                 这位老师目前只开这门课
               </p>
             ) : (
@@ -596,7 +596,7 @@ export function CourseDetailPage() {
 
         <RouterAriaLink
           to={catalogHref}
-          className="block text-center text-[12px] text-muted no-underline"
+          className="block text-center text-[calc(12/15*1rem)] text-muted no-underline"
         >
           ← 返回课程目录
         </RouterAriaLink>

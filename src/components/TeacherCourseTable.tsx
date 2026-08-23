@@ -85,13 +85,13 @@ export function TeacherCourseTable({
                         </Chip.Label>
                       </Chip>
                     </div>
-                    <span className="tabular text-[12px] text-muted">
+                    <span className="tabular text-[calc(12/15*1rem)] text-muted">
                       {course.code || "课号未标注"}
                     </span>
                   </div>
                 </Table.Cell>
                 <Table.Cell>
-                  <span className="text-[13px] text-muted">
+                  <span className="text-[calc(13/15*1rem)] text-muted">
                     {course.department || "—"}
                   </span>
                 </Table.Cell>

@@ -62,7 +62,7 @@ export function DetailPageSkeleton({
           </div>
           <Surface
             variant="secondary"
-            className="flex h-[88px] w-full shrink-0 flex-col items-center justify-center rounded-xl px-8 py-5 sm:w-36"
+            className="flex h-[calc(88/15*1rem)] w-full shrink-0 flex-col items-center justify-center rounded-xl px-8 py-5 sm:w-36"
           >
             <Skeleton className="h-8 w-12 rounded" />
             <Skeleton className="mt-2 h-3 w-10 rounded" />
