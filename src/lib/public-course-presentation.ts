@@ -223,40 +223,6 @@ export function publicPeHasTextReviewSql(alias: string): string {
   )`;
 }
 
-function publicPeCanonicalOrderSql(alias: string): string {
-  const unnumbered = PE_SKILL_FAMILIES.flatMap((family) => family.keys)
-    .map((key) => `${alias}.name = ${sqlStringLiteral(key)}`)
-    .join(" OR ");
-  const firstNumbered = PE_SKILL_FAMILIES.flatMap((family) => family.keys)
-    .flatMap((key) => [
-      `${alias}.name = ${sqlStringLiteral(`${key}1`)}`,
-      `${alias}.name = ${sqlStringLiteral(`${key}专项理论与实践1`)}`,
-    ])
-    .join(" OR ");
-  return `CASE WHEN ${publicPeHasTextReviewSql(alias)} THEN 0 ELSE 1 END,
-      CASE
-        WHEN ${unnumbered} THEN 0
-        WHEN ${firstNumbered} THEN 1
-        ELSE 2
-      END,
-      ${alias}.id`;
-}
-
-export function publicPeResolveCanonicalIdSql(taughtAlias: string): string {
-  const taughtFamily = publicPeSkillFamilySql(taughtAlias);
-  const memberFamily = publicPeSkillFamilySql("pe_family");
-  return `COALESCE((
-    SELECT pe_family.id FROM courses pe_family
-    WHERE (${taughtFamily}) IS NOT NULL AND (${memberFamily}) = (${taughtFamily})
-    ORDER BY ${publicPeCanonicalOrderSql("pe_family")}
-    LIMIT 1
-  ), ${taughtAlias}.id)`;
-}
-
-export function publicPeCanonicalCourseSql(alias = "c"): string {
-  return `${alias}.id = ${publicPeResolveCanonicalIdSql(alias)}`;
-}
-
 export function publicPeFamilySearchSql(alias = "c"): string {
   const family = publicPeSkillFamilySql(alias);
   const hitFamily = publicPeSkillFamilySql("pe_hit");

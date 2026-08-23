@@ -260,13 +260,14 @@ export async function applyRelationAdditions(
         .prepare(
           `INSERT OR IGNORE INTO course_teachers(course_id,teacher_id)
            SELECT c.id,t.id FROM courses c CROSS JOIN teachers t
-           WHERE c.code=? AND t.source_teacher_label=?`,
+           WHERE c.code=? AND t.source_teacher_label=?
+           RETURNING course_id,teacher_id`,
         )
         .bind(pair.courseCode, pair.teacherLabel),
     ),
   );
   const created = insertResults.reduce(
-    (total, result) => total + Number(result.meta.changes ?? 0),
+    (total, result) => total + result.results.length,
     0,
   );
   if (created !== pairs.length)

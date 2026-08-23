@@ -144,6 +144,11 @@ export const publicCourseCanonicalJoin =
 export const publicCourseMatchJoin =
   "JOIN public_course_canonicals pcc ON pcc.course_id=c.id";
 
+// 投稿选项保留大学英语 I-IV 的教务课名；其余公开族只保留 canonical 行。
+export const publicCourseOptionJoin = `JOIN public_course_canonicals pcc
+  ON pcc.course_id=c.id
+ AND (pcc.canonical_course_id=c.id OR pcc.family_label=${sqlLiteral(ENGLISH_PUBLIC_LABEL)})`;
+
 export const publicTeacherSearchJoin =
   "JOIN public_teacher_search pts ON pts.teacher_id=t.id";
 
@@ -169,20 +174,37 @@ export function shouldRefreshPublicListPrecomputes(method: string, path: string)
   );
 }
 
+export async function markPublicListPrecomputesDirty(db: D1Database) {
+  await db
+    .prepare(
+      `INSERT INTO public_precompute_state(id,dirty) VALUES(1,1)
+       ON CONFLICT(id) DO UPDATE SET dirty=1
+       WHERE public_precompute_state.dirty=0`,
+    )
+    .run();
+}
+
 export async function refreshPublicListPrecomputes(db: D1Database) {
-  const fingerprint = await publicListSourceFingerprint(db);
-  await db.batch([
-    db.prepare("DELETE FROM public_course_canonicals"),
-    db.prepare(canonicalInsert),
-    db.prepare("DELETE FROM public_review_counts"),
-    db.prepare(aggregateInsert),
-    db.prepare("DELETE FROM public_teacher_course_counts"),
-    db.prepare(teacherCourseCountInsert),
-    db.prepare("DELETE FROM public_teacher_search"),
-    db.prepare(teacherSearchInsert),
-    db.prepare("UPDATE public_precompute_state SET dirty=0,fingerprint=? WHERE id=1").bind(fingerprint),
-  ]);
-  await refreshCatalogPinyinTexts(db);
+  try {
+    await db.batch([
+      db.prepare("DELETE FROM public_course_canonicals"),
+      db.prepare(canonicalInsert),
+      db.prepare("DELETE FROM public_review_counts"),
+      db.prepare(aggregateInsert),
+      db.prepare("DELETE FROM public_teacher_course_counts"),
+      db.prepare(teacherCourseCountInsert),
+      db.prepare("DELETE FROM public_teacher_search"),
+      db.prepare(teacherSearchInsert),
+      db.prepare(
+        `INSERT INTO public_precompute_state(id,dirty) VALUES(1,0)
+         ON CONFLICT(id) DO UPDATE SET dirty=0`,
+      ),
+    ]);
+    await refreshCatalogPinyinTexts(db);
+  } catch (error) {
+    await markPublicListPrecomputesDirty(db);
+    throw error;
+  }
 }
 
 const PYINYIN_BATCH = 40;
@@ -249,26 +271,10 @@ async function refreshCatalogPinyinTexts(db: D1Database) {
   }
 }
 
-async function publicListSourceFingerprint(db: D1Database) {
-  const row = await db.prepare(`
-    SELECT
-      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) || ':' || COALESCE(SUM(length(name)+length(COALESCE(code,''))+length(COALESCE(department,''))),0) FROM courses) || '|' ||
-      (SELECT COUNT(*) || ':' || COALESCE(SUM(length(name)),0) FROM course_name_variants) || '|' ||
-      (SELECT COUNT(*) FROM course_teachers) || '|' ||
-      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) || ':' || COALESCE(SUM(length(name)+length(COALESCE(department,''))),0) FROM teachers) || '|' ||
-      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM reviews) || '|' ||
-      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM legacy_reviews) || '|' ||
-      (SELECT COUNT(*) || ':' || COALESCE(MAX(id),0) FROM public_historical_reviews) fingerprint
-  `).first<{ fingerprint: string }>();
-  return row?.fingerprint || "";
-}
-
 export async function ensurePublicListPrecomputes(db: D1Database) {
   const state = await db
-    .prepare("SELECT dirty,fingerprint FROM public_precompute_state WHERE id=1")
-    .first<{ dirty: number; fingerprint: string }>();
+    .prepare("SELECT dirty FROM public_precompute_state WHERE id=1")
+    .first<{ dirty: number }>();
   if (!state) return refreshPublicListPrecomputes(db);
-  const fingerprint = await publicListSourceFingerprint(db);
-  if (state.dirty || state.fingerprint !== fingerprint)
-    await refreshPublicListPrecomputes(db);
+  if (state.dirty) await refreshPublicListPrecomputes(db);
 }
