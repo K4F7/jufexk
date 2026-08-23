@@ -9,10 +9,29 @@ export type Course = {
   teachers: string | null;
   review_count: number;
   rating: number | null;
+  credits?: number | null;
   description?: string;
   /** Catalog list: "id:name,id:name" for real teacher links */
   teacher_refs?: string;
   teacher_ids?: string;
+};
+
+/**
+ * 目录页任课关系行（Issue #402）：一行一条课程×教师，由 /api/courses 的
+ * 课程行按 teacher_refs 在前端展开（关系级评分/点评数与四维档期的后端
+ * 投影属 #410，未下发前行内显示占位）。无教师课程保留一行，
+ * teacher_id/teacher_name 为 null。
+ */
+export type CourseRelation = {
+  course_id: number;
+  code: string;
+  name: string;
+  category: string;
+  department: string;
+  teacher_id: number | null;
+  teacher_name: string | null;
+  /** 课程级公开文字评价数（非关系级）：仅用于区分「暂无评价」与占位。 */
+  course_review_count: number;
 };
 
 export type CourseOption = Pick<

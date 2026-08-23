@@ -50,9 +50,6 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
         callbackPath: "/api/auth/callback",
       });
     }
-    if (url.pathname === "/api/courses/departments") {
-      return fulfillOk(route, { items: ["人文学院", "体育学院"] });
-    }
     if (url.pathname === "/api/courses") {
       if (isRescueList(url, "1")) {
         if (options.failCoursesRescue) {
@@ -130,12 +127,12 @@ test("courses empty query hints at matching teachers", async ({ page }) => {
   );
 });
 
-test("courses empty with a department filter does not fetch teacher rescue", async ({
+test("courses empty with a category filter does not fetch teacher rescue", async ({
   page,
 }) => {
   const teacherRescue = trackTeacherRescueRequests(page);
   await mockCatalogApi(page, { teachersTotal: 3 });
-  await page.goto("/courses?q=张三&department=人文学院");
+  await page.goto("/courses?q=张三&category=sports");
 
   await expect(page.getByText("没有找到匹配「张三」的课程")).toBeVisible();
   await page.waitForLoadState("networkidle");

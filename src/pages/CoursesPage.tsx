@@ -1,75 +1,62 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+/**
+ * 课程目录 /courses — USTC 评课社区对齐（Issue #402）：
+ * 标题「课程列表」；浅蓝筛选框（课程类别行）；一行一条课程×教师任课
+ * 关系（CourseRelationRow）；分页沿用 URL ?page=。
+ * 页内搜索已上移到顶栏居中搜索；院系/教师筛选随旧工具条下线。
+ *
+ * 数据走现有 GET /api/courses（课程级行），前端按 teacher_refs 展开成
+ * 关系行；分页总数仍按课程计。关系级评分/点评数、四维档位与
+ * 「排序方式：课程评分」依赖 #410 的后端投影，未下发前行内显示占位、
+ * 排序行暂不上线。
+ *
+ * DEV-only: ?module=global-search&variant=A 保留页内搜索头（#303 对照），
+ * variant=C 保留跨目录提示链接。
+ */
+import { Button, Skeleton, Typography } from "@heroui/react";
 import {
-  CatalogFilters,
-  catalogActiveFilters,
-  isPublicCategoryFilter,
-} from "../components/CatalogFilters";
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogEmptyRescueLink,
   CatalogResultsStates,
-  COURSE_CATALOG_COPY,
+  type CatalogResultsCopy,
 } from "../components/CatalogResultsStates";
 import {
   CatalogSearchHeader,
   type CatalogSearchSuggestion,
 } from "../components/CatalogSearchHeader";
-import { CourseResultTable } from "../components/CourseResultTable";
-import { EmptyBox } from "../components/EmptyBox";
+import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
+import { expandCourseRelations } from "../lib/course-relations";
+import {
+  isPublicCatalogCategory,
+  PUBLIC_CATEGORY_OPTIONS,
+  publicCategoryOptionLabel,
+} from "../lib/public-categories";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
 import type { Course, Paginated, Teacher } from "../lib/types";
 
-const FILTER_DELAY = 320;
+const RELATION_CATALOG_COPY: CatalogResultsCopy = {
+  errorTitle: "课程目录加载失败",
+  refreshingLabel: "正在更新课程目录…",
+  emptyFilteredTitle: (query) =>
+    query ? `没有找到匹配「${query}」的课程` : "没有符合筛选条件的课程",
+  emptyFilteredDesc: "试试调整关键词或类别。",
+  emptyCatalogTitle: "目录暂无课程数据",
+  emptyCatalogDesc: "请稍后再来，或联系维护者导入公开目录。",
+  clearLabel: "清空筛选",
+  totalUnit: "条",
+};
 
-/** DEV-only: live catalog-search A/B/C compare (production default is C). */
-const CatalogSearchPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/CatalogSearchVariants").then((m) => ({
-        default: m.CatalogSearchHeader,
-      })),
-    )
-  : null;
-
-/** DEV-only: live catalog-filters A/B/C compare. */
-const CatalogFiltersPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/CatalogFiltersVariants").then((m) => ({
-        default: m.CatalogFiltersPrototype,
-      })),
-    )
-  : null;
-
-/** DEV-only: live course-table A/B/C compare. */
-const CourseTablePrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/CourseTableVariants").then((m) => ({
-        default: m.CourseTablePrototype,
-      })),
-    )
-  : null;
-
-/** DEV-only: live catalog-states A/B/C compare. */
-const CatalogStatesPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/CatalogStatesVariants").then((m) => ({
-        default: m.CatalogStatesPrototype,
-      })),
-    )
-  : null;
-
-/** DEV-only: issue #63 catalog follow-up (favorites + conditional density). */
-const CatalogFollowupPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/CatalogFollowupVariants").then((m) => ({
-        default: m.CatalogFollowupPrototype,
-      })),
-    )
-  : null;
-
-/** DEV-only: issue #303 C-variant opposite-catalog hint. */
+/** DEV-only: global-search A/B/C compare (issue #303; not production). */
 const GlobalSearchHintLazy = import.meta.env.DEV
   ? lazy(() =>
       import("../prototype/GlobalSearchVariants").then((m) => ({
@@ -77,61 +64,6 @@ const GlobalSearchHintLazy = import.meta.env.DEV
       })),
     )
   : null;
-
-function useCatalogSearchPrototypeVariant(): "A" | "B" | "C" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "catalog-search") return null;
-    const key = (params.get("variant") || "C").toUpperCase();
-    if (key === "A" || key === "B" || key === "C") return key;
-    return "C";
-  }, [params]);
-}
-
-function useCatalogFiltersPrototypeVariant(): "A" | "B" | "C" | "D" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "catalog-filters") return null;
-    const key = (params.get("variant") || "D").toUpperCase();
-    if (key === "A" || key === "B" || key === "C" || key === "D") return key;
-    return "D";
-  }, [params]);
-}
-
-function useCourseTablePrototypeVariant(): "A" | "B" | "C" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "course-table") return null;
-    const key = (params.get("variant") || "B").toUpperCase();
-    if (key === "A" || key === "B" || key === "C") return key;
-    return "B";
-  }, [params]);
-}
-
-function useCatalogStatesPrototypeVariant(): "A" | "B" | "C" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "catalog-states") return null;
-    const key = (params.get("variant") || "A").toUpperCase();
-    if (key === "A" || key === "B" || key === "C") return key;
-    return "A";
-  }, [params]);
-}
-
-function useCatalogFollowupPrototypeVariant(): "A" | "B" | "C" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "catalog-followup") return null;
-    const key = (params.get("variant") || "A").toUpperCase();
-    if (key === "A" || key === "B" || key === "C") return key;
-    return "A";
-  }, [params]);
-}
 
 function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
@@ -147,108 +79,35 @@ function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
 export function CoursesPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
-  const catalogSearchVariant = useCatalogSearchPrototypeVariant();
-  const catalogFiltersVariant = useCatalogFiltersPrototypeVariant();
-  const courseTableVariant = useCourseTablePrototypeVariant();
-  const catalogStatesVariant = useCatalogStatesPrototypeVariant();
-  const catalogFollowupVariant = useCatalogFollowupPrototypeVariant();
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const q = params.get("q") || "";
   const rawCategory = params.get("category") || "";
-  const category = isPublicCategoryFilter(rawCategory) ? rawCategory : "";
-  const department = params.get("department") || "";
-  const teacherId = params.get("teacherId") || "";
-  const sort = params.get("sort") === "name" ? "name" : "reviews";
+  const category = isPublicCatalogCategory(rawCategory) ? rawCategory : "";
   const parsedPage = Number(params.get("page") || "1");
   const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
 
-  const [queryDraft, setQueryDraft] = useState(q);
-  const [departmentDraft, setDepartmentDraft] = useState(department);
-  const [teacherQueryDraft, setTeacherQueryDraft] = useState("");
-  const [teacherQuery, setTeacherQuery] = useState("");
   const [data, setData] = useState<Paginated<Course> | null>(null);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [teacherError, setTeacherError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [teacherLoading, setTeacherLoading] = useState(true);
-  /** Bumps to re-fetch the current catalog query (prototype retry / force-reload). */
+  /** Bumps to re-fetch the current catalog query (retry / force-reload). */
   const [reloadToken, setReloadToken] = useState(0);
   const [rescueTotal, setRescueTotal] = useState<number | null>(null);
-  const loadCourseSuggestions = useCallback(
-    (query: string, signal: AbortSignal) => {
-      const suggest = new URLSearchParams({
-        q: query,
-        page: "1",
-        pageSize: String(CATALOG_SUGGEST_PAGE_SIZE),
-      });
-      return api<Paginated<Course>>(`/api/courses?${suggest}`, { signal }).then(
-        (result) =>
-          result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
-            (course): CatalogSearchSuggestion => ({
-              id: String(course.id),
-              title: course.name,
-              detail: course.code,
-            }),
-          ),
-      );
-    },
-    [],
-  );
-  const courseSuggestions = useCatalogSuggestions(
-    queryDraft,
-    loadCourseSuggestions,
-  );
 
-  useEffect(() => setQueryDraft(q), [q]);
-  useEffect(() => setDepartmentDraft(department), [department]);
+  // Stale bookmarks may still carry general/pe/required; those 400 on the API.
   useEffect(() => {
-    // Stale bookmarks may still carry pe/general/required; those 400 on the
-    // API. major/public_basic are valid public filters since Issue #364.
-    if (!rawCategory || isPublicCategoryFilter(rawCategory)) return;
+    if (!rawCategory || isPublicCatalogCategory(rawCategory)) return;
     const next = new URLSearchParams(params);
     next.delete("category");
     setParams(next, { replace: true });
   }, [rawCategory, params, setParams]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(
-      () => setTeacherQuery(teacherQueryDraft.trim()),
-      FILTER_DELAY,
-    );
-    return () => window.clearTimeout(timer);
-  }, [teacherQueryDraft]);
-
   const queryString = useMemo(() => {
     const sp = new URLSearchParams();
     if (q) sp.set("q", q);
     if (category) sp.set("category", category);
-    if (department) sp.set("department", department);
-    if (teacherId) sp.set("teacherId", teacherId);
-    if (sort !== "reviews") sp.set("sort", sort);
     sp.set("page", String(page));
     return sp.toString();
-  }, [q, category, department, teacherId, sort, page]);
-
-  useEffect(() => {
-    const nextQ = queryDraft.trim();
-    const nextDepartment = departmentDraft.trim();
-    if (nextQ === q && nextDepartment === department) return;
-
-    const timer = window.setTimeout(() => {
-      const sp = new URLSearchParams(params);
-      if (nextQ) sp.set("q", nextQ);
-      else sp.delete("q");
-      if (nextDepartment) sp.set("department", nextDepartment);
-      else sp.delete("department");
-      sp.set("page", "1");
-      setParams(sp, { replace: true });
-    }, FILTER_DELAY);
-
-    return () => window.clearTimeout(timer);
-  }, [queryDraft, departmentDraft, q, department, params, setParams]);
+  }, [q, category, page]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -282,7 +141,7 @@ export function CoursesPage() {
     shouldOfferCatalogRescue({
       itemCount: data.items.length,
       query: q,
-      extraFilters: Boolean(category || department || teacherId),
+      extraFilters: Boolean(category),
     });
 
   useEffect(() => {
@@ -315,125 +174,6 @@ export function CoursesPage() {
     };
   }, [offerRescue, q]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let cancelled = false;
-    const query = new URLSearchParams({ page: "1", pageSize: "50" });
-    if (teacherQuery) query.set("q", teacherQuery);
-
-    setTeacherLoading(true);
-    setTeacherError("");
-    api<Paginated<Teacher>>(`/api/teachers?${query}`, {
-      signal: controller.signal,
-    })
-      .then((result) => {
-        if (!cancelled) {
-          setTeachers((current) => {
-            const selected = current.find(
-              (teacher) => String(teacher.id) === teacherId,
-            );
-            if (
-              !selected ||
-              result.items.some((teacher) => teacher.id === selected.id)
-            ) {
-              return result.items;
-            }
-            return [selected, ...result.items];
-          });
-        }
-      })
-      .catch((reason) => {
-        if (!cancelled) {
-          setTeacherError((reason as Error).message || "教师筛选暂时不可用");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setTeacherLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [teacherQuery, teacherId]);
-
-  /** 深链 teacherId 的解析状态：pending=按 id 拉取中；found=姓名可用；
-   *  missing=该 id 不存在（Issue #213，不再回退显示原始 id）。 */
-  const [teacherIdStatus, setTeacherIdStatus] = useState<
-    "pending" | "found" | "missing"
-  >("pending");
-
-  // 深链教师不在当前列表（默认前 50 / 当前搜索）时按 id 拉取并并入选项。
-  useEffect(() => {
-    if (!teacherId) {
-      return;
-    }
-    const controller = new AbortController();
-    let cancelled = false;
-    setTeacherIdStatus("pending");
-    api<{ teacher: Teacher }>(`/api/teachers/${teacherId}`, {
-      signal: controller.signal,
-    })
-      .then((result) => {
-        if (cancelled) return;
-        setTeachers((current) =>
-          current.some((teacher) => teacher.id === result.teacher.id)
-            ? current
-            : [result.teacher, ...current],
-        );
-        setTeacherIdStatus("found");
-      })
-      .catch(() => {
-        if (!cancelled) setTeacherIdStatus("missing");
-      });
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [teacherId]);
-
-  // 教师本就在当前列表内（前 50 或搜索命中）时直接视为已解析，不等按 id 拉取。
-  useEffect(() => {
-    if (
-      teacherId &&
-      teachers.some((teacher) => String(teacher.id) === teacherId)
-    ) {
-      setTeacherIdStatus("found");
-    }
-  }, [teacherId, teachers]);
-
-  // 院系筛选项：目录去重非空院系；拉取失败视为无选项（院系筛隐藏，Issue #203）。
-  useEffect(() => {
-    const controller = new AbortController();
-    let cancelled = false;
-    api<{ items: string[] }>("/api/courses/departments", {
-      signal: controller.signal,
-    })
-      .then((result) => {
-        if (!cancelled) setDepartments(result.items);
-      })
-      .catch(() => {
-        if (!cancelled) setDepartments([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDepartmentsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, []);
-
-  // 深链 ?teacherId= 进入时，把选中教师姓名回填进教师 ComboBox 输入框。
-  useEffect(() => {
-    if (!teacherId || teacherQueryDraft) return;
-    const selected = teachers.find(
-      (teacher) => String(teacher.id) === teacherId,
-    );
-    if (selected) setTeacherQueryDraft(selected.name);
-  }, [teacherId, teachers, teacherQueryDraft]);
-
   function update(next: Record<string, string>, replace = false) {
     const sp = new URLSearchParams(params);
     for (const [key, value] of Object.entries(next)) {
@@ -444,72 +184,19 @@ export function CoursesPage() {
     setParams(sp, { replace });
   }
 
-  const hasFilters = Boolean(
-    queryDraft.trim() ||
-      q ||
-      category ||
-      departmentDraft.trim() ||
-      department ||
-      teacherId ||
-      teacherQueryDraft.trim() ||
-      teacherQuery,
-  );
+  const hasFilters = Boolean(q || category);
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
-  /** 「0 门课程」时排序控件禁用（Issue #278）；已选 sort 深链保留。
-   *  按 total 而非当前页行数判定：深链越界页（items 空但 total>0）时
-   *  排序仍是回到第 1 页的出口，不能禁用。 */
-  const sortDisabled = data != null && data.total === 0;
-  const selectedTeacherName = teacherId
-    ? teachers.find((teacher) => String(teacher.id) === teacherId)?.name
-    : undefined;
-  /** 与「当前筛选」chips 同源的标签列表，供空状态文案点名全部生效筛选。 */
-  const activeFilterLabels = catalogActiveFilters({
-    queryDraft,
-    category,
-    departmentDraft,
-    teacherId,
-    teacherIdStatus,
-    teacherQueryDraft,
-    selectedTeacherName,
-  }).map((tag) => tag.label);
-
-  function applySearch(next: string) {
-    setQueryDraft(next);
-    update({ q: next.trim(), page: "1" }, true);
-  }
+  /** 空状态文案点名全部生效筛选（关键词 / 类别）。 */
+  const activeFilterLabels = [
+    q ? `关键词“${q}”` : "",
+    category ? publicCategoryOptionLabel(category) : "",
+  ].filter(Boolean);
 
   function clearFilters() {
-    setQueryDraft("");
-    setDepartmentDraft("");
-    setTeacherQueryDraft("");
-    update(
-      { q: "", category: "", department: "", teacherId: "", page: "1" },
-      true,
-    );
+    update({ q: "", category: "", page: "1" }, true);
   }
 
-  const courseMeta = data ? `${data.total} 门课程` : "";
-  /** 深链院系不在目录选项内时并入列表，保证 Select 能显示当前值。 */
-  const departmentOptions = useMemo(
-    () =>
-      department && !departments.includes(department)
-        ? [department, ...departments]
-        : departments,
-    [department, departments],
-  );
-  const comparingSearch =
-    Boolean(catalogSearchVariant) && Boolean(CatalogSearchPrototypeLazy);
-  const comparingFilters =
-    Boolean(catalogFiltersVariant) && Boolean(CatalogFiltersPrototypeLazy);
-  const comparingTable =
-    Boolean(courseTableVariant) && Boolean(CourseTablePrototypeLazy);
-  const comparingStates =
-    Boolean(catalogStatesVariant) && Boolean(CatalogStatesPrototypeLazy);
-  const comparingFollowup =
-    Boolean(catalogFollowupVariant) && Boolean(CatalogFollowupPrototypeLazy);
-
-  const pageSize = data?.pageSize || 20;
   const rescue =
     rescueTotal && rescueTotal > 0 ? (
       <CatalogEmptyRescueLink to={`/teachers?q=${encodeURIComponent(q)}`}>
@@ -517,73 +204,7 @@ export function CoursesPage() {
       </CatalogEmptyRescueLink>
     ) : undefined;
 
-  const filtersModel = {
-    queryDraft,
-    category,
-    departmentDraft,
-    teacherQueryDraft,
-    teacherId,
-    teachers,
-    teacherLoading,
-    teacherError,
-    teacherQuery,
-    hasFilters,
-    setCategory: (value: string) => update({ category: value }),
-    setDepartmentDraft,
-    setTeacherQueryDraft,
-    setTeacherId: (value: string) => update({ teacherId: value }),
-    clearFilters,
-  };
-
-  const defaultFilters = (
-    <CatalogFilters
-      queryDraft={queryDraft}
-      category={category}
-      departmentDraft={departmentDraft}
-      departments={departmentOptions}
-      departmentsLoading={departmentsLoading}
-      teacherQueryDraft={teacherQueryDraft}
-      teacherId={teacherId}
-      teacherIdStatus={teacherIdStatus}
-      teachers={teachers}
-      teacherLoading={teacherLoading}
-      teacherError={teacherError}
-      sort={sort}
-      sortDisabled={sortDisabled}
-      hasFilters={hasFilters}
-      onCategoryChange={(value) => update({ category: value })}
-      onDepartmentDraftChange={setDepartmentDraft}
-      onTeacherQueryDraftChange={setTeacherQueryDraft}
-      onTeacherIdChange={(value) => update({ teacherId: value })}
-      onSortChange={(value) =>
-        update({ sort: value === "reviews" ? "" : value })
-      }
-      onQueryClear={() => {
-        setQueryDraft("");
-        update({ q: "" }, true);
-      }}
-      onClear={clearFilters}
-    />
-  );
-
-  const statesModel = {
-    items: data?.items ?? [],
-    search: location.search,
-    emptyQuery: q || undefined,
-    loading,
-    hasPayload: data != null,
-    error,
-    currentPage,
-    totalPages,
-    total: data?.total ?? 0,
-    pageSize,
-    hasFilters,
-    onPageChange: (nextPage: number) => update({ page: String(nextPage) }),
-    onRetry: () => setReloadToken((n) => n + 1),
-    onClearFilters: clearFilters,
-  };
-
-  const productionResults = (
+  const results = (
     <CatalogResultsStates
       loading={loading}
       hasPayload={data != null}
@@ -598,167 +219,139 @@ export function CoursesPage() {
       onPageChange={(nextPage) => update({ page: String(nextPage) })}
       onRetry={() => setReloadToken((n) => n + 1)}
       onClearFilters={clearFilters}
-      copy={COURSE_CATALOG_COPY}
+      copy={RELATION_CATALOG_COPY}
       rescue={rescue}
     >
       {data ? (
-        comparingTable && courseTableVariant && CourseTablePrototypeLazy ? (
-          <Suspense
-            fallback={<EmptyBox role="status">加载结果表原型…</EmptyBox>}
-          >
-            <CourseTablePrototypeLazy
-              key={courseTableVariant}
-              variant={courseTableVariant}
-              items={data.items}
-              emptyQuery={q || undefined}
-            />
-          </Suspense>
-        ) : (
-          <CourseResultTable
-            items={data.items}
-            search={location.search}
-            emptyQuery={q || undefined}
-          />
-        )
+        <div>
+          {data.items.flatMap((course) =>
+            expandCourseRelations(course).map((relation) => (
+              <CourseRelationRow
+                key={`${relation.course_id}:${relation.teacher_id ?? "none"}`}
+                relation={relation}
+                search={location.search}
+              />
+            )),
+          )}
+        </div>
       ) : null}
     </CatalogResultsStates>
   );
 
-  const results =
-    comparingStates && catalogStatesVariant && CatalogStatesPrototypeLazy ? (
-      <Suspense fallback={<EmptyBox role="status">加载状态原型…</EmptyBox>}>
-        <CatalogStatesPrototypeLazy
-          key={catalogStatesVariant}
-          variant={catalogStatesVariant}
-          model={statesModel}
-        />
-      </Suspense>
-    ) : (
-      productionResults
-    );
+  const filterBox = (
+    <div
+      aria-label="课程目录筛选"
+      className="mb-3 rounded-lg border border-border bg-surface-secondary px-4 py-2.5"
+      role="search"
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <span className="shrink-0 text-[13px] font-semibold text-foreground">
+          课程类别：
+        </span>
+        {PUBLIC_CATEGORY_OPTIONS.map((opt) => (
+          <Button
+            key={opt.id || "all"}
+            size="sm"
+            variant={category === opt.id ? "secondary" : "ghost"}
+            onPress={() => update({ category: opt.id }, true)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
 
-  const followupModel = {
-    items: data?.items ?? [],
-    emptyQuery: q || undefined,
-    loading,
-    hasPayload: data != null,
-    error,
-    currentPage,
-    totalPages,
-    total: data?.total ?? 0,
-    onPageChange: (nextPage: number) => update({ page: String(nextPage) }),
-    onRetry: () => setReloadToken((n) => n + 1),
-    queryDraft,
-    category,
-    departmentDraft,
-    departments: departmentOptions,
-    departmentsLoading,
-    teacherQueryDraft,
-    teacherId,
-    teacherIdStatus,
-    teachers,
-    teacherLoading,
-    teacherError,
-    teacherQuery,
-    sort,
-    hasFilters,
-    onCategoryChange: (value: string) => update({ category: value }),
-    onDepartmentDraftChange: setDepartmentDraft,
-    onTeacherQueryDraftChange: setTeacherQueryDraft,
-    onTeacherIdChange: (value: string) => update({ teacherId: value }),
-    onSortChange: (value: string) =>
-      update({ sort: value === "reviews" ? "" : value }),
-    onQueryClear: () => {
-      setQueryDraft("");
-      update({ q: "" }, true);
-    },
-    onClear: clearFilters,
-  };
-
-  // Follow-up prototype owns filters + table; keep search C + states A footer.
-  if (
-    comparingFollowup &&
-    catalogFollowupVariant &&
-    CatalogFollowupPrototypeLazy
-  ) {
+  // DEV-only #303 variant A: 页内搜索头（含建议）替代生产标题行。
+  if (globalSearchVariant === "A") {
     return (
       <section>
-        <CatalogSearchHeader
-          title="课程目录"
-          meta={courseMeta}
-          value={queryDraft}
-          onChange={setQueryDraft}
-          placeholder="搜索课程、课号或教师"
-          searchLabel="搜索课程"
-          clearAriaLabel="清空课程搜索"
-          name="course-search"
-          suggestions={courseSuggestions.items}
-          suggestionsReady={courseSuggestions.ready}
-          suggestionsFailed={courseSuggestions.failed}
-          onSelectSuggestion={applySearch}
-        />
-        <Suspense fallback={<EmptyBox role="status">加载目录后续原型…</EmptyBox>}>
-          <CatalogFollowupPrototypeLazy
-            key={catalogFollowupVariant}
-            variant={catalogFollowupVariant}
-            model={followupModel}
-          />
-        </Suspense>
+        <GlobalSearchVariantAHeader q={q} update={update} />
+        {filterBox}
+        {results}
       </section>
     );
   }
 
   return (
     <section>
-      {comparingSearch && catalogSearchVariant && CatalogSearchPrototypeLazy ? (
-        <Suspense fallback={null}>
-          <CatalogSearchPrototypeLazy
-            variant={catalogSearchVariant}
-            value={queryDraft}
-            onChange={setQueryDraft}
-            meta={courseMeta}
-          />
-        </Suspense>
-      ) : (
-        <CatalogSearchHeader
-          title="课程目录"
-          meta={courseMeta}
-          metaLoading={loading && !data}
-          value={queryDraft}
-          onChange={setQueryDraft}
-          placeholder="搜索课程、课号或教师"
-          searchLabel="搜索课程"
-          clearAriaLabel="清空课程搜索"
-          name="course-search"
-          suggestions={courseSuggestions.items}
-          suggestionsReady={courseSuggestions.ready}
-          suggestionsFailed={courseSuggestions.failed}
-          onSelectSuggestion={applySearch}
-        />
-      )}
-
-      {comparingFilters &&
-      catalogFiltersVariant &&
-      CatalogFiltersPrototypeLazy ? (
-        <Suspense fallback={null}>
-          <CatalogFiltersPrototypeLazy
-            variant={catalogFiltersVariant}
-            model={filtersModel}
-          >
-            {results}
-          </CatalogFiltersPrototypeLazy>
-        </Suspense>
-      ) : (
-        <>
-          {defaultFilters}
-          {globalSearchVariant === "C" && q && GlobalSearchHintLazy ? (
-            <Suspense fallback={null}>
-              <GlobalSearchHintLazy catalog="courses" query={q} />
-            </Suspense>
+      <header aria-label="目录标题" className="mb-3">
+        <Typography
+          className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
+          type="h1"
+        >
+          课程列表
+        </Typography>
+        {/* 计数行恒占一行高度：加载时骨架、到达后文字，避免布局跳动。 */}
+        <div
+          className="mt-0.5 flex min-h-4 items-center text-xs text-muted"
+          aria-live="polite"
+        >
+          {loading && !data ? (
+            <Skeleton className="h-3 w-20 rounded" aria-label="数量加载中" />
+          ) : data ? (
+            `共 ${data.total} 条`
           ) : null}
-          {results}
-        </>
-      )}
+        </div>
+      </header>
+      {filterBox}
+      {globalSearchVariant === "C" && q && GlobalSearchHintLazy ? (
+        <Suspense fallback={null}>
+          <GlobalSearchHintLazy catalog="courses" query={q} />
+        </Suspense>
+      ) : null}
+      {results}
     </section>
+  );
+}
+
+/** DEV-only #303 variant A 页内搜索头：建议选择即写入 ?q=。 */
+function GlobalSearchVariantAHeader({
+  q,
+  update,
+}: {
+  q: string;
+  update: (next: Record<string, string>, replace?: boolean) => void;
+}) {
+  const [queryDraft, setQueryDraft] = useState(q);
+  useEffect(() => setQueryDraft(q), [q]);
+  const loadCourseSuggestions = useCallback(
+    (query: string, signal: AbortSignal) => {
+      const suggest = new URLSearchParams({
+        q: query,
+        page: "1",
+        pageSize: String(CATALOG_SUGGEST_PAGE_SIZE),
+      });
+      return api<Paginated<Course>>(`/api/courses?${suggest}`, { signal }).then(
+        (result) =>
+          result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
+            (course): CatalogSearchSuggestion => ({
+              id: String(course.id),
+              title: course.name,
+              detail: course.code,
+            }),
+          ),
+      );
+    },
+    [],
+  );
+  const courseSuggestions = useCatalogSuggestions(
+    queryDraft,
+    loadCourseSuggestions,
+  );
+  return (
+    <CatalogSearchHeader
+      title="课程列表"
+      value={queryDraft}
+      onChange={setQueryDraft}
+      placeholder="搜索课程、课号或教师"
+      searchLabel="搜索课程"
+      clearAriaLabel="清空课程搜索"
+      name="course-search"
+      suggestions={courseSuggestions.items}
+      suggestionsReady={courseSuggestions.ready}
+      suggestionsFailed={courseSuggestions.failed}
+      onSelectSuggestion={(next) => update({ q: next, page: "1" }, true)}
+    />
   );
 }

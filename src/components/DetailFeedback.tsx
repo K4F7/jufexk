@@ -75,8 +75,12 @@ export function DetailPageSkeleton({
             <Skeleton className="h-5 w-12 rounded" />
             <Skeleton className="h-3 w-8 rounded" />
           </div>
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="border-b border-separator py-4">
+          {Array.from({ length: DETAIL_SKELETON_ROWS }).map((_, index) => (
+            <div
+              key={index}
+              className="border-b border-separator py-4"
+              data-detail-skeleton-row=""
+            >
               <Skeleton className="h-4 w-full rounded" />
               <Skeleton className="mt-2 h-4 w-5/6 rounded" />
               <Skeleton className="mt-2 h-4 w-2/3 rounded" />

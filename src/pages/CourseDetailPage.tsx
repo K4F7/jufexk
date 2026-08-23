@@ -1,17 +1,42 @@
-import { Chip, Typography } from "@heroui/react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+/**
+ * 课程详情 /courses/:id?teacher= — USTC 评课社区对齐（Issue #402）。
+ * 页面始终按 课程×教师 关系展示：未带 teacher 参数时落到点评数最多的关系。
+ * 左栏：面包屑 / 课程头（课名（老师）· 课程号 · 星级推荐度 · 四维占位 ·
+ * 元信息网格 · 关注/推荐/不推荐占位）/ AI 总结（#401，未生成时占位）/ 点评区。
+ * 右栏：老师卡（占位头像 + 教师主页：暂无）→ 其他老师的这门课 → 这位老师的其他课。
+ *
+ * 头部学期列表与关系级四维聚合依赖 #410 投影，未下发前不展示学期、
+ * 四维保持占位「—」。
+ *
+ * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
+ */
+import { Avatar, Button, Typography } from "@heroui/react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  useLocation,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { CourseAiSummary } from "../components/CourseAiSummary";
-import { CourseTeacherTable } from "../components/CourseTeacherTable";
+import { CourseReviewSection } from "../components/CourseReviewSection";
 import {
   DetailErrorAlert,
-  DetailLoadingStatus,
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
-import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
-import { PublicReviews } from "../components/PublicReviews";
+import { FourDimLine } from "../components/FourDimLine";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import { categoryLabel } from "../lib/labels";
@@ -19,7 +44,6 @@ import type {
   Course,
   PublicReviewPage,
   RelationSummary,
-  Review,
   Teacher,
 } from "../lib/types";
 
@@ -30,33 +54,6 @@ type Detail = {
   summaries?: Record<string, RelationSummary>;
 };
 
-/** DEV-only: live course-detail-summary A/B/C compare. */
-const CourseDetailSummaryPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/CourseDetailSummaryVariants").then((m) => ({
-        default: m.CourseDetailSummaryPrototype,
-      })),
-    )
-  : null;
-
-/** DEV-only: live course-detail-reviews A/B/C compare (module 10 / #61). */
-const CourseDetailReviewsPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/CourseDetailReviewsVariants").then((m) => ({
-        default: m.CourseDetailReviewsPrototype,
-      })),
-    )
-  : null;
-
-/** DEV-only: 任课评价文字流 (module 12 / #71 承接 #68). */
-const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/TeachingReviewsFeedVariants").then((m) => ({
-        default: m.TeachingReviewsFeedPrototype,
-      })),
-    )
-  : null;
-
 /** DEV-only: 认可交互状态 (module 13 / #74 承接 #70). */
 const ReviewRecognitionPrototypeLazy = import.meta.env.DEV
   ? lazy(() =>
@@ -65,37 +62,6 @@ const ReviewRecognitionPrototypeLazy = import.meta.env.DEV
       })),
     )
   : null;
-
-function useCourseDetailSummaryPrototypeVariant(): "A" | "B" | "C" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "course-detail-summary") return null;
-    const key = (params.get("variant") || "A").toUpperCase();
-    if (key === "A" || key === "B" || key === "C") return key;
-    return "A";
-  }, [params]);
-}
-
-function useCourseDetailReviewsPrototypeVariant(): "A" | "B" | "C" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "course-detail-reviews") return null;
-    const key = (params.get("variant") || "A").toUpperCase();
-    if (key === "A" || key === "B" || key === "C") return key;
-    return "A";
-  }, [params]);
-}
-
-function useTeachingReviewsFeedPrototypeVariant(): "A" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "teaching-reviews-feed") return null;
-    return "A";
-  }, [params]);
-}
 
 function useReviewRecognitionPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
@@ -108,82 +74,90 @@ function useReviewRecognitionPrototypeVariant(): "A" | "B" | "C" | null {
   }, [params]);
 }
 
-/** Production summary — 摘要 B layout; course pages show no course-level
- * rating (scores stay on the 教师×课程 rows below, Issue #140). */
-function ProductionSummary({
-  course,
-  teacher,
-  reviewCount,
-  onBack,
-  backLabel,
+/** 右侧栏 dashed 面板（其他老师的这门课 / 这位老师的其他课）。
+ *  标题不用 heading：面板标题含课名/教师名，会跟页面主标题的
+ *  getByRole("heading") 查询撞车。 */
+function SidePanel({
+  title,
+  children,
 }: {
-  course: Course & { teachers: Teacher[] };
-  /** Selected 课程×教师 identity; omitted on the teacher-table view. */
-  teacher?: Teacher | null;
-  reviewCount: number;
-  onBack: () => void;
-  backLabel: string;
+  title: string;
+  children: ReactNode;
 }) {
   return (
-    <DetailSummary
-      backLabel={backLabel}
-      onBack={onBack}
-      reviewCount={reviewCount}
-      ariaLabel="课程摘要"
-    >
-      <Chip size="sm" variant="soft">
-        <Chip.Label>{categoryLabel(course.category)}</Chip.Label>
-      </Chip>
-      <Typography
-        className="mb-1 mt-2 text-[26px] font-bold leading-tight"
-        type="h1"
+    <div className="border border-dashed border-border bg-surface-secondary/60 px-3 py-2.5">
+      <p className="m-0 text-[13px] font-bold text-foreground">{title}</p>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+function SideRelationRow({
+  href,
+  label,
+  rating,
+  count,
+}: {
+  href: string;
+  label: string;
+  rating?: number | null;
+  count?: number | null;
+}) {
+  return (
+    <div className="flex items-baseline gap-2 py-1.5 text-[13px]">
+      <RouterAriaLink
+        to={href}
+        className="min-w-0 shrink truncate text-accent no-underline"
       >
-        {course.name}
-      </Typography>
-      <p className="m-0 text-muted">
-        {course.code} · {course.department || "院系待补充"}
-      </p>
-      {teacher ? (
-        <dl className="mb-0 mt-2 grid gap-1 text-sm">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <dt className="shrink-0 text-muted">任课教师</dt>
-            <dd className="m-0">
-              <RouterAriaLink to={`/teachers/${teacher.id}`}>
-                {teacher.name}
-              </RouterAriaLink>
-              <span className="text-muted">
-                · {teacher.department || "院系未标注"}
-              </span>
-            </dd>
-          </div>
-        </dl>
+        {label}
+      </RouterAriaLink>
+      {rating != null ? (
+        <span className="tabular shrink-0 font-medium text-accent">
+          {rating.toFixed(1)}
+        </span>
       ) : null}
-    </DetailSummary>
+      {count ? (
+        <span className="tabular shrink-0 text-[12px] text-muted">
+          ({count})
+        </span>
+      ) : null}
+    </div>
   );
 }
 
 export function CourseDetailPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const location = useLocation();
-  const summaryVariant = useCourseDetailSummaryPrototypeVariant();
-  const reviewsVariant = useCourseDetailReviewsPrototypeVariant();
-  const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
   const recognitionVariant = useReviewRecognitionPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
+  // 关注 / 推荐 / 不推荐：原型占位开关，无后端（Issue #402）。
+  const [follow, setFollow] = useState(false);
+  const [recommend, setRecommend] = useState<"none" | "up" | "down">("none");
 
-  /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师。
-   * 未选教师只显示任课表；选中后只显示该教师评价流（Issue #252）。 */
+  /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师；
+   * 未选或选中值不在任课表内时落到点评数最多的关系（Issue #402）。 */
   const selectedTeacherId = useMemo(() => {
     const raw = new URLSearchParams(location.search).get("teacher");
     if (!raw || !/^-?(?:0|[1-9]\d*)$/.test(raw)) return null;
     const n = Number(raw);
     return Number.isSafeInteger(n) && n > 0 ? n : null;
   }, [location.search]);
-  const teacherQuery = selectedTeacherId ? `teacherId=${selectedTeacherId}` : "";
+
+  const course = data?.course ?? null;
+  const teachers = course?.teachers ?? [];
+  const selectedTeacher =
+    teachers.find((teacher) => teacher.id === selectedTeacherId) ??
+    teachers[0] ??
+    null;
+  const effectiveTeacherId = selectedTeacher?.id ?? null;
+  const teacherQuery = effectiveTeacherId
+    ? `teacherId=${effectiveTeacherId}`
+    : "";
+
   const reviewFeed = usePublicReviewPagination("courses", id, teacherQuery);
   /** Session cache of first pages by teacher scope, so switching teachers
    *  restores the previous list instantly instead of losing it (Issue #202).
@@ -191,11 +165,16 @@ export function CourseDetailPage() {
    *  course-payload arrival never issue a duplicate request. */
   const reviewCacheRef = useRef(new Map<string, PublicReviewPage>());
   const reviewInflightRef = useRef(new Map<string, Promise<PublicReviewPage>>());
+  const submitted = Boolean(
+    (location.state as { submitted?: boolean } | null)?.submitted,
+  );
 
   useEffect(() => {
     let cancelled = false;
     setData(null);
     setError("");
+    setFollow(false);
+    setRecommend("none");
     (async () => {
       try {
         const d = await api<Detail>(`/api/courses/${id}`);
@@ -212,7 +191,7 @@ export function CourseDetailPage() {
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
-    if (!selectedTeacherId) {
+    if (!course || !effectiveTeacherId) {
       reviewFeed.reset([], null);
       setReviewsLoading(false);
       return () => {
@@ -220,6 +199,8 @@ export function CourseDetailPage() {
       };
     }
     const cacheKey = `${id}:${teacherQuery}`;
+    // 刚提交的评价立刻公开：绕过会话缓存重拉第一页。
+    if (submitted) reviewCacheRef.current.delete(cacheKey);
     const cached = reviewCacheRef.current.get(cacheKey);
     if (cached) {
       reviewFeed.reset(cached.items, cached.nextCursor);
@@ -258,7 +239,7 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, selectedTeacherId, teacherQuery, reviewFeed.reset]);
+  }, [id, course, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted]);
 
   /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复。 */
   const handleLoadMore = useCallback(async () => {
@@ -268,185 +249,313 @@ export function CourseDetailPage() {
     }
   }, [reviewFeed.loadMore, id, teacherQuery]);
 
+  // 右侧栏「这位老师的其他课」：按选中教师拉取其任课课程。
+  useEffect(() => {
+    setTeacherCourses(null);
+    if (!effectiveTeacherId) return;
+    let cancelled = false;
+    api<{ courses?: Course[] }>(`/api/teachers/${effectiveTeacherId}`)
+      .then((d) => {
+        if (!cancelled) setTeacherCourses(d.courses ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setTeacherCourses([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveTeacherId]);
+
+  // /latest 的「>>更多」深链：评价到达后滚动到对应条目。
+  const scrolledHashRef = useRef("");
+  useEffect(() => {
+    scrolledHashRef.current = "";
+  }, [id]);
+  useLayoutEffect(() => {
+    const raw = location.hash.replace(/^#/, "");
+    if (!raw || scrolledHashRef.current === raw) return;
+    let target = raw;
+    try {
+      target = decodeURIComponent(raw);
+    } catch {
+      /* keep raw */
+    }
+    const el = document.getElementById(target);
+    if (el) {
+      scrolledHashRef.current = raw;
+      el.scrollIntoView({ block: "start" });
+    }
+  }, [location.hash, data, reviewFeed.reviews]);
+
   if (error) {
     return (
-      <section className="mx-auto w-full max-w-[880px]">
+      <section className="mx-auto w-full max-w-[1120px]">
         <DetailErrorAlert title="课程加载失败" message={error} />
       </section>
     );
   }
-  if (!data) {
+  if (!data || !course) {
     return (
-      <section className="mx-auto w-full max-w-[880px]">
-        <DetailPageSkeleton
-          label="课程加载中…"
-          kind={selectedTeacherId ? "course-reviews" : "course"}
-        />
+      <section className="mx-auto w-full max-w-[1120px]">
+        <DetailPageSkeleton label="课程加载中…" kind="course-reviews" />
       </section>
     );
   }
 
-  const c = data.course;
-  const selectedTeacher = (c.teachers ?? []).find(
-    (teacher) => teacher.id === selectedTeacherId,
+  const rating = selectedTeacher?.rating ?? null;
+  const relationCount = selectedTeacher?.review_count ?? 0;
+  const otherTeachers = teachers.filter(
+    (teacher) => teacher.id !== effectiveTeacherId,
   );
-  /** 选中教师且该关系已有总结时才出现 AI 总结块（简介下、点评上）。 */
+  const teacherOtherCourses = (teacherCourses ?? []).filter(
+    (item) => item.id !== course.id,
+  );
+  /** 当前关系已有总结时展示真实 AI 总结（#401）；未生成时保留占位块。 */
   const relationSummary =
-    selectedTeacherId && data.summaries
-      ? data.summaries[String(selectedTeacherId)]
+    effectiveTeacherId && data.summaries
+      ? data.summaries[String(effectiveTeacherId)]
       : undefined;
-  /** Restore catalog filters; drop prototype module/variant and the
-   * course-page teacher selection so back lands on the production catalog. */
-  const goBack = () => {
+  /** 返回目录时恢复目录查询状态（去掉详情页自有的 teacher/原型参数）。 */
+  const catalogHref = (() => {
     const sp = new URLSearchParams(location.search);
     sp.delete("module");
     sp.delete("variant");
     sp.delete("teacher");
     const q = sp.toString();
-    navigate(q ? `/courses?${q}` : "/courses");
-  };
-  const clearTeacherHref = (() => {
-    const sp = new URLSearchParams(location.search);
-    sp.delete("teacher");
-    const q = sp.toString();
-    return `/courses/${c.id}${q ? `?${q}` : ""}`;
+    return q ? `/courses?${q}` : "/courses";
   })();
-  const goBackToTeachers = () => {
-    navigate(clearTeacherHref);
+  const relationHref = (teacherId: number) => {
+    const sp = new URLSearchParams(location.search);
+    sp.set("teacher", String(teacherId));
+    return `/courses/${course.id}?${sp.toString()}`;
   };
-  const comparingSummary =
-    Boolean(summaryVariant) && Boolean(CourseDetailSummaryPrototypeLazy);
-  const comparingReviews =
-    Boolean(reviewsVariant) && Boolean(CourseDetailReviewsPrototypeLazy);
-  const comparingTeachingFeed =
-    Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
+  const metaRows: Array<[string, string]> = [
+    // 选课类别 / 教学类型 / 课程层次：教务未采集这些字段，先占位。
+    ["选课类别", "—"],
+    ["教学类型", "—"],
+    ["课程类别", categoryLabel(course.category)],
+    ["开课单位", course.department || "—"],
+    ["课程层次", "—"],
+    ["学分", course.credits != null ? String(course.credits) : "—"],
+  ];
   const comparingRecognition =
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
-  const reviewArea = (
-    <>
-      {comparingRecognition &&
-      recognitionVariant &&
-      ReviewRecognitionPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
-          <ReviewRecognitionPrototypeLazy
-            key={recognitionVariant}
-            variant={recognitionVariant}
-            model={{ hostLabel: c.name }}
-          />
-        </Suspense>
-      ) : comparingTeachingFeed &&
-        teachingFeedVariant &&
-        TeachingReviewsFeedPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
-          <TeachingReviewsFeedPrototypeLazy
-            key={teachingFeedVariant}
-            variant={teachingFeedVariant}
-            model={{
-              counterpartMode: "teacher",
-              hostLabel: c.name,
-              liveReviews: reviewFeed.reviews as unknown as Review[],
-              liveRatingCount: reviewFeed.reviews.length,
-            }}
-          />
-        </Suspense>
-      ) : comparingReviews &&
-        reviewsVariant &&
-        CourseDetailReviewsPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载投稿原型…</EmptyBox>}>
-          <CourseDetailReviewsPrototypeLazy
-            key={reviewsVariant}
-            variant={reviewsVariant}
-            model={{
-              reviews: reviewFeed.reviews as unknown as Review[],
-              legacyReviews: [],
-              courseName: c.name,
-            }}
-          />
-        </Suspense>
-      ) : reviewsError && reviewFeed.reviews.length === 0 ? (
-        <DetailErrorAlert title="评价加载失败" message={reviewsError} />
-      ) : reviewsLoading && reviewFeed.reviews.length === 0 ? (
-        <DetailLoadingStatus label="评价加载中…" />
-      ) : (
-        <PublicReviews
-          rows={reviewFeed.reviews}
-          total={selectedTeacher?.review_count ?? 0}
-          hasMore={Boolean(reviewFeed.nextCursor)}
-          isLoadingMore={reviewFeed.isLoadingMore}
-          loadMoreError={reviewFeed.loadMoreError}
-          onLoadMore={handleLoadMore}
-        />
-      )}
-    </>
-  );
-
   return (
-    <section className="mx-auto w-full max-w-[880px]">
-      {comparingSummary && summaryVariant && CourseDetailSummaryPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载摘要原型…</EmptyBox>}>
-          <CourseDetailSummaryPrototypeLazy
-            key={summaryVariant}
-            variant={summaryVariant}
-            model={{
-              course: c,
-              reviews: reviewFeed.reviews as unknown as Review[],
-              backSearch: location.search,
-              onBack: goBack,
-            }}
-          />
-        </Suspense>
-      ) : (
-        <ProductionSummary
-          course={c}
-          teacher={selectedTeacher}
-          reviewCount={
-            selectedTeacherId
-              ? (selectedTeacher?.review_count ?? 0)
-              : data.reviewCount
-          }
-          backLabel={selectedTeacherId ? "返回任课老师" : "返回课程目录"}
-          onBack={selectedTeacherId ? goBackToTeachers : goBack}
-        />
-      )}
+    <div className="mx-auto grid w-full max-w-[1120px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="min-w-0">
+        <nav aria-label="面包屑" className="text-[12px] text-muted">
+          <RouterAriaLink to={catalogHref} className="text-muted">
+            课程目录
+          </RouterAriaLink>
+          <span className="mx-1.5">/</span>
+          {course.name}
+        </nav>
 
-      {selectedTeacherId && relationSummary?.html ? (
-        <CourseAiSummary summary={relationSummary} />
-      ) : null}
+        {submitted ? (
+          <p
+            className="mt-3 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[13px] text-success"
+            role="status"
+          >
+            评价已发布，感谢分享。
+          </p>
+        ) : null}
 
-      {selectedTeacherId ? (
-        <div className="mb-6">
-          {reviewArea}
-        </div>
-      ) : (
-        <section className="mb-6" aria-labelledby="course-teachers-heading">
-          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <header className="mt-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <Typography
-              className="m-0 text-[17px] font-bold leading-snug"
-              id="course-teachers-heading"
-              type="h2"
+              className="m-0 min-w-0 text-[22px] font-bold leading-tight text-accent"
+              type="h1"
             >
-              任课教师
+              {course.name}
+              {selectedTeacher ? (
+                <span className="font-semibold">
+                  （{selectedTeacher.name}）
+                </span>
+              ) : null}
             </Typography>
-            {c.teachers?.length ? (
-              <span className="text-[13px] text-muted">
-                {c.teachers.length} 位
+            <p className="m-0 shrink-0 text-right text-[12px] text-muted">
+              课程号：{course.code || "—"}
+            </p>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
+            <Stars rating={rating} className="text-[16px]" />
+            {rating != null ? (
+              <span className="tabular text-[20px] font-semibold leading-none text-accent">
+                {rating.toFixed(1)}
               </span>
             ) : null}
+            {relationCount > 0 ? (
+              <span className="text-[12px] text-muted">
+                （{relationCount} 人评价）
+              </span>
+            ) : (
+              <span className="text-[13px] text-muted">暂无评价</span>
+            )}
           </div>
-          {c.teachers?.length ? (
-            <p className="mb-2 break-keep wrap-break-word text-[13px] leading-relaxed text-muted">
-              选择一位任课教师，查看这位老师在这门课的评价。
-            </p>
-          ) : null}
-          <CourseTeacherTable
-            items={c.teachers ?? []}
-            courseId={c.id}
-            search={location.search}
-            selectedId={null}
+
+          {/* 关系级四维分布没有公开投影（#373 只提供评价条目级标签），保留占位。 */}
+          <FourDimLine className="mt-2 text-[13px]" labels={null} />
+
+          <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[13px] sm:grid-cols-2">
+            {metaRows.map(([label, value]) => (
+              <div key={label} className="flex gap-2">
+                <dt className="shrink-0 text-muted">{label}：</dt>
+                <dd className="m-0 text-foreground">{value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant={follow ? "secondary" : "outline"}
+              aria-pressed={follow}
+              onPress={() => setFollow((v) => !v)}
+            >
+              {follow ? "已关注" : "关注"}
+            </Button>
+            <Button
+              size="sm"
+              variant={recommend === "up" ? "secondary" : "outline"}
+              aria-pressed={recommend === "up"}
+              onPress={() =>
+                setRecommend((v) => (v === "up" ? "none" : "up"))
+              }
+            >
+              {recommend === "up" ? "已推荐" : "推荐"}
+            </Button>
+            <Button
+              size="sm"
+              variant={recommend === "down" ? "secondary" : "outline"}
+              aria-pressed={recommend === "down"}
+              onPress={() =>
+                setRecommend((v) => (v === "down" ? "none" : "down"))
+              }
+            >
+              {recommend === "down" ? "取消不推荐" : "不推荐"}
+            </Button>
+          </div>
+        </header>
+
+        {relationSummary?.html ? (
+          <div className="mt-10">
+            <CourseAiSummary summary={relationSummary} />
+          </div>
+        ) : (
+          <section className="mt-10" aria-labelledby="course-ai-summary-heading">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <Typography
+                className="m-0 text-[20px] font-bold leading-snug text-accent"
+                id="course-ai-summary-heading"
+                type="h2"
+              >
+                AI 总结
+              </Typography>
+              <p className="m-0 text-[12px] text-muted">
+                AI 总结为根据点评内容自动生成，仅供参考
+              </p>
+            </div>
+            <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-secondary/60 px-4 py-4 text-[13px] text-muted">
+              {relationCount > 0
+                ? "AI 总结暂未生成：点评积累后会自动出现在这里。"
+                : "点评还不够，暂时无法生成总结。"}
+            </div>
+          </section>
+        )}
+
+        {comparingRecognition &&
+        recognitionVariant &&
+        ReviewRecognitionPrototypeLazy ? (
+          <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
+            <ReviewRecognitionPrototypeLazy
+              key={recognitionVariant}
+              variant={recognitionVariant}
+              model={{ hostLabel: course.name }}
+            />
+          </Suspense>
+        ) : (
+          <CourseReviewSection
+            courseId={course.id}
+            teacherId={effectiveTeacherId}
+            reviews={reviewFeed.reviews}
+            total={relationCount}
+            loading={reviewsLoading}
+            error={reviewsError}
+            hasMore={Boolean(reviewFeed.nextCursor)}
+            isLoadingMore={reviewFeed.isLoadingMore}
+            loadMoreError={reviewFeed.loadMoreError}
+            onLoadMore={handleLoadMore}
           />
-        </section>
-      )}
-    </section>
+        )}
+      </div>
+
+      <aside className="space-y-3 self-start">
+        {selectedTeacher ? (
+          <section
+            aria-label="任课教师"
+            className="border border-dashed border-border bg-surface-secondary/60 px-3 py-3"
+          >
+            <div className="flex flex-col items-center text-center">
+              <Avatar size="lg" className="rounded-full" aria-hidden>
+                <Avatar.Fallback className="rounded-full" />
+              </Avatar>
+              <p className="m-0 mt-2 text-[16px] font-bold text-accent">
+                {selectedTeacher.name}
+              </p>
+              <p className="m-0 mt-1 text-[12px] text-muted">教师主页：暂无</p>
+            </div>
+          </section>
+        ) : null}
+
+        <SidePanel title={`其他老师的「${course.name}」课`}>
+          {otherTeachers.length === 0 ? (
+            <p className="m-0 py-1.5 text-[12px] text-muted">
+              这门课目前只有这位老师
+            </p>
+          ) : (
+            otherTeachers.map((teacher) => (
+              <SideRelationRow
+                key={teacher.id}
+                href={relationHref(teacher.id)}
+                label={teacher.name}
+                rating={teacher.rating}
+                count={teacher.review_count}
+              />
+            ))
+          )}
+        </SidePanel>
+
+        {selectedTeacher ? (
+          <SidePanel title={`${selectedTeacher.name}老师的其他课`}>
+            {teacherCourses == null ? (
+              <p className="m-0 py-1.5 text-[12px] text-muted">加载中…</p>
+            ) : teacherOtherCourses.length === 0 ? (
+              <p className="m-0 py-1.5 text-[12px] text-muted">
+                这位老师目前只开这门课
+              </p>
+            ) : (
+              teacherOtherCourses.map((item) => (
+                <SideRelationRow
+                  key={item.id}
+                  href={`/courses/${item.id}?teacher=${effectiveTeacherId}`}
+                  label={item.name}
+                  rating={item.rating}
+                  count={item.review_count}
+                />
+              ))
+            )}
+          </SidePanel>
+        ) : null}
+
+        <RouterAriaLink
+          to={catalogHref}
+          className="block text-center text-[12px] text-muted no-underline"
+        >
+          ← 返回课程目录
+        </RouterAriaLink>
+      </aside>
+    </div>
   );
 }
