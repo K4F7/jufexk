@@ -22,6 +22,7 @@ describe("public list precompute invalidation", () => {
   it.each([
     ["POST", "/api/admin/catalog-relation-additions"],
     ["POST", "/api/admin/import/relations"],
+    ["POST", "/api/admin/import/course-plan-attributes"],
     ["POST", "/api/admin/historical-review-v5-imports"],
     ["POST", "/api/admin/offerings"],
     ["DELETE", "/api/admin/offerings/42"],

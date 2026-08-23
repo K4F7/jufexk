@@ -852,9 +852,9 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
           }),
         })),
         nameVariants: [],
-        enrollment_category: "体育课",
-        teaching_type: "实践",
-        course_level: "本科",
+        enrollment_category: "公共必修",
+        teaching_type: "实践课",
+        course_level: "体育",
         ...courseSchemeView(null, "sports", []),
       },
       reviewCount: 0,
@@ -935,15 +935,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
     ...course,
     tag_csv: tags.join(","),
   });
-  const meta = deriveCourseCatalogMeta({
-    name: typeof decoratedCourse.name === "string" ? decoratedCourse.name : "",
-    category:
-      typeof decoratedCourse.category === "string"
-        ? decoratedCourse.category
-        : "",
-    schemeKey: typeof course.scheme_key === "string" ? course.scheme_key : null,
-    tags,
-  });
+  const meta = deriveCourseCatalogMeta(course);
   return c.json({
     course: {
       ...decoratedCourse,
