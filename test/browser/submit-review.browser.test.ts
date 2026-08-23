@@ -255,7 +255,7 @@ test("logged-out /submit redirects to login with a sanitized from return", async
   const url = new URL(page.url());
   expect(url.pathname).toBe("/login");
   expect(url.searchParams.get("from")).toBe("/submit?courseId=8");
-  await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "登录", exact: true })).toBeVisible();
   await expect(page.getByText("评价已发布")).toHaveCount(0);
   expect(posted).toHaveLength(0);
 });

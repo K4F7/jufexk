@@ -119,6 +119,6 @@ test("guests get a real login link outside the nav", async ({ page }) => {
   await login.click();
   await expect(page).toHaveURL(/\/login\?from=%2Fcourses$/);
   await expect(
-    page.getByRole("heading", { name: "普通用户登录" }),
+    page.getByRole("heading", { name: "登录", exact: true }),
   ).toBeVisible();
 });
