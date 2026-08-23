@@ -247,6 +247,14 @@ test("first load shows skeleton rows and keeps the header height stable", async 
 
   await expect(page.getByRole("status", { name: "加载中…" })).toBeVisible();
   await expect(page.locator("[data-catalog-skeleton-row]")).toHaveCount(20);
+  await expect(
+    page.getByRole("search", { name: "课程目录筛选" }),
+  ).toBeVisible();
+  // 加载态必须是关系行骨架，不能再闪旧四列表（课程/教师/院系/投稿）。
+  await expect(page.getByRole("columnheader", { name: "课程" })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "教师" })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "院系" })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "投稿" })).toHaveCount(0);
   const before = await header.boundingBox();
 
   await expect(
