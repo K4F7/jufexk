@@ -127,12 +127,57 @@ export function parseLoginPage(html: string): {
   };
 }
 
-export function parseErrorTip(html: string): string {
-  const tip = html
-    .match(/id=["']showErrorTip["'][^>]*>([\s\S]*?)<\/(?:div|span|p|strong)>/i)?.[1]
-    ?.replace(/<[^>]+>/g, "")
+const CAS_TIP_MAX = 80;
+
+function decodeHtmlEntities(text: string) {
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+}
+
+export function sanitizeCasErrorTip(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const text = decodeHtmlEntities(raw.replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ")
     .trim();
-  return tip || "学号或密码不正确";
+  if (!text || text.length > CAS_TIP_MAX) return null;
+  if (/https?:|javascript:|<|>|cas_|CASTGC|execution=/i.test(text)) return null;
+  return text;
+}
+
+export function parseErrorTip(html: string): string {
+  const patterns = [
+    /id=["']showErrorTip["'][^>]*>([\s\S]*?)<\/(?:div|span|p|strong)>/i,
+    /id=["']msg["'][^>]*>([\s\S]*?)<\/(?:div|span|p|strong)>/i,
+    /class=["'][^"']*\berrors\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span|p|ul|li)>/i,
+  ];
+  for (const pattern of patterns) {
+    const tip = sanitizeCasErrorTip(html.match(pattern)?.[1]);
+    if (tip) return tip;
+  }
+  return "学号或密码不正确";
+}
+
+export function parseCasJsonError(
+  body: Record<string, unknown> | null,
+): string | null {
+  if (!body) return null;
+  const objects: Record<string, unknown>[] = [body];
+  if (body.data && typeof body.data === "object" && !Array.isArray(body.data)) {
+    objects.push(body.data as Record<string, unknown>);
+  }
+  for (const object of objects) {
+    for (const key of ["msg", "message", "error"]) {
+      const tip = sanitizeCasErrorTip(
+        typeof object[key] === "string" ? object[key] : null,
+      );
+      if (tip) return tip;
+    }
+  }
+  return null;
 }
 
 function fail(error: string, status: 400 | 401 | 503 = 400): CasLoginFail {
@@ -368,7 +413,9 @@ export async function startCasPasswordLogin(
         followRedirects: false,
       });
       const sentBody = await readJson(sent);
-      if (sentBody?.code !== 0) return fail("验证码发送失败，请稍后重试");
+      if (sentBody?.code !== 0) {
+        return fail(parseCasJsonError(sentBody) || "验证码发送失败，请稍后重试");
+      }
       return {
         ok: false,
         needsMfa: true,
@@ -424,7 +471,7 @@ export async function completeCasPasswordLogin(
         ? (validBody.data as Record<string, unknown>)
         : null;
     if (validBody?.code !== 0 || data?.status !== 2) {
-      return fail("验证码不正确", 401);
+      return fail(parseCasJsonError(validBody) || "验证码不正确", 401);
     }
     const first = await submitLogin(
       jar,

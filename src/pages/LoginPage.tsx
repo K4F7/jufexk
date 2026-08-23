@@ -12,10 +12,31 @@ import {
 } from "@heroui/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { DetailLoadingStatus } from "../components/DetailFeedback";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
 import { ApiError, api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
+
+function LoginProgressAlert({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Alert aria-live="polite" role="status" status="accent">
+      <Alert.Indicator>
+        <Spinner color="current" size="sm" />
+      </Alert.Indicator>
+      <Alert.Content>
+        <Alert.Title>{title}</Alert.Title>
+        <Alert.Description>{description}</Alert.Description>
+      </Alert.Content>
+    </Alert>
+  );
+}
 
 type CasStart =
   | {
@@ -31,6 +52,13 @@ type CasStart =
 
 function shouldReturnToCredentials(message: string) {
   return /请重新登录|学号或密码|用户名或密码/.test(message);
+}
+
+function loginErrorTitle(message: string) {
+  if (/锁定|冻结|禁用/.test(message)) return "账号暂时无法登录";
+  if (/过期|初始密码|修改密码/.test(message)) return "需要先更新密码";
+  if (/验证码/.test(message)) return "验证码不正确";
+  return "无法完成登录";
 }
 
 export function LoginPage() {
@@ -154,36 +182,50 @@ export function LoginPage() {
                 </Alert.Description>
               </Alert.Content>
             </Alert>
+          ) : !ready && !redeeming ? (
+            <DetailLoadingStatus label="正在读取登录状态…" />
           ) : redeeming ? (
-            <p className="m-0 flex items-center gap-2 text-sm text-muted">
-              <Spinner color="current" size="sm" />
-              正在完成登录…
-            </p>
+            <LoginProgressAlert
+              title="正在完成登录"
+              description="请稍候。"
+            />
           ) : (
             <div className="flex flex-col gap-4">
               {error ? (
                 <Alert status="danger">
                   <Alert.Indicator />
                   <Alert.Content>
-                    <Alert.Title>无法完成登录</Alert.Title>
+                    <Alert.Title>{loginErrorTitle(error)}</Alert.Title>
                     <Alert.Description>{error}</Alert.Description>
                   </Alert.Content>
                 </Alert>
               ) : null}
               {challenge ? (
-                <Form className="flex flex-col gap-4" onSubmit={submitMfa}>
-                  <Alert status="accent">
-                    <Alert.Indicator />
-                    <Alert.Content>
-                      <Alert.Title>请输入验证码</Alert.Title>
-                      <Alert.Description>
-                        {maskedPhone
-                          ? `学校会把验证码发到企业微信（绑定手机 ${maskedPhone}），不是本站短信。`
-                          : "学校会把验证码发到企业微信（统一身份绑定的手机），不是本站短信。"}
-                      </Alert.Description>
-                    </Alert.Content>
-                  </Alert>
+                <Form
+                  aria-busy={busy}
+                  className="flex flex-col gap-4"
+                  onSubmit={submitMfa}
+                >
+                  {busy ? (
+                    <LoginProgressAlert
+                      title="正在确认验证码"
+                      description="请稍候。"
+                    />
+                  ) : (
+                    <Alert status="accent">
+                      <Alert.Indicator />
+                      <Alert.Content>
+                        <Alert.Title>请输入验证码</Alert.Title>
+                        <Alert.Description>
+                          {maskedPhone
+                            ? `学校会把验证码发到企业微信（绑定手机 ${maskedPhone}），不是本站短信。`
+                            : "学校会把验证码发到企业微信（统一身份绑定的手机），不是本站短信。"}
+                        </Alert.Description>
+                      </Alert.Content>
+                    </Alert>
+                  )}
                   <TextField
+                    isDisabled={busy}
                     isRequired
                     name="mfa"
                     autoComplete="one-time-code"
@@ -194,13 +236,29 @@ export function LoginPage() {
                     <Input inputMode="numeric" placeholder="4–8 位验证码" />
                     <FieldError />
                   </TextField>
-                  <Button isDisabled={busy} type="submit">
-                    {busy ? "登录中…" : "完成登录"}
+                  <Button isPending={busy} type="submit">
+                    {({ isPending }) => (
+                      <>
+                        {isPending ? <Spinner color="current" size="sm" /> : null}
+                        {isPending ? "正在完成登录…" : "完成登录"}
+                      </>
+                    )}
                   </Button>
                 </Form>
               ) : (
-                <Form className="flex flex-col gap-4" onSubmit={submitCas}>
+                <Form
+                  aria-busy={busy}
+                  className="flex flex-col gap-4"
+                  onSubmit={submitCas}
+                >
+                  {busy ? (
+                    <LoginProgressAlert
+                      title="正在登录"
+                      description="请稍候，通常需要几秒。"
+                    />
+                  ) : null}
                   <TextField
+                    isDisabled={busy}
                     isRequired
                     name="username"
                     autoComplete="username"
@@ -215,6 +273,7 @@ export function LoginPage() {
                     <FieldError />
                   </TextField>
                   <TextField
+                    isDisabled={busy}
                     isRequired
                     name="password"
                     type="password"
@@ -226,8 +285,13 @@ export function LoginPage() {
                     <Input placeholder="统一身份认证密码" />
                     <FieldError />
                   </TextField>
-                  <Button isDisabled={busy} type="submit">
-                    {busy ? "登录中…" : "登录"}
+                  <Button isPending={busy} type="submit">
+                    {({ isPending }) => (
+                      <>
+                        {isPending ? <Spinner color="current" size="sm" /> : null}
+                        {isPending ? "正在登录…" : "登录"}
+                      </>
+                    )}
                   </Button>
                 </Form>
               )}
