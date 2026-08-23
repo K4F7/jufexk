@@ -6,7 +6,7 @@
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Typography } from "@heroui/react";
+import { Card, Typography, buttonVariants } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -105,8 +105,8 @@ function getOrLoad<T>(
   return promise;
 }
 
-/** 右侧栏 dashed 面板（其他老师的这门课 / 这位老师的其他课）。
- *  标题不用 heading：面板标题含课名/教师名，会跟页面主标题的
+/** 右侧栏官方 Card（任课教师 / 其他老师 / 这位老师的其他课）。
+ *  列表标题不用 Card.Title：标题含课名/教师名，会跟页面主标题的
  *  getByRole("heading") 查询撞车。 */
 function SidePanel({
   title,
@@ -116,44 +116,53 @@ function SidePanel({
   children: ReactNode;
 }) {
   return (
-    <div className="border border-dashed border-border bg-surface-secondary/60 px-3 py-2.5">
-      <p className="m-0 text-[13px] font-bold text-foreground">{title}</p>
-      <div className="mt-1">{children}</div>
-    </div>
+    <Card>
+      <Card.Header>
+        <p className="m-0 text-sm font-medium text-foreground">{title}</p>
+      </Card.Header>
+      <Card.Content>{children}</Card.Content>
+    </Card>
   );
 }
 
 function SideRelationRow({
   href,
   label,
+  detail,
   rating,
   count,
 }: {
   href: string;
   label: string;
+  detail?: string;
   rating?: number | null;
   count?: number | null;
 }) {
+  const stats = [
+    rating != null ? rating.toFixed(1) : null,
+    count ? `(${count})` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <div className="flex items-baseline gap-2 py-1.5 text-[13px]">
-      <RouterAriaLink
-        to={href}
-        className="min-w-0 shrink truncate text-accent no-underline"
-      >
-        {label}
-      </RouterAriaLink>
-      {rating != null ? (
-        <span className="tabular shrink-0 font-medium text-accent">
-          {rating.toFixed(1)}
-        </span>
+    <li className="flex items-baseline justify-between gap-2">
+      <span className="min-w-0">
+        <RouterAriaLink className="min-w-0 truncate" to={href}>
+          {label}
+        </RouterAriaLink>
+        {detail ? (
+          <span className="block truncate text-xs text-muted">{detail}</span>
+        ) : null}
+      </span>
+      {stats ? (
+        <span className="tabular shrink-0 text-xs text-muted">{stats}</span>
       ) : null}
-      {count ? (
-        <span className="tabular shrink-0 text-[12px] text-muted">
-          ({count})
-        </span>
-      ) : null}
-    </div>
+    </li>
   );
+}
+
+function SideRelationList({ children }: { children: ReactNode }) {
+  return <ul className="m-0 flex list-none flex-col gap-1 p-0">{children}</ul>;
 }
 
 export function CourseDetailPage() {
@@ -537,66 +546,67 @@ export function CourseDetailPage() {
 
       <aside className="space-y-3 self-start">
         {selectedTeacher ? (
-          <section
-            aria-label="任课教师"
-            className="border border-dashed border-border bg-surface-secondary/60 px-3 py-3"
-          >
-            <div className="flex flex-col items-center text-center">
+          <Card aria-label="任课教师">
+            <Card.Header className="items-center text-center">
               <AnonymousAvatar
                 seed={selectedTeacher.id}
                 size="lg"
                 fallback={selectedTeacher.name.slice(0, 1)}
               />
-              <p className="m-0 mt-2 text-[16px] font-bold text-accent">
+              <p className="m-0 mt-1 text-sm font-medium text-foreground">
                 {selectedTeacher.name}
               </p>
-            </div>
-          </section>
+              {selectedTeacher.department ? (
+                <Card.Description>{selectedTeacher.department}</Card.Description>
+              ) : null}
+            </Card.Header>
+          </Card>
         ) : null}
 
         <SidePanel title={`其他老师的「${course.name}」课`}>
           {otherTeachers.length === 0 ? (
-            <p className="m-0 py-1.5 text-[12px] text-muted">
-              这门课目前只有这位老师
-            </p>
+            <p className="m-0 text-sm text-muted">这门课目前只有这位老师</p>
           ) : (
-            otherTeachers.map((teacher) => (
-              <SideRelationRow
-                key={teacher.id}
-                href={relationHref(teacher.id)}
-                label={teacher.name}
-                rating={teacher.rating}
-                count={teacher.review_count}
-              />
-            ))
+            <SideRelationList>
+              {otherTeachers.map((teacher) => (
+                <SideRelationRow
+                  key={teacher.id}
+                  href={relationHref(teacher.id)}
+                  label={teacher.name}
+                  rating={teacher.rating}
+                  count={teacher.review_count}
+                />
+              ))}
+            </SideRelationList>
           )}
         </SidePanel>
 
         {selectedTeacher ? (
           <SidePanel title={`${selectedTeacher.name}老师的其他课`}>
             {teacherCourses == null ? (
-              <p className="m-0 py-1.5 text-[12px] text-muted">加载中…</p>
+              <p className="m-0 text-sm text-muted">加载中…</p>
             ) : teacherOtherCourses.length === 0 ? (
-              <p className="m-0 py-1.5 text-[12px] text-muted">
-                这位老师目前只开这门课
-              </p>
+              <p className="m-0 text-sm text-muted">这位老师目前只开这门课</p>
             ) : (
-              teacherOtherCourses.map((item) => (
-                <SideRelationRow
-                  key={item.id}
-                  href={`/courses/${item.id}?teacher=${effectiveTeacherId}`}
-                  label={item.name}
-                  rating={item.rating}
-                  count={item.review_count}
-                />
-              ))
+              <SideRelationList>
+                {teacherOtherCourses.map((item) => (
+                  <SideRelationRow
+                    key={item.id}
+                    href={`/courses/${item.id}?teacher=${effectiveTeacherId}`}
+                    label={item.name}
+                    detail={item.code || undefined}
+                    rating={item.rating}
+                    count={item.review_count}
+                  />
+                ))}
+              </SideRelationList>
             )}
           </SidePanel>
         ) : null}
 
         <RouterAriaLink
+          className={`${buttonVariants({ size: "sm", variant: "ghost" })} w-full justify-center no-underline`}
           to={catalogHref}
-          className="block text-center text-[12px] text-muted no-underline"
         >
           ← 返回课程目录
         </RouterAriaLink>
