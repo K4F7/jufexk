@@ -27,9 +27,7 @@ import {
   type RelationSignalCounts,
   type RelationSignalViewer,
 } from "./relation-signals";
-import {
-  publicCourseCanonicalJoin,
-} from "./public-list-precompute";
+import { publicCourseCanonicalJoin } from "./public-list-precompute";
 import { publicReviewBindingSql } from "./review-summary";
 
 const clean = (v: unknown, n = 500) =>
@@ -42,26 +40,6 @@ const integer = (v: unknown) => {
 };
 const fail = (c: Context, error: string, status = 400) =>
   c.json({ error }, status as 400);
-
-const publicTextReviewCounts = `
-  SELECT course_id,teacher_id,COUNT(*) review_count
-  FROM (
-    SELECT r.course_id,r.teacher_id
-    FROM reviews r
-    WHERE r.status='approved'
-      AND trim(COALESCE(r.comment,''))<>''${publicReviewBindingSql}
-    UNION ALL
-    SELECT phr.course_id,phr.teacher_id
-    FROM public_historical_reviews phr
-    UNION ALL
-    SELECT lr.course_id,lr.teacher_id
-    FROM legacy_reviews lr
-    JOIN courses legacy_course ON legacy_course.id=lr.course_id
-    JOIN teachers legacy_teacher ON legacy_teacher.id=lr.teacher_id
-    WHERE lr.status='approved'
-      AND trim(COALESCE(lr.comment,''))<>''
-  ) visible_text_reviews
-  GROUP BY course_id,teacher_id`;
 
 type WindowedRow = { window_total?: number };
 const stripWindowTotal = <T extends WindowedRow>(row: T) => {
@@ -238,7 +216,7 @@ export async function listCourseRelations(
       ${publicCourseCanonicalJoin}
       LEFT JOIN course_teachers ct ON ct.course_id=c.id
       LEFT JOIN teachers t ON t.id=ct.teacher_id
-      LEFT JOIN (${publicTextReviewCounts}) rel_counts
+      LEFT JOIN public_review_counts rel_counts
         ON rel_counts.course_id=c.id AND rel_counts.teacher_id=t.id
       LEFT JOIN (
         SELECT r.course_id,r.teacher_id,ROUND(AVG(r.overall),1) rating

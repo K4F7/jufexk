@@ -37,7 +37,6 @@ import {
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicOptionDisplayName,
-  publicPeCanonicalCourseSql,
   VIRTUAL_PE_SPORTS,
   virtualPeSportById,
   virtualPeSportForTeacherName,
@@ -95,10 +94,10 @@ import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
 import {
   ensurePublicListPrecomputes,
+  markPublicListPrecomputesDirty,
   publicCourseCanonicalJoin,
-  publicCourseMatchJoin,
+  publicCourseOptionJoin,
   publicTeacherSearchJoin,
-  refreshPublicListPrecomputes,
   shouldRefreshPublicListPrecomputes,
 } from "./public-list-precompute";
 import { deriveCourseCatalogMeta } from "./lib/course-metadata";
@@ -424,25 +423,6 @@ const skipTurnstile = (secret: string) =>
   secret === LOCAL_UNUSED_TURNSTILE_SECRET;
 // 公开评价绑定规则的唯一来源在 review-summary.ts（AI 总结收集同一集合）。
 const publicReviewBinding = publicReviewBindingSql;
-const publicTextReviewCounts = `
-  SELECT course_id,teacher_id,COUNT(*) review_count
-  FROM (
-    SELECT r.course_id,r.teacher_id
-    FROM reviews r
-    WHERE r.status='approved'
-      AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}
-    UNION ALL
-    SELECT phr.course_id,phr.teacher_id
-    FROM public_historical_reviews phr
-    UNION ALL
-    SELECT lr.course_id,lr.teacher_id
-    FROM legacy_reviews lr
-    JOIN courses legacy_course ON legacy_course.id=lr.course_id
-    JOIN teachers legacy_teacher ON legacy_teacher.id=lr.teacher_id
-    WHERE lr.status='approved'
-      AND trim(COALESCE(lr.comment,''))<>''
-  ) visible_text_reviews
-  GROUP BY course_id,teacher_id`;
 type PublicReviewCursor = { source: number; key: string };
 const publicReviewPageSize = (c: any) =>
   Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
@@ -459,21 +439,6 @@ const decodePublicReviewCursor = (value: string | undefined): PublicReviewCursor
 };
 const encodePublicReviewCursor = (cursor: PublicReviewCursor) =>
   btoa(JSON.stringify(cursor));
-const getPublicTextReviewCount = async (
-  db: D1Database,
-  subject: "course_id" | "teacher_id",
-  id: number | null,
-) => {
-  const result = await db
-    .prepare(
-      `SELECT COALESCE(SUM(review_count),0) count
-       FROM (${publicTextReviewCounts})
-       WHERE ${subject}=?`,
-    )
-    .bind(id)
-    .first<{ count: number }>();
-  return result?.count || 0;
-};
 const getPublicReviewPage = async (
   db: D1Database,
   subject: "course_id" | "teacher_id",
@@ -645,7 +610,7 @@ app.use("/api/*", async (c, next) => {
     (c.get("publicListPrecomputesChanged") === true ||
       shouldRefreshPublicListPrecomputes(c.req.method, c.req.path))
   ) {
-    await refreshPublicListPrecomputes(c.env.DB);
+    await markPublicListPrecomputesDirty(c.env.DB);
     await purgePublicCatalogCache(c);
   }
   if (!c.res.headers.get("Cache-Control")) {
@@ -894,36 +859,39 @@ app.get("/api/teachers", async (c) => {
 app.get("/api/teachers/:id", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const id = integer(c.req.param("id"));
-  const teacher = await c.env.DB.prepare(
-    `SELECT t.*,
-       COALESCE(public_teacher_course_counts.course_count,0) course_count,
-       (SELECT COUNT(*) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) review_count,
-       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
-     FROM teachers t
-     LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
-     WHERE t.id=?`,
-  )
-    .bind(id)
-    .first();
-  if (!teacher) return fail(c, "教师不存在", 404);
-  const reviewCount = await getPublicTextReviewCount(c.env.DB, "teacher_id", id);
-  const reviewPage = await getPublicReviewPageFor(c, "teacher_id", id, 20, null);
-  const courses = (
-    await c.env.DB.prepare(
+  const [teacherResult, coursesResult] = await c.env.DB.batch<Record<string, unknown>>([
+    c.env.DB.prepare(
+      `SELECT t.*,
+         COALESCE(public_teacher_course_counts.course_count,0) course_count,
+         COALESCE((
+           SELECT SUM(public_review_counts.review_count)
+           FROM public_review_counts
+           WHERE public_review_counts.teacher_id=t.id
+         ),0) review_count,
+         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
+       FROM teachers t
+       LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
+       WHERE t.id=?`,
+    ).bind(id),
+    c.env.DB.prepare(
       `SELECT c.*,COALESCE(visible_counts.review_count,0) review_count,
          (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${publicReviewBinding}) rating
        FROM course_teachers ct
        JOIN courses taught ON taught.id=ct.course_id
        JOIN public_course_canonicals pcc ON pcc.course_id=taught.id
        JOIN courses c ON c.id=pcc.canonical_course_id
-       LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=c.id AND visible_counts.teacher_id=ct.teacher_id
+       LEFT JOIN public_review_counts visible_counts
+         ON visible_counts.course_id=c.id AND visible_counts.teacher_id=ct.teacher_id
        WHERE ct.teacher_id=? AND ${publicCourseVisibleSql("taught")} AND ${publicCourseVisibleSql("c")}
        GROUP BY c.id
        ORDER BY review_count DESC,c.name,c.id`,
-    )
-      .bind(id, id)
-      .all()
-  ).results;
+    ).bind(id, id),
+  ]);
+  const teacher = teacherResult.results[0];
+  if (!teacher) return fail(c, "教师不存在", 404);
+  const reviewCount = Number(teacher.review_count) || 0;
+  const reviewPage = await getPublicReviewPageFor(c, "teacher_id", id, 20, null);
+  const courses = coursesResult.results;
   const publicCourses = courses.map(withPublicCourseCategory);
   const visibleSport = virtualPeSportForTeacherName(
     typeof (teacher as { name?: string }).name === "string"
@@ -979,11 +947,11 @@ app.get("/api/courses/options", async (c) => {
     likeSql("pcc.pinyin_text"),
     isAsciiLetterTerm,
   );
-  const where = `${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const where = `${publicCourseVisibleSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = searchGroup.args;
   const optionCount = () =>
     c.env.DB.prepare(
-      `SELECT COUNT(*) n FROM courses c ${publicCourseMatchJoin} WHERE ${where}`,
+      `SELECT COUNT(*) n FROM courses c ${publicCourseOptionJoin} WHERE ${where}`,
     )
       .bind(...args)
       .first<{ n: number }>()
@@ -993,7 +961,7 @@ app.get("/api/courses/options", async (c) => {
        (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
        GROUP_CONCAT(DISTINCT t.name) teachers,
        COUNT(*) OVER() window_total
-     FROM courses c ${publicCourseMatchJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
+     FROM courses c ${publicCourseOptionJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
      WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
   )
     .bind(...args, size, (page - 1) * size)
@@ -1015,10 +983,12 @@ app.get("/api/courses/options", async (c) => {
 });
 // 院筛选项：公开可见课程的去重非空院系（trim 去重）；为空时前端隐藏院系筛（Issue #203）。
 app.get("/api/courses/departments", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT trim(c.department) department
      FROM courses c
-     WHERE ${publicCourseVisibleSql("c")} AND ${publicPeCanonicalCourseSql("c")}
+     ${publicCourseCanonicalJoin}
+     WHERE ${publicCourseVisibleSql("c")}
        AND trim(COALESCE(c.department,''))<>''
      ORDER BY trim(c.department)`,
   ).all<{ department: string }>();
@@ -1078,48 +1048,45 @@ app.get("/api/courses/:id", async (c) => {
       reviewCount: 0,
     });
   }
-  const course = await c.env.DB.prepare(
-    `SELECT c.*,
-       (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.status='approved'${publicReviewBinding}) rating
-     FROM courses c WHERE c.id=?`,
-  )
-    .bind(id)
-    .first();
+  const [courseResult, reviewCountResult, teachersResult, nameVariantsResult, tagRowsResult] =
+    await c.env.DB.batch<Record<string, unknown>>([
+      c.env.DB.prepare(
+        `SELECT c.*,
+           (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.status='approved'${publicReviewBinding}) rating
+         FROM courses c WHERE c.id=?`,
+      ).bind(id),
+      c.env.DB.prepare(
+        `SELECT COALESCE(SUM(review_count),0) count
+         FROM public_review_counts WHERE course_id=?`,
+      ).bind(id),
+      c.env.DB.prepare(
+        `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count,
+           (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=? AND r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
+         FROM teachers t
+         JOIN course_teachers ct ON ct.teacher_id=t.id
+         JOIN courses taught ON taught.id=ct.course_id
+         JOIN courses requested ON requested.id=?
+         JOIN public_course_canonicals taught_pcc ON taught_pcc.course_id=taught.id
+         JOIN public_course_canonicals requested_pcc ON requested_pcc.course_id=requested.id
+         LEFT JOIN public_review_counts visible_counts
+           ON visible_counts.course_id=requested.id AND visible_counts.teacher_id=t.id
+         WHERE ${publicCourseVisibleSql("taught")}
+           AND taught_pcc.canonical_course_id=requested_pcc.canonical_course_id
+         GROUP BY t.id
+         ORDER BY review_count DESC,t.name,t.id`,
+      ).bind(id, id),
+      c.env.DB.prepare(
+        "SELECT name,created_at FROM course_name_variants WHERE course_id=? ORDER BY name",
+      ).bind(id),
+      c.env.DB.prepare(
+        "SELECT tag FROM course_tags WHERE course_id=? ORDER BY tag",
+      ).bind(id),
+    ]);
+  const course = courseResult.results[0];
   if (!course) return fail(c, "课程不存在", 404);
-  const reviewCount = await getPublicTextReviewCount(c.env.DB, "course_id", id);
-  const teachers = (
-    await c.env.DB.prepare(
-      `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count,
-         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=? AND r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
-       FROM teachers t
-       JOIN course_teachers ct ON ct.teacher_id=t.id
-       JOIN courses taught ON taught.id=ct.course_id
-       JOIN courses requested ON requested.id=?
-       JOIN public_course_canonicals taught_pcc ON taught_pcc.course_id=taught.id
-       JOIN public_course_canonicals requested_pcc ON requested_pcc.course_id=requested.id
-       LEFT JOIN (${publicTextReviewCounts}) visible_counts ON visible_counts.course_id=requested.id AND visible_counts.teacher_id=t.id
-       WHERE ${publicCourseVisibleSql("taught")}
-         AND taught_pcc.canonical_course_id=requested_pcc.canonical_course_id
-       GROUP BY t.id
-       ORDER BY review_count DESC,t.name,t.id`,
-    )
-    .bind(id, id)
-    .all()
-  ).results;
-  const nameVariants = (
-    await c.env.DB.prepare(
-      "SELECT name,created_at FROM course_name_variants WHERE course_id=? ORDER BY name",
-    )
-      .bind(id)
-      .all()
-  ).results;
-  const tagRows = (
-    await c.env.DB.prepare(
-      "SELECT tag FROM course_tags WHERE course_id=? ORDER BY tag",
-    )
-      .bind(id)
-      .all<{ tag: string }>()
-  ).results;
+  const reviewCount = Number(reviewCountResult.results[0]?.count) || 0;
+  const teachers = teachersResult.results;
+  const nameVariants = nameVariantsResult.results;
   // 课程详情不再直接返回评价流：评价按 课程×教师 作用域经 /reviews?teacherId= 获取。
   // 任课关系 AI 总结（#401）按教师 ID 索引随载荷下发；空总结不下发。
   if (id == null) return fail(c, "课程不存在", 404);
@@ -1144,7 +1111,9 @@ app.get("/api/courses/:id", async (c) => {
       viewerId,
     ),
   ]);
-  const tags = tagRows.map((row) => row.tag);
+  const tags = (tagRowsResult.results as Array<{ tag: string }>).map(
+    (row) => row.tag,
+  );
   const decoratedCourse = withCourseReviewScheme({
     ...course,
     tag_csv: tags.join(","),

@@ -351,7 +351,8 @@ async function importHistoricalBatch(
             `INSERT OR IGNORE INTO public_historical_reviews(
                id,course_id,teacher_id,comment,package_contract,
                approved_package_manifest_sha256,approved_catalog_content_sha256
-             ) VALUES(?,?,?,?,?,?,?)`,
+             ) VALUES(?,?,?,?,?,?,?)
+             RETURNING id`,
           )
           .bind(
             reviewId,
@@ -365,7 +366,7 @@ async function importHistoricalBatch(
       ),
     );
     createdCount = insertResults.reduce(
-      (total, result) => total + Number(result.meta.changes ?? 0),
+      (total, result) => total + result.results.length,
       0,
     );
     existingCount += pending.length - createdCount;
