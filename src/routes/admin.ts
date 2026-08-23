@@ -64,6 +64,7 @@ type CatalogRequestRow = {
   department: string;
   pending_review_json: string;
   submitter_hash: string;
+  author_user_id: string | null;
 };
 
 // Admin password sessions are separate from ordinary-user campus JWT.
@@ -377,10 +378,10 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
       c.env.DB.prepare(
         `INSERT INTO reviews(
            course_id,teacher_id,category,overall,comment,comment_format,
-           term,submitter_hash,scheme_key,scheme_version,scores,
+           term,submitter_hash,author_user_id,scheme_key,scheme_version,scores,
            status,reviewed_at
          )
-         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP
+         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP
          FROM courses c,teachers t
          WHERE c.code=? AND t.source_teacher_label=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
@@ -390,6 +391,7 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
         snapshot.commentFormat,
         stashed.term || "",
         request.submitter_hash,
+        request.author_user_id,
         snapshot.schemeKey,
         snapshot.schemeVersion,
         snapshot.scoresJson,

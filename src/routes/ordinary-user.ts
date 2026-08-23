@@ -17,6 +17,11 @@ import { snapshotReviewScores } from "../lib/review-schemes";
 import { isExcludedCourseName } from "../lib/course-catalog-policy";
 import { readSecret, turnstileMode } from "../secrets";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
+import {
+  handleListNotifications,
+  handleMarkAllNotificationsRead,
+  handleUnreadNotificationCount,
+} from "../user-notifications";
 import type { AppContext } from "./types";
 import {
   clean,
@@ -41,6 +46,15 @@ import {
 } from "./request-schemas";
 
 const ordinaryUserRoutes = new Hono<AppEnv>();
+ordinaryUserRoutes.get("/api/user/notifications", handleListNotifications);
+ordinaryUserRoutes.get(
+  "/api/user/notifications/unread-count",
+  handleUnreadNotificationCount,
+);
+ordinaryUserRoutes.post(
+  "/api/user/notifications/read",
+  handleMarkAllNotificationsRead,
+);
 ordinaryUserRoutes.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/endorsement",
@@ -221,8 +235,8 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         dedupeKey,
       ),
       c.env.DB.prepare(
-        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,comment_format,headline,grade,term,submitter_hash,scheme_key,scheme_version,scores,status,reviewed_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
+        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,comment_format,headline,grade,term,submitter_hash,author_user_id,scheme_key,scheme_version,scores,status,reviewed_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
       ).bind(
         courseId,
         teacherId,
@@ -235,6 +249,7 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         grade,
         term,
         ipHash,
+        writer.user.id,
         snapshot.schemeKey,
         snapshot.schemeVersion,
         snapshot.scoresJson,
@@ -325,8 +340,8 @@ ordinaryUserRoutes.post("/api/catalog-requests", async (c) => {
   if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
   const result = await c.env.DB.prepare(
-    `INSERT INTO catalog_requests(kind,course_code,course_name,category,teacher_name,teacher_source_label,department,note,pending_review_json,submitter_hash)
-     VALUES(?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO catalog_requests(kind,course_code,course_name,category,teacher_name,teacher_source_label,department,note,pending_review_json,submitter_hash,author_user_id)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
   )
     .bind(
       kind,
@@ -339,6 +354,7 @@ ordinaryUserRoutes.post("/api/catalog-requests", async (c) => {
       b.note,
       stashedReview ? JSON.stringify(stashedReview) : "",
       ipHash,
+      writer.user.id,
     )
     .run();
   return c.json({
