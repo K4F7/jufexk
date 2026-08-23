@@ -12,12 +12,19 @@ export function usePublicReviewPagination(
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState("");
-  /** Always-current reviews so loadMore accumulates without a stale closure
-   *  and can report the full loaded list back to callers (Issue #212). */
+  /** Always-current reviews / cursor / inflight flag so loadMore stays a
+   *  stable callback and still accumulates without a stale closure
+   *  (Issue #212). */
   const reviewsRef = useRef(reviews);
+  const nextCursorRef = useRef(nextCursor);
+  const isLoadingMoreRef = useRef(isLoadingMore);
+  reviewsRef.current = reviews;
+  nextCursorRef.current = nextCursor;
+  isLoadingMoreRef.current = isLoadingMore;
 
   const reset = useCallback((items: PublicReview[], cursor: string | null) => {
     reviewsRef.current = items;
+    nextCursorRef.current = cursor;
     setReviews(items);
     setNextCursor(cursor);
     setLoadMoreError("");
@@ -25,11 +32,13 @@ export function usePublicReviewPagination(
 
   /** Returns the full accumulated page on success, null on failure/skip. */
   const loadMore = useCallback(async (): Promise<PublicReviewPage | null> => {
-    if (!id || !nextCursor || isLoadingMore) return null;
+    const cursor = nextCursorRef.current;
+    if (!id || !cursor || isLoadingMoreRef.current) return null;
+    isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     setLoadMoreError("");
     try {
-      const query = `${extraQuery ? `${extraQuery}&` : ""}cursor=${encodeURIComponent(nextCursor)}`;
+      const query = `${extraQuery ? `${extraQuery}&` : ""}cursor=${encodeURIComponent(cursor)}`;
       const page = await api<PublicReviewPage>(
         `/api/${subject}/${id}/reviews?${query}`,
       );
@@ -39,6 +48,7 @@ export function usePublicReviewPagination(
         total: page.total,
       };
       reviewsRef.current = accumulated.items;
+      nextCursorRef.current = accumulated.nextCursor;
       setReviews(accumulated.items);
       setNextCursor(page.nextCursor);
       return accumulated;
@@ -46,9 +56,10 @@ export function usePublicReviewPagination(
       setLoadMoreError((error as Error).message);
       return null;
     } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [id, isLoadingMore, nextCursor, subject, extraQuery]);
+  }, [id, subject, extraQuery]);
 
   return {
     reviews,

@@ -52,7 +52,7 @@ export function PublicReviews({
           {rows.map((review, index) => (
             <div key={review.id} role="listitem">
               {index > 0 ? <Separator /> : null}
-              <article className="py-4">
+              <article className="py-4 [content-visibility:auto] [contain-intrinsic-size:auto_6rem]">
                 {counterpart === "course" ? (
                   <p className="m-0 min-w-0 text-sm font-semibold">
                     <RouterAriaLink

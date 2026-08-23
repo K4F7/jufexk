@@ -13,7 +13,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -66,13 +65,43 @@ const ReviewRecognitionPrototypeLazy = import.meta.env.DEV
 
 function useReviewRecognitionPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "review-recognition") return null;
-    const key = (params.get("variant") || "A").toUpperCase();
-    if (key === "A" || key === "B" || key === "C") return key;
-    return "A";
-  }, [params]);
+  if (!import.meta.env.DEV) return null;
+  if (params.get("module") !== "review-recognition") return null;
+  const key = (params.get("variant") || "A").toUpperCase();
+  if (key === "A" || key === "B" || key === "C") return key;
+  return "A";
+}
+
+const TEACHER_ID_RE = /^-?(?:0|[1-9]\d*)$/;
+
+function parseTeacherId(search: string): number | null {
+  const raw = new URLSearchParams(search).get("teacher");
+  if (!raw || !TEACHER_ID_RE.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+function getOrLoad<T>(
+  cache: Map<string, T>,
+  inflight: Map<string, Promise<T>>,
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  const cached = cache.get(key);
+  if (cached !== undefined) return Promise.resolve(cached);
+  let promise = inflight.get(key);
+  if (!promise) {
+    promise = load()
+      .then((value) => {
+        cache.set(key, value);
+        return value;
+      })
+      .finally(() => {
+        inflight.delete(key);
+      });
+    inflight.set(key, promise);
+  }
+  return promise;
 }
 
 /** 右侧栏 dashed 面板（其他老师的这门课 / 这位老师的其他课）。
@@ -141,35 +170,36 @@ export function CourseDetailPage() {
   const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
 
   /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师；
-   * 未选或选中值不在任课表内时落到点评数最多的关系（Issue #402）。 */
-  const selectedTeacherId = useMemo(() => {
-    const raw = new URLSearchParams(location.search).get("teacher");
-    if (!raw || !/^-?(?:0|[1-9]\d*)$/.test(raw)) return null;
-    const n = Number(raw);
-    return Number.isSafeInteger(n) && n > 0 ? n : null;
-  }, [location.search]);
-
-  const course = data?.course ?? null;
+   * 未选或选中值不在任课表内时落到点评数最多的关系（Issue #402）。
+   * URL 已带教师时先按该 ID 拉评价 / 教师课表，与课程详情并行。
+   * 路由 id 已变但仍握着上一门课的 data 时当作未就绪，避免用错教师。 */
+  const urlTeacherId = parseTeacherId(location.search);
+  const course =
+    data?.course != null && id != null && data.course.id === Number(id)
+      ? data.course
+      : null;
   const teachers = course?.teachers ?? [];
   const selectedTeacher =
-    teachers.find((teacher) => teacher.id === selectedTeacherId) ??
+    (urlTeacherId != null
+      ? teachers.find((teacher) => teacher.id === urlTeacherId)
+      : undefined) ??
     teachers[0] ??
     null;
-  const effectiveTeacherId = selectedTeacher?.id ?? null;
+  const effectiveTeacherId = selectedTeacher?.id ?? urlTeacherId;
   const relationTerms = selectedTeacher?.terms ?? [];
   const effectiveReviewTerm = relationTerms.includes(reviewTerm)
     ? reviewTerm
     : "all";
-  const teacherQuery = useMemo(() => {
-    if (!effectiveTeacherId) return "";
+  let teacherQuery = "";
+  if (effectiveTeacherId) {
     const query = new URLSearchParams({
       teacherId: String(effectiveTeacherId),
       sort: reviewSort,
     });
     if (effectiveReviewTerm !== "all") query.set("term", effectiveReviewTerm);
     if (reviewRating !== "all") query.set("rating", reviewRating);
-    return query.toString();
-  }, [effectiveTeacherId, effectiveReviewTerm, reviewRating, reviewSort]);
+    teacherQuery = query.toString();
+  }
 
   const reviewFeed = usePublicReviewPagination("courses", id, teacherQuery);
   /** Session cache of first pages by teacher scope, so switching teachers
@@ -178,6 +208,10 @@ export function CourseDetailPage() {
    *  course-payload arrival never issue a duplicate request. */
   const reviewCacheRef = useRef(new Map<string, PublicReviewPage>());
   const reviewInflightRef = useRef(new Map<string, Promise<PublicReviewPage>>());
+  const teacherCoursesCacheRef = useRef(new Map<string, Course[]>());
+  const teacherCoursesInflightRef = useRef(
+    new Map<string, Promise<Course[]>>(),
+  );
   const submitted = Boolean(
     (location.state as { submitted?: boolean } | null)?.submitted,
   );
@@ -202,13 +236,11 @@ export function CourseDetailPage() {
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
-    if (!course || !effectiveTeacherId) {
+    if (!id || !effectiveTeacherId) {
       reviewFeed.reset([], null);
       setFilteredReviewTotal(0);
       setReviewsLoading(false);
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
     const cacheKey = `${id}:${teacherQuery}`;
     // 刚提交的评价立刻公开：绕过会话缓存重拉第一页。
@@ -218,28 +250,17 @@ export function CourseDetailPage() {
       reviewFeed.reset(cached.items, cached.nextCursor);
       setFilteredReviewTotal(cached.total ?? cached.items.length);
       setReviewsLoading(false);
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
     reviewFeed.reset([], null);
     setReviewsLoading(true);
-    let promise = reviewInflightRef.current.get(cacheKey);
-    if (!promise) {
-      promise = api<PublicReviewPage>(
-        `/api/courses/${id}/reviews?${teacherQuery}`,
-      );
-      reviewInflightRef.current.set(cacheKey, promise);
-      promise
-        .then((page) => {
-          reviewCacheRef.current.set(cacheKey, page);
-          reviewInflightRef.current.delete(cacheKey);
-        })
-        .catch(() => {
-          reviewInflightRef.current.delete(cacheKey);
-        });
-    }
-    promise
+    getOrLoad(
+      reviewCacheRef.current,
+      reviewInflightRef.current,
+      cacheKey,
+      () =>
+        api<PublicReviewPage>(`/api/courses/${id}/reviews?${teacherQuery}`),
+    )
       .then((page) => {
         if (!cancelled) {
           reviewFeed.reset(page.items, page.nextCursor);
@@ -255,7 +276,7 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, course, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted]);
+  }, [id, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted]);
 
   /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复。 */
   const handleLoadMore = useCallback(async () => {
@@ -267,12 +288,29 @@ export function CourseDetailPage() {
 
   // 右侧栏「这位老师的其他课」：按选中教师拉取其任课课程。
   useEffect(() => {
+    if (!effectiveTeacherId) {
+      setTeacherCourses(null);
+      return;
+    }
+    const cacheKey = String(effectiveTeacherId);
+    const cached = teacherCoursesCacheRef.current.get(cacheKey);
+    if (cached) {
+      setTeacherCourses(cached);
+      return;
+    }
     setTeacherCourses(null);
-    if (!effectiveTeacherId) return;
     let cancelled = false;
-    api<{ courses?: Course[] }>(`/api/teachers/${effectiveTeacherId}`)
-      .then((d) => {
-        if (!cancelled) setTeacherCourses(d.courses ?? []);
+    getOrLoad(
+      teacherCoursesCacheRef.current,
+      teacherCoursesInflightRef.current,
+      cacheKey,
+      () =>
+        api<{ courses?: Course[] }>(`/api/teachers/${effectiveTeacherId}`).then(
+          (d) => d.courses ?? [],
+        ),
+    )
+      .then((courses) => {
+        if (!cancelled) setTeacherCourses(courses);
       })
       .catch(() => {
         if (!cancelled) setTeacherCourses([]);

@@ -38,7 +38,7 @@ export function CourseRelationRow({
   return (
     <RouterAriaLink
       to={href}
-      className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-surface-secondary/60 hover:no-underline!"
+      className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-surface-secondary/60 hover:no-underline! [content-visibility:auto] [contain-intrinsic-size:auto_5.5rem]"
     >
       <span className="block text-[15px] font-medium text-accent">
         {relation.name}
