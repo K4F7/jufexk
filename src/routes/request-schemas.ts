@@ -36,6 +36,13 @@ export const reviewSubmissionSchema = z
     turnstileToken: cleanedField(2048),
     scores: unknownField,
     comment: unknownField,
+    // headline/grade 的必填与长度校验在创建路径内给出具体错误文案（#444）。
+    headline: unknownField.transform((value) =>
+      typeof value === "string" ? value.trim() : "",
+    ),
+    grade: unknownField.transform((value) =>
+      typeof value === "string" ? value.trim() : "",
+    ),
     term: cleanedField(30),
   })
   .passthrough();

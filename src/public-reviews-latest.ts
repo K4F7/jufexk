@@ -3,7 +3,11 @@ import {
   publicCourseCategory,
   publicCourseDisplayName,
 } from "./lib/public-course-presentation";
-import { publicCreatedAt } from "./lib/public-review-fields";
+import {
+  publicCreatedAt,
+  publicGrade,
+  publicHeadline,
+} from "./lib/public-review-fields";
 import { publicReviewBindingSql } from "./review-summary";
 
 const fail = (c: Context, error: string, status = 400) =>
@@ -35,7 +39,7 @@ const decodeLatestCursor = (value: string | undefined): LatestCursor | null => {
 
 const latestUnion = `
   SELECT 'historical:' || phr.id id, phr.course_id, phr.teacher_id, phr.comment,
-    NULL comment_format,
+    NULL comment_format, '' headline, NULL grade,
     c.name course_name, c.code course_code, t.name teacher_name,
     phr.imported_at created_at
   FROM public_historical_reviews phr
@@ -43,7 +47,7 @@ const latestUnion = `
   JOIN teachers t ON t.id=phr.teacher_id
   UNION ALL
   SELECT 'legacy:' || lr.id id, lr.course_id, lr.teacher_id, lr.comment,
-    NULL comment_format,
+    NULL comment_format, '' headline, NULL grade,
     c.name course_name, c.code course_code, t.name teacher_name,
     lr.created_at
   FROM legacy_reviews lr
@@ -52,7 +56,7 @@ const latestUnion = `
   WHERE lr.status='approved' AND trim(COALESCE(lr.comment,''))<>''
   UNION ALL
   SELECT 'review:' || r.id id, r.course_id, r.teacher_id, r.comment,
-    r.comment_format,
+    r.comment_format, r.headline, r.grade,
     c.name course_name, c.code course_code, t.name teacher_name,
     r.created_at
   FROM reviews r
@@ -71,7 +75,7 @@ export async function handleLatestPublicReviews(c: Context) {
     ? "WHERE created_at<? OR (created_at=? AND id<?)"
     : "";
   const raw = await c.env.DB.prepare(
-    `SELECT id,course_id,teacher_id,comment,comment_format,course_name,course_code,teacher_name,created_at
+    `SELECT id,course_id,teacher_id,comment,comment_format,headline,grade,course_name,course_code,teacher_name,created_at
      FROM (${latestUnion}) latest_reviews
      ${cursorFilter}
      ORDER BY created_at DESC, id DESC
@@ -88,6 +92,8 @@ export async function handleLatestPublicReviews(c: Context) {
     teacher_id: number;
     comment: string;
     comment_format: string | null;
+    headline: string | null;
+    grade: string | null;
     course_name: string;
     course_code: string;
     teacher_name: string;
@@ -99,12 +105,15 @@ export async function handleLatestPublicReviews(c: Context) {
   return c.json({
     items: page.map((row) => {
       const rawName = row.course_name || "";
+      const grade = publicGrade(row.grade);
       return {
         id: row.id,
         course_id: row.course_id,
         teacher_id: row.teacher_id,
         comment: row.comment,
         comment_format: row.comment_format || null,
+        headline: publicHeadline(row.headline),
+        ...(grade == null ? {} : { grade }),
         course_name: publicCourseDisplayName(rawName),
         course_code: row.course_code,
         teacher_name: row.teacher_name,

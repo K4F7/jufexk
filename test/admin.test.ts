@@ -380,6 +380,7 @@ describe("review protection", () => {
             gain: 2,
           },
           comment,
+          headline: "一句话总结",
         }),
       });
     try {

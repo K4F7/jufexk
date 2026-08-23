@@ -154,6 +154,12 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
     return fail(c, "人机验证失败，请重试", 403);
   if (!courseId || !teacherId || !overall)
     return fail(c, "请选择有效的课程、任课教师和总体评分");
+  // 一句话总结必填（#444）；成绩选填，空串存 NULL，不进 AI 总结提示词。
+  const headline = b.headline;
+  if (!headline) return fail(c, "请填写一句话总结本课");
+  if (headline.length > 80) return fail(c, "一句话总结不能超过 80 字");
+  if (b.grade.length > 20) return fail(c, "成绩不能超过 20 字");
+  const grade = b.grade || null;
   const course = offeringId
     ? await c.env.DB.prepare(
         `SELECT c.id course_id,c.category,c.scheme_key,
@@ -215,8 +221,8 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         dedupeKey,
       ),
       c.env.DB.prepare(
-        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,comment_format,term,submitter_hash,scheme_key,scheme_version,scores,status,reviewed_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
+        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,comment_format,headline,grade,term,submitter_hash,scheme_key,scheme_version,scores,status,reviewed_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
       ).bind(
         courseId,
         teacherId,
@@ -225,6 +231,8 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         overall,
         snapshot.comment,
         snapshot.commentFormat,
+        headline,
+        grade,
         term,
         ipHash,
         snapshot.schemeKey,

@@ -38,6 +38,8 @@ import {
 import { deriveCourseCatalogMeta } from "../lib/course-metadata";
 import {
   publicCreatedAt,
+  publicGrade,
+  publicHeadline,
   publicOverall,
   publicTerm,
 } from "../lib/public-review-fields";
@@ -264,12 +266,14 @@ const getPublicReviewPage = async (
   const { results } = await db
     .prepare(
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
+         headline,grade,
          course_name,course_code,teacher_name,endorsement_count,
          scheme_key,scheme_version,scores,overall,term,created_at,
          COUNT(*) OVER() filtered_total
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
            phr.course_id,phr.teacher_id,phr.comment,NULL comment_format,
+           '' headline,NULL grade,
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
@@ -281,6 +285,7 @@ const getPublicReviewPage = async (
          UNION ALL
          SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
            lr.course_id,lr.teacher_id,lr.comment,NULL comment_format,
+           '' headline,NULL grade,
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
@@ -293,6 +298,7 @@ const getPublicReviewPage = async (
          UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,r.comment_format,
+           r.headline,r.grade,
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
            r.scheme_key,r.scheme_version,r.scores,
@@ -346,6 +352,7 @@ const getPublicReviewPage = async (
           scheme_version: schemeVersion,
           scores,
           filtered_total: _filteredTotal,
+          grade: rawGrade,
           ...review
         }) => {
           const dimensionAverage = publicDimensionAverage({
@@ -358,8 +365,11 @@ const getPublicReviewPage = async (
             schemeVersion,
             scores,
           });
+          const grade = publicGrade(rawGrade);
           return {
             ...review,
+            headline: publicHeadline(review.headline),
+            ...(grade == null ? {} : { grade }),
             overall: publicOverall(review.overall),
             term: publicTerm(review.term),
             created_at: publicCreatedAt(review.created_at),
