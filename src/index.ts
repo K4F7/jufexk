@@ -97,6 +97,11 @@ import {
   refreshPublicListPrecomputes,
   shouldRefreshPublicListPrecomputes,
 } from "./public-list-precompute";
+import {
+  getCourseRelationSummaries,
+  publicReviewBindingSql,
+  scheduleRelationSummaryRecompute,
+} from "./review-summary";
 
 type Bindings = {
   DB: D1Database;
@@ -122,6 +127,9 @@ type Bindings = {
   MAIL_FROM?: string;
   MAIL_DELIVERY_TOKEN?: string | { get(): Promise<string> };
   CAS_CHALLENGE_SECRET?: string | { get(): Promise<string> };
+  OPENAI_BASE_URL?: string;
+  OPENAI_API_KEY?: string | { get(): Promise<string> };
+  OPENAI_MODEL?: string;
 };
 type Vars = {
   adminSession?: string;
@@ -386,23 +394,8 @@ const originOk = (c: any) => {
 const LOCAL_UNUSED_TURNSTILE_SECRET = "local-unused-turnstile";
 const skipTurnstile = (secret: string) =>
   secret === LOCAL_UNUSED_TURNSTILE_SECRET;
-const publicReviewBinding = `
-       AND EXISTS(
-         SELECT 1 FROM course_teachers public_relation
-         WHERE public_relation.course_id=r.course_id
-           AND public_relation.teacher_id=r.teacher_id
-       )
-       AND (
-         r.offering_id IS NULL OR EXISTS(
-           SELECT 1
-           FROM offerings public_offering
-           JOIN offering_teachers public_offering_teacher
-             ON public_offering_teacher.offering_id=public_offering.id
-            AND public_offering_teacher.teacher_id=r.teacher_id
-           WHERE public_offering.id=r.offering_id
-             AND public_offering.course_id=r.course_id
-         )
-       )`;
+// 公开评价绑定规则的唯一来源在 review-summary.ts（AI 总结收集同一集合）。
+const publicReviewBinding = publicReviewBindingSql;
 const publicTextReviewCounts = `
   SELECT course_id,teacher_id,COUNT(*) review_count
   FROM (
@@ -1064,6 +1057,8 @@ app.get("/api/courses/:id", async (c) => {
       .all<{ tag: string }>()
   ).results;
   // 课程详情不再直接返回评价流：评价按 课程×教师 作用域经 /reviews?teacherId= 获取。
+  // 任课关系 AI 总结（#401）按教师 ID 索引随载荷下发；空总结不下发。
+  const summaries = await getCourseRelationSummaries(c.env.DB, id);
   return c.json({
     course: {
       ...withCourseReviewScheme({
@@ -1074,6 +1069,7 @@ app.get("/api/courses/:id", async (c) => {
       nameVariants,
     },
     reviewCount,
+    summaries,
   });
 });
 app.get("/api/courses/:id/reviews", async (c) => {
@@ -1307,6 +1303,8 @@ app.post("/api/reviews", async (c) => {
     throw error;
   }
   markPublicListPrecomputesChanged(c);
+  // 新公开评价：后台重算该任课关系总结（24h 去抖）。
+  await scheduleRelationSummaryRecompute(c, courseId, teacherId);
   return c.json({ ok: true, message: "评价已发布" });
 });
 app.post("/api/catalog-requests", async (c) => {
@@ -1565,6 +1563,14 @@ app.post("/api/admin/historical-review-v5-imports", async (c) => {
       c.env.V5_IMPORT_MANIFEST_SHA256 || "manifest",
       c.env.V5_IMPORT_ARTIFACT_SHA256 || "manifest",
     );
+    // 批量引入公开历史评价后，对涉及的任课关系后台去抖重算总结（#401）。
+    if (result.created) {
+      const { results: pairs } = await c.env.DB.prepare(
+        "SELECT DISTINCT course_id,teacher_id FROM public_historical_reviews",
+      ).all<{ course_id: number; teacher_id: number }>();
+      for (const pair of pairs)
+        await scheduleRelationSummaryRecompute(c, pair.course_id, pair.teacher_id);
+    }
     return c.json(result, result.created ? 201 : 200);
   } catch (error) {
     return historicalBatchFailure(c, error);
@@ -1854,6 +1860,9 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       reviewId: number | null;
     }>();
   markPublicListPrecomputesChanged(c);
+  // 补充申请批准连带暂存评价公开：后台去抖重算该关系总结（#401）。
+  if (approved?.reviewId)
+    await scheduleRelationSummaryRecompute(c, approved.courseId, approved.teacherId);
   return c.json({ ok: true, ...approved });
 });
 app.get("/api/admin/catalog-requests/:id/events", async (c) => {
@@ -1907,14 +1916,30 @@ app.patch("/api/admin/reviews/:id", async (c) => {
       : fail(c, "评价不存在", 404);
   }
   if (status === "approved") markPublicListPrecomputesChanged(c);
+  // 批准引入新公开文字（去抖重算）；驳回则按新集合立刻重算（#401）。
+  const moderated = await c.env.DB.prepare(
+    "SELECT course_id,teacher_id FROM reviews WHERE id=?",
+  )
+    .bind(id)
+    .first<{ course_id: number; teacher_id: number | null }>();
+  await scheduleRelationSummaryRecompute(c, moderated?.course_id, moderated?.teacher_id, {
+    immediate: status === "rejected",
+  });
   return c.json({ ok: true });
 });
 app.patch("/api/admin/reviews/:id/content", async (c) => {
   const b = await c.req.json<Record<string, unknown>>(),
     id = integer(c.req.param("id"));
-  const current = await c.env.DB.prepare("SELECT id,status FROM reviews WHERE id=?")
+  const current = await c.env.DB.prepare(
+    "SELECT id,status,course_id,teacher_id FROM reviews WHERE id=?",
+  )
     .bind(id)
-    .first<{ id: number; status: string }>();
+    .first<{
+      id: number;
+      status: string;
+      course_id: number;
+      teacher_id: number | null;
+    }>();
   if (!current) return fail(c, "评价不存在", 404);
   const scoreFields = [
     ["clarity", "clarity"],
@@ -1965,7 +1990,11 @@ app.patch("/api/admin/reviews/:id/content", async (c) => {
   ).bind(id, clean(b.note, 500), id);
   const results = await c.env.DB.batch([update, event]);
   if (!(results[0].meta.changes || 0)) return fail(c, "评价不存在", 404);
-  if (current.status === "approved") markPublicListPrecomputesChanged(c);
+  if (current.status === "approved") {
+    markPublicListPrecomputesChanged(c);
+    // 已公开评价正文被修改：后台去抖重算该关系总结（#401）。
+    await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id);
+  }
   return c.json({ ok: true });
 });
 app.get("/api/admin/reviews/:id/events", async (c) => {
@@ -2041,10 +2070,10 @@ app.patch("/api/admin/legacy-reviews/:id", async (c) => {
   if (!["approved", "rejected"].includes(status)) return fail(c, "无效状态");
   if (status === "rejected" && !note) return fail(c, "驳回时必须填写理由");
   const current = await c.env.DB.prepare(
-    "SELECT status FROM legacy_reviews WHERE id=?",
+    "SELECT status,course_id,teacher_id FROM legacy_reviews WHERE id=?",
   )
     .bind(id)
-    .first<{ status: string }>();
+    .first<{ status: string; course_id: number | null; teacher_id: number | null }>();
   if (!current) return fail(c, "历史评价不存在", 404);
   if (current.status !== "pending") return fail(c, "历史评价已经审核", 409);
   const approvalBindingGuard = status === "approved"
@@ -2084,6 +2113,10 @@ app.patch("/api/admin/legacy-reviews/:id", async (c) => {
   if (!(results[0].meta.changes || 0))
     return fail(c, "历史评价绑定已经失效，或评价已经审核", 409);
   if (status === "approved") markPublicListPrecomputesChanged(c);
+  // 历史评价批准引入公开文字（去抖）；驳回立刻按新集合重算（#401）。
+  await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id, {
+    immediate: status === "rejected",
+  });
   return c.json({ ok: true, id, status });
 });
 app.get("/api/admin/legacy-reviews/:id/events", async (c) => {

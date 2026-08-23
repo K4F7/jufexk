@@ -125,6 +125,12 @@ export type PublicReviewPage = {
   nextCursor: string | null;
 };
 
+/** 任课关系 AI 总结（#401）：服务端已渲染并消毒的 HTML + 最近重算时间。 */
+export type RelationSummary = {
+  html: string;
+  updatedAt: string | null;
+};
+
 export type LegacyReview = {
   id?: number;
   course_name?: string;

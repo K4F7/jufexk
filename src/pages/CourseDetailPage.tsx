@@ -1,6 +1,7 @@
 import { Chip, Typography } from "@heroui/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { CourseAiSummary } from "../components/CourseAiSummary";
 import { CourseTeacherTable } from "../components/CourseTeacherTable";
 import {
   DetailErrorAlert,
@@ -17,6 +18,7 @@ import { categoryLabel } from "../lib/labels";
 import type {
   Course,
   PublicReviewPage,
+  RelationSummary,
   Review,
   Teacher,
 } from "../lib/types";
@@ -24,6 +26,8 @@ import type {
 type Detail = {
   course: Course & { teachers: Teacher[] };
   reviewCount: number;
+  /** 任课关系 AI 总结（#401），按教师 ID 索引；空总结不下发。 */
+  summaries?: Record<string, RelationSummary>;
 };
 
 /** DEV-only: live course-detail-summary A/B/C compare. */
@@ -286,6 +290,11 @@ export function CourseDetailPage() {
   const selectedTeacher = (c.teachers ?? []).find(
     (teacher) => teacher.id === selectedTeacherId,
   );
+  /** 选中教师且该关系已有总结时才出现 AI 总结块（简介下、点评上）。 */
+  const relationSummary =
+    selectedTeacherId && data.summaries
+      ? data.summaries[String(selectedTeacherId)]
+      : undefined;
   /** Restore catalog filters; drop prototype module/variant and the
    * course-page teacher selection so back lands on the production catalog. */
   const goBack = () => {
@@ -400,6 +409,10 @@ export function CourseDetailPage() {
           onBack={selectedTeacherId ? goBackToTeachers : goBack}
         />
       )}
+
+      {selectedTeacherId && relationSummary?.html ? (
+        <CourseAiSummary summary={relationSummary} />
+      ) : null}
 
       {selectedTeacherId ? (
         <div className="mb-6">
