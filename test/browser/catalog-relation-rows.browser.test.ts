@@ -193,6 +193,15 @@ test("relation rows show rating, review count, and four-dim labels", async ({
 
   // 整行是指向 课程×教师 详情的链接。
   await expect(first).toHaveAttribute("href", /\/courses\/8\?.*teacher=9/);
+
+  // HeroUI Link 默认 w-fit；目录行必须拉齐筛选框所在的内容区全宽。
+  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  const rowBox = await first.boundingBox();
+  const filterBounds = await filterBox.boundingBox();
+  expect(rowBox).toBeTruthy();
+  expect(filterBounds).toBeTruthy();
+  expect(rowBox!.width).toBeGreaterThan(filterBounds!.width * 0.95);
+
   await first.click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
 });
