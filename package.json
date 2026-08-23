@@ -34,6 +34,7 @@
     "secrets:sync-local": "tsx scripts/secrets/sync-local.ts"
   },
   "dependencies": {
+    "@gravity-ui/icons": "^2.21.0",
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
     "@tiptap/pm": "^3.30.2",

@@ -64,6 +64,9 @@ export const CURRENT_SCORES_JSON = JSON.stringify({
 
 export const REQUIRED_NOTE = "这是一条足够十个字的补充说明";
 
+/** 一句话总结本课（#444）：新投稿必填，测试默认携带。 */
+export const REQUIRED_HEADLINE = "一句话总结：值得选";
+
 export const V1_OFFLINE_SCORES = {
   teaching: 4,
   attendance: 3,

@@ -1,6 +1,10 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { CURRENT_SCORES, REQUIRED_NOTE } from "./review-score-fixtures";
+import {
+  CURRENT_SCORES,
+  REQUIRED_HEADLINE,
+  REQUIRED_NOTE,
+} from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -15,6 +19,7 @@ const reviewPayload = {
   overall: 5,
   scores: CURRENT_SCORES,
   comment: REQUIRED_NOTE,
+  headline: REQUIRED_HEADLINE,
 };
 
 const catalogPayload = {

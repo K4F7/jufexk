@@ -1,6 +1,10 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { CURRENT_SCORES, REQUIRED_NOTE } from "./review-score-fixtures";
+import {
+  CURRENT_SCORES,
+  REQUIRED_HEADLINE,
+  REQUIRED_NOTE,
+} from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -50,7 +54,11 @@ async function submitReviewFromIp(body: Record<string, unknown>, ip: string) {
       ...ordinaryWriteHeaders(writeSession),
       "CF-Connecting-IP": ip,
     },
-    body: JSON.stringify({ comment: REQUIRED_NOTE, ...body }),
+    body: JSON.stringify({
+      comment: REQUIRED_NOTE,
+      headline: REQUIRED_HEADLINE,
+      ...body,
+    }),
   });
 }
 

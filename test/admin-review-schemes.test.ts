@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CURRENT_SCORES,
   CURRENT_SCORES_JSON,
+  REQUIRED_HEADLINE,
   REQUIRED_NOTE,
   V1_OFFLINE_SCORES,
 } from "./review-score-fixtures";
@@ -50,7 +51,7 @@ async function submit(body: Record<string, unknown>) {
       ...ordinaryWriteHeaders(writeSession),
       "CF-Connecting-IP": `203.0.113.${ipSequence++}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ headline: REQUIRED_HEADLINE, ...body }),
   });
 }
 
@@ -270,8 +271,8 @@ describe("admin review scheme and mooc tag maintenance", () => {
     const inserted = await env.DB.prepare(
       `INSERT INTO reviews(
         course_id,teacher_id,category,overall,status,submitter_hash,comment,
-        scheme_key,scheme_version
-      ) VALUES(1,1,'general',4,'pending','admin-scheme-list','规则审核条目','pe',1)`,
+        headline,grade,scheme_key,scheme_version
+      ) VALUES(1,1,'general',4,'pending','admin-scheme-list','规则审核条目','审核一句话','W','pe',1)`,
     ).run();
     const auth = await login();
     const response = await SELF.fetch(
@@ -280,10 +281,18 @@ describe("admin review scheme and mooc tag maintenance", () => {
     );
     expect(response.status).toBe(200);
     const body = await response.json<{
-      items: Array<{ scheme_key: string; scheme_version: number; comment: string }>;
+      items: Array<{
+        scheme_key: string;
+        scheme_version: number;
+        comment: string;
+        headline: string;
+        grade: string | null;
+      }>;
     }>();
     expect(body.items[0]).toMatchObject({
       comment: "规则审核条目",
+      headline: "审核一句话",
+      grade: "W",
       scheme_key: "pe",
       scheme_version: 1,
     });

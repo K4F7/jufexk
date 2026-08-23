@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CURRENT_SCORES,
   CURRENT_SCORES_JSON,
+  REQUIRED_HEADLINE,
   REQUIRED_NOTE,
   TIER3_QUESTIONS,
   V1_OFFLINE_SCORES,
@@ -25,7 +26,11 @@ async function submit(body: Record<string, unknown>) {
       ...ordinaryWriteHeaders(writeSession),
       "CF-Connecting-IP": `203.0.113.${ipSequence++}`,
     },
-    body: JSON.stringify({ comment: REQUIRED_NOTE, ...body }),
+    body: JSON.stringify({
+      comment: REQUIRED_NOTE,
+      headline: REQUIRED_HEADLINE,
+      ...body,
+    }),
   });
 }
 
@@ -63,7 +68,7 @@ async function createBoundCourse(
 
 async function insertedReview(courseId: number) {
   return env.DB.prepare(
-    "SELECT scheme_key,scheme_version,scores,overall,comment,comment_format,status FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
+    "SELECT scheme_key,scheme_version,scores,overall,comment,comment_format,headline,grade,status FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
   )
     .bind(courseId)
     .first<{
@@ -73,6 +78,8 @@ async function insertedReview(courseId: number) {
       overall: number;
       comment: string;
       comment_format: string | null;
+      headline: string;
+      grade: string | null;
       status: string;
     }>();
 }
@@ -103,6 +110,8 @@ describe("review submission required scheme scores", () => {
       scores: CURRENT_SCORES_JSON,
       overall: 5,
       comment: REQUIRED_NOTE,
+      headline: REQUIRED_HEADLINE,
+      grade: null,
       status: "approved",
     });
   });
@@ -414,6 +423,184 @@ describe("review submission required scheme scores", () => {
         env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId),
       ]);
     }
+  });
+});
+
+describe("review headline and optional grade (issue #444)", () => {
+  it("rejects a missing, blank, or non-string headline with 400", async () => {
+    const courseId = await createBoundCourse("general", "HL001");
+    const missing = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      headline: undefined,
+    });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toMatchObject({
+      error: "请填写一句话总结本课",
+    });
+
+    const blank = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      headline: "   ",
+    });
+    expect(blank.status).toBe(400);
+
+    const nonString = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      headline: 42,
+    });
+    expect(nonString.status).toBe(400);
+  });
+
+  it("rejects a headline longer than 80 characters", async () => {
+    const courseId = await createBoundCourse("general", "HL002");
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      headline: "长".repeat(81),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "一句话总结不能超过 80 字",
+    });
+    const exact = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      headline: "准".repeat(80),
+    });
+    expect(exact.status).toBe(200);
+  });
+
+  it("trims and stores the headline; grade stays null when omitted or blank", async () => {
+    const courseId = await createBoundCourse("general", "HL003");
+    const omitted = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      headline: "  划重点多的课  ",
+    });
+    expect(omitted.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({
+      headline: "划重点多的课",
+      grade: null,
+    });
+
+    const blank = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      grade: "   ",
+    });
+    expect(blank.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({ grade: null });
+  });
+
+  it("stores a trimmed grade and rejects grades longer than 20 characters", async () => {
+    const courseId = await createBoundCourse("general", "HL004");
+    const oversize = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      grade: "9".repeat(21),
+    });
+    expect(oversize.status).toBe(400);
+    expect(await oversize.json()).toMatchObject({
+      error: "成绩不能超过 20 字",
+    });
+
+    const accepted = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      grade: "  A-  ",
+    });
+    expect(accepted.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({ grade: "A-" });
+  });
+
+  it("projects headline and grade into the public feed and the latest stream", async () => {
+    const courseId = await createBoundCourse("general", "HL005");
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 5,
+      scores: CURRENT_SCORES,
+      headline: "HL005 一句话",
+      grade: "95",
+    });
+    expect(response.status).toBe(200);
+
+    const feed = await SELF.fetch(
+      `${origin}/api/courses/${courseId}/reviews?teacherId=1`,
+    );
+    expect(feed.status).toBe(200);
+    const feedItems = (
+      (await feed.json()) as {
+        items: Array<{ headline?: string; grade?: string | null }>;
+      }
+    ).items;
+    expect(feedItems).toHaveLength(1);
+    expect(feedItems[0]).toMatchObject({ headline: "HL005 一句话", grade: "95" });
+
+    const latest = await SELF.fetch(`${origin}/api/reviews/latest?pageSize=50`);
+    expect(latest.status).toBe(200);
+    const latestItems = (
+      (await latest.json()) as {
+        items: Array<{ id: string; headline?: string; grade?: string | null }>;
+      }
+    ).items;
+    const own = latestItems.find((item) => item.headline === "HL005 一句话");
+    expect(own).toBeTruthy();
+    expect(own).toMatchObject({ grade: "95" });
+  });
+
+  it("keeps old rows without headline or grade additive-safe in public payloads", async () => {
+    const courseId = await createBoundCourse("general", "HL006");
+    await env.DB.prepare(
+      "INSERT INTO reviews(course_id,teacher_id,category,overall,comment,status,submitter_hash) VALUES(?,1,'general',4,'旧行没有一句话总结','approved','hl006-old')",
+    )
+      .bind(courseId)
+      .run();
+
+    const feed = await SELF.fetch(
+      `${origin}/api/courses/${courseId}/reviews?teacherId=1`,
+    );
+    const items = (
+      (await feed.json()) as {
+        items: Array<{ headline?: string; grade?: string | null }>;
+      }
+    ).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]?.headline).toBe("");
+    expect(items[0]).not.toHaveProperty("grade");
+
+    const latest = await SELF.fetch(`${origin}/api/reviews/latest?pageSize=50`);
+    const latestItems = (
+      (await latest.json()) as {
+        items: Array<{ comment: string; headline?: string }>;
+      }
+    ).items;
+    const own = latestItems.find(
+      (item) => item.comment === "旧行没有一句话总结",
+    );
+    expect(own?.headline).toBe("");
+    expect(own).not.toHaveProperty("grade");
   });
 });
 

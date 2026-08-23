@@ -5,6 +5,7 @@ describe("formatCredits", () => {
   it("shows exactly one decimal for finite credits", () => {
     expect(formatCredits(3)).toBe("3.0");
     expect(formatCredits(3.0)).toBe("3.0");
+    expect(formatCredits(2)).toBe("2.0");
     expect(formatCredits(2.5)).toBe("2.5");
     expect(formatCredits(0.5)).toBe("0.5");
     expect(formatCredits(0)).toBe("0.0");

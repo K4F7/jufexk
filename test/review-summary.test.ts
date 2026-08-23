@@ -189,6 +189,23 @@ describe("collectRelationReviewTexts", () => {
     expect(texts[0].recognition).toBe(2);
     expect(texts[1].recognition).toBe(1);
   });
+
+  it("never leaks headline or grade into summary prompt inputs (#444)", async () => {
+    const courseId = await createBoundCourse("PRIV");
+    await env.DB.prepare(
+      `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,headline,grade,status,reviewed_at)
+       VALUES(?,1,'general',4,'正文足够十个字的公开评价','隐私一句话标记','隐私成绩标记','approved',CURRENT_TIMESTAMP)`,
+    )
+      .bind(courseId)
+      .run();
+
+    const texts = await collectRelationReviewTexts(env.DB, courseId, 1);
+    expect(texts.map((review) => review.text)).toEqual([
+      "正文足够十个字的公开评价",
+    ]);
+    expect(JSON.stringify(texts)).not.toContain("隐私一句话标记");
+    expect(JSON.stringify(texts)).not.toContain("隐私成绩标记");
+  });
 });
 
 describe("recomputeRelationSummary", () => {
@@ -392,6 +409,7 @@ describe("summary recompute triggers", () => {
           overall: 4,
           scores: CURRENT_SCORES,
           comment,
+          headline: "一句话总结",
         }),
       }),
       envWithGateway(),

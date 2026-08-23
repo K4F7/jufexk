@@ -17,6 +17,6 @@ export function scoreText(value?: number | null) {
 }
 
 export function formatCredits(value?: number | null) {
-  if (value == null || !Number.isFinite(Number(value))) return "—";
-  return Number(value).toFixed(1);
+  if (value == null || !Number.isFinite(value)) return "—";
+  return value.toFixed(1);
 }
