@@ -5,6 +5,7 @@ import {
   ToggleButtonGroup,
   type Key,
 } from "@heroui/react";
+import { Placeholder } from "@tiptap/extensions";
 import {
   EditorContent,
   useEditor,
@@ -39,19 +40,23 @@ function normalizeLinkHref(raw: string): string | null {
 }
 
 /**
- * 补充说明富文本编辑器（issue #400）：Tiptap starter kit 最小子集
+ * 详细评价富文本编辑器（issue #400）：Tiptap starter kit 最小子集
  * （加粗、斜体、链接、列表、引用），工具栏用官方 HeroUI 按钮，
- * 不自定义编辑器皮肤。
+ * 不自定义编辑器皮肤。placeholder 仅为空态提示（data-placeholder
+ * 装饰），从不进入提交内容。
  */
 export function ReviewNoteEditor({
   ariaLabel,
   isInvalid,
   editorRef,
+  placeholder,
   onChange,
 }: {
   ariaLabel: string;
   isInvalid?: boolean;
   editorRef: React.MutableRefObject<Editor | null>;
+  /** 空编辑器时展示的占位提示（可含换行），不进入提交内容。 */
+  placeholder?: string;
   onChange: (value: ReviewNoteValue) => void;
 }) {
   const [linkRowOpen, setLinkRowOpen] = useState(false);
@@ -73,6 +78,7 @@ export function ReviewNoteEditor({
           },
         },
       }),
+      ...(placeholder ? [Placeholder.configure({ placeholder })] : []),
     ],
     editorProps: {
       attributes: {
@@ -156,7 +162,7 @@ export function ReviewNoteEditor({
     <div className="review-note-editor" data-invalid={isInvalid || undefined}>
       <div className="review-note-toolbar">
         <ToggleButtonGroup
-          aria-label="补充说明格式"
+          aria-label="详细评价格式"
           selectedKeys={selectedKeys}
           selectionMode="multiple"
           size="sm"

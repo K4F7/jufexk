@@ -121,6 +121,9 @@ const CourseReviewItem = memo(function CourseReviewItem({
           {review.term ? (
             <span className="font-normal text-muted">{review.term}</span>
           ) : null}
+          {review.grade ? (
+            <span className="font-normal text-muted">成绩 {review.grade}</span>
+          ) : null}
         </span>
         {date ? (
           <time className="text-[12px] text-muted" dateTime={date}>
@@ -146,6 +149,11 @@ const CourseReviewItem = memo(function CourseReviewItem({
             </Chip.Label>
           </Chip>
         </div>
+      ) : null}
+      {review.headline ? (
+        <p className="mb-0 mt-2 break-words text-[14px] font-semibold">
+          {review.headline}
+        </p>
       ) : null}
       <div className="mt-2">
         <ReviewNoteContent

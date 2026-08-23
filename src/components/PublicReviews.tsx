@@ -81,12 +81,18 @@ export function PublicReviews({
                         <Stars rating={review.overall} className="text-[13px]" />
                       ) : null}
                       {review.term ? <span>{review.term}</span> : null}
+                      {review.grade ? <span>成绩 {review.grade}</span> : null}
                       {review.created_at ? (
                         <time dateTime={formatReviewDate(review.created_at)}>
                           {formatReviewDate(review.created_at)}
                         </time>
                       ) : null}
                     </p>
+                    {review.headline ? (
+                      <p className="mb-1 mt-0 break-words text-sm font-semibold">
+                        {review.headline}
+                      </p>
+                    ) : null}
                     <ReviewNoteContent
                       comment={review.comment}
                       commentFormat={review.comment_format}
