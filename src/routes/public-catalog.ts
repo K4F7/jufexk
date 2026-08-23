@@ -164,7 +164,26 @@ const loadVirtualPeSportItems = async (
 };
 // 公开评价绑定规则的唯一来源在 review-summary.ts（AI 总结收集同一集合）。
 const publicReviewBinding = publicReviewBindingSql;
-type PublicReviewCursor = { source: number; key: string };
+type PublicReviewCursor =
+  | { source: number; key: string }
+  | {
+      source: number;
+      key: string;
+      order: string | number;
+      query: string;
+      total: number;
+    };
+type PublicReviewSort =
+  | "recognized"
+  | "latest"
+  | "oldest"
+  | "rating_desc"
+  | "rating_asc";
+type PublicReviewQuery = {
+  sort: PublicReviewSort;
+  term: string;
+  rating: number | null;
+};
 const publicReviewPageSize = (c: AppContext) =>
   Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
 const decodePublicReviewCursor = (
@@ -190,18 +209,64 @@ const getPublicReviewPage = async (
   cursor: PublicReviewCursor | null,
   viewerUserId: string | null = null,
   teacherId: number | null = null,
+  query: PublicReviewQuery | null = null,
 ) => {
-  const cursorSource = cursor?.source ?? -1;
-  const cursorKey = cursor?.key ?? "";
+  const cursorSource = cursor && "source" in cursor ? cursor.source : -1;
+  const cursorKey = cursor && "key" in cursor ? cursor.key : "";
   /** 课程页评价按 课程×教师 作用域展示：选定教师时追加逐分支过滤。 */
   const teacherFilter = (alias: string) =>
     teacherId ? ` AND ${alias}.teacher_id=?` : "";
   const teacherBinds = teacherId ? [teacherId] : [];
+  const filterParts: string[] = [];
+  const filterBinds: unknown[] = [];
+  if (query?.term) {
+    filterParts.push("term=?");
+    filterBinds.push(query.term);
+  }
+  if (query?.rating != null) {
+    filterParts.push("overall=?");
+    filterBinds.push(query.rating);
+  }
+  const orderConfig: Record<
+    PublicReviewSort,
+    { expression: string; direction: "ASC" | "DESC" }
+  > = {
+    recognized: { expression: "endorsement_count", direction: "DESC" },
+    latest: {
+      expression: "COALESCE(created_at,'')",
+      direction: "DESC",
+    },
+    oldest: {
+      expression: "COALESCE(created_at,'9999-12-31 23:59:59')",
+      direction: "ASC",
+    },
+    rating_desc: { expression: "COALESCE(overall,-1)", direction: "DESC" },
+    rating_asc: { expression: "COALESCE(overall,99)", direction: "ASC" },
+  };
+  const order = query ? orderConfig[query.sort] : null;
+  const queryKey = query
+    ? JSON.stringify([query.sort, query.term, query.rating])
+    : "";
+  const orderedCursor =
+    query && cursor && "order" in cursor && cursor.query === queryKey
+      ? cursor
+      : null;
+  const orderedCursorSql = orderedCursor
+    ? ` AND (${order?.expression} ${order?.direction === "DESC" ? "<" : ">"} ?
+         OR (${order?.expression}=? AND
+           (source_order>? OR (source_order=? AND sort_key>?))))`
+    : "";
+  const pageSql = query
+    ? `WHERE ${filterParts.length ? filterParts.join(" AND ") : "1=1"}${orderedCursorSql}
+       ORDER BY ${order?.expression} ${order?.direction},source_order,sort_key LIMIT ?`
+    : `WHERE source_order>? OR (source_order=? AND sort_key>?)
+       ORDER BY source_order,sort_key LIMIT ?`;
   const { results } = await db
     .prepare(
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
          course_name,course_code,teacher_name,endorsement_count,
-         scheme_key,scheme_version,scores,overall,term,created_at
+         scheme_key,scheme_version,scores,overall,term,created_at,
+         COUNT(*) OVER() filtered_total
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
            phr.course_id,phr.teacher_id,phr.comment,NULL comment_format,
@@ -238,9 +303,7 @@ const getPublicReviewPage = async (
          WHERE r.${subject}=? AND r.status='approved'
            AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}${teacherFilter("r")}
        ) public_reviews
-       WHERE source_order>? OR (source_order=? AND sort_key>?)
-       ORDER BY source_order,sort_key
-       LIMIT ?`,
+       ${pageSql}`,
     )
     .bind(
       id,
@@ -249,10 +312,21 @@ const getPublicReviewPage = async (
       ...teacherBinds,
       id,
       ...teacherBinds,
-      cursorSource,
-      cursorSource,
-      cursorKey,
-      size + 1,
+      ...(query
+        ? [
+            ...filterBinds,
+            ...(orderedCursor
+              ? [
+                  orderedCursor.order,
+                  orderedCursor.order,
+                  orderedCursor.source,
+                  orderedCursor.source,
+                  orderedCursor.key,
+                ]
+              : []),
+            size + 1,
+          ]
+        : [cursorSource, cursorSource, cursorKey, size + 1]),
     )
     .all();
   const typedResults = results as Array<
@@ -271,6 +345,7 @@ const getPublicReviewPage = async (
           scheme_key: schemeKey,
           scheme_version: schemeVersion,
           scores,
+          filtered_total: _filteredTotal,
           ...review
         }) => {
           const dimensionAverage = publicDimensionAverage({
@@ -295,12 +370,29 @@ const getPublicReviewPage = async (
       ),
       viewerUserId,
     ),
+    total: orderedCursor?.total ?? Number(page[0]?.filtered_total ?? 0),
     nextCursor:
       hasMore && last
-        ? encodePublicReviewCursor({
-            source: last.source_order,
-            key: last.sort_key,
-          })
+        ? encodePublicReviewCursor(
+            query && order
+              ? {
+                  source: last.source_order,
+                  key: last.sort_key,
+                  order:
+                    query.sort === "recognized"
+                      ? Number(last.endorsement_count)
+                      : query.sort === "latest"
+                        ? String(last.created_at ?? "")
+                        : query.sort === "oldest"
+                          ? String(last.created_at ?? "9999-12-31 23:59:59")
+                          : query.sort === "rating_desc"
+                            ? Number(last.overall ?? -1)
+                            : Number(last.overall ?? 99),
+                  query: queryKey,
+                  total: orderedCursor?.total ?? Number(page[0]?.filtered_total ?? 0),
+                }
+              : { source: last.source_order, key: last.sort_key },
+          )
         : null,
   };
 };
@@ -315,6 +407,7 @@ const getPublicReviewPageFor = async (
   size: number,
   cursor: PublicReviewCursor | null,
   teacherId: number | null = null,
+  query: PublicReviewQuery | null = null,
 ) =>
   getPublicReviewPage(
     c.env.DB,
@@ -324,6 +417,7 @@ const getPublicReviewPageFor = async (
     cursor,
     await publicReviewViewerId(c),
     teacherId,
+    query,
   );
 publicCatalogRoutes.get("/api/config", async (c) => {
   const turnstileSecret = await readSecret(c.env.TURNSTILE_SECRET);
@@ -874,6 +968,30 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
 publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
   const id = integer(c.req.param("id"));
   const teacherId = integer(c.req.query("teacherId"));
+  const rawSort = clean(c.req.query("sort"), 20);
+  const allowedSorts = new Set<PublicReviewSort>([
+    "recognized",
+    "latest",
+    "oldest",
+    "rating_desc",
+    "rating_asc",
+  ]);
+  if (rawSort && !allowedSorts.has(rawSort as PublicReviewSort))
+    return fail(c, "评价排序参数无效", 400);
+  const rawRating = clean(c.req.query("rating"), 2);
+  const rating = rawRating ? integer(rawRating) : null;
+  if (rawRating && (rating == null || rating < 1 || rating > 5))
+    return fail(c, "评价评分参数无效", 400);
+  const hasReviewQuery = Boolean(
+    rawSort || c.req.query("term") || c.req.query("rating"),
+  );
+  const reviewQuery: PublicReviewQuery | null = hasReviewQuery
+    ? {
+        sort: (rawSort as PublicReviewSort) || "recognized",
+        term: clean(c.req.query("term"), 40),
+        rating,
+      }
+    : null;
   if (id && isVirtualPeSportId(id)) {
     // 虚拟体育课没有课程级评价行：未选教师时返回空页，选定教师后按其教师流展示。
     if (!teacherId) return c.json({ items: [], nextCursor: null });
@@ -899,6 +1017,8 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
         teacherId,
         publicReviewPageSize(c),
         virtualCursor,
+        null,
+        reviewQuery,
       ),
     );
   }
@@ -916,6 +1036,7 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
     publicReviewPageSize(c),
     cursor,
     teacherId,
+    reviewQuery,
   );
   return c.json(page);
 });

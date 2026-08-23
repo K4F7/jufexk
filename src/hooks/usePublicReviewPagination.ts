@@ -36,6 +36,7 @@ export function usePublicReviewPagination(
       const accumulated = {
         items: [...reviewsRef.current, ...page.items],
         nextCursor: page.nextCursor,
+        total: page.total,
       };
       reviewsRef.current = accumulated.items;
       setReviews(accumulated.items);
