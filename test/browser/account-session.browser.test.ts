@@ -338,7 +338,10 @@ test("keyboard reaches the account menu, logout, and the deletion confirm", asyn
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
-  // Keyboard open focuses the first item; one ArrowDown reaches 退出登录.
+  // Keyboard open focuses the first item (我的主页); 消息 / 账号管理 follow,
+  // so three ArrowDowns reach 退出登录.
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/logout$/);
