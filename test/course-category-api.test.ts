@@ -29,7 +29,7 @@ async function login() {
 }
 
 describe("review template kind API contract", () => {
-  it("offers sports plus english, ideology, and math public filters", async () => {
+  it("offers major, public_basic, sports, english, ideology, and math public filters", async () => {
     const sports = await SELF.fetch(`${origin}/api/courses?category=sports`);
     const sportsBody = await sports.json<{
       items: Array<{ name: string; category: string }>;
@@ -64,6 +64,7 @@ describe("review template kind API contract", () => {
     expect(sportsNames).not.toContain("思想道德与法治");
     expect(sportsNames).not.toContain("高等数学A");
     expect(sportsNames).not.toContain("计量经济学");
+    expect(sportsNames).not.toContain("公共基础导论");
     expect(
       sportsAfterBody.items.find((item) => item.name === "大学体育理论")
         ?.category,
@@ -92,14 +93,31 @@ describe("review template kind API contract", () => {
       );
     }
 
-    for (const obsolete of [
-      "required",
-      "elective",
-      "general",
-      "major",
-      "pe",
-      "public_basic",
-    ])
+    for (const [category, name, otherName] of [
+      ["major", "计量经济学", "公共基础导论"],
+      ["public_basic", "公共基础导论", "计量经济学"],
+    ] as const) {
+      const response = await SELF.fetch(
+        `${origin}/api/courses?category=${category}`,
+      );
+      const body = await response.json<{
+        items: Array<{ name: string; category: string }>;
+      }>();
+      expect(response.status).toBe(200);
+      const names = body.items.map((item) => item.name);
+      expect(names).toContain(name);
+      expect(names).not.toContain(otherName);
+      expect(names).not.toContain("测试体育课");
+      expect(names).not.toContain("大学英语");
+      expect(names).not.toContain("思想道德与法治");
+      expect(names).not.toContain("高等数学A");
+      expect(names).not.toContain("大学体育理论");
+      expect(body.items.find((item) => item.name === name)?.category).toBe(
+        "general",
+      );
+    }
+
+    for (const obsolete of ["required", "elective", "general", "pe"])
       expect(
         (await SELF.fetch(`${origin}/api/courses?category=${obsolete}`)).status,
       ).toBe(400);
