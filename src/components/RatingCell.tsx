@@ -16,14 +16,14 @@ export function RatingCell({
   const count = reviewCount ?? 0;
   const hasRating = rating != null && Number(rating) > 0;
   if (count <= 0 && !hasRating) {
-    return <span className="text-[13px] text-muted">暂无</span>;
+    return <span className="text-[calc(13/15*1rem)] text-muted">暂无</span>;
   }
   return (
     <div className="flex items-baseline gap-1.5 whitespace-nowrap tabular">
       {hasRating ? (
         <span className="font-semibold text-accent">{scoreText(rating)}</span>
       ) : null}
-      <span className="text-[12px] text-muted">
+      <span className="text-[calc(12/15*1rem)] text-muted">
         {hasRating ? `· ${count} 投` : `${count} 投`}
       </span>
     </div>

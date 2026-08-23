@@ -185,7 +185,7 @@ export function CourseResultTable({
                         </Chip.Label>
                       </Chip>
                     </div>
-                    <span className="tabular text-[12px] text-muted">
+                    <span className="tabular text-[calc(12/15*1rem)] text-muted">
                       <HighlightSearchTerms
                         text={course.code}
                         terms={highlightTerms}
@@ -201,7 +201,7 @@ export function CourseResultTable({
                   />
                 </Table.Cell>
                 <Table.Cell>
-                  <span className="whitespace-nowrap text-[13px] text-muted">
+                  <span className="whitespace-nowrap text-[calc(13/15*1rem)] text-muted">
                     {course.department ? (
                       <HighlightSearchTerms
                         text={course.department}
@@ -214,12 +214,12 @@ export function CourseResultTable({
                 </Table.Cell>
                 <Table.Cell>
                   {course.review_count > 0 ? (
-                    <span className="whitespace-nowrap tabular text-[13px]">
+                    <span className="whitespace-nowrap tabular text-[calc(13/15*1rem)]">
                       <span className="font-semibold">{course.review_count}</span>
-                      <span className="text-[12px] text-muted">{" "}投</span>
+                      <span className="text-[calc(12/15*1rem)] text-muted">{" "}投</span>
                     </span>
                   ) : (
-                    <span className="text-[13px] text-muted">暂无</span>
+                    <span className="text-[calc(13/15*1rem)] text-muted">暂无</span>
                   )}
                 </Table.Cell>
               </Table.Row>

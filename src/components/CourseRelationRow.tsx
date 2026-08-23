@@ -40,25 +40,25 @@ export function CourseRelationRow({
       to={href}
       className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-transparent hover:no-underline! [content-visibility:auto] [contain-intrinsic-size:auto_5.5rem]"
     >
-      <span className="block text-[15px] font-medium text-accent">
+      <span className="block text-[1rem] font-medium text-accent">
         {relation.name}
         {relation.teacher_name ? (
           <span className="font-normal">（{relation.teacher_name}）</span>
         ) : (
-          <span className="text-[12px] font-normal text-muted">
+          <span className="text-[calc(12/15*1rem)] font-normal text-muted">
             {" "}
             教师待补充
           </span>
         )}
       </span>
       <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
-        <Stars rating={rating} className="text-[15px]" />
+        <Stars rating={rating} className="text-[1rem]" />
         {rating != null ? (
-          <span className="tabular text-[15px] font-semibold text-accent">
+          <span className="tabular text-[1rem] font-semibold text-accent">
             {rating.toFixed(1)}
           </span>
         ) : null}
-        <span className="text-[12px] text-muted">
+        <span className="text-[calc(12/15*1rem)] text-muted">
           {reviewCount > 0
             ? rating != null
               ? `（${reviewCount} 人评价）`

@@ -37,14 +37,14 @@ export function PublicReviews({
     <section className="mb-2" aria-labelledby="public-reviews-heading">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <Typography
-          className="m-0 text-[17px] font-bold leading-snug"
+          className="m-0 text-[calc(17/15*1rem)] font-bold leading-snug"
           id="public-reviews-heading"
           type="h2"
         >
           评价
         </Typography>
         {total ? (
-          <span className="text-[13px] text-muted">{total} 条</span>
+          <span className="text-[calc(13/15*1rem)] text-muted">{total} 条</span>
         ) : null}
       </div>
       {rows.length ? (
@@ -76,9 +76,9 @@ export function PublicReviews({
                     “
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] text-muted">
+                    <p className="mb-1 flex flex-wrap items-center gap-x-2 text-[calc(12/15*1rem)] text-muted">
                       {review.overall != null ? (
-                        <Stars rating={review.overall} className="text-[13px]" />
+                        <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
                       ) : null}
                       {review.term ? <span>{review.term}</span> : null}
                       {review.grade ? <span>成绩 {review.grade}</span> : null}

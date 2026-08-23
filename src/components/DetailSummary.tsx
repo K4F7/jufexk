@@ -40,7 +40,7 @@ export function DetailSummary({
         >
           {reviewCount > 0 ? (
             <>
-              <div className="tabular text-[32px] font-bold leading-none">
+              <div className="tabular text-[calc(32/15*1rem)] font-bold leading-none">
                 {reviewCount}
               </div>
               <div className="mt-2 text-xs text-muted">条评价</div>
