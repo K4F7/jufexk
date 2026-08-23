@@ -139,15 +139,19 @@ async function mockApi(page: Page) {
       if (teacherId === "9") {
         if (url.searchParams.has("cursor"))
           return route.fulfill({
-            json: { items: teacherNineReviews.slice(20), nextCursor: null },
+            json: { items: teacherNineReviews.slice(20), nextCursor: null, total: 21 },
           });
         return route.fulfill({
-          json: { items: teacherNineReviews.slice(0, 20), nextCursor: "next-page" },
+          json: {
+            items: teacherNineReviews.slice(0, 20),
+            nextCursor: "next-page",
+            total: 21,
+          },
         });
       }
       if (teacherId === "10") {
         return route.fulfill({
-          json: { items: teacherTenReviews, nextCursor: null },
+          json: { items: teacherTenReviews, nextCursor: null, total: 2 },
         });
       }
       return route.fulfill({ json: { items: [], nextCursor: null } });
@@ -267,6 +271,8 @@ test("course detail defaults to the most-reviewed relation", async ({
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /排序/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /学期/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /评分/ })).toBeVisible();
+  await expect(page.getByText("21 条点评")).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(20);
   expect(
     reviewRequests.filter((search) => search.includes("teacherId=9")),
@@ -385,59 +391,76 @@ test("catalog relation rows link into the matching course×teacher page", async 
   await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("review sort switches the loaded list to most-recognized", async ({
+test("review controls reload the complete server-side sort and filters", async ({
   page,
 }) => {
+  const queries: string[] = [];
   await page.route("**/api/courses/8/reviews**", (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("teacherId") !== "9") return route.fallback();
-    return route.fulfill({
-      json: {
-        items: [
-          {
-            id: "review:1",
-            course_id: 8,
-            teacher_id: 9,
-            comment: "认可较少的评价，补充说明足够长。",
-            endorsement_count: 2,
-            endorsable: true,
-          },
-          {
-            id: "review:2",
-            course_id: 8,
-            teacher_id: 9,
-            comment: "认可最多的评价，补充说明足够长。",
-            endorsement_count: 9,
-            endorsable: true,
-          },
-          {
-            id: "review:3",
-            course_id: 8,
-            teacher_id: 9,
-            comment: "没有认可的评价，补充说明足够长。",
-            endorsement_count: 0,
-            endorsable: true,
-          },
-        ],
-        nextCursor: null,
+    queries.push(url.search);
+    const sort = url.searchParams.get("sort");
+    const term = url.searchParams.get("term");
+    const rating = url.searchParams.get("rating");
+    const all = [
+      {
+        id: "review:1",
+        course_id: 8,
+        teacher_id: 9,
+        comment: "低分旧点评，补充说明足够长。",
+        overall: 2,
+        term: "2025 秋",
+        created_at: "2025-09-01 00:00:00",
+        endorsement_count: 2,
+        endorsable: true,
       },
+      {
+        id: "review:2",
+        course_id: 8,
+        teacher_id: 9,
+        comment: "高分新点评，补充说明足够长。",
+        overall: 5,
+        term: "2026 春",
+        created_at: "2026-03-01 00:00:00",
+        endorsement_count: 9,
+        endorsable: true,
+      },
+    ];
+    const filtered = all.filter(
+      (review) =>
+        (!term || review.term === term) &&
+        (!rating || review.overall === Number(rating)),
+    );
+    const items =
+      sort === "oldest"
+        ? filtered
+        : sort === "rating_asc"
+          ? [...filtered].sort((a, b) => a.overall - b.overall)
+          : [...filtered].reverse();
+    return route.fulfill({
+      json: { items, nextCursor: null, total: items.length },
     });
   });
 
   await page.goto("/courses/8?teacher=9");
-  await expect(reviewItems(page)).toHaveCount(3);
-  // 默认排序保持后端流顺序。
-  await expect(reviewItems(page).first()).toContainText("认可较少的评价");
+  await expect(reviewItems(page)).toHaveCount(2);
+  await expect(reviewItems(page).first()).toContainText("高分新点评");
+  expect(queries.at(-1)).toContain("sort=recognized");
 
   await page.getByRole("button", { name: /排序/ }).click();
-  await page.getByRole("option", { name: "认可最多" }).click();
-  await expect(reviewItems(page).first()).toContainText("认可最多的评价");
-  await expect(reviewItems(page).nth(1)).toContainText("认可较少的评价");
-  await expect(reviewItems(page).last()).toContainText("没有认可的评价");
+  await page.getByRole("option", { name: "最旧点评" }).click();
+  await expect(reviewItems(page).first()).toContainText("低分旧点评");
+  expect(queries.at(-1)).toContain("sort=oldest");
 
-  await page.getByRole("button", { name: /排序/ }).click();
-  await page.getByRole("option", { name: "默认" }).click();
-  await expect(reviewItems(page).first()).toContainText("认可较少的评价");
+  await page.getByRole("button", { name: /学期/ }).click();
+  await page.getByRole("option", { name: "2026 春" }).click();
+  await page.getByRole("button", { name: /评分/ }).click();
+  await page.getByRole("option", { name: "5 星" }).click();
+  await expect(reviewItems(page)).toHaveCount(1);
+  await expect(reviewItems(page).first()).toContainText("高分新点评");
+  await expect(page.getByText("1 条点评")).toBeVisible();
+  expect(queries.at(-1)).toContain("term=2026+%E6%98%A5");
+  expect(queries.at(-1)).toContain("rating=5");
 });
 
 test("rich-text notes render sanitized markup, plain notes stay plain", async ({

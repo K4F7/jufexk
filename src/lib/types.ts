@@ -187,6 +187,8 @@ export type EndorsementState = {
 export type PublicReviewPage<T = PublicReview> = {
   items: T[];
   nextCursor: string | null;
+  /** Total rows matching the active server-side review filters. */
+  total?: number;
 };
 
 /** 任课关系 AI 总结（#401）：服务端已渲染并消毒的 HTML + 最近重算时间。 */

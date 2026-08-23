@@ -24,7 +24,10 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { CourseAiSummary } from "../components/CourseAiSummary";
-import { CourseReviewSection } from "../components/CourseReviewSection";
+import {
+  CourseReviewSection,
+  type CourseReviewSort,
+} from "../components/CourseReviewSection";
 import {
   DetailErrorAlert,
   DetailPageSkeleton,
@@ -131,6 +134,10 @@ export function CourseDetailPage() {
   const [error, setError] = useState("");
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewSort, setReviewSort] = useState<CourseReviewSort>("recognized");
+  const [reviewTerm, setReviewTerm] = useState("all");
+  const [reviewRating, setReviewRating] = useState("all");
+  const [filteredReviewTotal, setFilteredReviewTotal] = useState(0);
   const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
 
   /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师；
@@ -149,9 +156,20 @@ export function CourseDetailPage() {
     teachers[0] ??
     null;
   const effectiveTeacherId = selectedTeacher?.id ?? null;
-  const teacherQuery = effectiveTeacherId
-    ? `teacherId=${effectiveTeacherId}`
-    : "";
+  const relationTerms = selectedTeacher?.terms ?? [];
+  const effectiveReviewTerm = relationTerms.includes(reviewTerm)
+    ? reviewTerm
+    : "all";
+  const teacherQuery = useMemo(() => {
+    if (!effectiveTeacherId) return "";
+    const query = new URLSearchParams({
+      teacherId: String(effectiveTeacherId),
+      sort: reviewSort,
+    });
+    if (effectiveReviewTerm !== "all") query.set("term", effectiveReviewTerm);
+    if (reviewRating !== "all") query.set("rating", reviewRating);
+    return query.toString();
+  }, [effectiveTeacherId, effectiveReviewTerm, reviewRating, reviewSort]);
 
   const reviewFeed = usePublicReviewPagination("courses", id, teacherQuery);
   /** Session cache of first pages by teacher scope, so switching teachers
@@ -186,6 +204,7 @@ export function CourseDetailPage() {
     setReviewsError("");
     if (!course || !effectiveTeacherId) {
       reviewFeed.reset([], null);
+      setFilteredReviewTotal(0);
       setReviewsLoading(false);
       return () => {
         cancelled = true;
@@ -197,6 +216,7 @@ export function CourseDetailPage() {
     const cached = reviewCacheRef.current.get(cacheKey);
     if (cached) {
       reviewFeed.reset(cached.items, cached.nextCursor);
+      setFilteredReviewTotal(cached.total ?? cached.items.length);
       setReviewsLoading(false);
       return () => {
         cancelled = true;
@@ -221,7 +241,10 @@ export function CourseDetailPage() {
     }
     promise
       .then((page) => {
-        if (!cancelled) reviewFeed.reset(page.items, page.nextCursor);
+        if (!cancelled) {
+          reviewFeed.reset(page.items, page.nextCursor);
+          setFilteredReviewTotal(page.total ?? page.items.length);
+        }
       })
       .catch((e) => {
         if (!cancelled) setReviewsError((e as Error).message);
@@ -330,7 +353,6 @@ export function CourseDetailPage() {
     ["课程层次", course.course_level || "—"],
     ["学分", course.credits != null ? String(course.credits) : "—"],
   ];
-  const relationTerms = selectedTeacher?.terms ?? [];
   const comparingRecognition =
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
@@ -456,8 +478,14 @@ export function CourseDetailPage() {
             courseId={course.id}
             teacherId={effectiveTeacherId}
             terms={relationTerms}
+            sort={reviewSort}
+            term={effectiveReviewTerm}
+            rating={reviewRating}
+            onSortChange={setReviewSort}
+            onTermChange={setReviewTerm}
+            onRatingChange={setReviewRating}
             reviews={reviewFeed.reviews}
-            total={relationCount}
+            total={filteredReviewTotal}
             loading={reviewsLoading}
             error={reviewsError}
             hasMore={Boolean(reviewFeed.nextCursor)}

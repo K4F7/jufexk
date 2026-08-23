@@ -230,6 +230,61 @@ describe("USTC backend APIs (issue #410)", () => {
     expect(reviewBody.items[0]?.created_at).toBeTruthy();
   });
 
+  it("sorts and filters a complete course review feed", async () => {
+    const stamp = String(Date.now());
+    const relation = await insertCourseTeacher(`${stamp}-review-filters`);
+    await insertReview({
+      ...relation,
+      comment: `低分旧点评${stamp}`,
+      overall: 2,
+      term: "2025 秋",
+      createdAt: "2025-09-01 00:00:00",
+    });
+    await insertReview({
+      ...relation,
+      comment: `高分新点评${stamp}`,
+      overall: 5,
+      term: "2026 春",
+      createdAt: "2026-03-01 00:00:00",
+    });
+
+    const query = async (params: string) => {
+      const response = await SELF.fetch(
+        `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&${params}`,
+      );
+      expect(response.status).toBe(200);
+      return response.json<{
+        items: Array<{ comment: string; overall: number; term: string }>;
+        total: number;
+        nextCursor: string | null;
+      }>();
+    };
+
+    const oldest = await query("sort=oldest");
+    expect(oldest.total).toBe(2);
+    expect(oldest.items.map((item) => item.overall)).toEqual([2, 5]);
+
+    const rating = await query("sort=rating_desc");
+    expect(rating.items.map((item) => item.overall)).toEqual([5, 2]);
+
+    const filtered = await query(
+      `sort=latest&term=${encodeURIComponent("2026 春")}&rating=5`,
+    );
+    expect(filtered.total).toBe(1);
+    expect(filtered.items).toEqual([
+      expect.objectContaining({ overall: 5, term: "2026 春" }),
+    ]);
+
+    const firstPage = await query("sort=rating_desc&pageSize=1");
+    expect(firstPage.items.map((item) => item.overall)).toEqual([5]);
+    expect(firstPage.total).toBe(2);
+    const secondPage = await query(
+      `sort=rating_desc&pageSize=1&cursor=${encodeURIComponent(firstPage.nextCursor || "")}`,
+    );
+    expect(secondPage.items.map((item) => item.overall)).toEqual([2]);
+    expect(secondPage.total).toBe(2);
+  });
+
   it("returns site-wide latest public reviews with cursor pagination", async () => {
     const stamp = String(Date.now());
     const first = await insertCourseTeacher(`${stamp}-latest-a`);

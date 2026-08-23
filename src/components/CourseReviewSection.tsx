@@ -1,7 +1,7 @@
 /**
  * 课程页点评区（Issue #402，对齐 icourse）：标题「点评」+ 蓝色「写点评」主按钮；
- * 排序 Select（默认 / 认可最多）筛选已加载条目；条目为匿名用户 +
- * 四维档位 + 正文 + 认可。
+ * 排序、学期、评分 Select 由服务端对完整评价流排序/筛选；条目为匿名用户 +
+ * 星级 + 学期 + 四维档位 + 正文 + 认可（Issue #431）。
  *
  * 四维档位标签由 #373 公开流投影按条目下发（dimensionLabels），有则渲染
  * 中文档位 Chip；旧 1–5 规则快照继续显示维度均分 Chip；两者都没有的历史
@@ -18,7 +18,6 @@ import {
   Spinner,
   Typography,
 } from "@heroui/react";
-import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
 import { formatReviewDate } from "../lib/review-date";
@@ -30,7 +29,20 @@ import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 import { Stars } from "./Stars";
 
-type ReviewSort = "default" | "recognized";
+export type CourseReviewSort =
+  | "recognized"
+  | "latest"
+  | "oldest"
+  | "rating_desc"
+  | "rating_asc";
+
+const SORT_ITEMS: Array<{ id: CourseReviewSort; label: string }> = [
+  { id: "recognized", label: "认可最多" },
+  { id: "latest", label: "最新点评" },
+  { id: "oldest", label: "最旧点评" },
+  { id: "rating_desc", label: "评分：高-低" },
+  { id: "rating_asc", label: "评分：低-高" },
+];
 
 function FilterSelect({
   label,
@@ -138,6 +150,12 @@ export function CourseReviewSection({
   courseId,
   teacherId,
   terms = [],
+  sort,
+  term,
+  rating,
+  onSortChange,
+  onTermChange,
+  onRatingChange,
   reviews,
   total,
   loading,
@@ -152,6 +170,12 @@ export function CourseReviewSection({
   teacherId: number | null;
   /** 该关系的学期列表，与头部共用。 */
   terms?: string[];
+  sort: CourseReviewSort;
+  term: string;
+  rating: string;
+  onSortChange: (value: CourseReviewSort) => void;
+  onTermChange: (value: string) => void;
+  onRatingChange: (value: string) => void;
   reviews: PublicReview[];
   /** 该关系的公开文字评价总数。 */
   total: number;
@@ -163,38 +187,19 @@ export function CourseReviewSection({
   onLoadMore: () => void;
 }) {
   const navigate = useNavigate();
-  const [reviewSort, setReviewSort] = useState<ReviewSort>("default");
-  const [termFilter, setTermFilter] = useState("all");
-
-  const visible = useMemo(() => {
-    const scoped =
-      termFilter && termFilter !== "all"
-        ? reviews.filter((review) => review.term === termFilter)
-        : reviews;
-    return reviewSort === "recognized"
-      ? [...scoped].sort(
-          (a, b) => (b.endorsement_count ?? 0) - (a.endorsement_count ?? 0),
-        )
-      : scoped;
-  }, [reviews, reviewSort, termFilter]);
 
   const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;
 
   return (
     <section className="mt-10" aria-labelledby="course-reviews-heading">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <Typography
-            className="m-0 text-[20px] font-bold leading-snug text-accent"
-            id="course-reviews-heading"
-            type="h2"
-          >
-            点评
-          </Typography>
-          {total > 0 ? (
-            <span className="text-[13px] text-muted">{total} 条</span>
-          ) : null}
-        </div>
+        <Typography
+          className="m-0 text-[20px] font-bold leading-snug text-accent"
+          id="course-reviews-heading"
+          type="h2"
+        >
+          点评
+        </Typography>
         {teacherId ? (
           <Button variant="primary" size="md" onPress={() => navigate(writeHref)}>
             写点评
@@ -205,24 +210,32 @@ export function CourseReviewSection({
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <FilterSelect
           label="排序"
-          value={reviewSort}
-          onChange={(value) => setReviewSort(value as ReviewSort)}
+          value={sort}
+          onChange={(value) => onSortChange(value as CourseReviewSort)}
+          items={SORT_ITEMS}
+        />
+        <FilterSelect
+          label="学期"
+          value={term}
+          onChange={onTermChange}
           items={[
-            { id: "default", label: "默认" },
-            { id: "recognized", label: "认可最多" },
+            { id: "all", label: "全部" },
+            ...terms.map((term) => ({ id: term, label: term })),
           ]}
         />
-        {terms.length ? (
-          <FilterSelect
-            label="学期"
-            value={termFilter}
-            onChange={setTermFilter}
-            items={[
-              { id: "all", label: "全部学期" },
-              ...terms.map((term) => ({ id: term, label: term })),
-            ]}
-          />
-        ) : null}
+        <FilterSelect
+          label="评分"
+          value={rating}
+          onChange={onRatingChange}
+          items={[
+            { id: "all", label: "全部" },
+            ...[5, 4, 3, 2, 1].map((score) => ({
+              id: String(score),
+              label: `${score} 星`,
+            })),
+          ]}
+        />
+        <span className="pb-2 text-[13px] text-muted">{total} 条点评</span>
       </div>
 
       {error && reviews.length === 0 ? (
@@ -238,13 +251,15 @@ export function CourseReviewSection({
           className="border-b border-separator py-14 text-center text-[13px] text-muted"
           role="status"
         >
-          {teacherId
-            ? "暂无评价 —— 成为第一位评价这位老师这门课的同学。"
+          {teacherId && (term !== "all" || rating !== "all")
+            ? "没有符合当前筛选条件的点评。"
+            : teacherId
+              ? "暂无评价 —— 成为第一位评价这位老师这门课的同学。"
             : "暂无评价 —— 课程教师待补充，补充任课关系后即可评价。"}
         </p>
       ) : (
         <div className="mt-2" role="list" aria-label="评价列表">
-          {visible.map((review) => (
+          {reviews.map((review) => (
             <div key={review.id} role="listitem">
               <CourseReviewItem review={review} />
             </div>
@@ -277,7 +292,7 @@ export function CourseReviewSection({
           <span className="sr-only" aria-live="polite">
             {isLoadingMore
               ? "正在加载更多评价"
-              : `已显示 ${visible.length} 条评价`}
+              : `已显示 ${reviews.length} 条评价`}
           </span>
         </div>
       )}
