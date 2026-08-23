@@ -54,7 +54,7 @@ function asRelationRows(
 }
 
 const SORT_OPTIONS = [
-  { id: "", label: "默认" },
+  { id: "", label: "课评数量" },
   { id: "rating", label: "课程评分" },
 ] as const;
 

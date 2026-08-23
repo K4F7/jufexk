@@ -151,6 +151,9 @@ test("filter box shows the category row and rating sort", async ({
   }
   await expect(filterBox.getByText("排序方式：")).toBeVisible();
   await expect(
+    filterBox.getByRole("button", { name: "课评数量", exact: true }),
+  ).toBeVisible();
+  await expect(
     filterBox.getByRole("button", { name: "课程评分", exact: true }),
   ).toBeVisible();
   await expect(
