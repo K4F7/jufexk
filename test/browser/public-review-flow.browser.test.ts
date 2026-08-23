@@ -254,6 +254,7 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(page.getByText("开课单位：")).toBeVisible();
   await expect(page.getByText("人文学院").first()).toBeVisible();
   await expect(page.getByText("学分：")).toBeVisible();
+  await expect(page.getByText("3.0", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
   await expect(page.getByRole("button", { name: "推荐", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "不推荐" })).toBeVisible();
