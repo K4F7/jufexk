@@ -120,6 +120,8 @@ export type PublicReviewDimensionLabel = {
 export type PublicReview = {
   id: string | number;
   comment: string;
+  /** 'html' 表示消毒后的富文本补充说明；缺省/null 为纯文本（issue #400）。 */
+  comment_format?: string | null;
   course_id: number;
   teacher_id: number;
   course_name?: string;

@@ -1,5 +1,12 @@
 /** Versioned review schemes shared by submit validation and course questionnaire reads. */
 
+import {
+  REVIEW_NOTE_HTML_MAX_LENGTH,
+  REVIEW_NOTE_RAW_MAX_LENGTH,
+  reviewNotePlainText,
+  sanitizeReviewNoteValue,
+} from "./review-note-html";
+
 export const SCHEME_KEYS = [
   "major",
   "ideology",
@@ -312,17 +319,30 @@ export function validateSubmittedScores(
   return { ok: true, scores };
 }
 
+/**
+ * 补充说明校验（issue #400）：先按白名单消毒，再按去标签后的纯文本
+ * 计算去空白长度，闭区间 10 到 1200；富文本标记不计入也不能凑字。
+ * 通过时返回要落库的消毒结果与格式标记。
+ */
 export function validateReviewNote(
   raw: unknown,
-): { ok: true; comment: string } | { ok: false; error: string } {
+):
+  | { ok: true; comment: string; commentFormat: "html" | null }
+  | { ok: false; error: string } {
   if (typeof raw !== "string")
     return { ok: false, error: "请填写至少 10 字补充说明" };
-  const comment = raw.trim();
-  if (comment.length < REVIEW_NOTE_MIN_LENGTH)
-    return { ok: false, error: "请填写至少 10 字补充说明" };
-  if (comment.length > REVIEW_NOTE_MAX_LENGTH)
+  if (raw.length > REVIEW_NOTE_RAW_MAX_LENGTH)
     return { ok: false, error: "补充说明不能超过 1200 字" };
-  return { ok: true, comment };
+  const note = sanitizeReviewNoteValue(raw);
+  const plainLength = reviewNotePlainText(note.comment).trim().length;
+  if (plainLength < REVIEW_NOTE_MIN_LENGTH)
+    return { ok: false, error: "请填写至少 10 字补充说明" };
+  if (
+    plainLength > REVIEW_NOTE_MAX_LENGTH ||
+    note.comment.length > REVIEW_NOTE_HTML_MAX_LENGTH
+  )
+    return { ok: false, error: "补充说明不能超过 1200 字" };
+  return { ok: true, ...note };
 }
 
 export function serializeScores(scores: Record<string, number>): string {
@@ -347,6 +367,7 @@ export function snapshotReviewScores(input: {
       scores: Record<string, number>;
       scoresJson: string;
       comment: string;
+      commentFormat: "html" | null;
     }
   | { ok: false; error: string } {
   const schemeKey = resolveSchemeKey(input.schemeKey, input.category);
@@ -364,6 +385,7 @@ export function snapshotReviewScores(input: {
     scores: validated.scores,
     scoresJson: serializeScores(validated.scores),
     comment: note.comment,
+    commentFormat: note.commentFormat,
   };
 }
 

@@ -3,6 +3,7 @@ import { useViewer } from "../hooks/useViewer";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
 import { EmptyBox } from "./EmptyBox";
+import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 import { RouterAriaLink } from "./RouterAriaLink";
 
@@ -73,9 +74,10 @@ export function PublicReviews({
                     “
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="m-0 break-words text-sm leading-relaxed">
-                      {review.comment}
-                    </p>
+                    <ReviewNoteContent
+                      comment={review.comment}
+                      commentFormat={review.comment_format}
+                    />
                     {review.dimensionLabels?.length ? (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {review.dimensionLabels.map((dimension) => (

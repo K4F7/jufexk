@@ -2,11 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { TIER3_QUESTIONS } from "../review-score-fixtures";
 
 /**
- * 写评价（Issue #402）：入口只从课程页「写点评」；表单对齐 icourse ——
- * 学期 Select、四维三档（中文档位文案）、1–5 本次推荐度、必填补充说明、
+ * 写评价（Issue #402 + #400）：入口只从课程页「写点评」；表单对齐 icourse ——
+ * 学期 Select、四维三档（中文档位文案）、1–5 本次推荐度、Tiptap 补充说明、
  * 匿名发布。发布成功回到该 课程×教师 的详情页。
  *
- * 四维三档题面与必填补充说明的行为断言承接 #374。
+ * 四维三档题面与必填补充说明的行为断言承接 #374；编辑器覆盖承接 #400。
  */
 const VALID_NOTE = "老师讲课很清楚，收获很大，推荐给学弟学妹。";
 const LONG_COMMENT = "老师讲课条理清楚，期末范围给得准，跟着节奏走基本稳。";
@@ -171,8 +171,24 @@ async function pickTeacher(page: Page, name: string) {
   await page.getByRole("option", { name }).click();
 }
 
+/** 补充说明是 Tiptap 富文本编辑器（contenteditable textbox）。 */
+function noteEditor(page: Page) {
+  return page.getByRole("textbox", { name: "补充说明" });
+}
+
 async function fillComment(page: Page, text: string) {
-  await page.getByRole("textbox", { name: "补充说明" }).fill(text);
+  await noteEditor(page).fill(text);
+}
+
+async function answerTier3AndOverall(
+  page: Page,
+  overall: string,
+) {
+  await pickScore(page, "课程难度", "中等");
+  await pickScore(page, "作业多少", "超多");
+  await pickScore(page, "给分好坏", "一般");
+  await pickScore(page, "收获多少", "没有");
+  await pickScore(page, "本次推荐度", overall);
 }
 
 /** 专业课/体育课/网课都应看到的同一套四道三档题（中文档位，#374）。 */
@@ -268,7 +284,8 @@ test("gate comes first and the icourse-aligned form appears after entry", async 
   await expect(page.getByRole("button", { name: /学期/ })).toBeVisible();
   // 四维三档（中文档位）+ 本次推荐度。
   await expectTier3Questions(page);
-  await expect(page.getByRole("textbox", { name: "补充说明" })).toBeVisible();
+  await expect(noteEditor(page)).toBeVisible();
+  await expect(page.getByRole("button", { name: "加粗" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "匿名发布" })).toBeChecked();
   await expect(page.getByRole("button", { name: "提交评价" })).toBeVisible();
 
@@ -331,7 +348,7 @@ test("three-tier options show Chinese labels and submit the full payload", async
     teacherId: 9,
     overall: 5,
     scores: { difficulty: 1, homework: 2, grading: 1, gain: 1 },
-    comment: LONG_COMMENT,
+    comment: `<p>${LONG_COMMENT}</p>`,
   });
   expect(typeof posted[0].term).toBe("string");
   expect(posted[0].term).not.toBe("");
@@ -368,11 +385,7 @@ test("a note shorter than 10 chars after trim blocks submit", async ({
   await chooseCourse(page, "文化", "中国传统文化导论");
   await pickTeacher(page, "测试教师");
 
-  await pickScore(page, "课程难度", "中等");
-  await pickScore(page, "作业多少", "超多");
-  await pickScore(page, "给分好坏", "一般");
-  await pickScore(page, "收获多少", "没有");
-  await pickScore(page, "本次推荐度", "3");
+  await answerTier3AndOverall(page, "3");
   // 去掉首尾空白后只有 9 字，达不到必填下限。
   await fillComment(page, "  123456789  ");
   await page.getByRole("button", { name: "提交评价" }).click();
@@ -384,7 +397,7 @@ test("a note shorter than 10 chars after trim blocks submit", async ({
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   await expect(page.getByText("评价已发布，感谢分享。")).toBeVisible();
   expect(posted).toHaveLength(1);
-  expect(posted[0]).toMatchObject({ comment: VALID_NOTE });
+  expect(posted[0]).toMatchObject({ comment: `<p>${VALID_NOTE}</p>` });
 });
 
 test("mooc course shows the same four three-tier questions without offline hints", async ({
@@ -429,4 +442,37 @@ test("pe course shows the same four three-tier questions as major", async ({
     page.getByRole("button", { name: /任课教师/ }),
   ).toBeEnabled();
   expect(posted).toHaveLength(0);
+});
+
+test("toolbar writes bold and bullet list into the submitted note", async ({
+  page,
+}) => {
+  const posted = await mockSubmitApi(page);
+  await page.goto("/submit");
+  await passGate(page);
+  await chooseCourse(page, "文化", "中国传统文化导论");
+  await pickTeacher(page, "测试教师");
+  await answerTier3AndOverall(page, "5");
+
+  const editor = noteEditor(page);
+  await editor.click();
+  await editor.fill("这门课给分宽松，值得推荐");
+  await page.keyboard.press("Control+A");
+  await page.getByRole("button", { name: "加粗" }).click();
+  await expect(page.getByRole("button", { name: "加粗" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "无序列表" }).click();
+  await expect(editor.locator("ul li strong")).toHaveText(
+    "这门课给分宽松，值得推荐",
+  );
+
+  await page.getByRole("button", { name: "提交评价" }).click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
+  expect(posted).toHaveLength(1);
+  // Tiptap 默认输出在列表后带一个尾随空段（trailingNode）。
+  expect(posted[0].comment).toBe(
+    "<ul><li><p><strong>这门课给分宽松，值得推荐</strong></p></li></ul><p></p>",
+  );
 });

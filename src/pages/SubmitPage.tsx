@@ -12,18 +12,26 @@ import {
   Radio,
   RadioGroup,
   Select,
-  TextArea,
   TextField,
   Typography,
   type Key,
 } from "@heroui/react";
+import type { Editor } from "@tiptap/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  ReviewNoteEditor,
+  type ReviewNoteValue,
+} from "../components/ReviewNoteEditor";
 import { TurnstileBox } from "../components/TurnstileBox";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
-import { COMMON_CORE_QUESTIONS } from "../lib/review-schemes";
+import {
+  COMMON_CORE_QUESTIONS,
+  REVIEW_NOTE_MAX_LENGTH,
+  REVIEW_NOTE_MIN_LENGTH,
+} from "../lib/review-schemes";
 import { recentTerms } from "../lib/review-terms";
 import type {
   ApplicableQuestion,
@@ -132,15 +140,35 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [term, setTerm] = useState("");
   const [scores, setScores] = useState<Record<string, string>>({});
   const [overall, setOverall] = useState("");
-  const [comment, setComment] = useState("");
+  const [note, setNote] = useState<ReviewNoteValue>({ html: "", text: "" });
+  const [noteError, setNoteError] = useState("");
   const [msg, setMsg] = useState("");
   const [ready, setReady] = useState(!config?.turnstileSiteKey);
   const [revealWidget, setRevealWidget] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const widgetRef = useRef<string | number | null>(null);
+  const noteEditorRef = useRef<Editor | null>(null);
   const onReadyChange = useCallback((nextReady: boolean) => {
     setReady(nextReady);
   }, []);
+
+  /** 字数门槛按去标签后的纯文本计算，与服务端 validateReviewNote 一致。 */
+  const validateNote = useCallback((value: ReviewNoteValue) => {
+    const length = value.text.trim().length;
+    if (length < REVIEW_NOTE_MIN_LENGTH)
+      return `请填写至少 ${REVIEW_NOTE_MIN_LENGTH} 字补充说明`;
+    if (length > REVIEW_NOTE_MAX_LENGTH)
+      return `补充说明不能超过 ${REVIEW_NOTE_MAX_LENGTH} 字`;
+    return "";
+  }, []);
+
+  const onNoteChange = useCallback(
+    (value: ReviewNoteValue) => {
+      setNote(value);
+      setNoteError((current) => (current ? validateNote(value) : current));
+    },
+    [validateNote],
+  );
 
   const questions: ApplicableQuestion[] =
     selectedCourse?.applicableQuestions ?? COMMON_CORE_QUESTIONS;
@@ -274,8 +302,10 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
       setMsg("请答完本次适用的评分题");
       return;
     }
-    if (comment.trim().length < 10) {
-      setMsg("请填写至少 10 字补充说明");
+    const nextNoteError = validateNote(note);
+    if (nextNoteError) {
+      setNoteError(nextNoteError);
+      setMsg("");
       return;
     }
     setSubmitting(true);
@@ -299,7 +329,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           teacherId: Number(teacherId),
           overall: Number(overall),
           scores: payloadScores,
-          comment,
+          comment: note.html,
           term,
           website: "",
           turnstileToken,
@@ -511,18 +541,22 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           value={overall}
           onChange={setOverall}
         />
-        <TextField isRequired name="comment">
+        <TextField isInvalid={!!noteError} isRequired name="comment">
           <Label>补充说明</Label>
-          <Description>必填。去空白后 10–1200 字，随评价匿名公开</Description>
-          <TextArea
-            fullWidth
-            rows={4}
-            minLength={10}
-            maxLength={1200}
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
+          <ReviewNoteEditor
+            ariaLabel="补充说明"
+            editorRef={noteEditorRef}
+            isInvalid={!!noteError}
+            onChange={onNoteChange}
           />
-          <FieldError>请填写至少 10 字补充说明</FieldError>
+          {noteError ? (
+            <FieldError>{noteError}</FieldError>
+          ) : (
+            <Description>
+              必填。按纯文本计算 10 到 1200
+              字；支持加粗、斜体、链接、列表和引用，多余标签会被丢弃。
+            </Description>
+          )}
         </TextField>
 
         <Checkbox defaultSelected isDisabled name="anonymous">

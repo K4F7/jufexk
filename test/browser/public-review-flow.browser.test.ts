@@ -419,6 +419,63 @@ test("review sort switches the loaded list to most-recognized", async ({
   await expect(reviewItems(page).first()).toContainText("认可较少的评价");
 });
 
+test("rich-text notes render sanitized markup, plain notes stay plain", async ({
+  page,
+}) => {
+  await page.route("**/api/courses/8/reviews**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("teacherId") !== "9") return route.fallback();
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            id: "review:rich",
+            course_id: 8,
+            teacher_id: 9,
+            // 服务端已消毒；即使混入 script / 事件属性，展示侧也不渲染。
+            comment:
+              '<p>富文本<strong>加粗内容</strong></p><ul><li>列表项</li></ul><script>alert(1)</script><p onclick="alert(2)">结尾</p><a href="javascript:alert(3)">坏链接</a>',
+            comment_format: "html",
+            endorsement_count: 0,
+            endorsable: false,
+          },
+          {
+            id: "historical:plain",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "旧纯文本 <strong>不渲染</strong> 成加粗",
+            endorsement_count: 0,
+            endorsable: false,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+  });
+
+  await page.goto("/courses/8?teacher=9");
+  // 富文本条目内的 <ul><li> 也带 listitem 角色，只取评价流的直接子项。
+  const items = page
+    .getByRole("list", { name: "评价列表" })
+    .locator(":scope > [role='listitem']");
+  await expect(items).toHaveCount(2);
+
+  const rich = items.nth(0);
+  await expect(rich.locator("strong")).toHaveText("加粗内容");
+  await expect(rich.locator("ul li")).toHaveText("列表项");
+  await expect(rich.locator("script")).toHaveCount(0);
+  await expect(rich.getByText("结尾")).toBeVisible();
+  await expect(rich.locator("[onclick]")).toHaveCount(0);
+  // javascript: 协议的 href 被剥掉，只留下没有地址的锚文本。
+  const badLink = rich.locator("a");
+  await expect(badLink).toHaveCount(1);
+  await expect(badLink).not.toHaveAttribute("href", /.*/);
+
+  const plain = items.nth(1);
+  await expect(plain).toContainText("旧纯文本 <strong>不渲染</strong> 成加粗");
+  await expect(plain.locator("strong")).toHaveCount(0);
+});
+
 test("scheme snapshot reviews show one dimension-average chip", async ({
   page,
 }) => {

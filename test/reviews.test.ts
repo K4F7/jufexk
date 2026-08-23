@@ -63,7 +63,7 @@ async function createBoundCourse(
 
 async function insertedReview(courseId: number) {
   return env.DB.prepare(
-    "SELECT scheme_key,scheme_version,scores,overall,comment,status FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
+    "SELECT scheme_key,scheme_version,scores,overall,comment,comment_format,status FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
   )
     .bind(courseId)
     .first<{
@@ -72,6 +72,7 @@ async function insertedReview(courseId: number) {
       scores: string | null;
       overall: number;
       comment: string;
+      comment_format: string | null;
       status: string;
     }>();
 }
@@ -182,6 +183,76 @@ describe("review submission required scheme scores", () => {
       comment: "  123456789  ",
     });
     expect(short.status).toBe(400);
+  });
+
+  it("stores sanitized rich-text notes with the html format marker", async () => {
+    const courseId = await createBoundCourse("general", "REQ-HTML");
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      comment:
+        '<p>这门课的<strong>给分</strong>很宽松</p><ul><li>作业少</li></ul><script>alert(1)</script><p onclick="x">结尾</p>',
+    });
+    expect(response.status).toBe(200);
+    const stored = await insertedReview(courseId);
+    expect(stored).toMatchObject({
+      comment:
+        "<p>这门课的<strong>给分</strong>很宽松</p><ul><li>作业少</li></ul><p>结尾</p>",
+      comment_format: "html",
+    });
+    const feed = await SELF.fetch(
+      `${origin}/api/courses/${courseId}/reviews?teacherId=1`,
+    );
+    const items = (
+      (await feed.json()) as {
+        items: Array<{ comment: string; comment_format: string | null }>;
+      }
+    ).items;
+    expect(items[0]?.comment).toBe(stored?.comment);
+    expect(items[0]?.comment_format).toBe("html");
+    expect(items[0]?.comment).not.toContain("script");
+    expect(items[0]?.comment).not.toContain("onclick");
+  });
+
+  it("keeps script-bypassed plain text plain and rejects markup-only notes", async () => {
+    const courseId = await createBoundCourse("general", "REQ-PLAIN");
+    const plain = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      comment: "绕过前端直接提交的纯文本，数学 < 语文",
+    });
+    expect(plain.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({
+      comment: "绕过前端直接提交的纯文本，数学 < 语文",
+      comment_format: null,
+    });
+
+    const markupOnly = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      comment: "<script>alert(1)</script>",
+      term: "2026 春",
+    });
+    expect(markupOnly.status).toBe(400);
+    expect(await markupOnly.json()).toMatchObject({
+      error: "请填写至少 10 字补充说明",
+    });
+
+    const padded = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+      comment: `<p><strong>一二三四五六七八九</strong></p>`,
+      term: "2026 夏",
+    });
+    expect(padded.status).toBe(400);
   });
 
   it("puts a submitted note into the public course-teacher text feed immediately", async () => {
