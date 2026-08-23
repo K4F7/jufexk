@@ -105,9 +105,9 @@ pnpm run deploy
 
 ### GitHub Actions
 
-`.github/workflows/deploy.yml` 在 `main` 推送时依次执行类型检查、测试、构建、D1 迁移和 Worker 部署。工作流绑定 `production` Environment，建议配置必需审核人。该 Environment 只需：
+`.github/workflows/deploy.yml` 在 `main` 推送且变更进入站点/Worker 时构建并部署 Worker；类型检查、测试和 Playwright 只在 PR / merge queue 的 `ci.yml` 里跑。D1 迁移由 `.github/workflows/migrate.yml` 单独处理：可手动触发，或在 `main` 上变更 `migrations/**` 时自动执行。工作流绑定 `production` Environment，建议配置必需审核人。该 Environment 只需：
 
-- `CLOUDFLARE_API_TOKEN`：Workers Scripts Edit、D1 Edit、Account Settings Read、Secrets Store Write
+- `CLOUDFLARE_API_TOKEN`：Workers Scripts Edit（deploy）、D1 Edit（migrate）、Account Settings Read
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID
 
 CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `pnpm exec wrangler d1 export`，并将备份保存到受限存储。

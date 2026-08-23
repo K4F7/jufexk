@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyChangedPaths } from "../scripts/ci/classify-changed-paths.mjs";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
+import migrateWorkflow from "../.github/workflows/migrate.yml?raw";
 
 describe("classifyChangedPaths", () => {
   it("treats an empty change set as web so CI stays conservative", () => {
@@ -47,5 +48,23 @@ describe("classifyChangedPaths", () => {
     expect(deployWorkflow).toContain(".grok/**");
     expect(deployWorkflow).not.toContain("scripts/legacy_ocr/**");
     expect(deployWorkflow).not.toContain("scripts/legacy_evidence/**");
+  });
+
+  it("keeps production deploy to build and wrangler deploy only", () => {
+    expect(deployWorkflow).toContain("pnpm run build");
+    expect(deployWorkflow).toContain("wrangler deploy");
+    expect(deployWorkflow).not.toContain("playwright");
+    expect(deployWorkflow).not.toContain("pnpm run check");
+    expect(deployWorkflow).not.toContain("ensure-remote");
+    expect(deployWorkflow).not.toContain("migrations list");
+    expect(deployWorkflow).not.toContain("migrations apply");
+  });
+
+  it("applies remote D1 migrations from a dedicated workflow", () => {
+    expect(migrateWorkflow).toContain("workflow_dispatch");
+    expect(migrateWorkflow).toContain("migrations/**");
+    expect(migrateWorkflow).toContain("production-d1-migrate");
+    expect(migrateWorkflow).toContain("wrangler d1 migrations list jufexk --remote");
+    expect(migrateWorkflow).toContain("wrangler d1 migrations apply jufexk --remote");
   });
 });
