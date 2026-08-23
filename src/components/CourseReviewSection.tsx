@@ -25,6 +25,7 @@ import { isEndorsableReview } from "../lib/recognition";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { PublicReview } from "../lib/types";
 import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
+import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 
 type ReviewSort = "default" | "recognized";
@@ -98,9 +99,12 @@ function CourseReviewItem({ review }: { review: PublicReview }) {
           </Chip>
         </div>
       ) : null}
-      <p className="m-0 mt-2 break-words text-sm leading-relaxed">
-        {review.comment}
-      </p>
+      <div className="mt-2">
+        <ReviewNoteContent
+          comment={review.comment}
+          commentFormat={review.comment_format}
+        />
+      </div>
       {isEndorsableReview(review) ? (
         <footer className="mt-3">
           <ReviewRecognitionControl
