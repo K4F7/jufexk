@@ -256,7 +256,7 @@ describe("public course-teacher review projection", () => {
     }
   });
 
-  it("returns a one-decimal dimension average only for scheme-snapshot text reviews", async () => {
+  it("returns a dimension average for old snapshots and four tier labels for current snapshots", async () => {
     const code = `AVG-${Date.now()}`;
     const teacherName = `均分教师-${Date.now()}`;
     const teacher = await env.DB.prepare(
@@ -365,19 +365,29 @@ describe("public course-teacher review projection", () => {
         "没有规则快照的旧评价",
       ]);
       expect(body.items[0]).not.toHaveProperty("dimensionAverage");
+      expect(body.items[0]).not.toHaveProperty("dimensionLabels");
       expect(body.items[1]).toMatchObject({
         comment: "线下课补充说明",
         dimensionAverage: 3.5,
       });
+      expect(body.items[1]).not.toHaveProperty("dimensionLabels");
       expect(body.items[2]).toMatchObject({
         comment: "网课补充说明",
         dimensionAverage: 3.7,
       });
+      expect(body.items[2]).not.toHaveProperty("dimensionLabels");
       expect(body.items[3]).toMatchObject({
         comment: "三档题补充说明",
+        dimensionLabels: [
+          { id: "difficulty", label: "课程难度", option: "简单" },
+          { id: "homework", label: "作业多少", option: "中等" },
+          { id: "grading", label: "给分好坏", option: "杀手" },
+          { id: "gain", label: "收获多少", option: "一般" },
+        ],
       });
       expect(body.items[3]).not.toHaveProperty("dimensionAverage");
       expect(body.items[4]).not.toHaveProperty("dimensionAverage");
+      expect(body.items[4]).not.toHaveProperty("dimensionLabels");
       const publicJson = JSON.stringify(body.items);
       expect(publicJson).not.toContain("teaching");
       expect(publicJson).not.toContain("attendance");

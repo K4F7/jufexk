@@ -77,6 +77,7 @@ import {
   isCourseTag,
   isSchemeKey,
   publicDimensionAverage,
+  publicDimensionLabels,
   snapshotReviewScores,
   type CourseTag,
   type SchemeKey,
@@ -545,9 +546,16 @@ const getPublicReviewPage = async (
             schemeVersion,
             scores,
           });
-          return dimensionAverage == null
-            ? review
-            : { ...review, dimensionAverage };
+          const dimensionLabels = publicDimensionLabels({
+            schemeKey,
+            schemeVersion,
+            scores,
+          });
+          return {
+            ...review,
+            ...(dimensionAverage == null ? {} : { dimensionAverage }),
+            ...(dimensionLabels == null ? {} : { dimensionLabels }),
+          };
         },
       ),
       viewerUserId,

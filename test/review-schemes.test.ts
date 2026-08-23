@@ -7,6 +7,7 @@ import {
   dimensionAverage,
   latestSchemeVersion,
   publicDimensionAverage,
+  publicDimensionLabels,
   REVIEW_NOTE_MAX_LENGTH,
   REVIEW_SCHEMES,
   snapshotReviewScores,
@@ -192,6 +193,90 @@ describe("dimension average from a scheme snapshot", () => {
         schemeKey: null,
         schemeVersion: null,
         scores: JSON.stringify(V1_OFFLINE_SCORES),
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("dimension tier labels from a scheme snapshot", () => {
+  it("translates a current four-question snapshot to Chinese option labels in definition order", () => {
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: JSON.stringify(CURRENT_SCORES),
+      }),
+    ).toEqual([
+      { id: "difficulty", label: "课程难度", option: "简单" },
+      { id: "homework", label: "作业多少", option: "中等" },
+      { id: "grading", label: "给分好坏", option: "杀手" },
+      { id: "gain", label: "收获多少", option: "一般" },
+    ]);
+    expect(
+      publicDimensionLabels({
+        schemeKey: "pe",
+        schemeVersion: 2,
+        scores: { ...CURRENT_SCORES, difficulty: 3, gain: 1 },
+      }),
+    ).toEqual([
+      { id: "difficulty", label: "课程难度", option: "困难" },
+      { id: "homework", label: "作业多少", option: "中等" },
+      { id: "grading", label: "给分好坏", option: "杀手" },
+      { id: "gain", label: "收获多少", option: "很多" },
+    ]);
+  });
+
+  it("never translates an old 1–5 snapshot into the new tier copy", () => {
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 1,
+        scores: JSON.stringify(V1_OFFLINE_SCORES),
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionLabels({
+        schemeKey: "ideology",
+        schemeVersion: 1,
+        scores: JSON.stringify(V1_MOOC_SCORES),
+      }),
+    ).toBeNull();
+  });
+
+  it("returns no labels without a usable snapshot or with an incomplete one", () => {
+    expect(
+      publicDimensionLabels({
+        schemeKey: null,
+        schemeVersion: null,
+        scores: JSON.stringify(CURRENT_SCORES),
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 99,
+        scores: JSON.stringify(CURRENT_SCORES),
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: "not-json",
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: JSON.stringify({ difficulty: 1, homework: 2, grading: 3 }),
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: JSON.stringify({ ...CURRENT_SCORES, grading: 5 }),
       }),
     ).toBeNull();
   });
