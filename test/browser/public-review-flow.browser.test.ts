@@ -96,9 +96,9 @@ async function mockApi(page: Page) {
             category: "general",
             department: "人文学院",
             credits: 3,
-            enrollment_category: "通识",
-            teaching_type: "讲授",
-            course_level: "本科",
+            enrollment_category: "通识选修",
+            teaching_type: "理论课",
+            course_level: "哲学、思维与语言",
             teachers: [
               {
                 id: 9,

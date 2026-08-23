@@ -3,10 +3,18 @@ import { expect, it } from "vitest";
 
 declare const TEST_D1_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
 
-it("removes an existing 班会 course and prevents it from returning", async () => {
+const takeHomeroomExclusion = () => {
   const migrations = [...TEST_D1_MIGRATIONS];
-  const exclusion = migrations.pop();
+  const exclusionIndex = migrations.findIndex((migration) =>
+    migration.name.includes("0031_exclude_homeroom_course.sql"),
+  );
+  const [exclusion] = migrations.splice(exclusionIndex, 1);
   expect(exclusion?.name).toContain("0031_exclude_homeroom_course.sql");
+  return { migrations, exclusion: exclusion! };
+};
+
+it("removes an existing 班会 course and prevents it from returning", async () => {
+  const { migrations, exclusion } = takeHomeroomExclusion();
 
   await applyD1Migrations(env.COURSE_EXCLUSION_MIGRATION_DB, migrations);
   await env.COURSE_EXCLUSION_MIGRATION_DB.prepare(
@@ -24,9 +32,7 @@ it("removes an existing 班会 course and prevents it from returning", async () 
 });
 
 it("fails instead of deleting a 班会 course referenced by a review", async () => {
-  const migrations = [...TEST_D1_MIGRATIONS];
-  const exclusion = migrations.pop();
-  expect(exclusion?.name).toContain("0031_exclude_homeroom_course.sql");
+  const { migrations, exclusion } = takeHomeroomExclusion();
 
   await applyD1Migrations(env.COURSE_EXCLUSION_CONFLICT_DB, migrations);
   const course = await env.COURSE_EXCLUSION_CONFLICT_DB.prepare(

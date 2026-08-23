@@ -914,7 +914,14 @@ adminRoutes.post("/api/admin/courses", async (c) => {
   const existing = id
     ? await c.env.DB.prepare("SELECT * FROM courses WHERE id=?")
         .bind(id)
-        .first<{ code: string; category: string; credits: number | null }>()
+        .first<{
+          code: string;
+          category: string;
+          credits: number | null;
+          enrollment_category: string;
+          teaching_type: string;
+          course_level: string;
+        }>()
     : null;
   if (id && !existing) return fail(c, "课程不存在", 404);
   const baselinePublished = !!(await c.env.DB.prepare(
@@ -949,6 +956,29 @@ adminRoutes.post("/api/admin/courses", async (c) => {
         return fail(c, "学分必须是非负数字");
     }
   }
+  const planField = (
+    key: "enrollmentCategory" | "teachingType" | "courseLevel",
+    max: number,
+  ) => {
+    if (!Object.hasOwn(b, key)) return undefined;
+    const value = b[key];
+    if (value == null) return "";
+    if (typeof value !== "string") return null;
+    return clean(value, max);
+  };
+  const enrollmentCategory = planField("enrollmentCategory", 40);
+  const teachingType = planField("teachingType", 40);
+  const courseLevel = planField("courseLevel", 80);
+  if (
+    enrollmentCategory === null ||
+    teachingType === null ||
+    courseLevel === null
+  )
+    return fail(c, "选课类别、教学类型或课程层次无效");
+  const nextEnrollment =
+    enrollmentCategory ?? existing?.enrollment_category ?? "";
+  const nextTeaching = teachingType ?? existing?.teaching_type ?? "";
+  const nextLevel = courseLevel ?? existing?.course_level ?? "";
   if (id) {
     if (category !== existing!.category) {
       const legacyCategoryDependency = await c.env.DB.prepare(
@@ -1004,7 +1034,7 @@ adminRoutes.post("/api/admin/courses", async (c) => {
     const statements: D1PreparedStatement[] = [
       scheme.provided
         ? c.env.DB.prepare(
-            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,scheme_key=? WHERE id=?",
+            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,enrollment_category=?,teaching_type=?,course_level=?,scheme_key=? WHERE id=?",
           ).bind(
             code,
             name,
@@ -1012,12 +1042,26 @@ adminRoutes.post("/api/admin/courses", async (c) => {
             department,
             credits,
             description,
+            nextEnrollment,
+            nextTeaching,
+            nextLevel,
             scheme.value,
             id,
           )
         : c.env.DB.prepare(
-            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=? WHERE id=?",
-          ).bind(code, name, category, department, credits, description, id),
+            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,enrollment_category=?,teaching_type=?,course_level=? WHERE id=?",
+          ).bind(
+            code,
+            name,
+            category,
+            department,
+            credits,
+            description,
+            nextEnrollment,
+            nextTeaching,
+            nextLevel,
+            id,
+          ),
     ];
     if (teacherIdsProvided) {
       statements.push(
@@ -1046,7 +1090,7 @@ adminRoutes.post("/api/admin/courses", async (c) => {
     const statements: D1PreparedStatement[] = [
       scheme.provided
         ? c.env.DB.prepare(
-            "INSERT INTO courses(code,name,category,department,credits,description,scheme_key) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO courses(code,name,category,department,credits,description,enrollment_category,teaching_type,course_level,scheme_key) VALUES(?,?,?,?,?,?,?,?,?,?)",
           ).bind(
             code,
             name,
@@ -1054,11 +1098,24 @@ adminRoutes.post("/api/admin/courses", async (c) => {
             department,
             credits,
             description,
+            nextEnrollment,
+            nextTeaching,
+            nextLevel,
             scheme.value,
           )
         : c.env.DB.prepare(
-            "INSERT INTO courses(code,name,category,department,credits,description) VALUES(?,?,?,?,?,?)",
-          ).bind(code, name, category, department, credits, description),
+            "INSERT INTO courses(code,name,category,department,credits,description,enrollment_category,teaching_type,course_level) VALUES(?,?,?,?,?,?,?,?,?)",
+          ).bind(
+            code,
+            name,
+            category,
+            department,
+            credits,
+            description,
+            nextEnrollment,
+            nextTeaching,
+            nextLevel,
+          ),
     ];
     if (teacherIds?.length) {
       statements.push(

@@ -209,9 +209,9 @@ describe("USTC backend APIs (issue #410)", () => {
         }>;
       };
     }>();
-    expect(body.course.enrollment_category).toBe("专业课");
-    expect(body.course.teaching_type).toBe("讲授");
-    expect(body.course.course_level).toBe("本科");
+    expect(body.course.enrollment_category).toBe("");
+    expect(body.course.teaching_type).toBe("");
+    expect(body.course.course_level).toBe("");
     expect(body.course.teachers[0]?.dimensionLabels?.[0]?.option).toBe("简单");
     expect(body.course.teachers[0]?.terms).toEqual(
       expect.arrayContaining(["2026 春", "2025 秋"]),

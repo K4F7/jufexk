@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
 import {
+  applyCoursePlanAttributes,
+  CoursePlanAttributeError,
+  parseCoursePlanAttributeItems,
+} from "../catalog-course-plan-attributes";
+import {
   applyRelationAdditions,
   CatalogRelationAdditionError,
   parseOfficialRelationPackage,
@@ -22,7 +27,7 @@ import {
   importV5HistoricalBatch,
 } from "../historical-batch-imports";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
-import { fail } from "./support";
+import { fail, markPublicCatalogCacheChanged } from "./support";
 import type { AppContext } from "./types";
 import {
   baselineChunkPathSchema,
@@ -126,6 +131,20 @@ importRoutes.post("/api/admin/import/relations", async (c) => {
     return c.json(result, result.created ? 201 : 200);
   } catch (error) {
     return relationAdditionFailure(c, error);
+  }
+});
+importRoutes.post("/api/admin/import/course-plan-attributes", async (c) => {
+  try {
+    const result = await applyCoursePlanAttributes(
+      c.env.DB,
+      parseCoursePlanAttributeItems(await c.req.json<unknown>()),
+    );
+    if (result.updated) markPublicCatalogCacheChanged(c);
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof CoursePlanAttributeError)
+      return fail(c, error.message, error.status);
+    throw error;
   }
 });
 importRoutes.post("/api/admin/historical-review-v5-imports", async (c) => {
