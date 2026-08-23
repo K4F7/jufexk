@@ -125,3 +125,19 @@ test("latest page lists newest public reviews and deep-links to the course", asy
     page.getByRole("heading", { name: /中国传统文化导论/ }),
   ).toBeVisible();
 });
+
+test("latest feed column aligns with the course catalog", async ({ page }) => {
+  await mockShellApi(page);
+  await page.goto("/latest");
+  await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
+  const latest = await page.locator("main > section").boundingBox();
+
+  await page.goto("/courses");
+  await expect(page.getByRole("heading", { name: "课程列表" })).toBeVisible();
+  const courses = await page.locator("main > section").boundingBox();
+
+  expect(latest).toBeTruthy();
+  expect(courses).toBeTruthy();
+  expect(latest?.x).toBe(courses?.x);
+  expect(latest?.width).toBe(courses?.width);
+});
