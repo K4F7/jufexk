@@ -6,6 +6,8 @@ const COURSE = {
   name: "中国传统文化导论",
   category: "general",
   department: "人文学院",
+  admin_notice: "本周课程改为线上进行。",
+  admin_notice_updated_at: "2026-08-24 10:30:00",
   teachers: [{ id: 9, name: "测试教师", review_count: 0 }],
 };
 
@@ -85,6 +87,20 @@ test("course review feed error uses official Alert", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "中国传统文化导论" })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("评价加载失败");
   await expect(page.getByRole("alert")).toContainText("评价接口失败");
+});
+
+test("course detail displays the course administrator notice", async ({ page }) => {
+  await page.route("**/api/courses/8", (route) =>
+    route.fulfill({ json: { course: COURSE, reviewCount: 0 } }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/courses/8/reviews",
+    (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
+  );
+  await page.goto("/courses/8?teacher=9");
+  await expect(page.getByText("管理员公告", { exact: true })).toBeVisible();
+  await expect(page.getByText("本周课程改为线上进行。", { exact: true })).toBeVisible();
+  await expect(page.getByText("更新于 2026-08-24 10:30:00", { exact: true })).toBeVisible();
 });
 
 test("teacher detail first load uses a reserved-height skeleton", async ({ page }) => {

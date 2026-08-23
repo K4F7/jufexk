@@ -11,6 +11,8 @@ export type Course = {
   rating: number | null;
   credits?: number | null;
   description?: string;
+  admin_notice?: string;
+  admin_notice_updated_at?: string | null;
   enrollment_category?: string;
   teaching_type?: string;
   course_level?: string;

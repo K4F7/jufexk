@@ -13,6 +13,7 @@ export function AdminCourses() {
     category: "major",
     department: "",
     description: "",
+    adminNotice: "",
     teacherIds: [] as string[],
   });
   const [msg, setMsg] = useState("");
@@ -32,20 +33,34 @@ export function AdminCourses() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    await api("/api/admin/courses", {
-      method: "POST",
-      body: JSON.stringify(form),
-    });
-    setForm({
-      id: "",
-      code: "",
-      name: "",
-      category: "major",
-      department: "",
-      description: "",
-      teacherIds: [],
-    });
-    await load();
+    const { adminNotice, ...courseFields } = form;
+    setMsg("");
+    try {
+      const saved = await api<{ id: number }>("/api/admin/courses", {
+        method: "POST",
+        body: JSON.stringify(courseFields),
+      });
+      // The notice has its own endpoint. Keep a newly created course in edit
+      // mode so a failed notice write can be retried without creating it again.
+      setForm((current) => ({ ...current, id: String(saved.id) }));
+      await api(`/api/admin/courses/${saved.id}/notice`, {
+        method: "PUT",
+        body: JSON.stringify({ content: adminNotice }),
+      });
+      setForm({
+        id: "",
+        code: "",
+        name: "",
+        category: "major",
+        department: "",
+        description: "",
+        adminNotice: "",
+        teacherIds: [],
+      });
+      await load();
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "保存失败，请重试");
+    }
   }
 
   function edit(course: any) {
@@ -56,6 +71,7 @@ export function AdminCourses() {
       category: course.category || "major",
       department: course.department || "",
       description: course.description || "",
+      adminNotice: course.admin_notice || "",
       teacherIds: String(course.teacher_ids || "")
         .split(",")
         .filter(Boolean),
@@ -120,6 +136,15 @@ export function AdminCourses() {
             fullWidth
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </label>
+        <label className="field-label">
+          管理员公告
+          <TextArea
+            fullWidth
+            maxLength={2000}
+            value={form.adminNotice}
+            onChange={(e) => setForm({ ...form, adminNotice: e.target.value })}
           />
         </label>
         <fieldset className="m-0 rounded border border-border p-3">

@@ -113,6 +113,10 @@ export const adminCourseSchema = z
   })
   .passthrough();
 
+export const adminCourseNoticeSchema = z.object({
+  content: z.string().trim().max(2000),
+});
+
 export const adminTeacherSchema = z
   .object({
     id: integerField,
