@@ -63,7 +63,7 @@ function withPrototypeParams(path: string, params: URLSearchParams) {
 function FooterLine({ config }: { config: SiteConfig | null }) {
   return (
     <footer className="border-t border-border px-4 py-4 text-center text-sm text-muted sm:px-5">
-      <div className="mx-auto max-w-[1280px]">
+      <div className="mx-auto max-w-[1520px]">
         {brandName(config)} · {uniName(config)}
       </div>
     </footer>
@@ -85,7 +85,7 @@ function ShellChrome({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex min-h-14 max-w-[1280px] items-center gap-4 px-4 py-2.5 sm:px-5">
+        <div className="mx-auto flex min-h-14 max-w-[1520px] items-center gap-4 px-4 py-2.5 sm:px-5">
           <NavLink
             to={withPrototypeParams("/courses", params)}
             className="shrink-0 text-sm font-semibold tracking-tight text-foreground no-underline"
@@ -106,7 +106,7 @@ function ShellChrome({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-4 sm:px-5">
+      <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 py-4 sm:px-5">
         {children}
       </main>
       <FooterLine config={config} />

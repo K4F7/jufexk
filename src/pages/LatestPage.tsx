@@ -63,7 +63,7 @@ export function LatestPage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-[760px]">
+    <section className="mx-auto w-full max-w-[880px]">
       <header aria-label="最新课评标题" className="mb-3">
         <Typography
           className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"

@@ -103,15 +103,15 @@ describe("public PE course presentation", () => {
     expect(isPublicListCategoryFilter("ideology")).toBe(true);
     expect(isPublicListCategoryFilter("math")).toBe(true);
     expect(isPublicListCategoryFilter("mooc")).toBe(true);
-    // Issue #402 / #364：专业课与公共课进入公开筛选集合。
+    // Issue #415：通识课合并 major / public_basic；旧键仍作通识别名。
+    expect(isPublicListCategoryFilter("general")).toBe(true);
     expect(isPublicListCategoryFilter("major")).toBe(true);
     expect(isPublicListCategoryFilter("public_basic")).toBe(true);
     expect(isPublicListCategoryFilter("pe")).toBe(false);
-    expect(isPublicListCategoryFilter("general")).toBe(false);
     expect(isPublicListCategoryFilter("required")).toBe(false);
     expect(isPublicListCategoryFilter("elective")).toBe(false);
     expect(publicCategoryFilterError()).toBe(
-      "公开筛选仅支持 major、public_basic、sports、english、ideology、math、mooc",
+      "公开筛选仅支持 general、major、public_basic、sports、english、ideology、math、mooc",
     );
     expect(publicCategoryFilterSql("", "c")).toEqual({ sql: "1=1", args: [] });
     expect(publicCategoryFilterSql("mooc", "c")).toEqual({
@@ -131,14 +131,13 @@ describe("public PE course presentation", () => {
       sql: `(c.scheme_key=? AND NOT ${publicHasMoocTagSql("c")})`,
       args: ["english"],
     });
-    expect(publicCategoryFilterSql("major", "c")).toEqual({
-      sql: `(c.scheme_key=? AND NOT ${publicHasMoocTagSql("c")})`,
-      args: ["major"],
-    });
-    expect(publicCategoryFilterSql("public_basic", "c")).toEqual({
-      sql: `(c.scheme_key=? AND NOT ${publicHasMoocTagSql("c")})`,
-      args: ["public_basic"],
-    });
+    const generalSql = {
+      sql: `(c.scheme_key IN ('major','public_basic') AND NOT ${publicHasMoocTagSql("c")})`,
+      args: [],
+    };
+    expect(publicCategoryFilterSql("general", "c")).toEqual(generalSql);
+    expect(publicCategoryFilterSql("major", "c")).toEqual(generalSql);
+    expect(publicCategoryFilterSql("public_basic", "c")).toEqual(generalSql);
   });
 
   it("maps umbrella-only PE teachers onto visible sport names", () => {

@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Issue #402 筛选框的类别行：全部 / 专业课 / 公共课 / 体育课 / 英语课 /
- * 思政课 / 数学课（与 #364 的类别集合一致）。URL 继续用 ?category=。
+ * Issue #402 筛选框的类别行；#415 把专业课/公共课并进通识课：
+ * 全部 / 通识课 / 体育课 / 英语课 / 思政课 / 数学课。URL 继续用 ?category=。
  */
 const COURSES = [
   {
@@ -105,6 +105,7 @@ async function mockCatalogApi(page: Page) {
     if (url.pathname === "/api/courses") {
       const category = url.searchParams.get("category") || "";
       const allowed = new Set([
+        "general",
         "major",
         "public_basic",
         "sports",
@@ -118,7 +119,7 @@ async function mockCatalogApi(page: Page) {
           status: 400,
           json: {
             error:
-              "公开筛选仅支持 major、public_basic、sports、english、ideology、math、mooc",
+              "公开筛选仅支持 general、major、public_basic、sports、english、ideology、math、mooc",
           },
         });
       }
@@ -128,6 +129,13 @@ async function mockCatalogApi(page: Page) {
         if (item.mooc) return false;
         if (category === "sports")
           return item.category === "sports" || item.scheme === "pe";
+        if (
+          category === "general" ||
+          category === "major" ||
+          category === "public_basic"
+        ) {
+          return item.scheme === "major" || item.scheme === "public_basic";
+        }
         return item.scheme === category;
       }).map(({ scheme: _scheme, mooc: _mooc, ...item }) => item);
       return route.fulfill({
@@ -150,7 +158,7 @@ async function mockCatalogApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockCatalogApi(page));
 
-test("category row exposes the six scheme categories and filters by scheme", async ({
+test("category row exposes 通识课 instead of 专业课/公共课 and filters by scheme", async ({
   page,
 }) => {
   await page.goto("/courses");
@@ -159,11 +167,14 @@ test("category row exposes the six scheme categories and filters by scheme", asy
     filterBox.getByRole("button", { name: "全部", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "专业课", exact: true }),
+    filterBox.getByRole("button", { name: "通识课", exact: true }),
   ).toBeVisible();
   await expect(
+    filterBox.getByRole("button", { name: "专业课", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     filterBox.getByRole("button", { name: "公共课", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     filterBox.getByRole("button", { name: "体育课", exact: true }),
   ).toBeVisible();
@@ -187,22 +198,17 @@ test("category row exposes the six scheme categories and filters by scheme", asy
     filterBox.getByRole("button", { name: /mooc/i }),
   ).toHaveCount(0);
 
-  await filterBox.getByRole("button", { name: "专业课" }).click();
-  await expect(page).toHaveURL(/category=major/);
+  await filterBox.getByRole("button", { name: "通识课" }).click();
+  await expect(page).toHaveURL(/category=general/);
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /篮球/ })).toHaveCount(0);
-  await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
-
-  await filterBox.getByRole("button", { name: "公共课" }).click();
-  await expect(page).toHaveURL(/category=public_basic/);
   await expect(
     page.getByRole("link", { name: /公共基础导论/ }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /中国传统文化导论/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /篮球/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /大学英语/ })).toHaveCount(0);
+  await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
 
   await filterBox.getByRole("button", { name: "英语课" }).click();
   await expect(page).toHaveURL(/category=english/);
@@ -233,16 +239,21 @@ test("sports category deep link still works", async ({ page }) => {
   await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
 });
 
-// #364：major / public_basic 是有效公开筛选，深链不再被当作过期参数清掉。
-test("major and public_basic deep links are not treated as stale", async ({
+// #415：major / public_basic 深链仍有效，语义与通识课相同，不剥离。
+test("major and public_basic deep links keep working as 通识课", async ({
   page,
 }) => {
+  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+
   await page.goto("/courses?category=major");
   await expect(page).toHaveURL(/category=major/);
   await expect(
+    filterBox.getByRole("button", { name: "通识课", exact: true }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /公共基础导论/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /公共基础导论/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /篮球/ })).toHaveCount(0);
   await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
 
@@ -251,7 +262,7 @@ test("major and public_basic deep links are not treated as stale", async ({
   await expect(page.getByRole("link", { name: /公共基础导论/ })).toBeVisible();
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
 });
 
@@ -264,7 +275,7 @@ test("obsolete category query params get stripped without hitting the API", asyn
     if (url.pathname === "/api/courses") catalogRequests.push(url.search);
   });
 
-  for (const obsolete of ["general", "pe", "required"]) {
+  for (const obsolete of ["pe", "required"]) {
     await page.goto(`/courses?category=${obsolete}`);
     await expect(
       page.getByRole("link", { name: /中国传统文化导论/ }).first(),
@@ -273,9 +284,7 @@ test("obsolete category query params get stripped without hitting the API", asyn
     await expect(page).not.toHaveURL(/category=/);
   }
   expect(
-    catalogRequests.some((search) =>
-      /category=(general|pe|required)/.test(search),
-    ),
+    catalogRequests.some((search) => /category=(pe|required)/.test(search)),
   ).toBe(false);
 });
 

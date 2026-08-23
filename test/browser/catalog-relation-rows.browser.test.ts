@@ -139,8 +139,7 @@ test("filter box shows the category row and rating sort", async ({
   await expect(filterBox.getByText("课程类别：")).toBeVisible();
   for (const label of [
     "全部",
-    "专业课",
-    "公共课",
+    "通识课",
     "体育课",
     "英语课",
     "思政课",

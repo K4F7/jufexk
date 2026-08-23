@@ -1,5 +1,10 @@
 import { likeSql } from "./catalog-search";
 import {
+  GENERAL_EDUCATION_FILTER,
+  GENERAL_EDUCATION_SCHEME_KEYS,
+  isGeneralEducationFilter,
+} from "./public-categories";
+import {
   normalizeReviewTemplateKind,
   type ReviewTemplateKind,
 } from "./review-template-kind";
@@ -272,8 +277,8 @@ export function publicSportsMatchSql(alias = "c"): string {
 
 /** Public catalog `?category=` values. Empty means all; others stay 400. */
 export const PUBLIC_CATEGORY_FILTERS = [
-  "major",
-  "public_basic",
+  GENERAL_EDUCATION_FILTER,
+  ...GENERAL_EDUCATION_SCHEME_KEYS,
   "sports",
   "english",
   "ideology",
@@ -299,8 +304,9 @@ export function publicCategoryFilterError(): string {
 
 /**
  * sports: existing PE presentation match or scheme_key=pe.
- * major / public_basic / english / ideology / math: exact scheme_key,
+ * general / major / public_basic: 通识课 — scheme_key in major|public_basic,
  * excluding mooc-tagged rows.
+ * english / ideology / math: exact scheme_key, excluding mooc-tagged rows.
  * mooc: every public course with the mooc tag, regardless of scheme_key.
  */
 export function publicCategoryFilterSql(
@@ -313,6 +319,13 @@ export function publicCategoryFilterSql(
   if (category === "sports") {
     return {
       sql: `((${publicSportsMatchSql(alias)} OR ${alias}.scheme_key='pe') AND NOT ${moocTag})`,
+      args: [],
+    };
+  }
+  if (isGeneralEducationFilter(category)) {
+    const keys = GENERAL_EDUCATION_SCHEME_KEYS.map(sqlStringLiteral).join(",");
+    return {
+      sql: `(${alias}.scheme_key IN (${keys}) AND NOT ${moocTag})`,
       args: [],
     };
   }

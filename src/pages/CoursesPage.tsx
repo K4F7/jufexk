@@ -37,6 +37,7 @@ import {
   isPublicCatalogCategory,
   PUBLIC_CATEGORY_OPTIONS,
   publicCategoryOptionLabel,
+  publicCategoryOptionSelected,
 } from "../lib/public-categories";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
 import { expandCourseRelations } from "../lib/course-relations";
@@ -108,7 +109,8 @@ export function CoursesPage() {
   const [reloadToken, setReloadToken] = useState(0);
   const [rescueTotal, setRescueTotal] = useState<number | null>(null);
 
-  // Stale bookmarks may still carry general/pe/required; those 400 on the API.
+  // Stale bookmarks may still carry pe/required/elective; those 400 on the API.
+  // general / major / public_basic 都是通识课，保留深链。
   useEffect(() => {
     if (!rawCategory || isPublicCatalogCategory(rawCategory)) return;
     const next = new URLSearchParams(params);
@@ -268,7 +270,11 @@ export function CoursesPage() {
           <Button
             key={opt.id || "all"}
             size="sm"
-            variant={category === opt.id ? "secondary" : "ghost"}
+            variant={
+              publicCategoryOptionSelected(opt.id, category)
+                ? "secondary"
+                : "ghost"
+            }
             onPress={() => update({ category: opt.id }, true)}
           >
             {opt.label}
