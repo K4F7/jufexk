@@ -68,7 +68,7 @@ async function createBoundCourse(
 
 async function insertedReview(courseId: number) {
   return env.DB.prepare(
-    "SELECT scheme_key,scheme_version,scores,overall,comment,comment_format,headline,grade,status FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
+    "SELECT scheme_key,scheme_version,scores,overall,comment,comment_format,headline,grade,status,author_user_id FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
   )
     .bind(courseId)
     .first<{
@@ -81,6 +81,7 @@ async function insertedReview(courseId: number) {
       headline: string;
       grade: string | null;
       status: string;
+      author_user_id: string | null;
     }>();
 }
 
@@ -113,6 +114,7 @@ describe("review submission required scheme scores", () => {
       headline: REQUIRED_HEADLINE,
       grade: null,
       status: "approved",
+      author_user_id: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
   });
 

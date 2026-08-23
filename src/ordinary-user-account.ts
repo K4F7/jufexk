@@ -44,6 +44,9 @@ export async function handleRequestOrdinaryUserDeletion(c: Context) {
     c.env.DB.prepare(
       "DELETE FROM relation_recommendations WHERE user_id=?",
     ).bind(user.id),
+    c.env.DB.prepare("DELETE FROM user_notifications WHERE user_id=?").bind(
+      user.id,
+    ),
     c.env.DB.prepare(
       "UPDATE users SET status='pending_deletion', pending_deletion_at=? WHERE id=? AND status='active'",
     ).bind(pendingDeletionAt, user.id),
