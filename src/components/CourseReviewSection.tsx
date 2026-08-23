@@ -21,12 +21,14 @@ import {
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
+import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { PublicReview } from "../lib/types";
 import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
+import { Stars } from "./Stars";
 
 type ReviewSort = "default" | "recognized";
 
@@ -70,15 +72,27 @@ function FilterSelect({
 
 function CourseReviewItem({ review }: { review: PublicReview }) {
   const { viewer, ready, clear } = useViewer();
+  const date = formatReviewDate(review.created_at);
   return (
     <article
       id={reviewAnchorId(review.id)}
       className="scroll-mt-20 border-b border-separator py-5 last:border-b-0"
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className="text-[13px] font-medium text-foreground">
+        <span className="flex flex-wrap items-center gap-x-2 text-[13px] font-medium text-foreground">
           匿名用户
+          {review.overall != null ? (
+            <Stars rating={review.overall} className="text-[13px]" />
+          ) : null}
+          {review.term ? (
+            <span className="font-normal text-muted">{review.term}</span>
+          ) : null}
         </span>
+        {date ? (
+          <time className="text-[12px] text-muted" dateTime={date}>
+            {date}
+          </time>
+        ) : null}
       </header>
       {review.dimensionLabels?.length ? (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -123,6 +137,7 @@ function CourseReviewItem({ review }: { review: PublicReview }) {
 export function CourseReviewSection({
   courseId,
   teacherId,
+  terms = [],
   reviews,
   total,
   loading,
@@ -135,6 +150,8 @@ export function CourseReviewSection({
   courseId: number;
   /** 当前选中的任课教师；为空（课程无教师）时隐藏写点评入口。 */
   teacherId: number | null;
+  /** 该关系的学期列表，与头部共用。 */
+  terms?: string[];
   reviews: PublicReview[];
   /** 该关系的公开文字评价总数。 */
   total: number;
@@ -147,16 +164,19 @@ export function CourseReviewSection({
 }) {
   const navigate = useNavigate();
   const [reviewSort, setReviewSort] = useState<ReviewSort>("default");
+  const [termFilter, setTermFilter] = useState("all");
 
-  const visible = useMemo(
-    () =>
-      reviewSort === "recognized"
-        ? [...reviews].sort(
-            (a, b) => (b.endorsement_count ?? 0) - (a.endorsement_count ?? 0),
-          )
-        : reviews,
-    [reviews, reviewSort],
-  );
+  const visible = useMemo(() => {
+    const scoped =
+      termFilter && termFilter !== "all"
+        ? reviews.filter((review) => review.term === termFilter)
+        : reviews;
+    return reviewSort === "recognized"
+      ? [...scoped].sort(
+          (a, b) => (b.endorsement_count ?? 0) - (a.endorsement_count ?? 0),
+        )
+      : scoped;
+  }, [reviews, reviewSort, termFilter]);
 
   const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;
 
@@ -192,6 +212,17 @@ export function CourseReviewSection({
             { id: "recognized", label: "认可最多" },
           ]}
         />
+        {terms.length ? (
+          <FilterSelect
+            label="学期"
+            value={termFilter}
+            onChange={setTermFilter}
+            items={[
+              { id: "all", label: "全部学期" },
+              ...terms.map((term) => ({ id: term, label: term })),
+            ]}
+          />
+        ) : null}
       </div>
 
       {error && reviews.length === 0 ? (

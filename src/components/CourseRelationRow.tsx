@@ -1,11 +1,8 @@
 /**
- * 课程目录行（Issue #402，对齐 icourse 三行条目）：一行一条课程×教师。
+ * 课程目录行：一行一条课程×教师。
  * 课程名（老师）→ 星级 + 评价样本 → 四维档位。
- * 关系级评分 / 点评数与四维档期的后端投影属 #410：未下发前星级一律灰星，
- * 课程无任何公开文字评价时显示「暂无评价」，否则显示「评分统计接入中」，
- * 四维固定占位「—」。整行是真实链接（键盘 / 新标签安全），并携带目录
- * 查询串以便详情页返回时恢复。
  */
+import { fourDimLineLabels } from "../lib/dimension-labels";
 import type { CourseRelation } from "../lib/types";
 import { FourDimLine } from "./FourDimLine";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -34,6 +31,8 @@ export function CourseRelationRow({
   search?: string;
 }) {
   const href = relationDetailHref(relation, search);
+  const rating = relation.rating ?? null;
+  const reviewCount = relation.review_count ?? relation.course_review_count ?? 0;
   return (
     <RouterAriaLink
       to={href}
@@ -51,12 +50,24 @@ export function CourseRelationRow({
         )}
       </span>
       <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
-        <Stars rating={null} className="text-[15px]" />
+        <Stars rating={rating} className="text-[15px]" />
+        {rating != null ? (
+          <span className="tabular text-[15px] font-semibold text-accent">
+            {rating.toFixed(1)}
+          </span>
+        ) : null}
         <span className="text-[12px] text-muted">
-          {relation.course_review_count > 0 ? "评分统计接入中" : "暂无评价"}
+          {reviewCount > 0
+            ? rating != null
+              ? `（${reviewCount} 人评价）`
+              : `${reviewCount} 条评价`
+            : "暂无评价"}
         </span>
       </span>
-      <FourDimLine className="mt-1.5" labels={null} />
+      <FourDimLine
+        className="mt-1.5"
+        labels={fourDimLineLabels(relation.dimensionLabels)}
+      />
     </RouterAriaLink>
   );
 }

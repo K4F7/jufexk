@@ -11,16 +11,18 @@ export type Course = {
   rating: number | null;
   credits?: number | null;
   description?: string;
+  enrollment_category?: string;
+  teaching_type?: string;
+  course_level?: string;
   /** Catalog list: "id:name,id:name" for real teacher links */
   teacher_refs?: string;
   teacher_ids?: string;
 };
 
 /**
- * 目录页任课关系行（Issue #402）：一行一条课程×教师，由 /api/courses 的
- * 课程行按 teacher_refs 在前端展开（关系级评分/点评数与四维档期的后端
- * 投影属 #410，未下发前行内显示占位）。无教师课程保留一行，
- * teacher_id/teacher_name 为 null。
+ * 目录页任课关系行（Issue #410）：`GET /api/courses?view=relations`
+ * 一行一条课程×教师。无教师课程保留一行，teacher_id/teacher_name 为 null。
+ * 无评价关系 rating=null、dimensionLabels=null。
  */
 export type CourseRelation = {
   course_id: number;
@@ -30,8 +32,17 @@ export type CourseRelation = {
   department: string;
   teacher_id: number | null;
   teacher_name: string | null;
-  /** 课程级公开文字评价数（非关系级）：仅用于区分「暂无评价」与占位。 */
-  course_review_count: number;
+  rating: number | null;
+  review_count: number;
+  dimensionLabels?: PublicReviewDimensionLabel[] | null;
+  follow_count?: number;
+  recommend_count?: number;
+  not_recommend_count?: number;
+  viewer_followed?: boolean;
+  viewer_recommended?: boolean;
+  viewer_not_recommended?: boolean;
+  /** @deprecated 课程级展开兼容字段；关系接口不再下发。 */
+  course_review_count?: number;
 };
 
 export type CourseOption = Pick<
@@ -63,6 +74,14 @@ export type Teacher = {
   rating?: number | null;
   course_count?: number;
   review_count?: number;
+  dimensionLabels?: PublicReviewDimensionLabel[] | null;
+  terms?: string[];
+  follow_count?: number;
+  recommend_count?: number;
+  not_recommend_count?: number;
+  viewer_followed?: boolean;
+  viewer_recommended?: boolean;
+  viewer_not_recommended?: boolean;
 };
 
 export type Offering = {
@@ -127,6 +146,9 @@ export type PublicReview = {
   course_name?: string;
   course_code?: string;
   teacher_name?: string;
+  overall?: number | null;
+  term?: string | null;
+  created_at?: string | null;
   endorsement_count?: number;
   endorsable?: boolean;
   viewer_endorsed?: boolean;
@@ -136,13 +158,34 @@ export type PublicReview = {
   dimensionLabels?: PublicReviewDimensionLabel[];
 };
 
+export type LatestReview = {
+  id: string;
+  course_id: number;
+  teacher_id: number;
+  course_name: string;
+  course_code: string;
+  teacher_name: string;
+  comment: string;
+  comment_format?: string | null;
+  created_at: string | null;
+};
+
+export type RelationSignalState = {
+  followCount: number;
+  recommendCount: number;
+  notRecommendCount: number;
+  viewerFollowed: boolean;
+  viewerRecommended: boolean;
+  viewerNotRecommended: boolean;
+};
+
 export type EndorsementState = {
   endorsementCount: number;
   viewerEndorsed: boolean;
 };
 
-export type PublicReviewPage = {
-  items: PublicReview[];
+export type PublicReviewPage<T = PublicReview> = {
+  items: T[];
   nextCursor: string | null;
 };
 

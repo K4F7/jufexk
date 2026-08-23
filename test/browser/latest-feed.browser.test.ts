@@ -1,9 +1,30 @@
 /**
- * Browser coverage for /latest（Issue #402）：全站最新公开课评流的页面结构。
- * 全站评价流接口属 #410：未上线前页面不请求任何数据接口，只渲染明确
- * 标注的占位状态，并给出前往课程列表的入口。
+ * Browser coverage for /latest：全站最新公开课评流。
  */
 import { expect, test, type Page } from "@playwright/test";
+
+const LATEST = [
+  {
+    id: "review:12",
+    course_id: 8,
+    teacher_id: 9,
+    course_name: "中国传统文化导论",
+    course_code: "GEN0108",
+    teacher_name: "测试教师",
+    comment: "这门课讲得很清楚，作业量适中。",
+    created_at: "2026-08-20 12:00:00",
+  },
+  {
+    id: "historical:abc",
+    course_id: 11,
+    teacher_id: 12,
+    course_name: "篮球",
+    course_code: "PE0101",
+    teacher_name: "体育教师",
+    comment: "课堂气氛好，考试不难。",
+    created_at: "2026-08-11 02:00:00",
+  },
+];
 
 async function mockShellApi(page: Page) {
   await page.route("**/api/**", async (route) => {
@@ -26,15 +47,54 @@ async function mockShellApi(page: Page) {
           callbackPath: "/api/auth/callback",
         },
       });
+    if (url.pathname === "/api/reviews/latest") {
+      const cursor = url.searchParams.get("cursor");
+      if (cursor) {
+        return route.fulfill({
+          json: { items: [LATEST[1]], nextCursor: null },
+        });
+      }
+      return route.fulfill({
+        json: { items: [LATEST[0]], nextCursor: "next-latest" },
+      });
+    }
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers")
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
+      });
+    if (url.pathname === "/api/courses/8")
+      return route.fulfill({
+        json: {
+          course: {
+            id: 8,
+            code: "GEN0108",
+            name: "中国传统文化导论",
+            category: "general",
+            department: "人文学院",
+            teachers: [{ id: 9, name: "测试教师", review_count: 1, rating: 4.6 }],
+          },
+          reviewCount: 1,
+        },
+      });
+    if (url.pathname === "/api/courses/8/reviews")
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              id: "review:12",
+              course_id: 8,
+              teacher_id: 9,
+              comment: "这门课讲得很清楚，作业量适中。",
+            },
+          ],
+          nextCursor: null,
+        },
       });
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
 
-test("latest page renders the clearly-marked placeholder without fetching a feed", async ({
+test("latest page lists newest public reviews and deep-links to the course", async ({
   page,
 }) => {
   const feedRequests: string[] = [];
@@ -47,15 +107,18 @@ test("latest page renders the clearly-marked placeholder without fetching a feed
   await page.goto("/latest");
 
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
-  const placeholder = page.getByRole("status");
-  await expect(placeholder).toContainText("最新课评流暂未接入");
-  await expect(placeholder).toContainText("写点评");
-  // 占位页不渲染投稿条目，也不请求尚未上线的全站流接口。
-  await expect(page.locator("article")).toHaveCount(0);
-  expect(feedRequests).toEqual([]);
+  await expect(page.getByText("匿名用户")).toBeVisible();
+  await expect(page.getByText("点评了")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "中国传统文化导论（测试教师）" }),
+  ).toBeVisible();
+  await expect(page.getByText("2026-08-20")).toBeVisible();
+  await expect(page.getByText("这门课讲得很清楚，作业量适中。")).toBeVisible();
+  expect(feedRequests.length).toBeGreaterThan(0);
 
-  // 占位文案里的课程列表入口真实可点。
-  await placeholder.getByRole("link", { name: "课程列表" }).click();
-  await expect(page).toHaveURL(/\/courses$/);
-  await expect(page.getByRole("heading", { name: "课程列表" })).toBeVisible();
+  await page.getByRole("link", { name: ">>更多" }).click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
+  await expect(
+    page.getByRole("heading", { name: /中国传统文化导论/ }),
+  ).toBeVisible();
 });

@@ -101,6 +101,28 @@ import {
   refreshPublicListPrecomputes,
   shouldRefreshPublicListPrecomputes,
 } from "./public-list-precompute";
+import { deriveCourseCatalogMeta } from "./lib/course-metadata";
+import {
+  publicCreatedAt,
+  publicOverall,
+  publicTerm,
+} from "./lib/public-review-fields";
+import { relationDimensionKey } from "./lib/relation-four-dims";
+import {
+  loadCourseRelationTerms,
+  loadRelationDimensionLabels,
+} from "./lib/relation-projections";
+import { listCourseRelations } from "./course-relations-catalog";
+import { handleLatestPublicReviews } from "./public-reviews-latest";
+import {
+  handleCreateFollow,
+  handleCreateNotRecommend,
+  handleCreateRecommend,
+  handleWithdrawFollow,
+  handleWithdrawNotRecommend,
+  handleWithdrawRecommend,
+  loadRelationSignalPayloads,
+} from "./relation-signals";
 import {
   getCourseRelationSummaries,
   publicReviewBindingSql,
@@ -471,13 +493,14 @@ const getPublicReviewPage = async (
     .prepare(
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
          course_name,course_code,teacher_name,endorsement_count,
-         scheme_key,scheme_version,scores
+         scheme_key,scheme_version,scores,overall,term,created_at
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
            phr.course_id,phr.teacher_id,phr.comment,NULL comment_format,
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
-           NULL scheme_key,NULL scheme_version,NULL scores
+           NULL scheme_key,NULL scheme_version,NULL scores,
+           NULL overall,NULL term,phr.imported_at created_at
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
          JOIN teachers t ON t.id=phr.teacher_id
@@ -487,7 +510,8 @@ const getPublicReviewPage = async (
            lr.course_id,lr.teacher_id,lr.comment,NULL comment_format,
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
-           NULL scheme_key,NULL scheme_version,NULL scores
+           NULL scheme_key,NULL scheme_version,NULL scores,
+           NULL overall,NULLIF(trim(COALESCE(lr.term,'')),'') term,lr.created_at
          FROM legacy_reviews lr
          JOIN courses c ON c.id=lr.course_id
          JOIN teachers t ON t.id=lr.teacher_id
@@ -498,7 +522,8 @@ const getPublicReviewPage = async (
            r.course_id,r.teacher_id,r.comment,r.comment_format,
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
-           r.scheme_key,r.scheme_version,r.scores
+           r.scheme_key,r.scheme_version,r.scores,
+           r.overall,NULLIF(trim(COALESCE(r.term,'')),'') term,r.created_at
          FROM reviews r
          JOIN courses c ON c.id=r.course_id
          JOIN teachers t ON t.id=r.teacher_id
@@ -552,6 +577,9 @@ const getPublicReviewPage = async (
           });
           return {
             ...review,
+            overall: publicOverall(review.overall),
+            term: publicTerm(review.term),
+            created_at: publicCreatedAt(review.created_at),
             ...(dimensionAverage == null ? {} : { dimensionAverage }),
             ...(dimensionLabels == null ? {} : { dimensionLabels }),
           };
@@ -645,6 +673,12 @@ app.get("/api/config", async (c) => {
 });
 app.get("/api/courses", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
+  if (clean(c.req.query("view"), 20) === "relations") {
+    const viewerId = await publicReviewViewerId(c);
+    const response = await listCourseRelations(c, viewerId);
+    if (!viewerId) setPublicCatalogCacheHeaders(c);
+    return response;
+  }
   const { page, size } = pageArgs(c),
     search = clean(c.req.query("q"), 80),
     searchTerms = parseSearchTerms(search),
@@ -1006,6 +1040,16 @@ app.get("/api/courses/:id", async (c) => {
         .all()
     ).results;
     if (!teachers.length) return fail(c, "课程不存在", 404);
+    const viewerId = await publicReviewViewerId(c);
+    const typedTeachers = teachers as Array<{ id: number; name: string }>;
+    const signals = await loadRelationSignalPayloads(
+      c.env.DB,
+      typedTeachers.map((teacher) => ({
+        courseId: virtual.id,
+        teacherId: teacher.id,
+      })),
+      viewerId,
+    );
     return c.json({
       course: {
         id: virtual.id,
@@ -1013,8 +1057,22 @@ app.get("/api/courses/:id", async (c) => {
         name: virtual.label,
         category: "sports",
         department: "",
-        teachers,
+        teachers: typedTeachers.map((teacher) => ({
+          ...teacher,
+          review_count: 0,
+          rating: null,
+          dimensionLabels: null,
+          terms: [],
+          ...(signals.get(`${virtual.id}:${teacher.id}`) ?? {
+            follow_count: 0,
+            recommend_count: 0,
+            not_recommend_count: 0,
+          }),
+        })),
         nameVariants: [],
+        enrollment_category: "体育课",
+        teaching_type: "实践",
+        course_level: "本科",
         ...courseSchemeView(null, "sports", []),
       },
       reviewCount: 0,
@@ -1064,14 +1122,57 @@ app.get("/api/courses/:id", async (c) => {
   ).results;
   // 课程详情不再直接返回评价流：评价按 课程×教师 作用域经 /reviews?teacherId= 获取。
   // 任课关系 AI 总结（#401）按教师 ID 索引随载荷下发；空总结不下发。
+  if (id == null) return fail(c, "课程不存在", 404);
   const summaries = await getCourseRelationSummaries(c.env.DB, id);
+  const viewerId = await publicReviewViewerId(c);
+  const typedTeachers = teachers as Array<{
+    id: number;
+    name: string;
+    review_count?: number;
+    rating?: number | null;
+  }>;
+  const teacherIds = typedTeachers.map((teacher) => teacher.id);
+  const [dimMap, termMap, signalMap] = await Promise.all([
+    loadRelationDimensionLabels(
+      c.env.DB,
+      teacherIds.map((teacherId) => ({ courseId: id, teacherId })),
+    ),
+    loadCourseRelationTerms(c.env.DB, id, teacherIds),
+    loadRelationSignalPayloads(
+      c.env.DB,
+      teacherIds.map((teacherId) => ({ courseId: id, teacherId })),
+      viewerId,
+    ),
+  ]);
+  const tags = tagRows.map((row) => row.tag);
+  const decoratedCourse = withCourseReviewScheme({
+    ...course,
+    tag_csv: tags.join(","),
+  });
+  const meta = deriveCourseCatalogMeta({
+    name: typeof decoratedCourse.name === "string" ? decoratedCourse.name : "",
+    category:
+      typeof decoratedCourse.category === "string"
+        ? decoratedCourse.category
+        : "",
+    schemeKey: typeof course.scheme_key === "string" ? course.scheme_key : null,
+    tags,
+  });
   return c.json({
     course: {
-      ...withCourseReviewScheme({
-        ...course,
-        tag_csv: tagRows.map((row) => row.tag).join(","),
-      }),
-      teachers,
+      ...decoratedCourse,
+      ...meta,
+      teachers: typedTeachers.map((teacher) => ({
+        ...teacher,
+        dimensionLabels:
+          dimMap.get(relationDimensionKey(id, teacher.id)) ?? null,
+        terms: termMap.get(teacher.id) ?? [],
+        ...(signalMap.get(`${id}:${teacher.id}`) ?? {
+          follow_count: 0,
+          recommend_count: 0,
+          not_recommend_count: 0,
+        }),
+      })),
       nameVariants,
     },
     reviewCount,
@@ -1135,8 +1236,27 @@ app.post("/api/auth/email", handleEmailLoginRequest);
 app.post("/api/auth/verify", handleEmailLoginVerify);
 app.post("/api/auth/cas", handleCasLogin);
 app.post("/api/auth/cas/mfa", handleCasMfa);
+app.get("/api/reviews/latest", handleLatestPublicReviews);
 app.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
 app.delete("/api/reviews/:id/endorsement", handleWithdrawEndorsement);
+app.put("/api/courses/:id/teachers/:teacherId/follow", handleCreateFollow);
+app.delete("/api/courses/:id/teachers/:teacherId/follow", handleWithdrawFollow);
+app.put(
+  "/api/courses/:id/teachers/:teacherId/recommend",
+  handleCreateRecommend,
+);
+app.delete(
+  "/api/courses/:id/teachers/:teacherId/recommend",
+  handleWithdrawRecommend,
+);
+app.put(
+  "/api/courses/:id/teachers/:teacherId/not-recommend",
+  handleCreateNotRecommend,
+);
+app.delete(
+  "/api/courses/:id/teachers/:teacherId/not-recommend",
+  handleWithdrawNotRecommend,
+);
 
 async function verifyTurnstile(c: any, response: string, ip: string) {
   const secret = await readSecret(c.env.TURNSTILE_SECRET);

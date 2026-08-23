@@ -18,6 +18,9 @@ const teacherNineReviews = Array.from({ length: 21 }, (_, index) => ({
   course_code: "GEN0108",
   teacher_name: "测试教师",
   comment: `匿名评价 ${index + 1}，正文包含足够长的内容用于验证窄屏布局不会溢出或覆盖目录上下文。`,
+  overall: index === 0 ? 5 : null,
+  term: index === 0 ? "2026 春" : null,
+  created_at: "2026-08-11 02:00:00",
   endorsement_count: 0,
   endorsable: false,
 }));
@@ -93,6 +96,9 @@ async function mockApi(page: Page) {
             category: "general",
             department: "人文学院",
             credits: 3,
+            enrollment_category: "通识",
+            teaching_type: "讲授",
+            course_level: "本科",
             teachers: [
               {
                 id: 9,
@@ -100,6 +106,16 @@ async function mockApi(page: Page) {
                 department: "人文学院",
                 review_count: 21,
                 rating: 4.6,
+                dimensionLabels: [
+                  { id: "difficulty", label: "课程难度", option: "中等" },
+                  { id: "homework", label: "作业多少", option: "不多" },
+                  { id: "grading", label: "给分好坏", option: "一般" },
+                  { id: "gain", label: "收获多少", option: "很多" },
+                ],
+                terms: ["2026 春", "2025 秋"],
+                follow_count: 0,
+                recommend_count: 0,
+                not_recommend_count: 0,
               },
               {
                 id: 10,
@@ -107,6 +123,11 @@ async function mockApi(page: Page) {
                 department: "信息学院",
                 review_count: 2,
                 rating: null,
+                dimensionLabels: null,
+                terms: [],
+                follow_count: 0,
+                recommend_count: 0,
+                not_recommend_count: 0,
               },
             ],
           },
@@ -222,13 +243,13 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(page.getByText("4.6", { exact: true })).toBeVisible();
   await expect(page.getByText("（21 人评价）")).toBeVisible();
   await expect(page.getByText("课程号：GEN0108")).toBeVisible();
-  // 关系级四维聚合未下发（#410）：头部保留占位；点评条目不再渲染占位行。
-  await expect(page.getByText("课程难度：—")).toBeVisible();
-  // 元信息网格。
+  await expect(page.getByText("课程难度：中等")).toBeVisible();
+  await expect(page.getByText("学期 2026 春 2025 秋")).toBeVisible();
+  await expect(page.getByText("选课类别：")).toBeVisible();
+  await expect(page.getByText("通识").first()).toBeVisible();
   await expect(page.getByText("开课单位：")).toBeVisible();
   await expect(page.getByText("人文学院").first()).toBeVisible();
   await expect(page.getByText("学分：")).toBeVisible();
-  // 关注 / 推荐 / 不推荐占位开关。
   await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
   await expect(page.getByRole("button", { name: "推荐", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "不推荐" })).toBeVisible();
@@ -240,14 +261,12 @@ test("course detail defaults to the most-reviewed relation", async ({
     page.getByText("AI 总结为根据点评内容自动生成，仅供参考"),
   ).toBeVisible();
 
-  // 点评区：标题 + 写点评主按钮 + 排序 Select（学期/评分筛选待 #410 投影）。
   await expect(page.getByRole("heading", { name: "点评" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "写点评" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /排序/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /评分/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /学期/ })).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(20);
   expect(
     reviewRequests.filter((search) => search.includes("teacherId=9")),
@@ -257,6 +276,8 @@ test("course detail defaults to the most-reviewed relation", async ({
   // 第一条即 mock 流的第一条 匿名评价 1。
   const first = reviewItems(page).first();
   await expect(first).toContainText("匿名用户");
+  await expect(first).toContainText("2026 春");
+  await expect(first).toContainText("2026-08-11");
   await expect(first).toContainText("匿名评价 1");
   await expect(
     first.getByRole("button", { name: /认可/ }),

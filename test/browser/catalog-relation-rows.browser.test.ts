@@ -3,41 +3,64 @@
  * （课程类别行）、一行一条课程×教师关系条目（/api/courses 前端展开）、
  * 分页与骨架/空态。
  *
- * 关系级评分/点评数、四维档位与「排序方式：课程评分」依赖 #410 投影：
- * 未下发前行内为灰星 + 暂无评价/评分统计接入中 + 四维「—」，筛选框没有
- * 排序方式行。
+ * 关系级评分/点评数、四维档位与「排序方式：课程评分」走
+ * GET /api/courses?view=relations。
  */
 import { expect, test, type Page } from "@playwright/test";
 
-const COURSES = [
+const RELATIONS = [
   {
-    id: 8,
+    course_id: 8,
     code: "GEN0108",
     name: "中国传统文化导论",
     category: "general",
     department: "人文学院",
+    teacher_id: 9,
+    teacher_name: "测试教师",
     review_count: 23,
-    rating: null,
-    teacher_refs: "9:测试教师,10:另一位教师",
+    rating: 4.6,
+    dimensionLabels: [
+      { id: "difficulty", label: "课程难度", option: "中等" },
+      { id: "homework", label: "作业多少", option: "不多" },
+      { id: "grading", label: "给分好坏", option: "一般" },
+      { id: "gain", label: "收获多少", option: "很多" },
+    ],
   },
   {
-    id: 11,
+    course_id: 8,
+    code: "GEN0108",
+    name: "中国传统文化导论",
+    category: "general",
+    department: "人文学院",
+    teacher_id: 10,
+    teacher_name: "另一位教师",
+    review_count: 2,
+    rating: 3.8,
+    dimensionLabels: null,
+  },
+  {
+    course_id: 11,
     code: "PE0101",
     name: "篮球",
     category: "sports",
     department: "体育学院",
+    teacher_id: 12,
+    teacher_name: "体育教师",
     review_count: 0,
     rating: null,
-    teacher_refs: "12:体育教师",
+    dimensionLabels: null,
   },
   {
-    id: 14,
+    course_id: 14,
     code: "LECT01",
     name: "讲座合集",
     category: "general",
     department: "教务处",
+    teacher_id: null,
+    teacher_name: null,
     review_count: 0,
     rating: null,
+    dimensionLabels: null,
   },
 ];
 
@@ -72,11 +95,16 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
     if (url.pathname === "/api/courses") {
       const category = url.searchParams.get("category") || "";
       const query = url.searchParams.get("q") || "";
+      const sort = url.searchParams.get("sort") || "";
       const pageNum = Number(url.searchParams.get("page") || "1");
-      const items = COURSES.filter(
+      const items = RELATIONS.filter(
         (item) =>
           (!category || item.category === category) &&
           (!query || item.name.includes(query)),
+      ).sort((a, b) =>
+        sort === "rating"
+          ? (b.rating ?? -1) - (a.rating ?? -1)
+          : 0,
       );
       const total = items.length;
       if (options.emptyBeyondFirstPage && pageNum > 1) {
@@ -98,7 +126,7 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
   });
 }
 
-test("filter box shows the category row and no sort row yet", async ({
+test("filter box shows the category row and rating sort", async ({
   page,
 }) => {
   await mockCatalogApi(page);
@@ -122,8 +150,10 @@ test("filter box shows the category row and no sort row yet", async ({
       filterBox.getByRole("button", { name: label, exact: true }),
     ).toBeVisible();
   }
-  // 排序方式行待 #410 的评分投影；旧工具条的院系/教师筛选已下线。
-  await expect(filterBox.getByText("排序方式：")).toHaveCount(0);
+  await expect(filterBox.getByText("排序方式：")).toBeVisible();
+  await expect(
+    filterBox.getByRole("button", { name: "课程评分", exact: true }),
+  ).toBeVisible();
   await expect(
     filterBox.getByRole("button", { name: "网课" }),
   ).toHaveCount(0);
@@ -134,7 +164,7 @@ test("filter box shows the category row and no sort row yet", async ({
   await expect(page.getByRole("searchbox", { name: "搜索课程" })).toHaveCount(1);
 });
 
-test("relation rows expand per teacher with honest placeholders", async ({
+test("relation rows show rating, review count, and four-dim labels", async ({
   page,
 }) => {
   await mockCatalogApi(page);
@@ -145,14 +175,12 @@ test("relation rows expand per teacher with honest placeholders", async ({
   await expect(rows).toHaveCount(2);
   const first = rows.first();
   await expect(first).toContainText("中国传统文化导论（测试教师）");
-  // 关系级评分未下发：灰星 + 课程有公开文字评价时显示统计占位。
-  await expect(first).toContainText("评分统计接入中");
-  await expect(first).not.toContainText("人评价");
-  // 四维占位：关系级分布投影（#410）落地前一律 —。
-  await expect(first).toContainText("课程难度：—");
-  await expect(first).toContainText("作业多少：—");
-  await expect(first).toContainText("给分好坏：—");
-  await expect(first).toContainText("收获多少：—");
+  await expect(first).toContainText("4.6");
+  await expect(first).toContainText("（23 人评价）");
+  await expect(first).toContainText("课程难度：中等");
+  await expect(first).toContainText("作业多少：不多");
+  await expect(first).toContainText("给分好坏：一般");
+  await expect(first).toContainText("收获多少：很多");
 
   // 零评价课程：灰星 + 暂无评价。
   const pe = page.getByRole("link", { name: /篮球/ });
@@ -225,7 +253,7 @@ test("first load shows skeleton rows and keeps the header height stable", async 
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }).first(),
   ).toBeVisible();
-  await expect(page.getByText("共 3 条", { exact: true })).toBeVisible();
+  await expect(page.getByText("共 4 条", { exact: true })).toBeVisible();
   await expect(page.getByRole("status", { name: "加载中…" })).toHaveCount(0);
 
   const after = await header.boundingBox();

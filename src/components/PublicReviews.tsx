@@ -1,7 +1,9 @@
 import { Alert, Button, Chip, Separator, Spinner, Typography } from "@heroui/react";
 import { useViewer } from "../hooks/useViewer";
+import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
+import { Stars } from "./Stars";
 import { EmptyBox } from "./EmptyBox";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
@@ -74,6 +76,17 @@ export function PublicReviews({
                     “
                   </span>
                   <div className="min-w-0 flex-1">
+                    <p className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] text-muted">
+                      {review.overall != null ? (
+                        <Stars rating={review.overall} className="text-[13px]" />
+                      ) : null}
+                      {review.term ? <span>{review.term}</span> : null}
+                      {review.created_at ? (
+                        <time dateTime={formatReviewDate(review.created_at)}>
+                          {formatReviewDate(review.created_at)}
+                        </time>
+                      ) : null}
+                    </p>
                     <ReviewNoteContent
                       comment={review.comment}
                       commentFormat={review.comment_format}

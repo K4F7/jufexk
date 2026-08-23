@@ -289,7 +289,9 @@ describe("admin sessions and catalog", () => {
     expect(JSON.stringify(detail.items)).not.toContain("raw_ocr_text");
     expect(JSON.stringify(detail.items)).not.toContain("ocr_tokens_json");
     expect(JSON.stringify(detail.items)).not.toContain("moderator_note");
-    expect(JSON.stringify(detail.items)).not.toContain("overall");
+    expect(detail.items.find((item) => item.comment === "经审核的历史文字")).toMatchObject({
+      overall: null,
+    });
     const teacherDetail = await (await SELF.fetch(`${origin}/api/teachers/1`)).json<{ reviews: Array<Record<string, unknown>> }>();
     expect(teacherDetail.reviews).toContainEqual(expect.objectContaining({ comment: "经审核的历史文字", course_name: "测试课程" }));
     const afterCatalog = await (await SELF.fetch(`${origin}/api/courses`)).json<{ items: Array<{ id: number; review_count: number; rating?: number }> }>();

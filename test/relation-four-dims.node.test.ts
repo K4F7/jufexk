@@ -1,0 +1,36 @@
+import { describe, expect, it } from "vitest";
+import { CURRENT_SCORES, V1_OFFLINE_SCORES } from "./review-score-fixtures";
+import { aggregateRelationDimensionLabels } from "../src/lib/relation-four-dims";
+
+describe("aggregateRelationDimensionLabels", () => {
+  it("returns the mode of new four-dim snapshots and ignores v1 1–5 scores", () => {
+    const labels = aggregateRelationDimensionLabels([
+      { schemeKey: "major", schemeVersion: 1, scores: V1_OFFLINE_SCORES },
+      { schemeKey: "major", schemeVersion: 2, scores: CURRENT_SCORES },
+      {
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: { difficulty: 1, homework: 1, grading: 1, gain: 1 },
+      },
+      {
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: { difficulty: 1, homework: 1, grading: 1, gain: 1 },
+      },
+    ]);
+    expect(labels).toEqual([
+      { id: "difficulty", label: "课程难度", option: "简单" },
+      { id: "homework", label: "作业多少", option: "不多" },
+      { id: "grading", label: "给分好坏", option: "超好" },
+      { id: "gain", label: "收获多少", option: "很多" },
+    ]);
+  });
+
+  it("returns null when there are no new four-dim snapshots", () => {
+    expect(
+      aggregateRelationDimensionLabels([
+        { schemeKey: "major", schemeVersion: 1, scores: V1_OFFLINE_SCORES },
+      ]),
+    ).toBeNull();
+  });
+});
