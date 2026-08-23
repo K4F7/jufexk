@@ -76,7 +76,7 @@ export function LatestPage() {
       {error && items.length === 0 ? (
         <DetailErrorAlert title="最新课评加载失败" message={error} />
       ) : loading && items.length === 0 ? (
-        <p className="py-10 text-center text-[13px] text-muted" role="status">
+        <p className="py-10 text-center text-[calc(13/15*1rem)] text-muted" role="status">
           正在加载最新课评…
         </p>
       ) : items.length === 0 ? (
@@ -115,7 +115,7 @@ export function LatestPage() {
             </div>
           ) : null}
           {loadMoreError ? (
-            <p className="mt-3 text-center text-[13px] text-danger" role="alert">
+            <p className="mt-3 text-center text-[calc(13/15*1rem)] text-danger" role="alert">
               {loadMoreError}
             </p>
           ) : null}
@@ -133,7 +133,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
       <AnonymousAvatar seed={review.id} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <header className="flex items-baseline justify-between gap-3">
-          <p className="m-0 min-w-0 text-[13px] leading-6">
+          <p className="m-0 min-w-0 text-[calc(13/15*1rem)] leading-6">
             <span>匿名用户</span>
             <span className="text-muted"> 点评了 </span>
             <RouterAriaLink
@@ -145,18 +145,24 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
             </RouterAriaLink>
           </p>
           {date ? (
-            <time className="shrink-0 text-[12px] text-muted" dateTime={date}>
+            <time className="shrink-0 text-[calc(12/15*1rem)] text-muted" dateTime={date}>
               {date}
             </time>
           ) : null}
         </header>
         <div className="mt-1 line-clamp-3">
-          <ReviewNoteContent
-            comment={review.comment}
-            commentFormat={review.comment_format}
-          />
+          {review.headline ? (
+            <p className="m-0 break-words text-sm font-medium leading-relaxed">
+              {review.headline}
+            </p>
+          ) : (
+            <ReviewNoteContent
+              comment={review.comment}
+              commentFormat={review.comment_format}
+            />
+          )}
         </div>
-        <RouterAriaLink to={moreHref} className="text-[13px] text-accent">
+        <RouterAriaLink to={moreHref} className="text-[calc(13/15*1rem)] text-accent">
           {">>更多"}
         </RouterAriaLink>
       </div>

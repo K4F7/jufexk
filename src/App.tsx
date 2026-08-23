@@ -12,6 +12,7 @@ import { AppShell } from "./components/AppShell";
 import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
+import type { SiteBanner } from "./site-banner";
 import { AccountPage } from "./pages/AccountPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
@@ -19,6 +20,8 @@ import { LatestPage } from "./pages/LatestPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LogoutPage } from "./pages/LogoutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { NoticesPage } from "./pages/NoticesPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { SubmitPage } from "./pages/SubmitPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
@@ -74,6 +77,7 @@ function applyColorScheme(mode: "light" | "dark") {
 
 export function App() {
   const [config, setConfig] = useState<SiteConfig | null>(null);
+  const [banner, setBanner] = useState<SiteBanner | null>(null);
 
   useEffect(() => {
     api<SiteConfig>("/api/config")
@@ -87,6 +91,10 @@ export function App() {
           universityName: "江西财经大学",
         });
       });
+  }, []);
+
+  useEffect(() => {
+    api<SiteBanner>("/api/site/banner").then(setBanner).catch(() => setBanner(null));
   }, []);
 
   // Initial visit follows system; manual choice is remembered (foundations).
@@ -137,7 +145,7 @@ export function App() {
     <BrowserRouter>
       <RacClientNavigation>
         <ViewerProvider>
-          <AppShell config={config}>
+          <AppShell banner={banner} config={config}>
             <Routes>
             <Route path="/" element={<Navigate to="/courses" replace />} />
             <Route path="/courses" element={<CoursesPage />} />
@@ -148,6 +156,8 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/logout" element={<LogoutPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/notices" element={<NoticesPage />} />
             <Route path="/submit" element={<SubmitPage config={config} />} />
             {PrototypeGalleryPage ? (
               <Route

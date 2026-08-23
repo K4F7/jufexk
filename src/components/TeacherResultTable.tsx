@@ -98,7 +98,7 @@ export function TeacherResultTable({
                   </TeacherNameLink>
                 </Table.Cell>
                 <Table.Cell>
-                  <span className="text-[13px] text-muted">
+                  <span className="text-[calc(13/15*1rem)] text-muted">
                     {teacher.department ? (
                       <HighlightSearchTerms
                         text={teacher.department}
@@ -111,14 +111,14 @@ export function TeacherResultTable({
                 </Table.Cell>
                 <Table.Cell>
                   {(teacher.review_count ?? 0) > 0 ? (
-                    <span className="whitespace-nowrap tabular text-[13px]">
+                    <span className="whitespace-nowrap tabular text-[calc(13/15*1rem)]">
                       <span className="font-semibold">
                         {teacher.review_count}
                       </span>
-                      <span className="text-[12px] text-muted">{" "}投</span>
+                      <span className="text-[calc(12/15*1rem)] text-muted">{" "}投</span>
                     </span>
                   ) : (
-                    <span className="text-[13px] text-muted">暂无</span>
+                    <span className="text-[calc(13/15*1rem)] text-muted">暂无</span>
                   )}
                 </Table.Cell>
                 <Table.Cell>

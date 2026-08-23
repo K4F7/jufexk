@@ -11,6 +11,8 @@ export type Course = {
   rating: number | null;
   credits?: number | null;
   description?: string;
+  admin_notice?: string;
+  admin_notice_updated_at?: string | null;
   enrollment_category?: string;
   teaching_type?: string;
   course_level?: string;
@@ -240,6 +242,54 @@ export type Paginated<T> = {
   page: number;
   pageSize: number;
   pages: number;
+};
+
+/** 个人主页「我的点评」条目（#459 契约）；status 含未过审状态。 */
+export type UserProfileReview = {
+  id: number | string;
+  course_id: number;
+  course_name: string;
+  teacher_id: number;
+  teacher_name?: string | null;
+  term?: string | null;
+  headline?: string;
+  /** 补充说明摘要纯文本，可能已被服务端截断。 */
+  comment?: string;
+  created_at?: string | null;
+  /** pending / approved / rejected；缺省按 approved 展示。 */
+  status?: string;
+};
+
+/** 个人主页「我关注的任课关系」条目（#459 契约）。 */
+export type UserProfileFollow = {
+  course_id: number;
+  course_name: string;
+  teacher_id: number;
+  teacher_name?: string | null;
+};
+
+/**
+ * GET /api/user/profile 聚合返回（#459）：仅当前登录普通用户自己的数据，
+ * 不含 email、学号或 users.id。
+ */
+export type UserProfile = {
+  reviews?: UserProfileReview[];
+  follows?: UserProfileFollow[];
+  review_count?: number;
+  follow_count?: number;
+  unread_notification_count?: number;
+};
+
+/** 站内消息条目（#460 契约）：文案 + 链接 + 时间 + 已读状态。 */
+export type UserNotification = {
+  id: number | string;
+  /** 消息类型，如关注的任课关系有新点评、我的点评被认可。 */
+  type?: string;
+  text: string;
+  /** 站内链接，如 /courses/8?teacher=9#review-101；缺失时按纯文本展示。 */
+  href?: string | null;
+  created_at?: string | null;
+  read?: boolean;
 };
 
 export type CatalogRequest = {

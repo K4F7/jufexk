@@ -378,6 +378,7 @@ describe("review protection", () => {
             homework: 2,
             grading: 3,
             gain: 2,
+            attendance: 2,
           },
           comment,
           headline: "一句话总结",

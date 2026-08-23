@@ -5,7 +5,7 @@ import { resolveAdminPassword } from "../secrets/inventory";
 
 const approvedRoot = resolve(process.argv[2] || "scripts/catalog-baseline/captures/full-approved-v1");
 const shouldPublish = process.argv.includes("--publish");
-const origin = (process.env.JUFEXK_BASE_URL || "https://xk.sein.moe").replace(/\/$/, "");
+const origin = (process.env.JUFEXK_BASE_URL || "https://courses.sein.moe").replace(/\/$/, "");
 const password = resolveAdminPassword(process.env);
 
 const manifest = JSON.parse(readFileSync(resolve(approvedRoot, "manifest.json"), "utf8"));

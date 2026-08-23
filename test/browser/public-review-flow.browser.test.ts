@@ -254,6 +254,7 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(page.getByText("开课单位：")).toBeVisible();
   await expect(page.getByText("人文学院").first()).toBeVisible();
   await expect(page.getByText("学分：")).toBeVisible();
+  await expect(page.getByText("3.0", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
   await expect(page.getByRole("button", { name: "推荐", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "不推荐" })).toBeVisible();
@@ -454,7 +455,7 @@ test("review controls reload the complete server-side sort and filters", async (
   expect(queries.at(-1)).toContain("sort=recognized");
 
   await page.getByRole("button", { name: /排序/ }).click();
-  await page.getByRole("option", { name: "最旧点评" }).click();
+  await page.getByRole("option", { name: "最早发布" }).click();
   await expect(reviewItems(page).first()).toContainText("低分旧点评");
   expect(queries.at(-1)).toContain("sort=oldest");
 
@@ -658,6 +659,76 @@ test("empty and mobile states remain accessible without overflow", async ({
     scrollWidth: document.documentElement.scrollWidth,
   }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
+});
+
+test("review items render headline, grade, and all dimension chips when present", async ({
+  page,
+}) => {
+  await page.route("**/api/courses/8/reviews**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("teacherId") !== "9") return route.fallback();
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            id: "review:h1",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "正文详细评价内容，足够长的一段文字用于占位。",
+            headline: "一句话总结：值得选",
+            grade: "A",
+            overall: 5,
+            term: "2026 春",
+            created_at: "2026-08-20 12:00:00",
+            // v3 五档标签（含考勤松紧）经 dimensionLabels 逐条下发即全部渲染。
+            dimensionLabels: [
+              { id: "difficulty", label: "课程难度", option: "简单" },
+              { id: "homework", label: "作业多少", option: "不多" },
+              { id: "grading", label: "给分好坏", option: "超好" },
+              { id: "gain", label: "收获多少", option: "很多" },
+              { id: "attendance", label: "考勤松紧", option: "宽松" },
+            ],
+            endorsement_count: 0,
+            endorsable: false,
+          },
+          {
+            id: "historical:old",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "没有一句话总结的历史评价",
+            endorsement_count: 0,
+            endorsable: false,
+          },
+        ],
+        nextCursor: null,
+        total: 2,
+      },
+    });
+  });
+
+  await page.goto("/courses/8?teacher=9");
+  const items = reviewItems(page);
+  await expect(items).toHaveCount(2);
+
+  const withHeadline = items.nth(0);
+  // headline 加粗行在正文上方；成绩在元信息行；五个维度 chip 全渲染。
+  await expect(
+    withHeadline.locator("p.font-semibold", { hasText: "一句话总结：值得选" }),
+  ).toBeVisible();
+  await expect(
+    withHeadline.getByText("成绩 A", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    withHeadline.getByText("考勤松紧 宽松", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    withHeadline.getByText("课程难度 简单", { exact: true }),
+  ).toBeVisible();
+
+  // 历史行：无 headline 加粗行、无成绩。
+  const legacy = items.nth(1);
+  await expect(legacy.locator("p.font-semibold")).toHaveCount(0);
+  await expect(legacy.getByText(/成绩/)).toHaveCount(0);
 });
 
 test("four-tier snapshot reviews show four Chinese tier chips and no average", async ({

@@ -76,6 +76,13 @@ describe("ordinary user account deletion", () => {
       user.stableUserId,
       "删除账号认可清理",
     );
+    await env.DB.prepare(
+      `INSERT INTO user_notifications(
+         user_id,type,message,link,event_key,source_review_id
+       ) VALUES(?,'review_endorsed','待清理消息','/courses/1',?,?)`,
+    )
+      .bind(user.stableUserId, `account-delete-${reviewId}`, reviewId)
+      .run();
 
     const response = await SELF.fetch(deletionPath, {
       method: "POST",
@@ -110,6 +117,13 @@ describe("ordinary user account deletion", () => {
       .bind(user.stableUserId)
       .first<{ count: number }>();
     expect(endorsement?.count).toBe(0);
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) count FROM user_notifications WHERE user_id=?",
+      )
+        .bind(user.stableUserId)
+        .first(),
+    ).toEqual({ count: 0 });
 
     const review = await env.DB.prepare(
       "SELECT status FROM reviews WHERE id=?",

@@ -21,6 +21,9 @@ import {
   TIER3_QUESTIONS,
   V1_MOOC_SCORES,
   V1_OFFLINE_SCORES,
+  V3_IDS,
+  V3_OFFLINE_SCORES,
+  V3_QUESTIONS,
 } from "./review-score-fixtures";
 
 const publicQuestions = (
@@ -47,20 +50,21 @@ describe("review scheme defaults and applicable questions", () => {
     expect(defaultSchemeKey("pe")).toBe("major");
   });
 
-  it("keeps the same latest four three-tier questions for major, pe and mooc", () => {
-    const expected = publicQuestions(TIER3_QUESTIONS);
-    expect(publicQuestions(applicableDimensions("major", []))).toEqual(expected);
-    expect(publicQuestions(applicableDimensions("pe", []))).toEqual(expected);
-    expect(
-      publicQuestions(applicableDimensions("major", ["mooc"])),
-    ).toEqual(expected);
-    expect(publicQuestions(applicableDimensions("pe", ["mooc"]))).toEqual(
-      expected,
-    );
-    expect(COMMON_CORE_QUESTIONS).toEqual(expected);
+  it("asks the same latest five questions offline and hides only attendance for mooc", () => {
+    const offline = publicQuestions(V3_QUESTIONS);
+    const mooc = publicQuestions(TIER3_QUESTIONS);
+    for (const scheme of Object.values(REVIEW_SCHEMES)) {
+      expect(publicQuestions(applicableDimensions(scheme.key, []))).toEqual(
+        offline,
+      );
+      expect(
+        publicQuestions(applicableDimensions(scheme.key, ["mooc"])),
+      ).toEqual(mooc);
+    }
+    expect(COMMON_CORE_QUESTIONS).toEqual(offline);
   });
 
-  it("keeps published v1 read-only and writes the latest version", () => {
+  it("keeps published v1/v2 read-only and writes the latest version", () => {
     for (const scheme of Object.values(REVIEW_SCHEMES)) {
       expect(scheme.versions[0]?.version).toBe(1);
       expect(scheme.versions[0]?.averagesDimensions).toBe(true);
@@ -70,11 +74,28 @@ describe("review scheme defaults and applicable questions", () => {
         "grading",
         "workload",
       ]);
-      expect(latestSchemeVersion(scheme.key).version).toBe(2);
-      expect(latestSchemeVersion(scheme.key).averagesDimensions).toBe(false);
-      expect(latestSchemeVersion(scheme.key).dimensions.map((item) => item.id)).toEqual(
+      expect(scheme.versions[1]?.version).toBe(2);
+      expect(scheme.versions[1]?.averagesDimensions).toBe(false);
+      expect(scheme.versions[1]?.dimensions.map((item) => item.id)).toEqual(
         TIER3_IDS,
       );
+      expect(latestSchemeVersion(scheme.key).version).toBe(3);
+      expect(latestSchemeVersion(scheme.key).averagesDimensions).toBe(false);
+      expect(latestSchemeVersion(scheme.key).dimensions.map((item) => item.id)).toEqual(
+        V3_IDS,
+      );
+      const attendance = latestSchemeVersion(scheme.key).dimensions.find(
+        (item) => item.id === "attendance",
+      );
+      expect(attendance).toMatchObject({
+        label: "考勤松紧",
+        offlineOnly: true,
+        options: [
+          { value: 1, label: "宽松" },
+          { value: 2, label: "一般" },
+          { value: 3, label: "严苛" },
+        ],
+      });
     }
   });
 
@@ -82,10 +103,10 @@ describe("review scheme defaults and applicable questions", () => {
     const general = courseSchemeView(null, "general", []);
     expect(general).toMatchObject({
       schemeKey: "major",
-      schemeVersion: 2,
+      schemeVersion: 3,
       tags: [],
     });
-    expect(general.applicableQuestions).toEqual(publicQuestions(TIER3_QUESTIONS));
+    expect(general.applicableQuestions).toEqual(publicQuestions(V3_QUESTIONS));
     expect(
       courseSchemeView(null, "sports", ["mooc"]).applicableQuestions,
     ).toEqual(publicQuestions(TIER3_QUESTIONS));
@@ -105,12 +126,20 @@ describe("submitted score validation", () => {
         latest,
       ).ok,
     ).toBe(false);
+    // v3 线下课必答考勤：缺 attendance 的四维提交被拒。
+    expect(validateSubmittedScores(CURRENT_SCORES, latest)).toEqual({
+      ok: false,
+      error: "请答完本次适用的评分题",
+    });
     expect(
-      validateSubmittedScores({ ...CURRENT_SCORES, grading: 5 }, latest),
+      validateSubmittedScores({ ...V3_OFFLINE_SCORES, grading: 5 }, latest),
+    ).toEqual({ ok: false, error: "评分必须是题目给出的选项" });
+    expect(
+      validateSubmittedScores({ ...V3_OFFLINE_SCORES, attendance: 5 }, latest),
     ).toEqual({ ok: false, error: "评分必须是题目给出的选项" });
   });
 
-  it("rejects leftover v1 dimension keys on mooc and latest courses", () => {
+  it("rejects attendance on mooc courses and leftover v1 keys everywhere", () => {
     expect(
       validateSubmittedScores(
         { ...CURRENT_SCORES, attendance: 3 },
@@ -125,6 +154,10 @@ describe("submitted score validation", () => {
       ok: true,
       scores: { ...CURRENT_SCORES },
     });
+    expect(validateSubmittedScores(V3_OFFLINE_SCORES, latest)).toEqual({
+      ok: true,
+      scores: { ...V3_OFFLINE_SCORES },
+    });
   });
 
   it("snapshots the resolved scheme, latest version and ignores a client-supplied key", () => {
@@ -138,8 +171,21 @@ describe("submitted score validation", () => {
     expect(snapshot).toMatchObject({
       ok: true,
       schemeKey: "ideology",
-      schemeVersion: 2,
+      schemeVersion: 3,
       comment: REQUIRED_NOTE,
+    });
+    const offline = snapshotReviewScores({
+      schemeKey: "pe",
+      category: "sports",
+      tags: [],
+      scores: V3_OFFLINE_SCORES,
+      comment: REQUIRED_NOTE,
+    });
+    expect(offline).toMatchObject({
+      ok: true,
+      schemeKey: "pe",
+      schemeVersion: 3,
+      scores: { ...V3_OFFLINE_SCORES },
     });
   });
 
@@ -191,6 +237,13 @@ describe("dimension average from a scheme snapshot", () => {
     ).toBeNull();
     expect(
       publicDimensionAverage({
+        schemeKey: "major",
+        schemeVersion: 3,
+        scores: JSON.stringify(V3_OFFLINE_SCORES),
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionAverage({
         schemeKey: null,
         schemeVersion: null,
         scores: JSON.stringify(V1_OFFLINE_SCORES),
@@ -225,6 +278,52 @@ describe("dimension tier labels from a scheme snapshot", () => {
       { id: "grading", label: "给分好坏", option: "杀手" },
       { id: "gain", label: "收获多少", option: "很多" },
     ]);
+  });
+
+  it("walks the row's own version: five labels for v3, four for v2", () => {
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 3,
+        scores: JSON.stringify(V3_OFFLINE_SCORES),
+      }),
+    ).toEqual([
+      { id: "difficulty", label: "课程难度", option: "简单" },
+      { id: "homework", label: "作业多少", option: "中等" },
+      { id: "grading", label: "给分好坏", option: "杀手" },
+      { id: "gain", label: "收获多少", option: "一般" },
+      { id: "attendance", label: "考勤松紧", option: "一般" },
+    ]);
+    // v2 快照不伪造考勤：即使 scores 里混入 attendance 键也只译四维。
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: JSON.stringify({ ...CURRENT_SCORES, attendance: 1 }),
+      }),
+    ).toEqual([
+      { id: "difficulty", label: "课程难度", option: "简单" },
+      { id: "homework", label: "作业多少", option: "中等" },
+      { id: "grading", label: "给分好坏", option: "杀手" },
+      { id: "gain", label: "收获多少", option: "一般" },
+    ]);
+  });
+
+  it("returns no labels for a v3 snapshot missing attendance or with a bad option", () => {
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 3,
+        scores: JSON.stringify(CURRENT_SCORES),
+      }),
+    ).toBeNull();
+    expect(
+      publicDimensionLabels({
+        schemeKey: "major",
+        schemeVersion: 3,
+        scores: JSON.stringify({ ...V3_OFFLINE_SCORES, attendance: 5 }),
+      }),
+    ).toBeNull();
   });
 
   it("never translates an old 1–5 snapshot into the new tier copy", () => {

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseDotenv, resolveAdminPassword } from "../secrets/inventory";
 
-const origin = (process.env.JUFEXK_BASE_URL || "https://xk.sein.moe").replace(
+const origin = (process.env.JUFEXK_BASE_URL || "https://courses.sein.moe").replace(
   /\/$/,
   "",
 );

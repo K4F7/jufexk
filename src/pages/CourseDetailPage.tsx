@@ -403,7 +403,7 @@ export function CourseDetailPage() {
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <nav aria-label="面包屑" className="text-[12px] text-muted">
+        <nav aria-label="面包屑" className="text-[calc(12/15*1rem)] text-muted">
           <RouterAriaLink to={catalogHref} className="text-muted">
             课程目录
           </RouterAriaLink>
@@ -413,7 +413,7 @@ export function CourseDetailPage() {
 
         {submitted ? (
           <p
-            className="mt-3 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[13px] text-success"
+            className="mt-3 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[calc(13/15*1rem)] text-success"
             role="status"
           >
             评价已发布，感谢分享。
@@ -423,7 +423,7 @@ export function CourseDetailPage() {
         <header className="mt-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <Typography
-              className="m-0 min-w-0 text-[22px] font-bold leading-tight text-accent"
+              className="m-0 min-w-0 text-[calc(22/15*1rem)] font-bold leading-tight text-accent"
               type="h1"
             >
               {course.name}
@@ -433,38 +433,38 @@ export function CourseDetailPage() {
                 </span>
               ) : null}
             </Typography>
-            <p className="m-0 shrink-0 text-right text-[12px] text-muted">
+            <p className="m-0 shrink-0 text-right text-[calc(12/15*1rem)] text-muted">
               课程号：{course.code || "—"}
             </p>
           </div>
 
           <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
-            <Stars rating={rating} className="text-[16px]" />
+            <Stars rating={rating} className="text-[calc(16/15*1rem)]" />
             {rating != null ? (
-              <span className="tabular text-[20px] font-semibold leading-none text-accent">
+              <span className="tabular text-[calc(20/15*1rem)] font-semibold leading-none text-accent">
                 {rating.toFixed(1)}
               </span>
             ) : null}
             {relationCount > 0 ? (
-              <span className="text-[12px] text-muted">
+              <span className="text-[calc(12/15*1rem)] text-muted">
                 （{relationCount} 人评价）
               </span>
             ) : (
-              <span className="text-[13px] text-muted">暂无评价</span>
+              <span className="text-[calc(13/15*1rem)] text-muted">暂无评价</span>
             )}
           </div>
 
           <FourDimLine
-            className="mt-2 text-[13px]"
+            className="mt-2 text-[calc(13/15*1rem)]"
             labels={fourDimLineLabels(selectedTeacher?.dimensionLabels)}
           />
           {relationTerms.length ? (
-            <p className="mb-0 mt-2 min-w-0 truncate text-[11px] text-muted">
+            <p className="mb-0 mt-2 min-w-0 truncate text-[calc(11/15*1rem)] text-muted">
               学期 {relationTerms.join(" ")}
             </p>
           ) : null}
 
-          <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[13px] sm:grid-cols-2">
+          <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[calc(13/15*1rem)] sm:grid-cols-2">
             {metaRows.map(([label, value]) => (
               <div key={label} className="flex gap-2">
                 <dt className="shrink-0 text-muted">{label}：</dt>
@@ -481,6 +481,22 @@ export function CourseDetailPage() {
           ) : null}
         </header>
 
+        {course.admin_notice ? (
+          <Card className="mt-6">
+            <Card.Header>
+              <Card.Title>管理员公告</Card.Title>
+              {course.admin_notice_updated_at ? (
+                <Card.Description>
+                  更新于 {course.admin_notice_updated_at}
+                </Card.Description>
+              ) : null}
+            </Card.Header>
+            <Card.Content className="whitespace-pre-wrap text-sm">
+              {course.admin_notice}
+            </Card.Content>
+          </Card>
+        ) : null}
+
         {relationSummary?.html ? (
           <div className="mt-10">
             <CourseAiSummary summary={relationSummary} />
@@ -489,17 +505,17 @@ export function CourseDetailPage() {
           <section className="mt-10" aria-labelledby="course-ai-summary-heading">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <Typography
-                className="m-0 text-[20px] font-bold leading-snug text-accent"
+                className="m-0 text-[calc(20/15*1rem)] font-bold leading-snug text-accent"
                 id="course-ai-summary-heading"
                 type="h2"
               >
                 AI 总结
               </Typography>
-              <p className="m-0 text-[12px] text-muted">
+              <p className="m-0 text-[calc(12/15*1rem)] text-muted">
                 AI 总结为根据点评内容自动生成，仅供参考
               </p>
             </div>
-            <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-secondary/60 px-4 py-4 text-[13px] text-muted">
+            <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-secondary/60 px-4 py-4 text-[calc(13/15*1rem)] text-muted">
               {relationCount > 0
                 ? "AI 总结暂未生成：点评积累后会自动出现在这里。"
                 : "点评还不够，暂时无法生成总结。"}

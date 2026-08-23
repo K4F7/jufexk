@@ -12,6 +12,7 @@ const LATEST = [
     course_code: "GEN0108",
     teacher_name: "测试教师",
     comment: "这门课讲得很清楚，作业量适中。",
+    headline: "讲得清楚，作业适中",
     created_at: "2026-08-20 12:00:00",
   },
   {
@@ -116,7 +117,11 @@ test("latest page lists newest public reviews and deep-links to the course", asy
     page.getByRole("link", { name: "中国传统文化导论（测试教师）" }),
   ).toBeVisible();
   await expect(page.getByText("2026-08-20")).toBeVisible();
-  await expect(page.getByText("这门课讲得很清楚，作业量适中。")).toBeVisible();
+  // 有 headline 的条目优先展示 headline 作为摘要，不再显示正文。
+  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+  await expect(
+    page.getByText("这门课讲得很清楚，作业量适中。"),
+  ).toHaveCount(0);
   expect(feedRequests.length).toBeGreaterThan(0);
 
   await page.getByRole("link", { name: ">>更多" }).click();
@@ -124,6 +129,18 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   await expect(
     page.getByRole("heading", { name: /中国传统文化导论/ }),
   ).toBeVisible();
+});
+
+test("latest feed falls back to comment text when headline is empty", async ({
+  page,
+}) => {
+  await mockShellApi(page);
+  await page.goto("/latest");
+  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+
+  // 历史行没有 headline（服务端投影为空串），回退到正文纯文本。
+  await page.getByRole("button", { name: "继续加载" }).click();
+  await expect(page.getByText("课堂气氛好，考试不难。")).toBeVisible();
 });
 
 test("latest feed column aligns with the course catalog", async ({ page }) => {

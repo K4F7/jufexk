@@ -11,7 +11,10 @@ describe("site and repository icon", () => {
     expect(indexHtml).toContain('rel="apple-touch-icon"');
     expect(indexHtml).toContain('href="/apple-touch-icon.png"');
     expect(indexHtml).toContain(
-      'property="og:image" content="https://xk.sein.moe/icon-512.png"',
+      'property="og:image" content="https://courses.sein.moe/icon-512.png"',
+    );
+    expect(indexHtml).toContain(
+      'property="og:url" content="https://courses.sein.moe/"',
     );
   });
 

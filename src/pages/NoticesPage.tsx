@@ -1,0 +1,140 @@
+/**
+ * 全部消息 /notices（#460 前端）：仅登录普通用户可见，访客重定向到登录页。
+ * 打开本页即调用 POST /api/user/notifications/read 清零未读，
+ * 并广播事件让顶栏角标同步消失。接口未上线时提示「数据接口尚未就绪」。
+ */
+import { Alert, Chip, Spinner, Typography } from "@heroui/react";
+import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { RouterAriaLink } from "../components/RouterAriaLink";
+import { useViewer } from "../hooks/useViewer";
+import { announceNotificationsRead } from "../hooks/useUnreadNotifications";
+import { api } from "../lib/api";
+import { formatReviewDate } from "../lib/review-date";
+import type { UserNotification } from "../lib/types";
+
+function normalizeNotifications(
+  data: UserNotification[] | { items?: UserNotification[] } | null,
+): UserNotification[] {
+  if (Array.isArray(data)) return data;
+  return data?.items ?? [];
+}
+
+export function NoticesPage() {
+  const { viewer, ready } = useViewer();
+  const [items, setItems] = useState<UserNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [available, setAvailable] = useState(true);
+
+  useEffect(() => {
+    if (!ready || !viewer.authenticated) return;
+    let cancelled = false;
+    setLoading(true);
+    api<UserNotification[] | { items?: UserNotification[] }>(
+      "/api/user/notifications",
+    )
+      .then((data) => {
+        if (cancelled) return;
+        setItems(normalizeNotifications(data));
+        setAvailable(true);
+        // 打开消息页即清零未读（#460）；标记失败不影响列表展示。
+        api("/api/user/notifications/read", { method: "POST", body: "{}" })
+          .then(() => announceNotificationsRead())
+          .catch(() => {});
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setItems([]);
+        setAvailable(false);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, viewer.authenticated]);
+
+  if (!ready) {
+    return (
+      <section aria-label="全部消息" className="py-8">
+        <p className="m-0 flex items-center gap-2 text-sm text-muted">
+          <Spinner color="current" size="sm" />
+          正在读取登录状态…
+        </p>
+      </section>
+    );
+  }
+
+  if (!viewer.authenticated) {
+    const from = encodeURIComponent("/notices");
+    return <Navigate to={`${viewer.loginPath}?from=${from}`} replace />;
+  }
+
+  return (
+    <section aria-labelledby="notices-heading" className="mx-auto max-w-2xl">
+      <Typography
+        className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
+        id="notices-heading"
+        type="h1"
+      >
+        全部消息
+      </Typography>
+      {!available ? (
+        <Alert className="mt-4" status="accent">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>数据接口尚未就绪</Alert.Title>
+            <Alert.Description>
+              站内消息接口（#460）尚未上线，消息列表暂时无法加载，请稍后再来。
+            </Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : loading ? (
+        <p
+          className="m-0 flex items-center gap-2 py-10 text-sm text-muted"
+          role="status"
+        >
+          <Spinner color="current" size="sm" />
+          正在加载消息…
+        </p>
+      ) : items.length === 0 ? (
+        <p className="mt-8 text-sm text-muted" role="status">
+          还没有消息哦！
+        </p>
+      ) : (
+        <ul className="m-0 mt-2 list-none divide-y divide-separator p-0">
+          {items.map((notice) => {
+            const date = formatReviewDate(notice.created_at);
+            return (
+              <li key={notice.id} className="py-3">
+                <p className="m-0 flex flex-wrap items-baseline gap-x-2 text-sm leading-6">
+                  {notice.href ? (
+                    <RouterAriaLink to={notice.href} className="text-accent">
+                      {notice.text}
+                    </RouterAriaLink>
+                  ) : (
+                    <span>{notice.text}</span>
+                  )}
+                  {notice.read === false ? (
+                    <Chip color="accent" size="sm" variant="soft">
+                      新
+                    </Chip>
+                  ) : null}
+                </p>
+                {date ? (
+                  <time
+                    className="mt-1 block text-xs text-muted"
+                    dateTime={date}
+                  >
+                    {date}
+                  </time>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}

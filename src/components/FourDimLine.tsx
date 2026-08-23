@@ -13,7 +13,7 @@ export function FourDimLine({
 }) {
   return (
     <div
-      className={`flex flex-wrap gap-x-6 gap-y-0.5 text-[12px] text-muted ${className}`}
+      className={`flex flex-wrap gap-x-6 gap-y-0.5 text-[calc(12/15*1rem)] text-muted ${className}`}
     >
       {REVIEW_DIMENSIONS.map((dim, index) => (
         <span key={dim.key}>

@@ -302,7 +302,7 @@ function PaginationFooter({
 }) {
   const pages = Math.max(totalPages, 1);
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-[13px] text-muted">
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-[calc(13/15*1rem)] text-muted">
       <Button
         size="sm"
         variant="outline"

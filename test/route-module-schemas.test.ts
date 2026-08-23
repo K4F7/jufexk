@@ -67,6 +67,13 @@ describe("domain route composition", () => {
     expect(ordinaryUserRoutes.routes.map(routeKey)).toContain(
       "POST /api/reviews",
     );
+    expect(ordinaryUserRoutes.routes.map(routeKey)).toEqual(
+      expect.arrayContaining([
+        "GET /api/user/notifications",
+        "GET /api/user/notifications/unread-count",
+        "POST /api/user/notifications/read",
+      ]),
+    );
     expect(adminRoutes.routes.map(routeKey)).toContain(
       "PATCH /api/admin/reviews/:id",
     );

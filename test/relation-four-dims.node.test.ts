@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CURRENT_SCORES, V1_OFFLINE_SCORES } from "./review-score-fixtures";
+import {
+  CURRENT_SCORES,
+  V1_OFFLINE_SCORES,
+  V3_OFFLINE_SCORES,
+} from "./review-score-fixtures";
 import { aggregateRelationDimensionLabels } from "../src/lib/relation-four-dims";
 
 describe("aggregateRelationDimensionLabels", () => {
@@ -32,5 +36,24 @@ describe("aggregateRelationDimensionLabels", () => {
         { schemeKey: "major", schemeVersion: 1, scores: V1_OFFLINE_SCORES },
       ]),
     ).toBeNull();
+  });
+
+  it("keeps the relation aggregate at four dims when v3 snapshots carry attendance", () => {
+    const labels = aggregateRelationDimensionLabels([
+      { schemeKey: "major", schemeVersion: 2, scores: CURRENT_SCORES },
+      { schemeKey: "major", schemeVersion: 3, scores: V3_OFFLINE_SCORES },
+      {
+        schemeKey: "major",
+        schemeVersion: 3,
+        scores: { ...V3_OFFLINE_SCORES, attendance: 3 },
+      },
+    ]);
+    expect(labels).toEqual([
+      { id: "difficulty", label: "课程难度", option: "简单" },
+      { id: "homework", label: "作业多少", option: "中等" },
+      { id: "grading", label: "给分好坏", option: "杀手" },
+      { id: "gain", label: "收获多少", option: "一般" },
+    ]);
+    expect(labels?.some((item) => item.id === "attendance")).toBe(false);
   });
 });

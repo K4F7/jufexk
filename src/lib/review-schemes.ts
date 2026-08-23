@@ -128,6 +128,29 @@ const TIER3_CORE_DIMENSIONS: readonly DimensionDef[] = [
   },
 ];
 
+/**
+ * v3 追加的公共核第五题（#371）：考勤松紧，三档主观报告，仅线下适用。
+ * 与 v1 的 1–5「点名频率」不是同一题，只是复用维度 id；v1 快照只读，
+ * 公开标签按各自版本的定义翻译，互不串扰。
+ */
+const V3_ATTENDANCE_DIMENSION: DimensionDef = {
+  id: "attendance",
+  label: "考勤松紧",
+  prompt: "考勤松紧",
+  scale: "宽松 / 一般 / 严苛",
+  options: [
+    { value: 1, label: "宽松" },
+    { value: 2, label: "一般" },
+    { value: 3, label: "严苛" },
+  ],
+  offlineOnly: true,
+};
+
+const V3_CORE_DIMENSIONS: readonly DimensionDef[] = [
+  ...TIER3_CORE_DIMENSIONS,
+  V3_ATTENDANCE_DIMENSION,
+];
+
 type SchemeVersionDef = {
   version: number;
   dimensions: readonly DimensionDef[];
@@ -152,6 +175,11 @@ const scheme = (key: SchemeKey, label: string): SchemeDef => ({
     {
       version: 2,
       dimensions: TIER3_CORE_DIMENSIONS,
+      averagesDimensions: false,
+    },
+    {
+      version: 3,
+      dimensions: V3_CORE_DIMENSIONS,
       averagesDimensions: false,
     },
   ],
@@ -422,8 +450,8 @@ export function dimensionAverage(scores: Record<string, number>): number | null 
 
 /**
  * Public-feed average: only rows with a stored scheme snapshot whose
- * published version still averages its dimensions. The current four
- * three-tier questions are not averaged.
+ * published version still averages its dimensions. The current
+ * three-tier questions (v2 四维、v3 四维加考勤) are not averaged.
  */
 export function publicDimensionAverage(input: {
   schemeKey?: unknown;

@@ -20,6 +20,7 @@ import {
 } from "../lib/review-note-html";
 import { readSecret } from "../secrets";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
+import { loadSiteBanner, sanitizeSiteBanner } from "../site-banner";
 import {
   clean,
   csrfOk,
@@ -41,11 +42,13 @@ import {
   token,
 } from "./support";
 import {
+  adminCourseNoticeSchema,
   adminCourseSchema,
   adminLoginSchema,
   adminOfferingSchema,
   adminTeacherSchema,
   moderationSchema,
+  siteBannerSchema,
   teacherIdsSchema,
 } from "./request-schemas";
 
@@ -62,6 +65,7 @@ type CatalogRequestRow = {
   department: string;
   pending_review_json: string;
   submitter_hash: string;
+  author_user_id: string | null;
 };
 
 // Admin password sessions are separate from ordinary-user campus JWT.
@@ -139,6 +143,25 @@ adminRoutes.post("/api/admin/logout", async (c) => {
   deleteCookie(c, "jufexk_admin", { path: "/" });
   deleteCookie(c, "jufexk_csrf", { path: "/" });
   return c.json({ ok: true });
+});
+adminRoutes.put("/api/admin/banner", async (c) => {
+  const parsedBody = siteBannerSchema.safeParse(await c.req.json<unknown>());
+  if (!parsedBody.success) return fail(c, "Banner HTML 格式或长度无效");
+  const banner = sanitizeSiteBanner(parsedBody.data);
+  if (!banner) return fail(c, "Banner HTML 消毒后过长");
+  const actorSessionId = c.get("adminSessionId") ?? null;
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO site_banner_history(desktop_html,mobile_html,actor_session_id)
+       VALUES(?,?,?)`,
+    ).bind(banner.desktopHtml, banner.mobileHtml, actorSessionId),
+    c.env.DB.prepare(
+      `UPDATE site_banner_current
+       SET desktop_html=?,mobile_html=?,updated_by_session_id=?,updated_at=CURRENT_TIMESTAMP
+       WHERE id=1`,
+    ).bind(banner.desktopHtml, banner.mobileHtml, actorSessionId),
+  ]);
+  return c.json({ ok: true, banner: await loadSiteBanner(c.env.DB) });
 });
 adminRoutes.get("/api/admin/sessions", async (c) => {
   await c.env.DB.batch([
@@ -356,10 +379,10 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
       c.env.DB.prepare(
         `INSERT INTO reviews(
            course_id,teacher_id,category,overall,comment,comment_format,
-           term,submitter_hash,scheme_key,scheme_version,scores,
+           term,submitter_hash,author_user_id,scheme_key,scheme_version,scores,
            status,reviewed_at
          )
-         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP
+         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP
          FROM courses c,teachers t
          WHERE c.code=? AND t.source_teacher_label=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
@@ -369,6 +392,7 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
         snapshot.commentFormat,
         stashed.term || "",
         request.submitter_hash,
+        request.author_user_id,
         snapshot.schemeKey,
         snapshot.schemeVersion,
         snapshot.scoresJson,
@@ -1142,6 +1166,25 @@ adminRoutes.post("/api/admin/courses", async (c) => {
     }
   }
   return c.json({ ok: true, id });
+});
+adminRoutes.put("/api/admin/courses/:id/notice", async (c) => {
+  const courseId = integer(c.req.param("id"));
+  if (!courseId) return fail(c, "课程 ID 无效");
+  const parsedBody = adminCourseNoticeSchema.safeParse(
+    await c.req.json<unknown>(),
+  );
+  if (!parsedBody.success) return fail(c, "管理员公告必须是 2000 字以内的文本");
+  const updated = await c.env.DB.prepare(
+    `UPDATE courses
+     SET admin_notice=?,admin_notice_updated_at=CURRENT_TIMESTAMP
+     WHERE id=?
+     RETURNING admin_notice content,admin_notice_updated_at updatedAt`,
+  )
+    .bind(parsedBody.data.content, courseId)
+    .first<{ content: string; updatedAt: string }>();
+  if (!updated) return fail(c, "课程不存在", 404);
+  markPublicCatalogCacheChanged(c);
+  return c.json({ ok: true, ...updated });
 });
 adminRoutes.delete("/api/admin/courses/:id", async (c) => {
   const id = integer(c.req.param("id"));

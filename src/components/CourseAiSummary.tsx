@@ -19,7 +19,7 @@ export function CourseAiSummary({ summary }: { summary: RelationSummary }) {
   return (
     <section className="mb-6" aria-labelledby="course-ai-summary-heading">
       <Typography
-        className="m-0 mb-2 text-[17px] font-bold leading-snug"
+        className="m-0 mb-2 text-[calc(17/15*1rem)] font-bold leading-snug"
         id="course-ai-summary-heading"
         type="h2"
       >

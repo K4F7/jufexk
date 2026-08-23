@@ -17,7 +17,7 @@ import {
   ordinaryWriteSession,
   type OrdinaryWriteSession,
 } from "./ordinary-write-session";
-import { CURRENT_SCORES } from "./review-score-fixtures";
+import { V3_OFFLINE_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
 const gatewayEnv: SummaryGatewayEnv = {
@@ -407,7 +407,7 @@ describe("summary recompute triggers", () => {
           courseId,
           teacherId: 1,
           overall: 4,
-          scores: CURRENT_SCORES,
+          scores: V3_OFFLINE_SCORES,
           comment,
           headline: "一句话总结",
         }),
