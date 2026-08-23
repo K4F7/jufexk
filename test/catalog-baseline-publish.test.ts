@@ -37,7 +37,7 @@ function approvedPackage() {
 }
 let databaseSequence = 0;
 async function emptyDb() {
-  const databases = [env.BASELINE_PUBLISH_DB_1, env.BASELINE_PUBLISH_DB_2, env.BASELINE_PUBLISH_DB_3, env.BASELINE_PUBLISH_DB_4, env.BASELINE_PUBLISH_DB_5, env.BASELINE_PUBLISH_DB_6, env.BASELINE_PUBLISH_DB_7];
+  const databases = [env.BASELINE_PUBLISH_DB_1, env.BASELINE_PUBLISH_DB_2, env.BASELINE_PUBLISH_DB_3, env.BASELINE_PUBLISH_DB_4, env.BASELINE_PUBLISH_DB_5, env.BASELINE_PUBLISH_DB_6, env.BASELINE_PUBLISH_DB_7, env.BASELINE_PUBLISH_DB_8];
   const db = databases[databaseSequence++];
   if (!db) throw new Error("baseline publish test database pool exhausted");
   await applyD1Migrations(db, TEST_D1_MIGRATIONS);
@@ -90,6 +90,19 @@ describe("catalog baseline staging and one-time publish", () => {
     await uploadChunk(db, batchId, 1, pkg.chunks[0]);
     await expect(finalizeBaselineUpload(db, batchId)).rejects.toMatchObject({ status: 422 });
     expect(await formalCounts(db)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("rejects an approved package containing 班会", async () => {
+    const db = await emptyDb(), pkg = approvedPackage(), batchId = "excluded-course-1";
+    await createBaselineUpload(db, { batchId, manifest: pkg.manifest, chunkCount: 2 });
+    const excluded = pkg.chunks[0].replaceAll("新课程名", "班会");
+    await expect(putBaselineChunk(db, batchId, 0, {
+      chunkId: "excluded",
+      records: 2,
+      bytes: Buffer.byteLength(excluded),
+      sha256: sha(excluded),
+      content: excluded,
+    })).rejects.toMatchObject({ status: 422 });
   });
 
   it("publishes Course, name variants, Teacher, Relation, provenance, and marker atomically", async () => {

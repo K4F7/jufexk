@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "../app-env";
+import { isExcludedCourseName } from "../lib/course-catalog-policy";
 import {
   andSearchTerms,
   likeSql,
@@ -291,6 +292,8 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
   }
   const statements: D1PreparedStatement[] = [];
   const createsCourse = request.kind === "course";
+  if (createsCourse && isExcludedCourseName(request.course_name || ""))
+    return fail(c, "班会不纳入课程目录", 409);
   const createsReview = createsCourse && Boolean(request.pending_review_json);
   if (
     createsReview &&
@@ -906,6 +909,7 @@ adminRoutes.post("/api/admin/courses", async (c) => {
   if ("error" in tags) return fail(c, tags.error);
   if (!code || !name || !["general", "sports"].includes(category))
     return fail(c, "课号、课程名称和类别无效");
+  if (isExcludedCourseName(name)) return fail(c, "班会不纳入课程目录");
   let id = b.id;
   const existing = id
     ? await c.env.DB.prepare("SELECT * FROM courses WHERE id=?")

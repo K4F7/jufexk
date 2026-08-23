@@ -78,6 +78,29 @@ describe("catalog addition requests", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects 班会 course requests and defensively blocks their approval", async () => {
+    const response = await publicPost("/api/catalog-requests", {
+      kind: "course",
+      courseCode: "REQ-HOMEROOM",
+      courseName: " \u200B班会\u2060 ",
+      category: "general",
+      teacherSourceLabel: "班会教师",
+    });
+    expect(response.status).toBe(400);
+
+    const malformed = await env.DB.prepare(
+      `INSERT INTO catalog_requests(kind,course_code,course_name,category,teacher_name,teacher_source_label,status,submitter_hash)
+       VALUES('course','REQ-HOMEROOM-DB','班会','general','班会教师','班会教师','pending','test')`,
+    ).run();
+    const headers = await login();
+    const approval = await SELF.fetch(
+      `${origin}/api/admin/catalog-requests/${Number(malformed.meta.last_row_id)}`,
+      { method: "PATCH", headers, body: JSON.stringify({ status: "approved" }) },
+    );
+    expect(approval.status).toBe(409);
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM courses WHERE code='REQ-HOMEROOM-DB'").first()).toEqual({ n: 0 });
+  });
+
   it("rejects an attached review when only a teacher is requested", async () => {
     const response = await publicPost("/api/catalog-requests", {
       kind: "teacher",

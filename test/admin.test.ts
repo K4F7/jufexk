@@ -37,6 +37,30 @@ function adminHeaders(auth: { cookie: string; csrf: string }) {
 }
 
 describe("admin sessions and catalog", () => {
+  it("rejects creating or renaming a course to 班会", async () => {
+    const auth = await login();
+    const create = await SELF.fetch(`${origin}/api/admin/courses`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ code: "ADMIN-HOMEROOM", name: "班会", category: "general" }),
+    });
+    expect(create.status).toBe(400);
+
+    const rename = await SELF.fetch(`${origin}/api/admin/courses`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ id: 1, code: "TEST101", name: "\u200B班会\u2060", category: "general" }),
+    });
+    expect(rename.status).toBe(400);
+    expect(await env.DB.prepare("SELECT name FROM courses WHERE id=1").first()).toEqual({ name: "测试课程" });
+  });
+
+  it("enforces the excluded course at the database boundary", async () => {
+    await expect(env.DB.prepare(
+      "INSERT INTO courses(code,name,category) VALUES('DIRECT-HOMEROOM',' 班会 ','general')",
+    ).run()).rejects.toThrow(/excluded course name/i);
+  });
+
   it("does not expose submitter hashes in the admin review list", async () => {
     const inserted = await env.DB.prepare(
       `INSERT INTO reviews(course_id,teacher_id,category,overall,status,submitter_hash,comment)

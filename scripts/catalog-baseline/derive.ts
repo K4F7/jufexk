@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import {
+  isExcludedCourseName,
+  normalizeCourseNameForPolicy,
+} from "../../src/lib/course-catalog-policy";
 import { validateCapturePackage, type CaptureManifest, type CaptureQuery } from "./capture-package";
 
 export const DERIVATION_SCHEMA_VERSION = "catalog-baseline-derivation/v1" as const;
@@ -57,7 +61,7 @@ function compareText(left: string, right: string) {
 }
 
 function normalizeSourceLabel(value: string) {
-  return value.normalize("NFC").replace(/[\s\u200B-\u200D\u2060\uFEFF]+/gu, " ").trim();
+  return normalizeCourseNameForPolicy(value);
 }
 
 function teacherLabelsOf(value: string): { labels: string[]; hasUnknownStructure: boolean } {
@@ -300,6 +304,11 @@ export async function deriveCatalogBaseline(captureDirectory: string, outputDire
     if (parsed !== query.declaredRecordCount) {
       exceptions.push({ schemaVersion: EXCEPTION_SCHEMA_VERSION, code: "PARSED_RECORD_COUNT_MISMATCH", queryId: query.queryId, page: 0, detail: `Parsed ${parsed} rows but the query declares ${query.declaredRecordCount}.` });
     }
+  }
+
+  for (let index = inventory.length - 1; index >= 0; index -= 1) {
+    if (isExcludedCourseName(inventory[index].normalizedCourseName))
+      inventory.splice(index, 1);
   }
 
   inventory.sort((left, right) => compareText(left.recordId, right.recordId));
