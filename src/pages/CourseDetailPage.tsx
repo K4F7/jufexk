@@ -23,6 +23,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
+import { CourseAdminNotice } from "../components/CourseAdminNotice";
 import { CourseAiSummary } from "../components/CourseAiSummary";
 import {
   CourseReviewSection,
@@ -174,6 +175,8 @@ export function CourseDetailPage() {
   const [reviewRating, setReviewRating] = useState("all");
   const [filteredReviewTotal, setFilteredReviewTotal] = useState(0);
   const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
+  /** 管理动作（屏蔽/删除）后 bump：清空评价会话缓存并重拉第一页。 */
+  const [reviewsVersion, setReviewsVersion] = useState(0);
 
   /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师；
    * 未选或选中值不在任课表内时落到点评数最多的关系（Issue #402）。
@@ -239,6 +242,15 @@ export function CourseDetailPage() {
     };
   }, [id]);
 
+  /** 管理员公告保存后重拉课程详情（只刷新课程载荷，不动评价缓存）。 */
+  const reloadCourse = useCallback(async () => {
+    try {
+      setData(await api<Detail>(`/api/courses/${id}`));
+    } catch {
+      /* 保留旧数据；下次进入页面会重试 */
+    }
+  }, [id]);
+
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
@@ -282,7 +294,13 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted]);
+  }, [id, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted, reviewsVersion]);
+
+  /** 管理动作（屏蔽/解除/删除）后：清空评价会话缓存并 bump 版本重拉。 */
+  const handleReviewsChanged = useCallback(() => {
+    reviewCacheRef.current.clear();
+    setReviewsVersion((v) => v + 1);
+  }, []);
 
   /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复。 */
   const handleLoadMore = useCallback(async () => {
@@ -479,6 +497,13 @@ export function CourseDetailPage() {
               teacher={selectedTeacher}
             />
           ) : null}
+
+          {/* 课程管理员公告：公开卡片 + 管理员编辑面板。 */}
+          <CourseAdminNotice
+            courseId={course.id}
+            notice={course.admin_notice ?? ""}
+            onSaved={reloadCourse}
+          />
         </header>
 
         {course.admin_notice ? (
@@ -552,6 +577,7 @@ export function CourseDetailPage() {
             isLoadingMore={reviewFeed.isLoadingMore}
             loadMoreError={reviewFeed.loadMoreError}
             onLoadMore={handleLoadMore}
+            onReviewChanged={handleReviewsChanged}
           />
         )}
       </div>

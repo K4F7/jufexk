@@ -16,6 +16,7 @@ import {
 import type { SiteConfig } from "../lib/types";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
 import { AccountNavControl } from "./AccountNavControl";
+import { RouterAriaLink } from "./RouterAriaLink";
 import { ThemeToggle } from "./ThemeToggle";
 import { SiteBanner } from "./SiteBanner";
 
@@ -228,6 +229,18 @@ function DefaultShell({
       <footer className="border-t border-border px-4 py-4 text-center text-sm text-muted sm:px-5">
         <div className="mx-auto max-w-[1520px]">
           {siteName} · {universityName}
+          <span aria-hidden className="mx-2">
+            ·
+          </span>
+          <RouterAriaLink className="text-muted" to="/announcements">
+            公告
+          </RouterAriaLink>
+          <span aria-hidden className="mx-2">
+            ·
+          </span>
+          <RouterAriaLink className="text-muted" to="/admin">
+            管理
+          </RouterAriaLink>
         </div>
       </footer>
     </div>

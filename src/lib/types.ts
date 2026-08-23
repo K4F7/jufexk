@@ -19,6 +19,8 @@ export type Course = {
   /** Catalog list: "id:name,id:name" for real teacher links */
   teacher_refs?: string;
   teacher_ids?: string;
+  /** 课程管理员公告（公开纯文本）；未设置时为空串或不下发。 */
+  admin_notice?: string | null;
 };
 
 /**
@@ -166,6 +168,8 @@ export type PublicReview = {
   dimensionAverage?: number;
   /** Present only for stored snapshots whose scheme version publishes tier labels. */
   dimensionLabels?: PublicReviewDimensionLabel[];
+  /** 已屏蔽标记：仅管理员会话的公开流下发；普通访客收不到被屏蔽条目。 */
+  blocked?: boolean;
 };
 
 export type LatestReview = {
@@ -234,6 +238,43 @@ export type SiteConfig = {
   siteName: string;
   universityName: string;
   turnstileSiteKey?: string;
+};
+
+/**
+ * 全站 Banner（公开载荷，`GET /api/site/banner`）。
+ * 管理员录入的消毒 HTML；桌面版与移动版分别在下发内容非空时展示。
+ */
+export type SiteBanner = {
+  desktop_html: string;
+  mobile_html: string;
+  updated_at?: string | null;
+};
+
+/** Banner 设置历史行（`GET /api/admin/banners`，最新在前）。 */
+export type BannerRecord = {
+  id: number;
+  desktop_html: string;
+  mobile_html: string;
+  created_at?: string | null;
+};
+
+/** 公告栏条目（`GET /api/announcements` 公开只读；管理员经 /api/admin/announcements 维护）。 */
+export type Announcement = {
+  id: number;
+  title: string;
+  content: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+/**
+ * 用户禁言状态（`GET /api/admin/users/:userRef`，仅管理员）。
+ * userRef 是管理员侧的不透明用户引用；永远不暴露 email、学号、users.id。
+ */
+export type AdminUserBlockStatus = {
+  user_ref: string;
+  blocked: boolean;
+  blocked_until?: string | null;
 };
 
 export type Paginated<T> = {

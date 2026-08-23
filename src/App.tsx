@@ -9,11 +9,17 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { AdminSessionProvider } from "./hooks/useAdminSession";
 import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
 import { AccountPage } from "./pages/AccountPage";
+import { AdminAnnouncementEditPage } from "./pages/admin/AdminAnnouncementEditPage";
+import { AdminBannerPage } from "./pages/admin/AdminBannerPage";
+import { AdminHubPage } from "./pages/admin/AdminHubPage";
+import { AdminUserBlockPage } from "./pages/admin/AdminUserBlockPage";
+import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
 import { LatestPage } from "./pages/LatestPage";
@@ -145,34 +151,44 @@ export function App() {
     <BrowserRouter>
       <RacClientNavigation>
         <ViewerProvider>
-          <AppShell banner={banner} config={config}>
-            <Routes>
-            <Route path="/" element={<Navigate to="/courses" replace />} />
-            <Route path="/courses" element={<CoursesPage />} />
-            <Route path="/courses/:id" element={<CourseDetailPage />} />
-            <Route path="/latest" element={<LatestPage />} />
-            <Route path="/teachers" element={<TeachersPage />} />
-            <Route path="/teachers/:id" element={<TeacherDetailPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/logout" element={<LogoutPage />} />
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/notices" element={<NoticesPage />} />
-            <Route path="/submit" element={<SubmitPage config={config} />} />
-            {PrototypeGalleryPage ? (
+          <AdminSessionProvider>
+            <AppShell banner={banner} config={config}>
+              <Routes>
+              <Route path="/" element={<Navigate to="/courses" replace />} />
+              <Route path="/courses" element={<CoursesPage />} />
+              <Route path="/courses/:id" element={<CourseDetailPage />} />
+              <Route path="/latest" element={<LatestPage />} />
+              <Route path="/teachers" element={<TeachersPage />} />
+              <Route path="/teachers/:id" element={<TeacherDetailPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/logout" element={<LogoutPage />} />
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/notices" element={<NoticesPage />} />
+              <Route path="/submit" element={<SubmitPage config={config} />} />
+              <Route path="/announcements" element={<AnnouncementsPage />} />
+              <Route path="/admin" element={<AdminHubPage />} />
+              <Route path="/admin/banner" element={<AdminBannerPage />} />
               <Route
-                path="/prototype"
-                element={
-                  <Suspense fallback={<p className="text-sm text-muted">加载 Prototype…</p>}>
-                    <PrototypeGalleryPage />
-                  </Suspense>
-                }
+                path="/admin/announcements/:id"
+                element={<AdminAnnouncementEditPage />}
               />
-            ) : null}
-            <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-            {import.meta.env.DEV ? <DevPrototypeMount /> : null}
-          </AppShell>
+              <Route path="/admin/users/:id" element={<AdminUserBlockPage />} />
+              {PrototypeGalleryPage ? (
+                <Route
+                  path="/prototype"
+                  element={
+                    <Suspense fallback={<p className="text-sm text-muted">加载 Prototype…</p>}>
+                      <PrototypeGalleryPage />
+                    </Suspense>
+                  }
+                />
+              ) : null}
+              <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+              {import.meta.env.DEV ? <DevPrototypeMount /> : null}
+            </AppShell>
+          </AdminSessionProvider>
         </ViewerProvider>
       </RacClientNavigation>
     </BrowserRouter>

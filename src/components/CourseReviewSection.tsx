@@ -20,6 +20,7 @@ import {
 } from "@heroui/react";
 import { memo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAdminSession } from "../hooks/useAdminSession";
 import { useViewer } from "../hooks/useViewer";
 import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
@@ -27,6 +28,7 @@ import { reviewAnchorId } from "../lib/review-dimensions";
 import type { PublicReview } from "../lib/types";
 import { AnonymousAvatar } from "./AnonymousAvatar";
 import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
+import { ReviewAdminControls } from "./ReviewAdminControls";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 import { Stars } from "./Stars";
@@ -105,12 +107,17 @@ const CourseReviewItem = memo(function CourseReviewItem({
   authenticated,
   loginPath,
   onUnauthenticated,
+  adminAuthed,
+  onReviewChanged,
 }: {
   review: PublicReview;
   ready: boolean;
   authenticated: boolean;
   loginPath: string;
   onUnauthenticated: () => void;
+  /** 管理员会话有效时渲染管理动作（屏蔽 / 删除 / 查作者）。 */
+  adminAuthed: boolean;
+  onReviewChanged?: () => void;
 }) {
   const date = formatReviewDate(review.created_at);
   return (
@@ -131,6 +138,11 @@ const CourseReviewItem = memo(function CourseReviewItem({
           {review.grade ? (
             <span className="font-normal text-muted">成绩 {review.grade}</span>
           ) : null}
+          {review.blocked ? (
+            <Chip color="danger" size="sm" variant="soft">
+              <Chip.Label>已屏蔽</Chip.Label>
+            </Chip>
+          ) : null}
         </span>
         {date ? (
           <time className="text-[calc(12/15*1rem)] text-muted" dateTime={date}>
@@ -138,6 +150,11 @@ const CourseReviewItem = memo(function CourseReviewItem({
           </time>
         ) : null}
       </header>
+      {review.blocked && adminAuthed ? (
+        <p className="mb-0 mt-1 text-[12px] text-danger">
+          此评价已被屏蔽，公开列表不再展示，仅管理员可见。
+        </p>
+      ) : null}
       {review.dimensionLabels?.length ? (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {review.dimensionLabels.map((dimension) => (
@@ -179,6 +196,9 @@ const CourseReviewItem = memo(function CourseReviewItem({
           />
         </footer>
       ) : null}
+      {adminAuthed && onReviewChanged ? (
+        <ReviewAdminControls review={review} onChanged={onReviewChanged} />
+      ) : null}
     </article>
   );
 });
@@ -201,6 +221,7 @@ export function CourseReviewSection({
   isLoadingMore,
   loadMoreError,
   onLoadMore,
+  onReviewChanged,
 }: {
   courseId: number;
   /** 当前选中的任课教师；为空（课程无教师）时隐藏写点评入口。 */
@@ -222,9 +243,12 @@ export function CourseReviewSection({
   isLoadingMore: boolean;
   loadMoreError: string;
   onLoadMore: () => void;
+  /** 管理动作改变公开集合后触发（清空缓存并重拉第一页）。 */
+  onReviewChanged?: () => void;
 }) {
   const navigate = useNavigate();
   const { viewer, ready, clear } = useViewer();
+  const { authed: adminAuthed } = useAdminSession();
 
   const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;
 
@@ -305,6 +329,8 @@ export function CourseReviewSection({
                 authenticated={viewer.authenticated}
                 loginPath={viewer.loginPath}
                 onUnauthenticated={clear}
+                adminAuthed={adminAuthed}
+                onReviewChanged={onReviewChanged}
               />
             </div>
           ))}
