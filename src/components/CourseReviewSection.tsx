@@ -40,10 +40,10 @@ export type CourseReviewSort =
 
 const SORT_ITEMS: Array<{ id: CourseReviewSort; label: string }> = [
   { id: "recognized", label: "认可最多" },
-  { id: "latest", label: "最新点评" },
-  { id: "oldest", label: "最旧点评" },
-  { id: "rating_desc", label: "评分：高-低" },
-  { id: "rating_asc", label: "评分：低-高" },
+  { id: "latest", label: "最新发布" },
+  { id: "oldest", label: "最早发布" },
+  { id: "rating_desc", label: "评分最高" },
+  { id: "rating_asc", label: "评分最低" },
 ];
 
 const RATING_ITEMS: Array<{ id: string; label: string }> = [

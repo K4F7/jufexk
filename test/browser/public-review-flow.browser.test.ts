@@ -451,7 +451,7 @@ test("review controls reload the complete server-side sort and filters", async (
   expect(queries.at(-1)).toContain("sort=recognized");
 
   await page.getByRole("button", { name: /排序/ }).click();
-  await page.getByRole("option", { name: "最旧点评" }).click();
+  await page.getByRole("option", { name: "最早发布" }).click();
   await expect(reviewItems(page).first()).toContainText("低分旧点评");
   expect(queries.at(-1)).toContain("sort=oldest");
 
