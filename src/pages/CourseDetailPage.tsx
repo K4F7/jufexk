@@ -6,7 +6,7 @@
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Card, Typography, buttonVariants } from "@heroui/react";
+import { Button, Card, Typography } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -106,7 +106,7 @@ function getOrLoad<T>(
 }
 
 /** 右侧栏官方 Card（任课教师 / 其他老师 / 这位老师的其他课）。
- *  列表标题不用 Card.Title：标题含课名/教师名，会跟页面主标题的
+ *  列表 Card.Title 用短标题，避免课名/教师名跟页面主标题的
  *  getByRole("heading") 查询撞车。 */
 function SidePanel({
   title,
@@ -118,7 +118,7 @@ function SidePanel({
   return (
     <Card>
       <Card.Header>
-        <p className="m-0 text-sm font-medium text-foreground">{title}</p>
+        <Card.Title>{title}</Card.Title>
       </Card.Header>
       <Card.Content>{children}</Card.Content>
     </Card>
@@ -128,13 +128,13 @@ function SidePanel({
 function SideRelationRow({
   href,
   label,
-  detail,
+  code,
   rating,
   count,
 }: {
   href: string;
   label: string;
-  detail?: string;
+  code?: string;
   rating?: number | null;
   count?: number | null;
 }) {
@@ -150,8 +150,8 @@ function SideRelationRow({
         <RouterAriaLink className="min-w-0 truncate" to={href}>
           {label}
         </RouterAriaLink>
-        {detail ? (
-          <span className="block truncate text-xs text-muted">{detail}</span>
+        {code ? (
+          <span className="block truncate text-xs text-muted">{code}</span>
         ) : null}
       </span>
       {stats ? (
@@ -159,10 +159,6 @@ function SideRelationRow({
       ) : null}
     </li>
   );
-}
-
-function SideRelationList({ children }: { children: ReactNode }) {
-  return <ul className="m-0 flex list-none flex-col gap-1 p-0">{children}</ul>;
 }
 
 export function CourseDetailPage() {
@@ -553,9 +549,7 @@ export function CourseDetailPage() {
                 size="lg"
                 fallback={selectedTeacher.name.slice(0, 1)}
               />
-              <p className="m-0 mt-1 text-sm font-medium text-foreground">
-                {selectedTeacher.name}
-              </p>
+              <Card.Title>{selectedTeacher.name}</Card.Title>
               {selectedTeacher.department ? (
                 <Card.Description>{selectedTeacher.department}</Card.Description>
               ) : null}
@@ -563,11 +557,11 @@ export function CourseDetailPage() {
           </Card>
         ) : null}
 
-        <SidePanel title={`其他老师的「${course.name}」课`}>
+        <SidePanel title="其他老师的这门课">
           {otherTeachers.length === 0 ? (
             <p className="m-0 text-sm text-muted">这门课目前只有这位老师</p>
           ) : (
-            <SideRelationList>
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {otherTeachers.map((teacher) => (
                 <SideRelationRow
                   key={teacher.id}
@@ -577,39 +571,36 @@ export function CourseDetailPage() {
                   count={teacher.review_count}
                 />
               ))}
-            </SideRelationList>
+            </ul>
           )}
         </SidePanel>
 
         {selectedTeacher ? (
-          <SidePanel title={`${selectedTeacher.name}老师的其他课`}>
+          <SidePanel title="这位老师的其他课">
             {teacherCourses == null ? (
               <p className="m-0 text-sm text-muted">加载中…</p>
             ) : teacherOtherCourses.length === 0 ? (
               <p className="m-0 text-sm text-muted">这位老师目前只开这门课</p>
             ) : (
-              <SideRelationList>
+              <ul className="m-0 flex list-none flex-col gap-1 p-0">
                 {teacherOtherCourses.map((item) => (
                   <SideRelationRow
                     key={item.id}
                     href={`/courses/${item.id}?teacher=${effectiveTeacherId}`}
                     label={item.name}
-                    detail={item.code || undefined}
+                    code={item.code || undefined}
                     rating={item.rating}
                     count={item.review_count}
                   />
                 ))}
-              </SideRelationList>
+              </ul>
             )}
           </SidePanel>
         ) : null}
 
-        <RouterAriaLink
-          className={`${buttonVariants({ size: "sm", variant: "ghost" })} w-full justify-center no-underline`}
-          to={catalogHref}
-        >
+        <Button fullWidth href={catalogHref} size="sm" variant="ghost">
           ← 返回课程目录
-        </RouterAriaLink>
+        </Button>
       </aside>
     </div>
   );
