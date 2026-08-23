@@ -188,8 +188,8 @@ export function shouldRefreshPublicListPrecomputes(method: string, path: string)
 }
 
 const REFRESH_ATTEMPTS = 2;
+const REFRESH_ACQUIRE_ATTEMPTS = 5;
 const REFRESH_LEASE_SECONDS = 60;
-const REFRESH_LEASE_WAIT_MS = 15_000;
 const REFRESH_LEASE_POLL_MS = 100;
 const publicPrecomputeRefreshes = new WeakMap<D1Database, Promise<void>>();
 
@@ -214,8 +214,7 @@ const pause = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 async function waitForPublicPrecomputeLease(db: D1Database) {
-  const deadline = Date.now() + REFRESH_LEASE_WAIT_MS;
-  while (Date.now() < deadline) {
+  while (true) {
     const state = await publicPrecomputeState(db);
     if (!state?.dirty) return "clean" as const;
     if (
@@ -225,7 +224,6 @@ async function waitForPublicPrecomputeLease(db: D1Database) {
       return "retry" as const;
     await pause(REFRESH_LEASE_POLL_MS);
   }
-  throw new Error("等待公开目录预计算刷新超时");
 }
 
 async function renewPublicPrecomputeLease(
@@ -253,6 +251,34 @@ async function renewPublicPrecomputeLease(
 const guardedProjectionDelete = (table: string) =>
   `DELETE FROM ${table} WHERE ${refreshLeaseGuard}`;
 
+async function acquirePublicPrecomputeLease(db: D1Database) {
+  for (let attempt = 0; attempt < REFRESH_ACQUIRE_ATTEMPTS; attempt += 1) {
+    const token = crypto.randomUUID();
+    const acquired = await db
+      .prepare(
+        `UPDATE public_precompute_state
+         SET refresh_token=?,refresh_lease_until=unixepoch()+?
+         WHERE id=1
+           AND dirty=1
+           AND (
+             refresh_token IS NULL OR
+             refresh_lease_until IS NULL OR
+             refresh_lease_until<=unixepoch()
+           )
+         RETURNING generation`,
+      )
+      .bind(token, REFRESH_LEASE_SECONDS)
+      .run<{ generation: number }>();
+    const lease = acquired.results[0];
+    if (lease)
+      return { generation: Number(lease.generation) || 0, token } as const;
+
+    const outcome = await waitForPublicPrecomputeLease(db);
+    if (outcome === "clean") return null;
+  }
+  throw new Error("公开目录预计算刷新租约获取失败");
+}
+
 async function refreshPublicListPrecomputesAttempt(
   db: D1Database,
   attempt: number,
@@ -269,30 +295,9 @@ async function refreshPublicListPrecomputesAttempt(
   }
   if (!state?.dirty) return;
 
-  const token = crypto.randomUUID();
-  const acquired = await db
-    .prepare(
-      `UPDATE public_precompute_state
-       SET refresh_token=?,refresh_lease_until=unixepoch()+?
-       WHERE id=1
-         AND dirty=1
-         AND (
-           refresh_token IS NULL OR
-           refresh_lease_until IS NULL OR
-           refresh_lease_until<=unixepoch()
-         )
-       RETURNING generation`,
-    )
-    .bind(token, REFRESH_LEASE_SECONDS)
-    .run<{ generation: number }>();
-  const lease = acquired.results[0];
-  if (!lease) {
-    const outcome = await waitForPublicPrecomputeLease(db);
-    if (outcome === "clean") return;
-    return refreshPublicListPrecomputesAttempt(db, attempt);
-  }
-
-  const generation = Number(lease.generation) || 0;
+  const lease = await acquirePublicPrecomputeLease(db);
+  if (!lease) return;
+  const { generation, token } = lease;
   try {
     await db.batch([
       db
