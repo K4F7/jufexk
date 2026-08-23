@@ -1,16 +1,12 @@
 /**
  * 课程详情 /courses/:id?teacher= — USTC 评课社区对齐（Issue #402）。
  * 页面始终按 课程×教师 关系展示：未带 teacher 参数时落到点评数最多的关系。
- * 左栏：面包屑 / 课程头（课名（老师）· 课程号 · 星级推荐度 · 四维占位 ·
- * 元信息网格 · 关注/推荐/不推荐占位）/ AI 总结（#401，未生成时占位）/ 点评区。
- * 右栏：老师卡（占位头像 + 教师主页：暂无）→ 其他老师的这门课 → 这位老师的其他课。
- *
- * 头部学期列表与关系级四维聚合依赖 #410 投影，未下发前不展示学期、
- * 四维保持占位「—」。
+ * 左栏：面包屑 / 课程头（课名（老师）· 课程号 · 星级推荐度 · 四维 ·
+ * 元信息网格 · 关注/推荐/不推荐）/ AI 总结 / 点评区。
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Avatar, Button, Typography } from "@heroui/react";
+import { Avatar, Typography } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -35,10 +31,12 @@ import {
 } from "../components/DetailFeedback";
 import { EmptyBox } from "../components/EmptyBox";
 import { FourDimLine } from "../components/FourDimLine";
+import { RelationSignalControls } from "../components/RelationSignalControls";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
+import { fourDimLineLabels } from "../lib/dimension-labels";
 import { categoryLabel } from "../lib/labels";
 import type {
   Course,
@@ -134,9 +132,6 @@ export function CourseDetailPage() {
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
-  // 关注 / 推荐 / 不推荐：原型占位开关，无后端（Issue #402）。
-  const [follow, setFollow] = useState(false);
-  const [recommend, setRecommend] = useState<"none" | "up" | "down">("none");
 
   /** 评价按 课程×教师 展示：URL `teacher` 参数记录选中的任课教师；
    * 未选或选中值不在任课表内时落到点评数最多的关系（Issue #402）。 */
@@ -173,8 +168,6 @@ export function CourseDetailPage() {
     let cancelled = false;
     setData(null);
     setError("");
-    setFollow(false);
-    setRecommend("none");
     (async () => {
       try {
         const d = await api<Detail>(`/api/courses/${id}`);
@@ -330,14 +323,14 @@ export function CourseDetailPage() {
     return `/courses/${course.id}?${sp.toString()}`;
   };
   const metaRows: Array<[string, string]> = [
-    // 选课类别 / 教学类型 / 课程层次：教务未采集这些字段，先占位。
-    ["选课类别", "—"],
-    ["教学类型", "—"],
+    ["选课类别", course.enrollment_category || "—"],
+    ["教学类型", course.teaching_type || "—"],
     ["课程类别", categoryLabel(course.category)],
     ["开课单位", course.department || "—"],
-    ["课程层次", "—"],
+    ["课程层次", course.course_level || "—"],
     ["学分", course.credits != null ? String(course.credits) : "—"],
   ];
+  const relationTerms = selectedTeacher?.terms ?? [];
   const comparingRecognition =
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
@@ -395,8 +388,15 @@ export function CourseDetailPage() {
             )}
           </div>
 
-          {/* 关系级四维分布没有公开投影（#373 只提供评价条目级标签），保留占位。 */}
-          <FourDimLine className="mt-2 text-[13px]" labels={null} />
+          <FourDimLine
+            className="mt-2 text-[13px]"
+            labels={fourDimLineLabels(selectedTeacher?.dimensionLabels)}
+          />
+          {relationTerms.length ? (
+            <p className="mb-0 mt-2 min-w-0 truncate text-[11px] text-muted">
+              学期 {relationTerms.join(" ")}
+            </p>
+          ) : null}
 
           <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[13px] sm:grid-cols-2">
             {metaRows.map(([label, value]) => (
@@ -407,36 +407,12 @@ export function CourseDetailPage() {
             ))}
           </dl>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant={follow ? "secondary" : "outline"}
-              aria-pressed={follow}
-              onPress={() => setFollow((v) => !v)}
-            >
-              {follow ? "已关注" : "关注"}
-            </Button>
-            <Button
-              size="sm"
-              variant={recommend === "up" ? "secondary" : "outline"}
-              aria-pressed={recommend === "up"}
-              onPress={() =>
-                setRecommend((v) => (v === "up" ? "none" : "up"))
-              }
-            >
-              {recommend === "up" ? "已推荐" : "推荐"}
-            </Button>
-            <Button
-              size="sm"
-              variant={recommend === "down" ? "secondary" : "outline"}
-              aria-pressed={recommend === "down"}
-              onPress={() =>
-                setRecommend((v) => (v === "down" ? "none" : "down"))
-              }
-            >
-              {recommend === "down" ? "取消不推荐" : "不推荐"}
-            </Button>
-          </div>
+          {selectedTeacher ? (
+            <RelationSignalControls
+              courseId={course.id}
+              teacher={selectedTeacher}
+            />
+          ) : null}
         </header>
 
         {relationSummary?.html ? (
@@ -479,6 +455,7 @@ export function CourseDetailPage() {
           <CourseReviewSection
             courseId={course.id}
             teacherId={effectiveTeacherId}
+            terms={relationTerms}
             reviews={reviewFeed.reviews}
             total={relationCount}
             loading={reviewsLoading}

@@ -1,8 +1,6 @@
 /**
- * 目录行展开（Issue #402）：/api/courses 一门课一行、教师是 teacher_refs
- * "id:name,id:name" 串；目录 UI 一行一条课程×教师，在前端展开。
- * 关系级评分 / 点评数 / 四维档期的后端投影属 #410：未下发前本模块只
- * 携带课程级 review_count，行内据它区分「暂无评价」与统计占位。
+ * 目录行展开：兼容旧的课程级 /api/courses 行（teacher_refs 串）。
+ * 生产目录已改走 view=relations；DEV 建议与旧 mock 仍可能用本函数。
  */
 import type { Course, CourseRelation } from "./types";
 
@@ -28,6 +26,8 @@ export function expandCourseRelations(course: Course): CourseRelation[] {
     name: course.name,
     category: course.category,
     department: course.department,
+    rating: course.rating ?? null,
+    review_count: course.review_count ?? 0,
     course_review_count: course.review_count ?? 0,
   };
   const refs = (course.teacher_refs || "")

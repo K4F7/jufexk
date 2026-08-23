@@ -229,12 +229,23 @@ describe("public course-teacher review projection", () => {
       expect(publicJson).not.toContain("private moderation note");
       expect(publicJson).not.toContain("private OCR");
       expect(publicJson).not.toContain("投影测试历史资料");
-      expect(publicJson).not.toContain("2026 春");
-      expect(publicJson).not.toContain("created_at");
       expect(publicJson).not.toContain("publishedAt");
-      expect(publicJson).not.toContain("overall");
       expect(publicJson).not.toContain("待审核补充说明");
       expect(publicJson).not.toContain("被驳回补充说明");
+      const reviewItem = courseNext.items.find(
+        (item) => item.comment === "较新的补充说明",
+      );
+      expect(reviewItem).toMatchObject({
+        overall: 4,
+        term: "2026 春",
+        created_at: "2026-08-11 02:00:00",
+      });
+      const historicalItem = courseReviews.items[0];
+      expect(historicalItem).toMatchObject({
+        overall: null,
+        term: null,
+      });
+      expect(historicalItem).toHaveProperty("created_at");
     } finally {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(

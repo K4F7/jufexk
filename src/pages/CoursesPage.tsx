@@ -4,10 +4,8 @@
  * 关系（CourseRelationRow）；分页沿用 URL ?page=。
  * 页内搜索已上移到顶栏居中搜索；院系/教师筛选随旧工具条下线。
  *
- * 数据走现有 GET /api/courses（课程级行），前端按 teacher_refs 展开成
- * 关系行；分页总数仍按课程计。关系级评分/点评数、四维档位与
- * 「排序方式：课程评分」依赖 #410 的后端投影，未下发前行内显示占位、
- * 排序行暂不上线。
+ * 数据走 GET /api/courses?view=relations（一行一条课程×教师）。
+ * 支持 sort=rating；分页总数按关系行计。
  *
  * DEV-only: ?module=global-search&variant=A 保留页内搜索头（#303 对照），
  * variant=C 保留跨目录提示链接。
@@ -35,14 +33,29 @@ import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
-import { expandCourseRelations } from "../lib/course-relations";
 import {
   isPublicCatalogCategory,
   PUBLIC_CATEGORY_OPTIONS,
   publicCategoryOptionLabel,
 } from "../lib/public-categories";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
-import type { Course, Paginated, Teacher } from "../lib/types";
+import { expandCourseRelations } from "../lib/course-relations";
+import type { Course, CourseRelation, Paginated, Teacher } from "../lib/types";
+
+function asRelationRows(
+  items: Array<CourseRelation | Course>,
+): CourseRelation[] {
+  return items.flatMap((item) =>
+    "course_id" in item && typeof item.course_id === "number"
+      ? [item]
+      : expandCourseRelations(item as Course),
+  );
+}
+
+const SORT_OPTIONS = [
+  { id: "", label: "默认" },
+  { id: "rating", label: "课程评分" },
+] as const;
 
 const RELATION_CATALOG_COPY: CatalogResultsCopy = {
   errorTitle: "课程目录加载失败",
@@ -83,10 +96,12 @@ export function CoursesPage() {
   const q = params.get("q") || "";
   const rawCategory = params.get("category") || "";
   const category = isPublicCatalogCategory(rawCategory) ? rawCategory : "";
+  const rawSort = params.get("sort") || "";
+  const sort = rawSort === "rating" ? "rating" : "";
   const parsedPage = Number(params.get("page") || "1");
   const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
 
-  const [data, setData] = useState<Paginated<Course> | null>(null);
+  const [data, setData] = useState<Paginated<CourseRelation> | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   /** Bumps to re-fetch the current catalog query (retry / force-reload). */
@@ -105,9 +120,11 @@ export function CoursesPage() {
     const sp = new URLSearchParams();
     if (q) sp.set("q", q);
     if (category) sp.set("category", category);
+    if (sort) sp.set("sort", sort);
+    sp.set("view", "relations");
     sp.set("page", String(page));
     return sp.toString();
-  }, [q, category, page]);
+  }, [q, category, sort, page]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -115,7 +132,7 @@ export function CoursesPage() {
 
     setLoading(true);
     setError("");
-    api<Paginated<Course>>(`/api/courses?${queryString}`, {
+    api<Paginated<CourseRelation>>(`/api/courses?${queryString}`, {
       signal: controller.signal,
     })
       .then((result) => {
@@ -184,17 +201,18 @@ export function CoursesPage() {
     setParams(sp, { replace });
   }
 
-  const hasFilters = Boolean(q || category);
+  const hasFilters = Boolean(q || category || sort);
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
   /** 空状态文案点名全部生效筛选（关键词 / 类别）。 */
   const activeFilterLabels = [
     q ? `关键词“${q}”` : "",
     category ? publicCategoryOptionLabel(category) : "",
+    sort === "rating" ? "课程评分" : "",
   ].filter(Boolean);
 
   function clearFilters() {
-    update({ q: "", category: "", page: "1" }, true);
+    update({ q: "", category: "", sort: "", page: "1" }, true);
   }
 
   const rescue =
@@ -224,15 +242,13 @@ export function CoursesPage() {
     >
       {data ? (
         <div>
-          {data.items.flatMap((course) =>
-            expandCourseRelations(course).map((relation) => (
-              <CourseRelationRow
-                key={`${relation.course_id}:${relation.teacher_id ?? "none"}`}
-                relation={relation}
-                search={location.search}
-              />
-            )),
-          )}
+          {asRelationRows(data.items).map((relation) => (
+            <CourseRelationRow
+              key={`${relation.course_id}:${relation.teacher_id ?? "none"}`}
+              relation={relation}
+              search={location.search}
+            />
+          ))}
         </div>
       ) : null}
     </CatalogResultsStates>
@@ -254,6 +270,21 @@ export function CoursesPage() {
             size="sm"
             variant={category === opt.id ? "secondary" : "ghost"}
             onPress={() => update({ category: opt.id }, true)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <span className="shrink-0 text-[13px] font-semibold text-foreground">
+          排序方式：
+        </span>
+        {SORT_OPTIONS.map((opt) => (
+          <Button
+            key={opt.id || "default"}
+            size="sm"
+            variant={sort === opt.id ? "secondary" : "ghost"}
+            onPress={() => update({ sort: opt.id }, true)}
           >
             {opt.label}
           </Button>

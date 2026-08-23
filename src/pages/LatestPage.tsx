@@ -1,13 +1,67 @@
 /**
- * 最新课评 /latest（Issue #402）：页面结构对齐 icourse 首页的最新投稿流。
- * 全站最新公开文字评价接口属 #410，未上线前本页不请求数据，只渲染
- * 明确标注的占位状态；接口就绪后这里恢复为按时间倒序的条目流
- * （占位头像 + 匿名用户 点评了 课程（老师）+ 日期 + 正文 clamp + >>更多）。
+ * 最新课评 /latest：全站公开文字评价，按发表时间倒序。
+ * 数据走 GET /api/reviews/latest（游标分页）。
  */
-import { Typography } from "@heroui/react";
+import { Avatar, Button, Spinner, Typography } from "@heroui/react";
+import { useEffect, useState } from "react";
+import { DetailErrorAlert } from "../components/DetailFeedback";
+import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { api } from "../lib/api";
+import { formatReviewDate } from "../lib/review-date";
+import { reviewAnchorId } from "../lib/review-dimensions";
+import type { LatestReview, PublicReviewPage } from "../lib/types";
 
 export function LatestPage() {
+  const [items, setItems] = useState<LatestReview[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    api<PublicReviewPage<LatestReview>>("/api/reviews/latest", {
+      signal: controller.signal,
+    })
+      .then((page) => {
+        if (cancelled) return;
+        setItems(page.items);
+        setNextCursor(page.nextCursor);
+      })
+      .catch((reason) => {
+        if (!cancelled) setError((reason as Error).message || "最新课评加载失败");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
+
+  const loadMore = async () => {
+    if (!nextCursor || isLoadingMore) return;
+    setIsLoadingMore(true);
+    setLoadMoreError("");
+    try {
+      const page = await api<PublicReviewPage<LatestReview>>(
+        `/api/reviews/latest?cursor=${encodeURIComponent(nextCursor)}`,
+      );
+      setItems((current) => [...current, ...page.items]);
+      setNextCursor(page.nextCursor);
+    } catch (reason) {
+      setLoadMoreError((reason as Error).message || "继续加载失败");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   return (
     <section className="mx-auto w-full max-w-[760px]">
       <header aria-label="最新课评标题" className="mb-3">
@@ -18,19 +72,95 @@ export function LatestPage() {
           最新课评
         </Typography>
       </header>
-      <div
-        className="rounded border border-dashed border-border px-7 py-7 text-center text-muted"
-        role="status"
-      >
-        <div className="font-medium text-foreground">最新课评流暂未接入</div>
-        <p className="mb-0 mt-1 text-sm">
-          全站点评数据就绪后，这里会按时间倒序列出最新点评；现在先到
-          <RouterAriaLink to="/courses" className="text-accent">
-            课程列表
-          </RouterAriaLink>
-          看看，或通过课程页的「写点评」分享第一门课的体验。
+      {error && items.length === 0 ? (
+        <DetailErrorAlert title="最新课评加载失败" message={error} />
+      ) : loading && items.length === 0 ? (
+        <p className="py-10 text-center text-[13px] text-muted" role="status">
+          正在加载最新课评…
         </p>
-      </div>
+      ) : items.length === 0 ? (
+        <div
+          className="rounded border border-dashed border-border px-7 py-7 text-center text-muted"
+          role="status"
+        >
+          <div className="font-medium text-foreground">暂时还没有公开课评</div>
+          <p className="mb-0 mt-1 text-sm">
+            先到
+            <RouterAriaLink to="/courses" className="text-accent">
+              课程列表
+            </RouterAriaLink>
+            看看，或通过课程页的「写点评」分享第一门课的体验。
+          </p>
+        </div>
+      ) : (
+        <div>
+          {items.map((review) => (
+            <LatestReviewItem key={review.id} review={review} />
+          ))}
+          {nextCursor ? (
+            <div className="flex justify-center pt-4">
+              <Button
+                variant="secondary"
+                isPending={isLoadingMore}
+                onPress={loadMore}
+              >
+                {({ isPending }) => (
+                  <>
+                    {isPending ? <Spinner color="current" size="sm" /> : null}
+                    {isPending ? "加载中…" : "继续加载"}
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : null}
+          {loadMoreError ? (
+            <p className="mt-3 text-center text-[13px] text-danger" role="alert">
+              {loadMoreError}
+            </p>
+          ) : null}
+        </div>
+      )}
     </section>
+  );
+}
+
+function LatestReviewItem({ review }: { review: LatestReview }) {
+  const date = formatReviewDate(review.created_at);
+  const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
+  return (
+    <article className="flex gap-3 border-b border-separator py-4 last:border-b-0">
+      <Avatar size="sm" className="mt-0.5 rounded-full" aria-hidden>
+        <Avatar.Fallback className="rounded-full" />
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <header className="flex items-baseline justify-between gap-3">
+          <p className="m-0 min-w-0 text-[13px] leading-6">
+            <span>匿名用户</span>
+            <span className="text-muted"> 点评了 </span>
+            <RouterAriaLink
+              to={`/courses/${review.course_id}?teacher=${review.teacher_id}`}
+              className="text-accent"
+            >
+              {review.course_name}
+              {review.teacher_name ? `（${review.teacher_name}）` : ""}
+            </RouterAriaLink>
+          </p>
+          {date ? (
+            <time className="shrink-0 text-[12px] text-muted" dateTime={date}>
+              {date}
+            </time>
+          ) : null}
+        </header>
+        <div className="mt-1 line-clamp-3">
+          <ReviewNoteContent
+            comment={review.comment}
+            commentFormat={review.comment_format}
+          />
+        </div>
+        <RouterAriaLink to={moreHref} className="text-[13px] text-accent">
+          {">>更多"}
+        </RouterAriaLink>
+      </div>
+    </article>
   );
 }
