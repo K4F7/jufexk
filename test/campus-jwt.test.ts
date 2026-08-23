@@ -50,10 +50,10 @@ describe("campus AuthBridge placeholder", () => {
       buildAuthBridgeLoginUrl({
         baseUrl: "https://authbridge.example.test/authbridge",
         appId: "jufexk",
-        callbackUrl: "https://xk.sein.moe/api/auth/callback",
+        callbackUrl: "https://courses.sein.moe/api/auth/callback",
       }),
     ).toBe(
-      "https://authbridge.example.test/authbridge/login?appid=jufexk&mode=callback&callback=https%3A%2F%2Fxk.sein.moe%2Fapi%2Fauth%2Fcallback",
+      "https://authbridge.example.test/authbridge/login?appid=jufexk&mode=callback&callback=https%3A%2F%2Fcourses.sein.moe%2Fapi%2Fauth%2Fcallback",
     );
     expect(campusJwtLive(undefined)).toBe(false);
     expect(campusJwtLive({})).toBe(false);

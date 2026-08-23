@@ -9,7 +9,7 @@ import { createProductionD1ExportCommand } from "./production-wrangler";
 
 const exec = promisify(execFile);
 const { apply, root } = parseV5ImportArguments(process.argv.slice(2));
-const baseUrl = (process.env.JUFEXK_BASE_URL || "https://xk.sein.moe").replace(
+const baseUrl = (process.env.JUFEXK_BASE_URL || "https://courses.sein.moe").replace(
   /\/$/,
   "",
 );

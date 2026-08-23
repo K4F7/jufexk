@@ -7,7 +7,7 @@
 生产操作只允许在已批准的维护窗口执行。脚本只读取该包的 `manifest.json` 与 `importable-legacy-reviews.jsonl`。
 
 ```powershell
-$env:JUFEXK_BASE_URL = 'https://xk.sein.moe'
+$env:JUFEXK_BASE_URL = 'https://courses.sein.moe'
 $env:JUFEXK_ADMIN_PASSWORD = '...' # 或 $env:ADMIN_PASSWORD
 $env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\issue365-relations-<UTC_TIMESTAMP>.sql'
 pnpm run catalog-relations:v10
