@@ -1,6 +1,6 @@
 /**
- * 课程页点评区（Issue #402，对齐 icourse）：标题「点评」+ 蓝色「写点评」主按钮；
- * 排序、学期、评分 Select 由服务端对完整评价流排序/筛选；条目为官方占位
+ * 课程页点评区（Issue #402，对齐 icourse）：标题「点评」+ 计数 + 蓝色「写点评」；
+ * 排序、学期、评分用 secondary Select 单行「标签：当前值」，由服务端排序/筛选；条目为官方占位
  * 头像 + 匿名用户 + 星级 + 学期 + 四维档位 + 正文 + 认可（Issue #431）。
  *
  * 四维档位标签由 #373 公开流投影按条目下发（dimensionLabels），有则渲染
@@ -67,15 +67,22 @@ function FilterSelect({
 }) {
   return (
     <Select
-      className="w-[148px]"
+      className="w-auto"
+      variant="secondary"
       value={value}
       onChange={(next) => {
         if (typeof next === "string") onChange(next);
       }}
     >
-      <Label>{label}</Label>
+      <Label className="sr-only">{label}</Label>
       <Select.Trigger>
-        <Select.Value />
+        <Select.Value>
+          {({ defaultChildren }) => (
+            <>
+              {label}：{defaultChildren}
+            </>
+          )}
+        </Select.Value>
         <Select.Indicator />
       </Select.Trigger>
       <Select.Popover>
@@ -216,13 +223,16 @@ export function CourseReviewSection({
   return (
     <section className="mt-10" aria-labelledby="course-reviews-heading">
       <div className="flex items-center justify-between gap-3">
-        <Typography
-          className="m-0 text-[20px] font-bold leading-snug text-accent"
-          id="course-reviews-heading"
-          type="h2"
-        >
-          点评
-        </Typography>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <Typography
+            className="m-0 text-[20px] font-bold leading-snug text-accent"
+            id="course-reviews-heading"
+            type="h2"
+          >
+            点评
+          </Typography>
+          <span className="text-[13px] text-muted">{total} 条点评</span>
+        </div>
         {teacherId ? (
           <Button variant="primary" size="md" onPress={() => navigate(writeHref)}>
             写点评
@@ -230,7 +240,11 @@ export function CourseReviewSection({
         ) : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-end gap-3">
+      <div
+        role="group"
+        aria-label="点评筛选"
+        className="mt-3 flex flex-wrap items-center gap-2"
+      >
         <FilterSelect
           label="排序"
           value={sort}
@@ -252,7 +266,6 @@ export function CourseReviewSection({
           onChange={onRatingChange}
           items={RATING_ITEMS}
         />
-        <span className="pb-2 text-[13px] text-muted">{total} 条点评</span>
       </div>
 
       {error && reviews.length === 0 ? (
