@@ -151,10 +151,16 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
           ) : null}
         </header>
         <div className="mt-1 line-clamp-3">
-          <ReviewNoteContent
-            comment={review.comment}
-            commentFormat={review.comment_format}
-          />
+          {review.headline ? (
+            <p className="m-0 break-words text-sm font-medium leading-relaxed">
+              {review.headline}
+            </p>
+          ) : (
+            <ReviewNoteContent
+              comment={review.comment}
+              commentFormat={review.comment_format}
+            />
+          )}
         </div>
         <RouterAriaLink to={moreHref} className="text-[13px] text-accent">
           {">>更多"}

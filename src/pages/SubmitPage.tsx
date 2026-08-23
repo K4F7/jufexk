@@ -140,6 +140,8 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [term, setTerm] = useState("");
   const [scores, setScores] = useState<Record<string, string>>({});
   const [overall, setOverall] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [grade, setGrade] = useState("");
   const [note, setNote] = useState<ReviewNoteValue>({ html: "", text: "" });
   const [noteError, setNoteError] = useState("");
   const [msg, setMsg] = useState("");
@@ -156,9 +158,9 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const validateNote = useCallback((value: ReviewNoteValue) => {
     const length = value.text.trim().length;
     if (length < REVIEW_NOTE_MIN_LENGTH)
-      return `请填写至少 ${REVIEW_NOTE_MIN_LENGTH} 字补充说明`;
+      return `请填写至少 ${REVIEW_NOTE_MIN_LENGTH} 字详细评价`;
     if (length > REVIEW_NOTE_MAX_LENGTH)
-      return `补充说明不能超过 ${REVIEW_NOTE_MAX_LENGTH} 字`;
+      return `详细评价不能超过 ${REVIEW_NOTE_MAX_LENGTH} 字`;
     return "";
   }, []);
 
@@ -302,6 +304,11 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
       setMsg("请答完本次适用的评分题");
       return;
     }
+    // 原生必填已拦截空串；这里兜底纯空白（服务端 trim 后同样拒绝）。
+    if (!headline.trim()) {
+      setMsg("请填写一句话总结本课");
+      return;
+    }
     const nextNoteError = validateNote(note);
     if (nextNoteError) {
       setNoteError(nextNoteError);
@@ -329,6 +336,8 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           teacherId: Number(teacherId),
           overall: Number(overall),
           scores: payloadScores,
+          headline: headline.trim(),
+          grade: grade.trim(),
           comment: note.html,
           term,
           website: "",
@@ -362,8 +371,8 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
             <Card.Title id="submit-gate-heading">写评价</Card.Title>
             <Card.Description>
               {config?.turnstileSiteKey
-                ? "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题，并填写至少 10 字补充说明。开始填写前请先完成下方人机验证。"
-                : "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题，并填写至少 10 字补充说明。"}
+                ? "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题，并填写至少 10 字详细评价。开始填写前请先完成下方人机验证。"
+                : "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题，并填写至少 10 字详细评价。"}
             </Card.Description>
           </Card.Header>
           <Card.Content>
@@ -392,7 +401,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         写评价
       </Typography>
       <p className="mb-4 mt-0 text-muted">
-        评价必须绑定已有任课关系。选好课程和教师后，按该课本次适用的评价规则答题；补充说明必填（至少 10 字）。
+        评价必须绑定已有任课关系。选好课程和教师后，按该课本次适用的评价规则答题；详细评价必填（至少 10 字）。
       </p>
 
       <Form
@@ -482,13 +491,15 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         </Select>
 
         <Select
+          isRequired
           className="w-full"
           name="term"
+          placeholder="请选择学期"
           value={term || null}
           onChange={(value) => setTerm(value ? String(value) : "")}
         >
           <Label>学期</Label>
-          <Description>选填。按实际修读学期选择</Description>
+          <Description>如果不记得了，可以随便选一个 :)</Description>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
@@ -507,6 +518,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
               ))}
             </ListBox>
           </Select.Popover>
+          <FieldError>请选择学期</FieldError>
         </Select>
 
         {hiddenCoreLabels.length ? (
@@ -541,12 +553,23 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           value={overall}
           onChange={setOverall}
         />
+        <TextField
+          isRequired
+          name="headline"
+          value={headline}
+          onChange={setHeadline}
+        >
+          <Label>一句话总结本课</Label>
+          <Input maxLength={80} />
+          <FieldError>请填写一句话总结本课</FieldError>
+        </TextField>
         <TextField isInvalid={!!noteError} isRequired name="comment">
-          <Label>补充说明</Label>
+          <Label>详细评价</Label>
           <ReviewNoteEditor
-            ariaLabel="补充说明"
+            ariaLabel="详细评价"
             editorRef={noteEditorRef}
             isInvalid={!!noteError}
+            placeholder={"课程听感:\n作业/任务量:\n关于考试:"}
             onChange={onNoteChange}
           />
           {noteError ? (
@@ -557,6 +580,13 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
               字；支持加粗、斜体、链接、列表和引用，多余标签会被丢弃。
             </Description>
           )}
+        </TextField>
+        <TextField name="grade" value={grade} onChange={setGrade}>
+          <Label>你的成绩</Label>
+          <Input maxLength={20} placeholder="选填，退课请填W" />
+          <Description>
+            可选. 分享你的成绩有助于同学们进行更全面的判断.
+          </Description>
         </TextField>
 
         <Checkbox defaultSelected isDisabled name="anonymous">
@@ -579,7 +609,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         ) : null}
 
         <Button isPending={submitting} type="submit">
-          提交评价
+          发布
         </Button>
         <StatusMessage msg={msg} />
       </Form>

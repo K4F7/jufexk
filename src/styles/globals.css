@@ -180,6 +180,16 @@ a:focus-visible {
   outline: none;
 }
 
+/* Tiptap Placeholder：空态提示（可多行），仅装饰，不进提交内容。 */
+.review-note-editable p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  white-space: pre-line;
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 .review-note-editable p,
 .review-note-html p {
   margin: 0 0 0.5em;
