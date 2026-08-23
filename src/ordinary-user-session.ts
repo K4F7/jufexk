@@ -26,6 +26,7 @@ export type OrdinaryUserStatus =
 export type OrdinaryUser = {
   id: string;
   status: OrdinaryUserStatus;
+  muted_until?: number | null;
   pending_deletion_at?: string | null;
 };
 
@@ -96,16 +97,27 @@ async function loadOrCreateUser(
 ): Promise<OrdinaryUser | null> {
   const existing = await db
     .prepare(
-      "SELECT id,status,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
+      "SELECT id,status,muted_until,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
     )
     .bind(userId)
     .first<OrdinaryUser>();
-  if (existing) return existing;
+  if (existing) return clearExpiredMute(db, existing);
   await db
     .prepare("INSERT INTO users(id,status) VALUES(?,?)")
     .bind(userId, "active")
     .run();
   return { id: userId, status: "active" };
+}
+
+async function clearExpiredMute(db: D1Database, user: OrdinaryUser) {
+  if (user.muted_until == null || user.muted_until > Date.now() / 1000) return user;
+  await db
+    .prepare(
+      "UPDATE users SET muted_until=NULL WHERE id=? AND muted_until IS NOT NULL AND muted_until<=unixepoch()",
+    )
+    .bind(user.id)
+    .run();
+  return { ...user, muted_until: null };
 }
 
 async function resolveTestHmacUser(c: Context): Promise<OrdinaryUser | null> {
@@ -155,10 +167,11 @@ async function resolveEmailSessionUser(c: Context): Promise<OrdinaryUser | null>
   const db = c.env.DB as D1Database;
   return db
     .prepare(
-      "SELECT id,status,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
+      "SELECT id,status,muted_until,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
     )
     .bind(userId)
-    .first<OrdinaryUser>();
+    .first<OrdinaryUser>()
+    .then((user) => (user ? clearExpiredMute(db, user) : null));
 }
 
 /**
@@ -202,15 +215,22 @@ export function clearOrdinaryUserCookies(c: Context) {
   deleteCookie(c, ORDINARY_USER_CSRF_COOKIE, { path: "/" });
 }
 
-export function canOrdinaryUserWrite(user: OrdinaryUser) {
+export function isOrdinaryUserAuthenticated(user: OrdinaryUser) {
   return user.status === "active";
+}
+
+export function canOrdinaryUserWrite(user: OrdinaryUser) {
+  return (
+    isOrdinaryUserAuthenticated(user) &&
+    (user.muted_until == null || user.muted_until <= Date.now() / 1000)
+  );
 }
 
 /**
  * Shared write gate for ordinary-user mutations (reviews, catalog requests,
- * endorsements). Guests 401; banned / pending_deletion / deleted 403; origin
- * and CSRF must both pass. Call this before any INSERT, including honeypot
- * short-circuits so anonymous bots cannot get a fake ok.
+ * endorsements). Guests 401; muted / banned / pending_deletion / deleted 403;
+ * origin and CSRF must both pass. Call this before any INSERT, including
+ * honeypot short-circuits so anonymous bots cannot get a fake ok.
  */
 export async function requireOrdinaryWriteUser(
   c: Context,
@@ -255,7 +275,7 @@ export function sessionPayloadForUser(
   if (user?.status === "pending_deletion") {
     return pendingDeletionSession(c, user.pending_deletion_at);
   }
-  if (!user || !canOrdinaryUserWrite(user)) return guestSession();
+  if (!user || !isOrdinaryUserAuthenticated(user)) return guestSession();
   return {
     authenticated: true,
     csrfToken: issueOrdinaryUserCsrf(c, randomToken()),
