@@ -5,6 +5,7 @@ import {
   ASSET_CONTENT_SECURITY_POLICY,
   CLOUDFLARE_WEB_ANALYTICS_CONNECT_ORIGIN,
   CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN,
+  HEROUI_AVATAR_ASSETS_ORIGIN,
 } from "../src/security-headers";
 import assetHeaders from "../public/_headers?raw";
 
@@ -44,6 +45,11 @@ describe("public asset CSP", () => {
     expect(cspDirectiveSources(policy, "frame-src")).toEqual([
       "https://challenges.cloudflare.com",
     ]);
+    expect(cspDirectiveSources(policy, "img-src")).toEqual([
+      "'self'",
+      "data:",
+      HEROUI_AVATAR_ASSETS_ORIGIN,
+    ]);
   });
 });
 
@@ -59,5 +65,8 @@ describe("API CSP", () => {
     expect(
       cspDirectiveSources(API_CONTENT_SECURITY_POLICY, "connect-src"),
     ).toEqual(["'self'", "https://challenges.cloudflare.com"]);
+    expect(cspDirectiveSources(API_CONTENT_SECURITY_POLICY, "img-src")).toEqual(
+      ["'self'", "data:"],
+    );
   });
 });

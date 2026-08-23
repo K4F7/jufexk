@@ -2,8 +2,9 @@
  * 最新课评 /latest：全站公开文字评价，按发表时间倒序。
  * 数据走 GET /api/reviews/latest（游标分页）。
  */
-import { Avatar, Button, Spinner, Typography } from "@heroui/react";
+import { Button, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
+import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import { DetailErrorAlert } from "../components/DetailFeedback";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
@@ -129,9 +130,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
     <article className="flex gap-3 border-b border-separator py-4 last:border-b-0">
-      <Avatar size="sm" className="mt-0.5 rounded-full" aria-hidden>
-        <Avatar.Fallback className="rounded-full" />
-      </Avatar>
+      <AnonymousAvatar seed={review.id} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <header className="flex items-baseline justify-between gap-3">
           <p className="m-0 min-w-0 text-[13px] leading-6">

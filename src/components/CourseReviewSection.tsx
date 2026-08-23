@@ -1,7 +1,7 @@
 /**
  * 课程页点评区（Issue #402，对齐 icourse）：标题「点评」+ 蓝色「写点评」主按钮；
- * 排序、学期、评分 Select 由服务端对完整评价流排序/筛选；条目为匿名用户 +
- * 星级 + 学期 + 四维档位 + 正文 + 认可（Issue #431）。
+ * 排序、学期、评分 Select 由服务端对完整评价流排序/筛选；条目为官方占位
+ * 头像 + 匿名用户 + 星级 + 学期 + 四维档位 + 正文 + 认可（Issue #431）。
  *
  * 四维档位标签由 #373 公开流投影按条目下发（dimensionLabels），有则渲染
  * 中文档位 Chip；旧 1–5 规则快照继续显示维度均分 Chip；两者都没有的历史
@@ -24,6 +24,7 @@ import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { PublicReview } from "../lib/types";
+import { AnonymousAvatar } from "./AnonymousAvatar";
 import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
@@ -92,6 +93,7 @@ function CourseReviewItem({ review }: { review: PublicReview }) {
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <span className="flex flex-wrap items-center gap-x-2 text-[13px] font-medium text-foreground">
+          <AnonymousAvatar seed={review.id} />
           匿名用户
           {review.overall != null ? (
             <Stars rating={review.overall} className="text-[13px]" />
