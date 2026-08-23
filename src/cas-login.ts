@@ -162,8 +162,13 @@ async function issueOrdinarySession(
 
 export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
-  await purgeExpiredChallenges(c.env.DB);
-  const ipHash = await clientIpHash(c);
+  const purge = purgeExpiredChallenges(c.env.DB).catch(() => {});
+  const [body, identitySecret, secret, ipHash] = await Promise.all([
+    readJsonBody(c),
+    readSecret(c.env.CAMPUS_IDENTITY_SECRET),
+    challengeSecret(c.env),
+    clientIpHash(c),
+  ]);
   if (
     ipHash &&
     !(await takeRateLimit(
@@ -176,18 +181,19 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
     return fail(c, "请求过于频繁，请稍后再试", 429);
   }
 
-  const body = await readJsonBody(c);
   const username = normalizeCasUsername(body?.username);
   const password = normalizeCasPassword(body?.password);
-  const identitySecret = await readSecret(c.env.CAMPUS_IDENTITY_SECRET);
   if (!username || !password || !identitySecret) {
     return fail(c, "学号或密码不正确", 401);
   }
 
   const result = await startCasPasswordLogin(username, password);
-  if (result.ok) return issueOrdinarySession(c, username, identitySecret);
+  if (result.ok) {
+    await purge;
+    return issueOrdinarySession(c, username, identitySecret);
+  }
   if (result.needsMfa) {
-    const secret = await challengeSecret(c.env);
+    await purge;
     if (!secret) return fail(c, "登录失败，请稍后重试", 503);
     const id = [...crypto.getRandomValues(new Uint8Array(16))]
       .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -208,8 +214,13 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
 
 export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
-  await purgeExpiredChallenges(c.env.DB);
-  const ipHash = await clientIpHash(c);
+  const purge = purgeExpiredChallenges(c.env.DB).catch(() => {});
+  const [body, identitySecret, secret, ipHash] = await Promise.all([
+    readJsonBody(c),
+    readSecret(c.env.CAMPUS_IDENTITY_SECRET),
+    challengeSecret(c.env),
+    clientIpHash(c),
+  ]);
   if (
     ipHash &&
     !(await takeRateLimit(
@@ -222,11 +233,8 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
     return fail(c, "请求过于频繁，请稍后再试", 429);
   }
 
-  const body = await readJsonBody(c);
   const challenge = typeof body?.challenge === "string" ? body.challenge.trim() : "";
   const code = typeof body?.code === "string" ? body.code.trim() : "";
-  const identitySecret = await readSecret(c.env.CAMPUS_IDENTITY_SECRET);
-  const secret = await challengeSecret(c.env);
   if (!challenge || !/^\d{4,8}$/.test(code) || !identitySecret || !secret) {
     return fail(c, "验证码不正确", 401);
   }
@@ -241,6 +249,7 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
       expires_at: number;
       consumed_at: number | null;
     }>();
+  await purge;
   if (!row || row.consumed_at != null || row.expires_at <= Math.floor(Date.now() / 1000)) {
     return fail(c, "验证已过期，请重新登录", 401);
   }
