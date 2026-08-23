@@ -15,6 +15,7 @@ _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到�
 - 成功后认证身份为 `provider=cas`，`issuer=ssl.jxufe.edu.cn`，`subject=HMAC(规范化学号)`。学号不当业务主键。不与 email / 已废弃的 authbridge 自动合并。
 - 图形验证码失败关闭。本版不做 OCR。
 - 学校 CAS 对失败口令可能回 200 登录页而不是 401；客户端把「仍停在登录页」当作口令失败。
+- MFA 核销后先用已有 `execution` / `mfaState` POST；成功则不再 `detect`、不再下载 169KB 登录页。成功会话直接用登录接口返回值，不再额外打 `/api/user/session`。Worker 使用 Smart Placement，出站贴近学校 CAS。
 
 ## 邮箱验证的约束
 

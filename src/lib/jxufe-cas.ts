@@ -426,6 +426,21 @@ export async function completeCasPasswordLogin(
     if (validBody?.code !== 0 || data?.status !== 2) {
       return fail("验证码不正确", 401);
     }
+    const first = await submitLogin(
+      jar,
+      {
+        username: hold.username,
+        password: hold.password,
+        execution: hold.execution,
+        mfaState: hold.mfaState,
+        fpVisitorId: hold.fpVisitorId,
+      },
+      { acceptReauthCheck: true },
+    );
+    if (first.ok) return first;
+    if (!first.needsMfa && isPasswordishCasError(first.error)) {
+      return fail(CAS_MFA_CONSUMED_LOGIN_FAILED, first.status);
+    }
     const mfa = await detectMfa(jar, hold.username, hold.password, hold.fpVisitorId);
     const loaded = await fetchLoginPage(jar, { acceptReauthCheck: true });
     if (loaded.ok) return loaded;

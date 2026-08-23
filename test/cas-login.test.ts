@@ -42,16 +42,19 @@ let mode:
   | "mfa-reauth-get-after-valid"
   | "mfa-reauth-post-after-valid"
   | "mfa-login-fails-after-valid"
+  | "mfa-stale-execution-then-ok"
   | "reauth-without-mfa"
   | "blocked-attest"
   | "encrypt" = "success";
 let mfaCodeAccepted = "654321";
 let loginGets = 0;
+let loginPosts = 0;
 
 function installCasMock() {
-  calls = [];
-  loginGets = 0;
-  globalThis.fetch = async (input, init) => {
+    calls = [];
+    loginGets = 0;
+    loginPosts = 0;
+    globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
     const body = init?.body ? String(init.body) : "";
@@ -85,7 +88,8 @@ function installCasMock() {
           mode === "mfa-ticket-after-valid" ||
           mode === "mfa-reauth-get-after-valid" ||
           mode === "mfa-reauth-post-after-valid" ||
-          mode === "mfa-login-fails-after-valid";
+          mode === "mfa-login-fails-after-valid" ||
+          mode === "mfa-stale-execution-then-ok";
         return new Response(loginHtml(mfaLike ? "e1s2" : "e1s1", mode === "encrypt"), {
           status: 200,
           headers: {
@@ -93,6 +97,10 @@ function installCasMock() {
             "set-cookie": "JSESSIONID=abc; Path=/cas",
           },
         });
+      }
+      loginPosts += 1;
+      if (mode === "mfa-stale-execution-then-ok" && loginPosts === 1) {
+        return new Response("", { status: 400 });
       }
       if (body.includes("wrong-pass") || mode === "wrong-password") {
         return new Response(
@@ -133,6 +141,7 @@ function installCasMock() {
         mode === "mfa-reauth-get-after-valid" ||
         mode === "mfa-reauth-post-after-valid" ||
         mode === "mfa-login-fails-after-valid" ||
+        mode === "mfa-stale-execution-then-ok" ||
         mode === "blocked-attest";
       return Response.json({
         code: 0,
@@ -179,6 +188,7 @@ afterEach(() => {
   mode = "success";
   mfaCodeAccepted = "654321";
   loginGets = 0;
+  loginPosts = 0;
 });
 
 function assertNoIdentityLeak(value: unknown) {
@@ -343,6 +353,7 @@ describe("jxufe cas login", () => {
     expect(first.authenticated).toBeUndefined();
     assertNoIdentityLeak(first);
     expect(cookieHeader(started)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+    const callsAfterStart = calls.length;
 
     const stored = await env.DB.prepare(
       "SELECT blob FROM cas_login_challenges WHERE id=?",
@@ -368,6 +379,18 @@ describe("jxufe cas login", () => {
     }>();
     expect(verifiedBody.authenticated).toBe(true);
     assertNoIdentityLeak(verifiedBody);
+    const afterValid = calls.slice(callsAfterStart);
+    expect(
+      afterValid.some((call) => call.url.includes("/api/guard/securephone/valid")),
+    ).toBe(true);
+    expect(
+      afterValid.some((call) => call.url.includes("/cas/mfa/detect")),
+    ).toBe(false);
+    expect(
+      afterValid.some(
+        (call) => call.method === "GET" && call.url.includes("/cas/login"),
+      ),
+    ).toBe(false);
     const cookies = cookieHeader(verified);
     expect(cookies).toContain(`${EMAIL_LOGIN_COOKIE}=`);
 
@@ -447,6 +470,23 @@ describe("jxufe cas login", () => {
       error: "登录失败，请稍后重试",
     });
     expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+  });
+
+  it("refreshes execution when the first post-OTP submit is stale", async () => {
+    mode = "mfa-stale-execution-then-ok";
+    installCasMock();
+    const started = await startCas({ username: studentId, password });
+    const first = await started.json<{ challenge?: string }>();
+    const verified = await finishMfa({
+      challenge: first.challenge,
+      code: mfaCodeAccepted,
+    });
+    expect(verified.status).toBe(200);
+    expect(await verified.json()).toMatchObject({ authenticated: true });
+    expect(loginPosts).toBe(2);
+    expect(calls.some((call) => call.url.includes("/cas/mfa/detect"))).toBe(
+      true,
+    );
   });
 
   it("treats a ticket redirect after MFA as login success", async () => {

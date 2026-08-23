@@ -37,7 +37,7 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const backTarget = backTargetFrom(searchParams.get("from"));
   const magicToken = searchParams.get("token") || "";
-  const { viewer, ready, refresh } = useViewer();
+  const { viewer, ready, refresh, applySession } = useViewer();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -56,13 +56,14 @@ export function LoginPage() {
     }
     let cancelled = false;
     setRedeeming(true);
-    void api("/api/auth/verify", {
+    void api<{ authenticated?: boolean; csrfToken?: string }>("/api/auth/verify", {
       method: "POST",
       body: JSON.stringify({ token: magicToken }),
     })
-      .then(async () => {
+      .then(async (session) => {
         if (cancelled) return;
-        await refresh();
+        if (session.authenticated) applySession(session);
+        else await refresh();
         navigate(backTarget, { replace: true });
       })
       .catch((err: unknown) => {
@@ -75,10 +76,10 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [magicToken, viewer.authenticated, refresh, navigate, backTarget]);
+  }, [magicToken, viewer.authenticated, refresh, applySession, navigate, backTarget]);
 
-  async function finishLogin() {
-    await refresh();
+  function finishLogin(session?: Partial<CasStart> & { authenticated?: boolean }) {
+    if (session?.authenticated) applySession(session);
     navigate(backTarget, { replace: true });
   }
 
@@ -100,7 +101,7 @@ export function LoginPage() {
         setMaskedPhone(body.maskedPhone || "");
         return;
       }
-      await finishLogin();
+      await finishLogin(body);
     } catch (err: unknown) {
       if (requestId !== casRequestId.current) return;
       setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
@@ -114,11 +115,11 @@ export function LoginPage() {
     setError("");
     setBusy(true);
     try {
-      await api("/api/auth/cas/mfa", {
+      const session = await api<CasStart>("/api/auth/cas/mfa", {
         method: "POST",
         body: JSON.stringify({ challenge, code: mfaCode }),
       });
-      await finishLogin();
+      finishLogin(session);
     } catch (err: unknown) {
       const message =
         err instanceof ApiError ? err.message : "验证码不正确";

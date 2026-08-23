@@ -10,8 +10,9 @@ import { api, setCsrfToken } from "../lib/api";
 
 /**
  * Shared ordinary-user viewer state (issue #139 / ADR-0016).
- * `/api/user/session` is the only source: the payload carries no email, sub
- * or users.id, and the state lives in memory only — never in localStorage.
+ * Bootstraps from `/api/user/session`. Login / MFA / email verify may apply
+ * the same payload shape in memory — no email, sub or users.id, never
+ * localStorage.
  */
 export type ViewerSession = {
   authenticated: boolean;
@@ -30,6 +31,7 @@ type ViewerContextValue = {
   viewer: ViewerSession;
   ready: boolean;
   refresh: () => Promise<void>;
+  applySession: (next: Partial<ViewerSession>) => void;
   clear: () => void;
 };
 
@@ -69,7 +71,9 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <ViewerContext.Provider value={{ viewer, ready, refresh, clear }}>
+    <ViewerContext.Provider
+      value={{ viewer, ready, refresh, applySession: apply, clear }}
+    >
       {children}
     </ViewerContext.Provider>
   );
