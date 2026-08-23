@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SITE_BANNER_RAW_MAX_LENGTH } from "../site-banner";
 import { clean, integer, rating } from "./support";
 
 const unknownField = z.unknown().optional();
@@ -73,6 +74,13 @@ export const catalogRequestSchema = z
 
 export const adminLoginSchema = z
   .object({ password: cleanedField(200) })
+  .passthrough();
+
+export const siteBannerSchema = z
+  .object({
+    desktopHtml: z.string().max(SITE_BANNER_RAW_MAX_LENGTH),
+    mobileHtml: z.string().max(SITE_BANNER_RAW_MAX_LENGTH),
+  })
   .passthrough();
 
 export const moderationSchema = z

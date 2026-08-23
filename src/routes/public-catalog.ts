@@ -61,6 +61,7 @@ import {
   publicReviewBindingSql,
 } from "../review-summary";
 import { readSecret } from "../secrets";
+import { loadSiteBanner } from "../site-banner";
 import {
   clean,
   fail,
@@ -443,6 +444,9 @@ publicCatalogRoutes.get("/api/config", async (c) => {
         : "",
   });
 });
+publicCatalogRoutes.get("/api/site/banner", async (c) =>
+  c.json(await loadSiteBanner(c.env.DB)),
+);
 publicCatalogRoutes.get("/api/courses", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   if (clean(c.req.query("view"), 20) === "relations") {
