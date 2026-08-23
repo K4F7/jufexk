@@ -11,11 +11,11 @@ export const GENERAL_EDUCATION_SCHEME_KEYS = ["major", "public_basic"] as const;
 
 export const PUBLIC_CATEGORY_OPTIONS = [
   { id: "", label: "全部" },
-  { id: GENERAL_EDUCATION_FILTER, label: "通识课" },
-  { id: "sports", label: "体育课" },
-  { id: "english", label: "英语课" },
-  { id: "ideology", label: "思政课" },
-  { id: "math", label: "数学课" },
+  { id: GENERAL_EDUCATION_FILTER, label: "通识" },
+  { id: "math", label: "数学" },
+  { id: "ideology", label: "思政" },
+  { id: "english", label: "英语" },
+  { id: "sports", label: "体育" },
 ] as const;
 
 export type PublicCategoryOptionId =
@@ -41,7 +41,7 @@ export function isPublicCatalogCategory(value: string): boolean {
 
 export function publicCategoryOptionLabel(id: string): string {
   if (id === "mooc") return "网课";
-  if (isGeneralEducationFilter(id)) return "通识课";
+  if (isGeneralEducationFilter(id)) return "通识";
   return (
     (PUBLIC_CATEGORY_OPTIONS as readonly { id: string; label: string }[]).find(
       (opt) => opt.id === id,

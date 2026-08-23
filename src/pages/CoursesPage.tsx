@@ -10,7 +10,16 @@
  * DEV-only: ?module=global-search&variant=A 保留页内搜索头（#303 对照），
  * variant=C 保留跨目录提示链接。
  */
-import { Button, Skeleton, Typography } from "@heroui/react";
+import {
+  Label,
+  Separator,
+  Skeleton,
+  Surface,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+  type Key,
+} from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -34,10 +43,11 @@ import { api } from "../lib/api";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import {
+  GENERAL_EDUCATION_FILTER,
+  isGeneralEducationFilter,
   isPublicCatalogCategory,
   PUBLIC_CATEGORY_OPTIONS,
   publicCategoryOptionLabel,
-  publicCategoryOptionSelected,
 } from "../lib/public-categories";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
 import { expandCourseRelations } from "../lib/course-relations";
@@ -57,6 +67,20 @@ const SORT_OPTIONS = [
   { id: "", label: "课评数量" },
   { id: "rating", label: "课程评分" },
 ] as const;
+
+const ALL_CATEGORY_KEY = "all";
+const DEFAULT_SORT_KEY = "reviews";
+
+function firstSelectedKey(keys: Iterable<Key>): string | undefined {
+  const [key] = keys;
+  return key == null ? undefined : String(key);
+}
+
+function categoryToggleKey(category: string): string {
+  if (!category) return ALL_CATEGORY_KEY;
+  if (isGeneralEducationFilter(category)) return GENERAL_EDUCATION_FILTER;
+  return category;
+}
 
 const RELATION_CATALOG_COPY: CatalogResultsCopy = {
   errorTitle: "课程目录加载失败",
@@ -257,46 +281,63 @@ export function CoursesPage() {
   );
 
   const filterBox = (
-    <div
+    <Surface
       aria-label="课程目录筛选"
-      className="mb-3 rounded-lg border border-border bg-surface-secondary px-4 py-2.5"
+      className="mb-3 flex flex-col gap-2 p-3"
       role="search"
+      variant="secondary"
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <span className="shrink-0 text-[13px] font-semibold text-foreground">
-          课程类别：
-        </span>
-        {PUBLIC_CATEGORY_OPTIONS.map((opt) => (
-          <Button
-            key={opt.id || "all"}
-            size="sm"
-            variant={
-              publicCategoryOptionSelected(opt.id, category)
-                ? "secondary"
-                : "ghost"
-            }
-            onPress={() => update({ category: opt.id }, true)}
-          >
-            {opt.label}
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Label className="shrink-0">课程类别：</Label>
+        <ToggleButtonGroup
+          aria-label="课程类别"
+          isDetached
+          selectedKeys={[categoryToggleKey(category)]}
+          selectionMode="single"
+          size="sm"
+          onSelectionChange={(keys) => {
+            const key = firstSelectedKey(keys);
+            if (key == null) return;
+            update({ category: key === ALL_CATEGORY_KEY ? "" : key }, true);
+          }}
+        >
+          {PUBLIC_CATEGORY_OPTIONS.map((opt) => (
+            <ToggleButton
+              key={opt.id || ALL_CATEGORY_KEY}
+              id={opt.id || ALL_CATEGORY_KEY}
+            >
+              {opt.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <span className="shrink-0 text-[13px] font-semibold text-foreground">
-          排序方式：
-        </span>
-        {SORT_OPTIONS.map((opt) => (
-          <Button
-            key={opt.id || "default"}
-            size="sm"
-            variant={sort === opt.id ? "secondary" : "ghost"}
-            onPress={() => update({ sort: opt.id }, true)}
-          >
-            {opt.label}
-          </Button>
-        ))}
+      <Separator />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Label className="shrink-0">排序方式：</Label>
+        <ToggleButtonGroup
+          aria-label="排序方式"
+          disallowEmptySelection
+          isDetached
+          selectedKeys={[sort || DEFAULT_SORT_KEY]}
+          selectionMode="single"
+          size="sm"
+          onSelectionChange={(keys) => {
+            const key = firstSelectedKey(keys);
+            if (key == null) return;
+            update({ sort: key === DEFAULT_SORT_KEY ? "" : key }, true);
+          }}
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <ToggleButton
+              key={opt.id || DEFAULT_SORT_KEY}
+              id={opt.id || DEFAULT_SORT_KEY}
+            >
+              {opt.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
       </div>
-    </div>
+    </Surface>
   );
 
   // DEV-only #303 variant A: 页内搜索头（含建议）替代生产标题行。

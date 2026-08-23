@@ -139,25 +139,25 @@ test("filter box shows the category row and rating sort", async ({
   await expect(filterBox.getByText("课程类别：")).toBeVisible();
   for (const label of [
     "全部",
-    "通识课",
-    "体育课",
-    "英语课",
-    "思政课",
-    "数学课",
+    "通识",
+    "数学",
+    "思政",
+    "英语",
+    "体育",
   ]) {
     await expect(
-      filterBox.getByRole("button", { name: label, exact: true }),
+      filterBox.getByRole("radio", { name: label, exact: true }),
     ).toBeVisible();
   }
   await expect(filterBox.getByText("排序方式：")).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "课评数量", exact: true }),
+    filterBox.getByRole("radio", { name: "课评数量", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "课程评分", exact: true }),
+    filterBox.getByRole("radio", { name: "课程评分", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "网课" }),
+    filterBox.getByRole("radio", { name: "网课" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("combobox", { name: "任课教师" }),
@@ -175,10 +175,10 @@ test("sort buttons toggle rating without changing default review-count params", 
   const filterBox = page.getByRole("search", { name: "课程目录筛选" });
   await expect(page).not.toHaveURL(/[?&]sort=/);
 
-  await filterBox.getByRole("button", { name: "课程评分", exact: true }).click();
+  await filterBox.getByRole("radio", { name: "课程评分", exact: true }).click();
   await expect(page).toHaveURL(/[?&]sort=rating(?:&|$)/);
 
-  await filterBox.getByRole("button", { name: "课评数量", exact: true }).click();
+  await filterBox.getByRole("radio", { name: "课评数量", exact: true }).click();
   await expect(page).not.toHaveURL(/[?&]sort=/);
 });
 
@@ -230,14 +230,14 @@ test("category row filters the relation list", async ({ page }) => {
   await page.goto("/courses");
 
   const filterBox = page.getByRole("search", { name: "课程目录筛选" });
-  await filterBox.getByRole("button", { name: "体育课" }).click();
+  await filterBox.getByRole("radio", { name: "体育" }).click();
   await expect(page).toHaveURL(/category=sports/);
   await expect(page.getByRole("link", { name: /篮球/ })).toBeVisible();
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }),
   ).toHaveCount(0);
 
-  await filterBox.getByRole("button", { name: "全部" }).click();
+  await filterBox.getByRole("radio", { name: "全部" }).click();
   await expect(page).not.toHaveURL(/category=/);
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }).first(),
@@ -255,7 +255,7 @@ test("filtered empty state names the active filters and clears them", async ({
     .filter({ hasText: "没有找到匹配「网球」的课程" });
   await expect(empty).toBeVisible();
   await expect(empty).toContainText("关键词“网球”");
-  await expect(empty).toContainText("体育课");
+  await expect(empty).toContainText("体育");
 
   await empty.getByRole("button", { name: "清空筛选" }).click();
   await expect(page).not.toHaveURL(/[?&]q=/);
@@ -304,9 +304,9 @@ test("out-of-range deep-linked page keeps the filter box usable as a way back", 
   // 越界页没有条目：筛选框仍在，切换类别即回到第 1 页。
   const filterBox = page.getByRole("search", { name: "课程目录筛选" });
   await expect(
-    filterBox.getByRole("button", { name: "体育课" }),
+    filterBox.getByRole("radio", { name: "体育" }),
   ).toBeEnabled();
-  await filterBox.getByRole("button", { name: "体育课" }).click();
+  await filterBox.getByRole("radio", { name: "体育" }).click();
   await expect(page).toHaveURL(/category=sports/);
   await expect(page).not.toHaveURL(/page=2/);
   await expect(page.getByRole("link", { name: /篮球/ })).toBeVisible();

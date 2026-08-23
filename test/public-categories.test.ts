@@ -9,22 +9,22 @@ import {
 } from "../src/lib/public-categories";
 
 describe("public catalog category options", () => {
-  it("shows 通识课 instead of 专业课 and 公共课", () => {
+  it("shows 通识 instead of 专业课 and 公共课", () => {
     expect(PUBLIC_CATEGORY_OPTIONS.map((opt) => opt.id)).toEqual([
       "",
       "general",
-      "sports",
-      "english",
-      "ideology",
       "math",
+      "ideology",
+      "english",
+      "sports",
     ]);
     expect(PUBLIC_CATEGORY_OPTIONS.map((opt) => opt.label)).toEqual([
       "全部",
-      "通识课",
-      "体育课",
-      "英语课",
-      "思政课",
-      "数学课",
+      "通识",
+      "数学",
+      "思政",
+      "英语",
+      "体育",
     ]);
   });
 
@@ -38,9 +38,9 @@ describe("public catalog category options", () => {
     expect(isPublicCatalogCategory("major")).toBe(true);
     expect(isPublicCatalogCategory("public_basic")).toBe(true);
     expect(isPublicCatalogCategory("pe")).toBe(false);
-    expect(publicCategoryOptionLabel("general")).toBe("通识课");
-    expect(publicCategoryOptionLabel("major")).toBe("通识课");
-    expect(publicCategoryOptionLabel("public_basic")).toBe("通识课");
+    expect(publicCategoryOptionLabel("general")).toBe("通识");
+    expect(publicCategoryOptionLabel("major")).toBe("通识");
+    expect(publicCategoryOptionLabel("public_basic")).toBe("通识");
     expect(publicCategoryOptionSelected("general", "major")).toBe(true);
     expect(publicCategoryOptionSelected("general", "public_basic")).toBe(true);
     expect(publicCategoryOptionSelected("general", "english")).toBe(false);
