@@ -282,14 +282,14 @@ export function CourseDetailPage() {
 
   if (error) {
     return (
-      <section className="mx-auto w-full max-w-[1120px]">
+      <section className="mx-auto w-full max-w-[1360px]">
         <DetailErrorAlert title="课程加载失败" message={error} />
       </section>
     );
   }
   if (!data || !course) {
     return (
-      <section className="mx-auto w-full max-w-[1120px]">
+      <section className="mx-auto w-full max-w-[1360px]">
         <DetailPageSkeleton label="课程加载中…" kind="course-reviews" />
       </section>
     );
@@ -335,7 +335,7 @@ export function CourseDetailPage() {
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
   return (
-    <div className="mx-auto grid w-full max-w-[1120px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
         <nav aria-label="面包屑" className="text-[12px] text-muted">
           <RouterAriaLink to={catalogHref} className="text-muted">

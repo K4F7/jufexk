@@ -387,7 +387,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }
 
   return (
-    <section className="mx-auto max-w-[720px]">
+    <section className="mx-auto max-w-[800px]">
       <Typography className="mb-1 text-2xl font-bold" type="h1">
         写评价
       </Typography>

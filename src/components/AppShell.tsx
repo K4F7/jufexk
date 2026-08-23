@@ -127,7 +127,7 @@ function DefaultShell({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
-        <div className="mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] sm:px-5">
+        <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] sm:px-5 xl:px-4">
           <div className="flex min-w-0 items-center gap-2">
             <NavLink
               to={
@@ -208,7 +208,7 @@ function DefaultShell({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 pb-16 pt-8 sm:px-5">
+      <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 pb-16 pt-8 sm:px-5 xl:px-4">
         {showGlobalSearch &&
         globalSearchVariant &&
         GlobalSearchPrototypeLazy ? (
@@ -223,7 +223,7 @@ function DefaultShell({
       </main>
 
       <footer className="border-t border-border px-4 py-4 text-center text-sm text-muted sm:px-5">
-        <div className="mx-auto max-w-[1280px]">
+        <div className="mx-auto max-w-[1520px]">
           {siteName} · {universityName}
         </div>
       </footer>

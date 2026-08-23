@@ -29,7 +29,7 @@ async function login() {
 }
 
 describe("review template kind API contract", () => {
-  it("offers major, public_basic, sports, english, ideology, and math public filters", async () => {
+  it("offers general, sports, english, ideology, and math public filters", async () => {
     const sports = await SELF.fetch(`${origin}/api/courses?category=sports`);
     const sportsBody = await sports.json<{
       items: Array<{ name: string; category: string }>;
@@ -93,11 +93,8 @@ describe("review template kind API contract", () => {
       );
     }
 
-    // Issue #402 / #364：专业课（major）与公共课（public_basic）按 scheme_key 过滤。
-    for (const [category, name, otherName] of [
-      ["major", "计量经济学", "公共基础导论"],
-      ["public_basic", "公共基础导论", "计量经济学"],
-    ] as const) {
+    // Issue #415：通识课（general）含 major + public_basic；旧键同义。
+    for (const category of ["general", "major", "public_basic"] as const) {
       const response = await SELF.fetch(
         `${origin}/api/courses?category=${category}`,
       );
@@ -106,25 +103,46 @@ describe("review template kind API contract", () => {
       }>();
       expect(response.status).toBe(200);
       const names = body.items.map((item) => item.name);
-      expect(names).toContain(name);
-      expect(names).not.toContain(otherName);
+      expect(names).toContain("计量经济学");
+      expect(names).toContain("公共基础导论");
       expect(names).not.toContain("测试体育课");
       expect(names).not.toContain("大学英语");
       expect(names).not.toContain("思想道德与法治");
       expect(names).not.toContain("高等数学A");
       expect(names).not.toContain("大学体育理论");
-      expect(body.items.find((item) => item.name === name)?.category).toBe(
-        "general",
-      );
     }
 
-    for (const obsolete of ["required", "elective", "general", "pe"])
+    for (const obsolete of ["required", "elective", "pe"])
       expect(
         (await SELF.fetch(`${origin}/api/courses?category=${obsolete}`)).status,
       ).toBe(400);
 
     await env.DB.prepare(
       "DELETE FROM courses WHERE id BETWEEN 33701 AND 33706",
+    ).run();
+  });
+
+  it("applies the same 通识课 grouping on view=relations", async () => {
+    await env.DB.prepare(
+      `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
+        (33711,'MJ33711','计量经济学','general','经济学院','major'),
+        (33712,'PB33712','公共基础导论','general','教务处','public_basic'),
+        (33713,'MA33713','高等数学A','general','统计学院','math')`,
+    ).run();
+
+    const relations = await SELF.fetch(
+      `${origin}/api/courses?view=relations&category=general`,
+    );
+    expect(relations.status).toBe(200);
+    const relationNames = (
+      await relations.json<{ items: Array<{ name: string }> }>()
+    ).items.map((item) => item.name);
+    expect(relationNames).toContain("计量经济学");
+    expect(relationNames).toContain("公共基础导论");
+    expect(relationNames).not.toContain("高等数学A");
+
+    await env.DB.prepare(
+      "DELETE FROM courses WHERE id BETWEEN 33711 AND 33713",
     ).run();
   });
 
