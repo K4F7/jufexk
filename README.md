@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://xk.sein.moe">线上站点</a> ·
+  <a href="https://courses.sein.moe">线上站点</a> ·
   <a href="./CONTEXT.md">领域词汇</a> ·
   <a href="./docs/adr/">架构决策</a>
 </p>
@@ -100,7 +100,7 @@ pnpm run dev
 
 ### Turnstile
 
-投稿端已接入标准 Turnstile widget 与服务端 Siteverify。创建 Widget（域名包含 `xk.sein.moe`、`localhost`、`127.0.0.1`）后：
+投稿端已接入标准 Turnstile widget 与服务端 Siteverify。创建 Widget（域名包含 `courses.sein.moe`、`localhost`、`127.0.0.1`）后：
 
 1. 将公开 Site Key 配置为 `TURNSTILE_SITE_KEY` 普通变量；
 2. 将对应 Secret 写入 Secrets Store 的 `TURNSTILE_SECRET`；
@@ -110,7 +110,7 @@ Site Key 与 Secret 同时存在时服务端才启用并强制验证。仅有 Si
 
 ## 生产部署
 
-仓库已包含真实 D1 `database_id` 和 `xk.sein.moe` Custom Domain 配置。首次部署或应用迁移：
+仓库已包含真实 D1 `database_id` 和 `courses.sein.moe` Custom Domain 配置。首次部署或应用迁移：
 
 ```bash
 pnpm exec wrangler d1 migrations apply jufexk --remote
@@ -199,5 +199,5 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 
 ## 支持
 
-- 线上站点：[xk.sein.moe](https://xk.sein.moe)
+- 线上站点：[courses.sein.moe](https://courses.sein.moe)
 - Issue / PRD：[github.com/K4F7/jufexk/issues](https://github.com/K4F7/jufexk/issues)

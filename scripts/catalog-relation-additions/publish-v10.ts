@@ -9,7 +9,7 @@ import { parseV10RelationArguments } from "./v10-arguments";
 
 const exec = promisify(execFile);
 const { apply, root } = parseV10RelationArguments(process.argv.slice(2));
-const baseUrl = (process.env.JUFEXK_BASE_URL || "https://xk.sein.moe").replace(
+const baseUrl = (process.env.JUFEXK_BASE_URL || "https://courses.sein.moe").replace(
   /\/$/,
   "",
 );
