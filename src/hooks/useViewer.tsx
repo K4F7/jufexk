@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -70,12 +71,13 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  const value = useMemo<ViewerContextValue>(
+    () => ({ viewer, ready, refresh, applySession: apply, clear }),
+    [viewer, ready, refresh, apply, clear],
+  );
+
   return (
-    <ViewerContext.Provider
-      value={{ viewer, ready, refresh, applySession: apply, clear }}
-    >
-      {children}
-    </ViewerContext.Provider>
+    <ViewerContext.Provider value={value}>{children}</ViewerContext.Provider>
   );
 }
 

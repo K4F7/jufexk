@@ -18,6 +18,7 @@ import {
   Spinner,
   Typography,
 } from "@heroui/react";
+import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
 import { formatReviewDate } from "../lib/review-date";
@@ -43,6 +44,14 @@ const SORT_ITEMS: Array<{ id: CourseReviewSort; label: string }> = [
   { id: "oldest", label: "最旧点评" },
   { id: "rating_desc", label: "评分：高-低" },
   { id: "rating_asc", label: "评分：低-高" },
+];
+
+const RATING_ITEMS: Array<{ id: string; label: string }> = [
+  { id: "all", label: "全部" },
+  ...[5, 4, 3, 2, 1].map((score) => ({
+    id: String(score),
+    label: `${score} 星`,
+  })),
 ];
 
 function FilterSelect({
@@ -83,13 +92,24 @@ function FilterSelect({
   );
 }
 
-function CourseReviewItem({ review }: { review: PublicReview }) {
-  const { viewer, ready, clear } = useViewer();
+const CourseReviewItem = memo(function CourseReviewItem({
+  review,
+  ready,
+  authenticated,
+  loginPath,
+  onUnauthenticated,
+}: {
+  review: PublicReview;
+  ready: boolean;
+  authenticated: boolean;
+  loginPath: string;
+  onUnauthenticated: () => void;
+}) {
   const date = formatReviewDate(review.created_at);
   return (
     <article
       id={reviewAnchorId(review.id)}
-      className="scroll-mt-20 border-b border-separator py-5 last:border-b-0"
+      className="scroll-mt-20 border-b border-separator py-5 last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_9rem]"
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <span className="flex flex-wrap items-center gap-x-2 text-[13px] font-medium text-foreground">
@@ -138,15 +158,15 @@ function CourseReviewItem({ review }: { review: PublicReview }) {
           <ReviewRecognitionControl
             review={review}
             ready={ready}
-            authenticated={viewer.authenticated}
-            loginPath={viewer.loginPath}
-            onUnauthenticated={clear}
+            authenticated={authenticated}
+            loginPath={loginPath}
+            onUnauthenticated={onUnauthenticated}
           />
         </footer>
       ) : null}
     </article>
   );
-}
+});
 
 export function CourseReviewSection({
   courseId,
@@ -189,6 +209,7 @@ export function CourseReviewSection({
   onLoadMore: () => void;
 }) {
   const navigate = useNavigate();
+  const { viewer, ready, clear } = useViewer();
 
   const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;
 
@@ -229,13 +250,7 @@ export function CourseReviewSection({
           label="评分"
           value={rating}
           onChange={onRatingChange}
-          items={[
-            { id: "all", label: "全部" },
-            ...[5, 4, 3, 2, 1].map((score) => ({
-              id: String(score),
-              label: `${score} 星`,
-            })),
-          ]}
+          items={RATING_ITEMS}
         />
         <span className="pb-2 text-[13px] text-muted">{total} 条点评</span>
       </div>
@@ -263,7 +278,13 @@ export function CourseReviewSection({
         <div className="mt-2" role="list" aria-label="评价列表">
           {reviews.map((review) => (
             <div key={review.id} role="listitem">
-              <CourseReviewItem review={review} />
+              <CourseReviewItem
+                review={review}
+                ready={ready}
+                authenticated={viewer.authenticated}
+                loginPath={viewer.loginPath}
+                onUnauthenticated={clear}
+              />
             </div>
           ))}
           {hasMore ? (

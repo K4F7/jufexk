@@ -48,16 +48,37 @@ type CasStart =
       maskedPhone?: string;
     };
 
+const RETURN_TO_CREDENTIALS_RE = /请重新登录|学号或密码|用户名或密码/;
+const LOCKED_ACCOUNT_RE = /锁定|冻结|禁用/;
+const PASSWORD_UPDATE_RE = /过期|初始密码|修改密码/;
+const VERIFY_CODE_RE = /验证码/;
+
 function shouldReturnToCredentials(message: string) {
-  return /请重新登录|学号或密码|用户名或密码/.test(message);
+  return RETURN_TO_CREDENTIALS_RE.test(message);
 }
 
 function loginErrorTitle(message: string) {
-  if (/锁定|冻结|禁用/.test(message)) return "账号暂时无法登录";
-  if (/过期|初始密码|修改密码/.test(message)) return "需要先更新密码";
-  if (/验证码/.test(message)) return "验证码不正确";
+  if (LOCKED_ACCOUNT_RE.test(message)) return "账号暂时无法登录";
+  if (PASSWORD_UPDATE_RE.test(message)) return "需要先更新密码";
+  if (VERIFY_CODE_RE.test(message)) return "验证码不正确";
   return "无法完成登录";
 }
+
+const ALREADY_LOGGED_IN_ALERT = (
+  <Alert status="success">
+    <Alert.Indicator />
+    <Alert.Content>
+      <Alert.Title>当前已登录</Alert.Title>
+      <Alert.Description>
+        你已完成普通用户登录，可以继续浏览；如需退出，请使用导航中的账号菜单。
+      </Alert.Description>
+    </Alert.Content>
+  </Alert>
+);
+
+const SESSION_LOADING_STATUS = (
+  <DetailLoadingStatus label="正在读取登录状态…" />
+);
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -73,7 +94,7 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [redeeming, setRedeeming] = useState(Boolean(magicToken));
   const [error, setError] = useState("");
-  const casRequestId = useRef(0);
+  const loginRequestId = useRef(0);
 
   useEffect(() => {
     if (!magicToken || viewer.authenticated) {
@@ -111,7 +132,7 @@ export function LoginPage() {
 
   async function submitCas(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const requestId = ++casRequestId.current;
+    const requestId = ++loginRequestId.current;
     setError("");
     setBusy(true);
     try {
@@ -119,7 +140,7 @@ export function LoginPage() {
         method: "POST",
         body: JSON.stringify({ username, password }),
       });
-      if (requestId !== casRequestId.current) return;
+      if (requestId !== loginRequestId.current) return;
       setPassword("");
       if (body.needsMfa) {
         setError("");
@@ -129,15 +150,16 @@ export function LoginPage() {
       }
       await finishLogin(body);
     } catch (err: unknown) {
-      if (requestId !== casRequestId.current) return;
+      if (requestId !== loginRequestId.current) return;
       setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
     } finally {
-      if (requestId === casRequestId.current) setBusy(false);
+      if (requestId === loginRequestId.current) setBusy(false);
     }
   }
 
   async function submitMfa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const requestId = ++loginRequestId.current;
     setError("");
     setBusy(true);
     try {
@@ -145,8 +167,10 @@ export function LoginPage() {
         method: "POST",
         body: JSON.stringify({ challenge, code: mfaCode }),
       });
+      if (requestId !== loginRequestId.current) return;
       finishLogin(session);
     } catch (err: unknown) {
+      if (requestId !== loginRequestId.current) return;
       const message =
         err instanceof ApiError ? err.message : "验证码不正确";
       setError(message);
@@ -156,7 +180,7 @@ export function LoginPage() {
         setMaskedPhone("");
       }
     } finally {
-      setBusy(false);
+      if (requestId === loginRequestId.current) setBusy(false);
     }
   }
 
@@ -184,21 +208,9 @@ export function LoginPage() {
           </Card.Title>
         </Card.Header>
         {ready && viewer.authenticated ? (
-          <Card.Content>
-            <Alert status="success">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Title>当前已登录</Alert.Title>
-                <Alert.Description>
-                  你已完成普通用户登录，可以继续浏览；如需退出，请使用导航中的账号菜单。
-                </Alert.Description>
-              </Alert.Content>
-            </Alert>
-          </Card.Content>
+          <Card.Content>{ALREADY_LOGGED_IN_ALERT}</Card.Content>
         ) : !ready && !redeeming ? (
-          <Card.Content>
-            <DetailLoadingStatus label="正在读取登录状态…" />
-          </Card.Content>
+          <Card.Content>{SESSION_LOADING_STATUS}</Card.Content>
         ) : redeeming ? (
           <Card.Content>
             <LoginProgressAlert
