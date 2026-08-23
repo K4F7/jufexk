@@ -22,7 +22,11 @@ import { TurnstileBox } from "../components/TurnstileBox";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
-import { COMMON_CORE_QUESTIONS } from "../lib/review-schemes";
+import {
+  COMMON_CORE_QUESTIONS,
+  REVIEW_NOTE_MAX_LENGTH,
+  REVIEW_NOTE_MIN_LENGTH,
+} from "../lib/review-schemes";
 import type {
   ApplicableQuestion,
   CourseOption,
@@ -33,7 +37,6 @@ import type {
 } from "../lib/types";
 
 const SEARCH_DELAY = 320;
-const SCALE = ["1", "2", "3", "4", "5"] as const;
 /**
  * Grace period before a not-ready Turnstile widget is revealed in form mode:
  * `refresh-expired: auto` renewals and the fresh challenge on form entry
@@ -47,16 +50,32 @@ type SchemeCourse = CourseOption &
     teachers: Teacher[];
   };
 
-function ScaleRadios({
+type RadioOption = { readonly value: number; readonly label: string };
+
+const OVERALL_OPTIONS: readonly RadioOption[] = [1, 2, 3, 4, 5].map(
+  (value) => ({ value, label: String(value) }),
+);
+
+/** Trim-aware note rule shared by the field validate prop and onSubmit. */
+function reviewNoteError(comment: string): string | null {
+  const length = comment.trim().length;
+  if (length < REVIEW_NOTE_MIN_LENGTH) return "请填写至少 10 字补充说明";
+  if (length > REVIEW_NOTE_MAX_LENGTH) return "补充说明不能超过 1200 字";
+  return null;
+}
+
+function OptionRadios({
   name,
   label,
   description,
+  options,
   value,
   onChange,
 }: {
   name: string;
   label: string;
   description: string;
+  options: readonly RadioOption[];
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -71,13 +90,13 @@ function ScaleRadios({
     >
       <Label>{label}</Label>
       <Description>{description}</Description>
-      {SCALE.map((score) => (
-        <Radio key={score} value={score}>
+      {options.map((option) => (
+        <Radio key={option.value} value={String(option.value)}>
           <Radio.Content>
             <Radio.Control>
               <Radio.Indicator />
             </Radio.Control>
-            {score}
+            {option.label}
           </Radio.Content>
         </Radio>
       ))}
@@ -135,11 +154,6 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const questions: ApplicableQuestion[] =
     selectedCourse?.applicableQuestions ?? COMMON_CORE_QUESTIONS;
   const teachers = selectedCourse?.teachers ?? [];
-  const hiddenCoreLabels = selectedCourse?.tags.includes("mooc")
-    ? COMMON_CORE_QUESTIONS.filter(
-        (core) => !questions.some((question) => question.id === core.id),
-      ).map((core) => core.label)
-    : [];
 
   useEffect(() => {
     if (!viewerReady || viewer.authenticated) return;
@@ -260,8 +274,19 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
       setMsg("请选择课程和任课教师");
       return;
     }
-    if (questions.some((question) => !scores[question.id]) || !overall) {
+    const unanswered = questions.some(
+      (question) =>
+        !question.options.some(
+          (option) => String(option.value) === scores[question.id],
+        ),
+    );
+    if (unanswered || !overall) {
       setMsg("请答完本次适用的评分题");
+      return;
+    }
+    const noteError = reviewNoteError(comment);
+    if (noteError) {
+      setMsg(noteError);
       return;
     }
     setSubmitting(true);
@@ -285,7 +310,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           teacherId: Number(teacherId),
           overall: Number(overall),
           scores: payloadScores,
-          comment,
+          comment: comment.trim(),
           website: "",
           turnstileToken,
         }),
@@ -323,8 +348,8 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
             <Card.Title id="submit-gate-heading">写评价</Card.Title>
             <Card.Description>
               {config?.turnstileSiteKey
-                ? "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题；补充说明选填。开始填写前请先完成下方人机验证。"
-                : "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题；补充说明选填。"}
+                ? "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题；补充说明必填（10 到 1200 字）。开始填写前请先完成下方人机验证。"
+                : "评价必须绑定已有任课关系：进入表单后先搜索选择课程，再选择任课教师，然后按该课适用的评价规则答完全部评分题；补充说明必填（10 到 1200 字）。"}
             </Card.Description>
           </Card.Header>
           <Card.Content>
@@ -353,7 +378,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         写评价
       </Typography>
       <p className="mb-4 mt-0 text-muted">
-        评价必须绑定已有任课关系。选好课程和教师后，按该课本次适用的评价规则答题；补充说明选填。
+        评价必须绑定已有任课关系。选好课程和教师后，按该课本次适用的评价规则答题；补充说明必填（10 到 1200 字）。
       </p>
 
       <Form
@@ -442,42 +467,38 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           <FieldError>请选择任课教师</FieldError>
         </Select>
 
-        {hiddenCoreLabels.length ? (
-          <p className="m-0 text-sm text-muted">
-            该课程为网课（MOOC），
-            {hiddenCoreLabels.map((label) => `「${label}」`).join("、")}
-            等仅线下适用的题目无需作答。
-          </p>
-        ) : null}
-
         {questions.map((question) => (
-          <ScaleRadios
+          <OptionRadios
             key={question.id}
             name={`score-${question.id}`}
             label={question.prompt}
             description={question.scale}
+            options={question.options}
             value={scores[question.id] || ""}
             onChange={(value) =>
               setScores((current) => ({ ...current, [question.id]: value }))
             }
           />
         ))}
-        <ScaleRadios
+        <OptionRadios
           name="overall"
           label="本次推荐度"
           description="1 到 5，分数越高表示越推荐"
+          options={OVERALL_OPTIONS}
           value={overall}
           onChange={setOverall}
         />
-        <TextField name="comment">
+        <TextField
+          isRequired
+          name="comment"
+          validate={(value) => reviewNoteError(value) ?? true}
+          value={comment}
+          onChange={setComment}
+        >
           <Label>补充说明</Label>
-          <Description>选填。不写补充说明也可以提交有效评分</Description>
-          <TextArea
-            fullWidth
-            rows={4}
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
-          />
+          <Description>必填。10 到 1200 字，提交前会去掉首尾空白</Description>
+          <TextArea fullWidth rows={4} maxLength={REVIEW_NOTE_MAX_LENGTH} />
+          <FieldError>请填写至少 10 字补充说明</FieldError>
         </TextField>
 
         {config?.turnstileSiteKey ? (
