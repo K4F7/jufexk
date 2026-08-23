@@ -25,14 +25,28 @@ async function expectWriteToMarkDirty(
   label: string,
   statement: D1PreparedStatement,
 ) {
+  const before = await env.DB.prepare(
+    "SELECT generation FROM public_precompute_state WHERE id=1",
+  ).first<{ generation: number }>();
   await env.DB.prepare(
-    "UPDATE public_precompute_state SET dirty=0 WHERE id=1",
+    `UPDATE public_precompute_state
+     SET dirty=0,refresh_token='stale-refresh',refresh_lease_until=unixepoch()+60
+     WHERE id=1`,
   ).run();
   await statement.run();
   const state = await env.DB.prepare(
-    "SELECT dirty FROM public_precompute_state WHERE id=1",
-  ).first<{ dirty: number }>();
+    `SELECT dirty,generation,refresh_token,refresh_lease_until
+     FROM public_precompute_state WHERE id=1`,
+  ).first<{
+    dirty: number;
+    generation: number;
+    refresh_token: string | null;
+    refresh_lease_until: number | null;
+  }>();
   expect(state?.dirty, label).toBe(1);
+  expect(state?.generation, label).toBeGreaterThan(before?.generation ?? -1);
+  expect(state?.refresh_token, label).toBeNull();
+  expect(state?.refresh_lease_until, label).toBeNull();
 }
 
 it("marks public projections dirty for raw source-table inserts, updates and deletes", async () => {

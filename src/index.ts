@@ -94,7 +94,6 @@ import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { readSecret, turnstileMode } from "./secrets";
 import {
   ensurePublicListPrecomputes,
-  markPublicListPrecomputesDirty,
   publicCourseCanonicalJoin,
   publicCourseOptionJoin,
   publicTeacherSearchJoin,
@@ -160,7 +159,7 @@ type Vars = {
   adminSession?: string;
   adminSessionId?: string;
   adminCsrf?: string;
-  publicListPrecomputesChanged?: boolean;
+  publicCatalogCacheChanged?: boolean;
 };
 type StashedReview = {
   scores: unknown;
@@ -172,8 +171,8 @@ const app = new Hono<{ Bindings: Bindings; Variables: Vars }>();
 type AppContext = Context<{ Bindings: Bindings; Variables: Vars }>;
 const clean = (v: unknown, n = 500) =>
   typeof v === "string" ? v.trim().slice(0, n) : "";
-const markPublicListPrecomputesChanged = (c: AppContext) =>
-  c.set("publicListPrecomputesChanged", true);
+const markPublicCatalogCacheChanged = (c: AppContext) =>
+  c.set("publicCatalogCacheChanged", true);
 const nullableClean = (v: unknown, n = 500) => clean(v, n) || null;
 const integer = (v: unknown) => {
   if (typeof v === "number") return Number.isSafeInteger(v) ? v : null;
@@ -607,10 +606,9 @@ app.use("/api/*", async (c, next) => {
   await next();
   if (
     c.res.status < 400 &&
-    (c.get("publicListPrecomputesChanged") === true ||
+    (c.get("publicCatalogCacheChanged") === true ||
       shouldRefreshPublicListPrecomputes(c.req.method, c.req.path))
   ) {
-    await markPublicListPrecomputesDirty(c.env.DB);
     await purgePublicCatalogCache(c);
   }
   if (!c.res.headers.get("Cache-Control")) {
@@ -1398,7 +1396,7 @@ app.post("/api/reviews", async (c) => {
       return fail(c, "近期已提交过这位教师的同一课程评价", 409);
     throw error;
   }
-  markPublicListPrecomputesChanged(c);
+  markPublicCatalogCacheChanged(c);
   // 新公开评价：后台重算该任课关系总结（24h 去抖）。
   await scheduleRelationSummaryRecompute(c, courseId, teacherId);
   return c.json({ ok: true, message: "评价已发布" });
@@ -1956,7 +1954,7 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
       teacherId: number | null;
       reviewId: number | null;
     }>();
-  markPublicListPrecomputesChanged(c);
+  markPublicCatalogCacheChanged(c);
   // 补充申请批准连带暂存评价公开：后台去抖重算该关系总结（#401）。
   if (approved?.reviewId)
     await scheduleRelationSummaryRecompute(c, approved.courseId, approved.teacherId);
@@ -1993,7 +1991,10 @@ app.patch("/api/admin/reviews/:id", async (c) => {
   if (status === "rejected" && !note) return fail(c, "驳回时必须填写理由");
   const results = await c.env.DB.batch([
     c.env.DB.prepare(
-      "UPDATE reviews SET status=?,moderator_note=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
+      `UPDATE reviews
+       SET status=?,moderator_note=?,reviewed_at=CURRENT_TIMESTAMP
+       WHERE id=? AND status='pending'
+       RETURNING id`,
     ).bind(status, note, id),
     c.env.DB.prepare(
       `INSERT OR IGNORE INTO review_moderation_events(review_id,action,note)
@@ -2004,7 +2005,7 @@ app.patch("/api/admin/reviews/:id", async (c) => {
        )`,
     ).bind(id, status, note, id, status, id),
   ]);
-  if (!(results[0].meta.changes || 0)) {
+  if (!results[0].results.length) {
     const exists = await c.env.DB.prepare("SELECT 1 FROM reviews WHERE id=?")
       .bind(id)
       .first();
@@ -2012,7 +2013,7 @@ app.patch("/api/admin/reviews/:id", async (c) => {
       ? fail(c, "评价已经审核", 409)
       : fail(c, "评价不存在", 404);
   }
-  if (status === "approved") markPublicListPrecomputesChanged(c);
+  if (status === "approved") markPublicCatalogCacheChanged(c);
   // 批准引入新公开文字（去抖重算）；驳回则按新集合立刻重算（#401）。
   const moderated = await c.env.DB.prepare(
     "SELECT course_id,teacher_id FROM reviews WHERE id=?",
@@ -2084,18 +2085,17 @@ app.patch("/api/admin/reviews/:id/content", async (c) => {
     }
   });
   updates.push("rescue=''", "interest=NULL", "practicality=NULL", "organization=NULL");
-  const update = c.env.DB.prepare(`UPDATE reviews SET ${updates.join(",")} WHERE id=?`).bind(
-    ...values,
-    id,
-  );
+  const update = c.env.DB
+    .prepare(`UPDATE reviews SET ${updates.join(",")} WHERE id=? RETURNING id`)
+    .bind(...values, id);
   const event = c.env.DB.prepare(
     `INSERT INTO review_moderation_events(review_id,action,note)
      SELECT ?,'edited',? WHERE EXISTS(SELECT 1 FROM reviews WHERE id=?)`,
   ).bind(id, clean(b.note, 500), id);
   const results = await c.env.DB.batch([update, event]);
-  if (!(results[0].meta.changes || 0)) return fail(c, "评价不存在", 404);
+  if (!results[0].results.length) return fail(c, "评价不存在", 404);
   if (current.status === "approved") {
-    markPublicListPrecomputesChanged(c);
+    markPublicCatalogCacheChanged(c);
     // 已公开评价正文被修改：后台去抖重算该关系总结（#401）。
     await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id);
   }
@@ -2207,16 +2207,17 @@ app.patch("/api/admin/legacy-reviews/:id", async (c) => {
     c.env.DB.prepare(
       `UPDATE legacy_reviews
        SET status=?,moderator_note=?,reviewed_at=CURRENT_TIMESTAMP
-       WHERE id=? AND status='pending'${approvalBindingGuard}`,
+       WHERE id=? AND status='pending'${approvalBindingGuard}
+       RETURNING id`,
     ).bind(status, note, id),
     c.env.DB.prepare(
       `INSERT OR IGNORE INTO legacy_review_moderation_events(legacy_review_id,action,note,actor_session_id)
        SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM legacy_reviews WHERE id=? AND status=?)`,
     ).bind(id, status, note, c.get("adminSessionId"), id, status),
   ]);
-  if (!(results[0].meta.changes || 0))
+  if (!results[0].results.length)
     return fail(c, "历史评价绑定已经失效，或评价已经审核", 409);
-  if (status === "approved") markPublicListPrecomputesChanged(c);
+  if (status === "approved") markPublicCatalogCacheChanged(c);
   // 历史评价批准引入公开文字（去抖）；驳回立刻按新集合重算（#401）。
   await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id, {
     immediate: status === "rejected",

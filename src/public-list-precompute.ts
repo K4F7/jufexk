@@ -25,6 +25,15 @@ const firstNumberedPreference = [
   .map(sqlLiteral)
   .join(",");
 
+const refreshLeaseGuard = `EXISTS(
+  SELECT 1 FROM public_precompute_state
+  WHERE id=1
+    AND dirty=1
+    AND generation=?
+    AND refresh_token=?
+    AND refresh_lease_until>unixepoch()
+)`;
+
 const canonicalInsert = `
   WITH classified AS (
     SELECT c.id,c.name,c.code,c.department,
@@ -83,13 +92,15 @@ const canonicalInsert = `
   LEFT JOIN ranked r ON r.id=c.id
   LEFT JOIN family_search fs ON fs.family_label=c.family_label
   LEFT JOIN teacher_text tt ON tt.course_id=c.id
-  LEFT JOIN variant_text vt ON vt.course_id=c.id;
+  LEFT JOIN variant_text vt ON vt.course_id=c.id
+  WHERE ${refreshLeaseGuard};
 `;
 
 const teacherSearchInsert = `
   INSERT INTO public_teacher_search(teacher_id,match_text)
   SELECT id, trim(COALESCE(name,'') || ' ' || COALESCE(department,''))
-  FROM teachers;
+  FROM teachers
+  WHERE ${refreshLeaseGuard};
 `;
 
 const aggregateInsert = `
@@ -125,6 +136,7 @@ const aggregateInsert = `
     WHERE lr.status='approved'
       AND trim(COALESCE(lr.comment,''))<>''
   ) visible_text_reviews
+  WHERE ${refreshLeaseGuard}
   GROUP BY course_id,teacher_id;
 `;
 
@@ -135,6 +147,7 @@ const teacherCourseCountInsert = `
   JOIN courses c ON c.id=ct.course_id
   JOIN public_course_canonicals pcc ON pcc.course_id=c.id
   WHERE ${publicCourseVisibleSql("c")}
+    AND ${refreshLeaseGuard}
   GROUP BY ct.teacher_id;
 `;
 
@@ -174,43 +187,206 @@ export function shouldRefreshPublicListPrecomputes(method: string, path: string)
   );
 }
 
-export async function markPublicListPrecomputesDirty(db: D1Database) {
-  await db
+const REFRESH_ATTEMPTS = 2;
+const REFRESH_LEASE_SECONDS = 60;
+const REFRESH_LEASE_WAIT_MS = 15_000;
+const REFRESH_LEASE_POLL_MS = 100;
+const publicPrecomputeRefreshes = new WeakMap<D1Database, Promise<void>>();
+
+class PublicPrecomputeLeaseLostError extends Error {}
+
+type PublicPrecomputeState = {
+  dirty: number;
+  generation: number;
+  refresh_token: string | null;
+  refresh_lease_until: number | null;
+};
+
+const publicPrecomputeState = (db: D1Database) =>
+  db
     .prepare(
-      `INSERT INTO public_precompute_state(id,dirty) VALUES(1,1)
-       ON CONFLICT(id) DO UPDATE SET dirty=1
-       WHERE public_precompute_state.dirty=0`,
+      `SELECT dirty,generation,refresh_token,refresh_lease_until
+       FROM public_precompute_state WHERE id=1`,
     )
+    .first<PublicPrecomputeState>();
+
+const pause = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForPublicPrecomputeLease(db: D1Database) {
+  const deadline = Date.now() + REFRESH_LEASE_WAIT_MS;
+  while (Date.now() < deadline) {
+    const state = await publicPrecomputeState(db);
+    if (!state?.dirty) return "clean" as const;
+    if (
+      !state.refresh_token ||
+      (state.refresh_lease_until ?? 0) <= Math.floor(Date.now() / 1000)
+    )
+      return "retry" as const;
+    await pause(REFRESH_LEASE_POLL_MS);
+  }
+  throw new Error("等待公开目录预计算刷新超时");
+}
+
+async function renewPublicPrecomputeLease(
+  db: D1Database,
+  generation: number,
+  token: string,
+) {
+  const renewed = await db
+    .prepare(
+      `UPDATE public_precompute_state
+       SET refresh_lease_until=unixepoch()+?
+       WHERE id=1
+         AND dirty=1
+         AND generation=?
+         AND refresh_token=?
+         AND refresh_lease_until>unixepoch()
+       RETURNING id`,
+    )
+    .bind(REFRESH_LEASE_SECONDS, generation, token)
     .run();
+  if (!renewed.results.length)
+    throw new PublicPrecomputeLeaseLostError("公开目录预计算刷新租约已失效");
+}
+
+const guardedProjectionDelete = (table: string) =>
+  `DELETE FROM ${table} WHERE ${refreshLeaseGuard}`;
+
+async function refreshPublicListPrecomputesAttempt(
+  db: D1Database,
+  attempt: number,
+): Promise<void> {
+  let state = await publicPrecomputeState(db);
+  if (!state) {
+    await db
+      .prepare(
+        `INSERT INTO public_precompute_state(id,dirty,generation)
+         VALUES(1,1,0) ON CONFLICT(id) DO NOTHING`,
+      )
+      .run();
+    state = await publicPrecomputeState(db);
+  }
+  if (!state?.dirty) return;
+
+  const token = crypto.randomUUID();
+  const acquired = await db
+    .prepare(
+      `UPDATE public_precompute_state
+       SET refresh_token=?,refresh_lease_until=unixepoch()+?
+       WHERE id=1
+         AND dirty=1
+         AND (
+           refresh_token IS NULL OR
+           refresh_lease_until IS NULL OR
+           refresh_lease_until<=unixepoch()
+         )
+       RETURNING generation`,
+    )
+    .bind(token, REFRESH_LEASE_SECONDS)
+    .run<{ generation: number }>();
+  const lease = acquired.results[0];
+  if (!lease) {
+    const outcome = await waitForPublicPrecomputeLease(db);
+    if (outcome === "clean") return;
+    return refreshPublicListPrecomputesAttempt(db, attempt);
+  }
+
+  const generation = Number(lease.generation) || 0;
+  try {
+    await db.batch([
+      db
+        .prepare(guardedProjectionDelete("public_course_canonicals"))
+        .bind(generation, token),
+      db.prepare(canonicalInsert).bind(generation, token),
+      db
+        .prepare(guardedProjectionDelete("public_review_counts"))
+        .bind(generation, token),
+      db.prepare(aggregateInsert).bind(generation, token),
+      db
+        .prepare(guardedProjectionDelete("public_teacher_course_counts"))
+        .bind(generation, token),
+      db.prepare(teacherCourseCountInsert).bind(generation, token),
+      db
+        .prepare(guardedProjectionDelete("public_teacher_search"))
+        .bind(generation, token),
+      db.prepare(teacherSearchInsert).bind(generation, token),
+    ]);
+    await refreshCatalogPinyinTexts(db, generation, token);
+    const published = await db
+      .prepare(
+        `UPDATE public_precompute_state
+         SET dirty=0,refresh_token=NULL,refresh_lease_until=NULL
+         WHERE id=1
+           AND dirty=1
+           AND generation=?
+           AND refresh_token=?
+           AND refresh_lease_until>unixepoch()
+         RETURNING id`,
+      )
+      .bind(generation, token)
+      .run();
+    if (published.results.length) return;
+
+    const current = await publicPrecomputeState(db);
+    if (!current?.dirty) return;
+    if (current.refresh_token && current.refresh_token !== token) {
+      const outcome = await waitForPublicPrecomputeLease(db);
+      if (outcome === "clean") return;
+    }
+    if (attempt + 1 >= REFRESH_ATTEMPTS)
+      throw new Error("公开目录源数据在刷新期间持续变化或刷新租约失效");
+    return refreshPublicListPrecomputesAttempt(db, attempt + 1);
+  } catch (error) {
+    try {
+      await db
+        .prepare(
+          `UPDATE public_precompute_state
+           SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL
+           WHERE id=1 AND generation=? AND refresh_token=?`,
+        )
+        .bind(generation, token)
+        .run();
+    } catch {
+      // Preserve the refresh failure; a later dirty read will retry the rebuild.
+    }
+    if (error instanceof PublicPrecomputeLeaseLostError) {
+      const current = await publicPrecomputeState(db);
+      if (!current?.dirty) return;
+      if (current.refresh_token && current.refresh_token !== token) {
+        const outcome = await waitForPublicPrecomputeLease(db);
+        if (outcome === "clean") return;
+      }
+      if (attempt + 1 < REFRESH_ATTEMPTS)
+        return refreshPublicListPrecomputesAttempt(db, attempt + 1);
+    }
+    throw error;
+  }
 }
 
 export async function refreshPublicListPrecomputes(db: D1Database) {
+  const existing = publicPrecomputeRefreshes.get(db);
+  if (existing) return existing;
+
+  const refresh = refreshPublicListPrecomputesAttempt(db, 0);
+  publicPrecomputeRefreshes.set(db, refresh);
   try {
-    await db.batch([
-      db.prepare("DELETE FROM public_course_canonicals"),
-      db.prepare(canonicalInsert),
-      db.prepare("DELETE FROM public_review_counts"),
-      db.prepare(aggregateInsert),
-      db.prepare("DELETE FROM public_teacher_course_counts"),
-      db.prepare(teacherCourseCountInsert),
-      db.prepare("DELETE FROM public_teacher_search"),
-      db.prepare(teacherSearchInsert),
-      db.prepare(
-        `INSERT INTO public_precompute_state(id,dirty) VALUES(1,0)
-         ON CONFLICT(id) DO UPDATE SET dirty=0`,
-      ),
-    ]);
-    await refreshCatalogPinyinTexts(db);
-  } catch (error) {
-    await markPublicListPrecomputesDirty(db);
-    throw error;
+    await refresh;
+  } finally {
+    if (publicPrecomputeRefreshes.get(db) === refresh)
+      publicPrecomputeRefreshes.delete(db);
   }
 }
 
 const PYINYIN_BATCH = 40;
 const NAME_SPLIT = "\u001f";
 
-async function refreshCatalogPinyinTexts(db: D1Database) {
+async function refreshCatalogPinyinTexts(
+  db: D1Database,
+  generation: number,
+  token: string,
+) {
+  await renewPublicPrecomputeLease(db, generation, token);
   const courses = await db
     .prepare(
       `SELECT pcc.course_id,
@@ -247,7 +423,15 @@ async function refreshCatalogPinyinTexts(db: D1Database) {
     ...courses.results.map((row) =>
       db
         .prepare(
-          "UPDATE public_course_canonicals SET pinyin_text=? WHERE course_id=?",
+          `UPDATE public_course_canonicals SET pinyin_text=?
+           WHERE course_id=? AND EXISTS(
+             SELECT 1 FROM public_precompute_state
+             WHERE id=1
+               AND dirty=1
+               AND generation=?
+               AND refresh_token=?
+               AND refresh_lease_until>unixepoch()
+           )`,
         )
         .bind(
           catalogPinyinText([
@@ -257,16 +441,34 @@ async function refreshCatalogPinyinTexts(db: D1Database) {
             ...splitNames(row.variants),
           ]),
           row.course_id,
+          generation,
+          token,
         ),
     ),
     ...teachers.results.map((row) =>
       db
-        .prepare("UPDATE public_teacher_search SET pinyin_text=? WHERE teacher_id=?")
-        .bind(catalogPinyinText([row.name], { surname: true }), row.id),
+        .prepare(
+          `UPDATE public_teacher_search SET pinyin_text=?
+           WHERE teacher_id=? AND EXISTS(
+             SELECT 1 FROM public_precompute_state
+             WHERE id=1
+               AND dirty=1
+               AND generation=?
+               AND refresh_token=?
+               AND refresh_lease_until>unixepoch()
+           )`,
+        )
+        .bind(
+          catalogPinyinText([row.name], { surname: true }),
+          row.id,
+          generation,
+          token,
+        ),
     ),
   ];
 
   for (let offset = 0; offset < updates.length; offset += PYINYIN_BATCH) {
+    await renewPublicPrecomputeLease(db, generation, token);
     await db.batch(updates.slice(offset, offset + PYINYIN_BATCH));
   }
 }
