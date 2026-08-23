@@ -1,3 +1,11 @@
+import {
+  Heart,
+  HeartFill,
+  ThumbsDown,
+  ThumbsDownFill,
+  ThumbsUp,
+  ThumbsUpFill,
+} from "@gravity-ui/icons";
 import { Button } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -117,6 +125,7 @@ export function RelationSignalControls({
           isPending={pending === "follow"}
           onPress={() => mutate("follow", follow ? "DELETE" : "PUT")}
         >
+          {follow ? <HeartFill aria-hidden /> : <Heart aria-hidden />}
           {follow ? "已关注" : "关注"}
         </Button>
         <Button
@@ -128,6 +137,11 @@ export function RelationSignalControls({
             mutate("recommend", recommend === "up" ? "DELETE" : "PUT")
           }
         >
+          {recommend === "up" ? (
+            <ThumbsUpFill aria-hidden />
+          ) : (
+            <ThumbsUp aria-hidden />
+          )}
           {recommend === "up" ? "已推荐" : "推荐"}
         </Button>
         <Button
@@ -139,6 +153,11 @@ export function RelationSignalControls({
             mutate("not_recommend", recommend === "down" ? "DELETE" : "PUT")
           }
         >
+          {recommend === "down" ? (
+            <ThumbsDownFill aria-hidden />
+          ) : (
+            <ThumbsDown aria-hidden />
+          )}
           {recommend === "down" ? "取消不推荐" : "不推荐"}
         </Button>
       </div>
