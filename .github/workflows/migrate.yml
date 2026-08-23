@@ -1,10 +1,6 @@
 name: Migrate D1
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "migrations/**"
 concurrency:
   group: production-d1-migrate
   cancel-in-progress: false
