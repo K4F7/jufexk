@@ -246,8 +246,8 @@ export function LoginPage() {
                 >
                   {busy ? (
                     <LoginProgressAlert
-                      title="正在核对学号密码"
-                      description="正在向学校统一身份认证确认，通常需要几秒，请不要关闭页面。"
+                      title="正在向学校核对学号密码"
+                      description="通常需要几秒，请不要关闭页面。"
                     />
                   ) : null}
                   <TextField

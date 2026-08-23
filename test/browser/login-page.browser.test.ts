@@ -271,10 +271,8 @@ test("CAS submit shows a pending alert and button while waiting", async ({
   await page.getByLabel("校园密码").fill("secret-pass");
   await page.getByRole("button", { name: "登录" }).click();
 
-  await expect(page.getByText("正在核对学号密码")).toBeVisible();
-  await expect(
-    page.getByText("正在向学校统一身份认证确认，通常需要几秒，请不要关闭页面。"),
-  ).toBeVisible();
+  await expect(page.getByText("正在向学校核对学号密码")).toBeVisible();
+  await expect(page.getByText("通常需要几秒，请不要关闭页面。")).toBeVisible();
   await expect(page.getByRole("button", { name: "正在登录…" })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeDisabled();
   await expect(page.getByLabel("校园密码")).toBeDisabled();
