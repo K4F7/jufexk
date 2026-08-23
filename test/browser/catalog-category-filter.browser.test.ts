@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 /**
  * Issue #402 筛选框的类别行；#415 把专业课/公共课并进通识课：
- * 全部 / 通识课 / 体育课 / 英语课 / 思政课 / 数学课。URL 继续用 ?category=。
+ * 全部 / 通识 / 数学 / 思政 / 英语 / 体育。URL 继续用 ?category=。
  */
 const COURSES = [
   {
@@ -164,41 +164,41 @@ test("category row exposes 通识课 instead of 专业课/公共课 and filters 
   await page.goto("/courses");
   const filterBox = page.getByRole("search", { name: "课程目录筛选" });
   await expect(
-    filterBox.getByRole("button", { name: "全部", exact: true }),
+    filterBox.getByRole("radio", { name: "全部", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "通识课", exact: true }),
+    filterBox.getByRole("radio", { name: "通识", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "专业课", exact: true }),
+    filterBox.getByRole("radio", { name: "专业课", exact: true }),
   ).toHaveCount(0);
   await expect(
-    filterBox.getByRole("button", { name: "公共课", exact: true }),
+    filterBox.getByRole("radio", { name: "公共课", exact: true }),
   ).toHaveCount(0);
   await expect(
-    filterBox.getByRole("button", { name: "体育课", exact: true }),
+    filterBox.getByRole("radio", { name: "体育", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "英语课", exact: true }),
+    filterBox.getByRole("radio", { name: "英语", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "思政课", exact: true }),
+    filterBox.getByRole("radio", { name: "思政", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("button", { name: "数学课", exact: true }),
+    filterBox.getByRole("radio", { name: "数学", exact: true }),
   ).toBeVisible();
   // 网课入口下线（mooc 深链仍被 API 接受）；不展示英文键名。
   await expect(
-    filterBox.getByRole("button", { name: "网课" }),
+    filterBox.getByRole("radio", { name: "网课" }),
   ).toHaveCount(0);
   await expect(
-    filterBox.getByRole("button", { name: /sports/i }),
+    filterBox.getByRole("radio", { name: /sports/i }),
   ).toHaveCount(0);
   await expect(
-    filterBox.getByRole("button", { name: /mooc/i }),
+    filterBox.getByRole("radio", { name: /mooc/i }),
   ).toHaveCount(0);
 
-  await filterBox.getByRole("button", { name: "通识课" }).click();
+  await filterBox.getByRole("radio", { name: "通识" }).click();
   await expect(page).toHaveURL(/category=general/);
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }),
@@ -210,12 +210,12 @@ test("category row exposes 通识课 instead of 专业课/公共课 and filters 
   await expect(page.getByRole("link", { name: /大学英语/ })).toHaveCount(0);
   await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
 
-  await filterBox.getByRole("button", { name: "英语课" }).click();
+  await filterBox.getByRole("radio", { name: "英语" }).click();
   await expect(page).toHaveURL(/category=english/);
   await expect(page.getByRole("link", { name: /大学英语/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /篮球/ })).toHaveCount(0);
 
-  await filterBox.getByRole("button", { name: "思政课" }).click();
+  await filterBox.getByRole("radio", { name: "思政" }).click();
   await expect(page).toHaveURL(/category=ideology/);
   await expect(
     page.getByRole("link", { name: /思想道德与法治/ }),
@@ -223,7 +223,7 @@ test("category row exposes 通识课 instead of 专业课/公共课 and filters 
   // mooc 标签课程不进思政课筛选。
   await expect(page.getByRole("link", { name: /思政网课/ })).toHaveCount(0);
 
-  await filterBox.getByRole("button", { name: "数学课" }).click();
+  await filterBox.getByRole("radio", { name: "数学" }).click();
   await expect(page).toHaveURL(/category=math/);
   await expect(page.getByRole("link", { name: /高等数学/ })).toBeVisible();
 });
@@ -248,7 +248,7 @@ test("major and public_basic deep links keep working as 通识课", async ({
   await page.goto("/courses?category=major");
   await expect(page).toHaveURL(/category=major/);
   await expect(
-    filterBox.getByRole("button", { name: "通识课", exact: true }),
+    filterBox.getByRole("radio", { name: "通识", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }),

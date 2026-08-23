@@ -20,7 +20,7 @@ import { ThemeToggle } from "./ThemeToggle";
 /**
  * Production shell — USTC 评课社区对齐（Issue #402）：
  * 左簇品牌 + 课程/课评/导师导航 · 居中课程搜索（提交到 /courses?q=）·
- * 右侧学校名 + 登录（AccountNavControl）+ 主题切换。
+ * 右侧登录（AccountNavControl）+ 主题切换。
  * 顶栏与页面同底色、无硬分割线；写评价只从课程页「写点评」进入。
  */
 
@@ -199,9 +199,6 @@ function DefaultShell({
           </div>
 
           <div className="col-start-2 flex items-center justify-end gap-2 sm:col-start-3">
-            <span className="hidden text-xs text-muted sm:inline">
-              {universityName}
-            </span>
             <AccountNavControl />
             <ThemeToggle />
           </div>
