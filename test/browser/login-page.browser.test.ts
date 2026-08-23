@@ -94,22 +94,20 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockApi(page));
 
-test("direct visit shows the CAS form and a way back to the catalog", async ({
+test("direct visit shows the CAS form without extra copy or a back link", async ({
   page,
 }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "登录", exact: true })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeVisible();
   await expect(page.getByLabel("校园密码")).toBeVisible();
   await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
   await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(0);
   await expect(page.getByText("也可以改用校学生邮箱验证")).toHaveCount(0);
   await expect(page.getByText("校园 JWT 登录尚未开放")).toHaveCount(0);
-
-  const back = page.getByRole("link", { name: "返回继续浏览" });
-  await expect(back).toBeVisible();
-  await back.click();
-  await expect(page).toHaveURL(/\/courses$/);
+  await expect(page.getByText("大多数访问者是游客")).toHaveCount(0);
+  await expect(page.getByText("本站不保存校园口令")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "返回继续浏览" })).toHaveCount(0);
 });
 
 test("hides the school-email login entry on the ordinary-user card", async ({
@@ -371,11 +369,15 @@ test("email magic-link redeeming uses the official progress alert", async ({
   await expect(page).toHaveURL(/\/courses$/);
 });
 
+async function submitCampusLogin(page: Page) {
+  await page.getByLabel("学号").fill("2202100001");
+  await page.getByLabel("校园密码").fill("secret-pass");
+  await page.getByRole("button", { name: "登录" }).click();
+}
+
 test("returns to the internal source page given by from", async ({ page }) => {
   await page.goto("/login?from=/courses/8");
-  const back = page.getByRole("link", { name: "返回继续浏览" });
-  await expect(back).toBeVisible();
-  await back.click();
+  await submitCampusLogin(page);
   await expect(page).toHaveURL(/\/courses\/8$/);
   await expect(
     page.getByRole("heading", { name: "中国传统文化导论" }),
@@ -385,19 +387,21 @@ test("returns to the internal source page given by from", async ({ page }) => {
 test("external or looping from values fall back to the catalog", async ({
   page,
 }) => {
-  const back = page.getByRole("link", { name: "返回继续浏览" });
-
   await page.goto("/login?from=https://evil.example/phish");
-  await expect(back).toHaveAttribute("href", "/courses");
+  await submitCampusLogin(page);
+  await expect(page).toHaveURL(/\/courses$/);
 
   await page.goto("/login?from=//evil.example");
-  await expect(back).toHaveAttribute("href", "/courses");
+  await submitCampusLogin(page);
+  await expect(page).toHaveURL(/\/courses$/);
 
   await page.goto("/login?from=/login");
-  await expect(back).toHaveAttribute("href", "/courses");
+  await submitCampusLogin(page);
+  await expect(page).toHaveURL(/\/courses$/);
 
   await page.goto("/login?from=/login/");
-  await expect(back).toHaveAttribute("href", "/courses");
+  await submitCampusLogin(page);
+  await expect(page).toHaveURL(/\/courses$/);
 });
 
 test("guest recognition prompt reaches login and returns to the source page", async ({
@@ -412,9 +416,9 @@ test("guest recognition prompt reaches login and returns to the source page", as
   await expect(loginLink).toBeVisible();
   await loginLink.click();
   await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8%3Fteacher%3D9$/);
-  await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "登录", exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "返回继续浏览" }).click();
+  await submitCampusLogin(page);
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(
     page.getByRole("button", { name: "认可这条评价，还没有人认可" }),

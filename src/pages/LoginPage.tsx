@@ -2,7 +2,6 @@ import {
   Alert,
   Button,
   Card,
-  Description,
   FieldError,
   Form,
   Input,
@@ -13,7 +12,6 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../components/DetailFeedback";
-import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
 import { ApiError, api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
@@ -162,17 +160,31 @@ export function LoginPage() {
     }
   }
 
+  const errorAlert = error ? (
+    <Alert status="danger">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Title>{loginErrorTitle(error)}</Alert.Title>
+        <Alert.Description>{error}</Alert.Description>
+      </Alert.Content>
+    </Alert>
+  ) : null;
+
   return (
     <section aria-labelledby="login-heading" className="mx-auto max-w-xl py-8">
-      <Card role="article" aria-labelledby="login-heading">
+      <Card
+        className="pb-6"
+        role="article"
+        aria-labelledby="login-heading"
+        variant="secondary"
+      >
         <Card.Header>
-          <Card.Title id="login-heading">普通用户登录</Card.Title>
-          <Card.Description>
-            大多数访问者是游客，课程、教师和公开评价可直接浏览。投稿或认可需要先用江财统一身份登录。管理员后台使用单独的口令登录。
-          </Card.Description>
+          <Card.Title className="text-xl" id="login-heading">
+            登录
+          </Card.Title>
         </Card.Header>
-        <Card.Content>
-          {ready && viewer.authenticated ? (
+        {ready && viewer.authenticated ? (
+          <Card.Content>
             <Alert status="success">
               <Alert.Indicator />
               <Alert.Content>
@@ -182,125 +194,131 @@ export function LoginPage() {
                 </Alert.Description>
               </Alert.Content>
             </Alert>
-          ) : !ready && !redeeming ? (
+          </Card.Content>
+        ) : !ready && !redeeming ? (
+          <Card.Content>
             <DetailLoadingStatus label="正在读取登录状态…" />
-          ) : redeeming ? (
+          </Card.Content>
+        ) : redeeming ? (
+          <Card.Content>
             <LoginProgressAlert
               title="正在完成登录"
               description="请稍候。"
             />
-          ) : (
-            <div className="flex flex-col gap-4">
-              {error ? (
-                <Alert status="danger">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Title>{loginErrorTitle(error)}</Alert.Title>
-                    <Alert.Description>{error}</Alert.Description>
-                  </Alert.Content>
-                </Alert>
-              ) : null}
-              {challenge ? (
-                <Form
-                  aria-busy={busy}
-                  className="flex flex-col gap-4"
-                  onSubmit={submitMfa}
+          </Card.Content>
+        ) : challenge ? (
+          <Form
+            aria-busy={busy}
+            aria-labelledby="login-heading"
+            onSubmit={submitMfa}
+          >
+            <Card.Content>
+              <div className="flex flex-col gap-4">
+                {errorAlert}
+                {busy ? (
+                  <LoginProgressAlert
+                    title="正在确认验证码"
+                    description="请稍候。"
+                  />
+                ) : (
+                  <Alert status="accent">
+                    <Alert.Indicator />
+                    <Alert.Content>
+                      <Alert.Title>请输入验证码</Alert.Title>
+                      <Alert.Description>
+                        {maskedPhone
+                          ? `学校会把验证码发到企业微信（绑定手机 ${maskedPhone}），不是本站短信。`
+                          : "学校会把验证码发到企业微信（统一身份绑定的手机），不是本站短信。"}
+                      </Alert.Description>
+                    </Alert.Content>
+                  </Alert>
+                )}
+                <TextField
+                  fullWidth
+                  isDisabled={busy}
+                  isRequired
+                  name="mfa"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={setMfaCode}
                 >
-                  {busy ? (
-                    <LoginProgressAlert
-                      title="正在确认验证码"
-                      description="请稍候。"
-                    />
-                  ) : (
-                    <Alert status="accent">
-                      <Alert.Indicator />
-                      <Alert.Content>
-                        <Alert.Title>请输入验证码</Alert.Title>
-                        <Alert.Description>
-                          {maskedPhone
-                            ? `学校会把验证码发到企业微信（绑定手机 ${maskedPhone}），不是本站短信。`
-                            : "学校会把验证码发到企业微信（统一身份绑定的手机），不是本站短信。"}
-                        </Alert.Description>
-                      </Alert.Content>
-                    </Alert>
-                  )}
-                  <TextField
-                    isDisabled={busy}
-                    isRequired
-                    name="mfa"
-                    autoComplete="one-time-code"
-                    value={mfaCode}
-                    onChange={setMfaCode}
-                  >
-                    <Label>验证码</Label>
-                    <Input inputMode="numeric" placeholder="4–8 位验证码" />
-                    <FieldError />
-                  </TextField>
-                  <Button isPending={busy} type="submit">
-                    {({ isPending }) => (
-                      <>
-                        {isPending ? <Spinner color="current" size="sm" /> : null}
-                        {isPending ? "正在完成登录…" : "完成登录"}
-                      </>
-                    )}
-                  </Button>
-                </Form>
-              ) : (
-                <Form
-                  aria-busy={busy}
-                  className="flex flex-col gap-4"
-                  onSubmit={submitCas}
+                  <Label>验证码</Label>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="4–8 位验证码"
+                    variant="primary"
+                  />
+                  <FieldError />
+                </TextField>
+              </div>
+            </Card.Content>
+            <Card.Footer className="mt-6 flex flex-col gap-2">
+              <Button fullWidth isPending={busy} type="submit">
+                {({ isPending }) => (
+                  <>
+                    {isPending ? <Spinner color="current" size="sm" /> : null}
+                    {isPending ? "正在完成登录…" : "完成登录"}
+                  </>
+                )}
+              </Button>
+            </Card.Footer>
+          </Form>
+        ) : (
+          <Form
+            aria-busy={busy}
+            aria-labelledby="login-heading"
+            onSubmit={submitCas}
+          >
+            <Card.Content>
+              <div className="flex flex-col gap-4">
+                {errorAlert}
+                {busy ? (
+                  <LoginProgressAlert
+                    title="正在登录"
+                    description="请稍候，通常需要几秒。"
+                  />
+                ) : null}
+                <TextField
+                  fullWidth
+                  isDisabled={busy}
+                  isRequired
+                  name="username"
+                  autoComplete="username"
+                  value={username}
+                  onChange={setUsername}
                 >
-                  {busy ? (
-                    <LoginProgressAlert
-                      title="正在登录"
-                      description="请稍候，通常需要几秒。"
-                    />
-                  ) : null}
-                  <TextField
-                    isDisabled={busy}
-                    isRequired
-                    name="username"
-                    autoComplete="username"
-                    value={username}
-                    onChange={setUsername}
-                  >
-                    <Label>学号</Label>
-                    <Input placeholder="江财统一身份学号" />
-                    <Description>
-                      使用江财统一身份认证，本站不保存校园口令。
-                    </Description>
-                    <FieldError />
-                  </TextField>
-                  <TextField
-                    isDisabled={busy}
-                    isRequired
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={setPassword}
-                  >
-                    <Label>校园密码</Label>
-                    <Input placeholder="统一身份认证密码" />
-                    <FieldError />
-                  </TextField>
-                  <Button isPending={busy} type="submit">
-                    {({ isPending }) => (
-                      <>
-                        {isPending ? <Spinner color="current" size="sm" /> : null}
-                        {isPending ? "正在登录…" : "登录"}
-                      </>
-                    )}
-                  </Button>
-                </Form>
-              )}
-            </div>
-          )}
-        </Card.Content>
-        <Card.Footer>
-          <RouterAriaLink to={backTarget}>返回继续浏览</RouterAriaLink>
-        </Card.Footer>
+                  <Label>学号</Label>
+                  <Input placeholder="江财统一身份学号" variant="primary" />
+                  <FieldError />
+                </TextField>
+                <TextField
+                  fullWidth
+                  isDisabled={busy}
+                  isRequired
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={setPassword}
+                >
+                  <Label>校园密码</Label>
+                  <Input placeholder="统一身份认证密码" variant="primary" />
+                  <FieldError />
+                </TextField>
+              </div>
+            </Card.Content>
+            <Card.Footer className="mt-6 flex flex-col gap-2">
+              <Button fullWidth isPending={busy} type="submit">
+                {({ isPending }) => (
+                  <>
+                    {isPending ? <Spinner color="current" size="sm" /> : null}
+                    {isPending ? "正在登录…" : "登录"}
+                  </>
+                )}
+              </Button>
+            </Card.Footer>
+          </Form>
+        )}
       </Card>
     </section>
   );
