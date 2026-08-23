@@ -42,6 +42,7 @@ import {
   token,
 } from "./support";
 import {
+  adminCourseNoticeSchema,
   adminCourseSchema,
   adminLoginSchema,
   adminOfferingSchema,
@@ -1165,6 +1166,25 @@ adminRoutes.post("/api/admin/courses", async (c) => {
     }
   }
   return c.json({ ok: true, id });
+});
+adminRoutes.put("/api/admin/courses/:id/notice", async (c) => {
+  const courseId = integer(c.req.param("id"));
+  if (!courseId) return fail(c, "课程 ID 无效");
+  const parsedBody = adminCourseNoticeSchema.safeParse(
+    await c.req.json<unknown>(),
+  );
+  if (!parsedBody.success) return fail(c, "管理员公告必须是 2000 字以内的文本");
+  const updated = await c.env.DB.prepare(
+    `UPDATE courses
+     SET admin_notice=?,admin_notice_updated_at=CURRENT_TIMESTAMP
+     WHERE id=?
+     RETURNING admin_notice content,admin_notice_updated_at updatedAt`,
+  )
+    .bind(parsedBody.data.content, courseId)
+    .first<{ content: string; updatedAt: string }>();
+  if (!updated) return fail(c, "课程不存在", 404);
+  markPublicCatalogCacheChanged(c);
+  return c.json({ ok: true, ...updated });
 });
 adminRoutes.delete("/api/admin/courses/:id", async (c) => {
   const id = integer(c.req.param("id"));

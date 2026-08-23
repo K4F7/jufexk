@@ -6,7 +6,7 @@
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Typography } from "@heroui/react";
+import { Card, Typography } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -475,6 +475,22 @@ export function CourseDetailPage() {
             />
           ) : null}
         </header>
+
+        {course.admin_notice ? (
+          <Card className="mt-6">
+            <Card.Header>
+              <Card.Title>管理员公告</Card.Title>
+              {course.admin_notice_updated_at ? (
+                <Card.Description>
+                  更新于 {course.admin_notice_updated_at}
+                </Card.Description>
+              ) : null}
+            </Card.Header>
+            <Card.Content className="whitespace-pre-wrap text-sm">
+              {course.admin_notice}
+            </Card.Content>
+          </Card>
+        ) : null}
 
         {relationSummary?.html ? (
           <div className="mt-10">
