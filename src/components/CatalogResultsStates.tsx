@@ -1,9 +1,11 @@
 /**
- * Catalog pagination + load/error/empty — visually frozen: prototype A.
+ * Catalog pagination + load/error/empty.
  *
- * - First load: 20 two-line skeleton rows + pagination reserve, matching
- *   the public catalog pageSize so the list height does not jump (Issue #205)
- * - Refresh with data: compact Spinner line above table
+ * - First load: 20 skeleton rows + pagination reserve, matching the public
+ *   catalog pageSize so the list height does not jump (Issue #205). Course
+ *   pending uses CourseRelationRow-shaped Skeleton rows (Issue #418); teacher
+ *   pending still matches TeacherResultTable.
+ * - Refresh with data: compact Spinner line above the results
  * - Error: dashed box + 重试
  * - Empty: distinct copy for filters vs true empty catalog; clear action when filtered
  * - Pagination: 上一页 / current/total · 共 N {unit} / 下一页
@@ -13,6 +15,7 @@
 import { Button, Link, Skeleton, Spinner, Table } from "@heroui/react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { REVIEW_DIMENSIONS } from "../lib/review-dimensions";
 
 export type CatalogResultsCopy = {
   /** e.g. 课程目录加载失败 */
@@ -82,7 +85,7 @@ export type CatalogResultsStatesProps = {
   copy?: CatalogResultsCopy;
   /** Opposite-catalog hint when this catalog is empty (Issue #287). */
   rescue?: ReactNode;
-  /** First-load table chrome: course rows are two-line, teacher rows are one. */
+  /** First-load chrome: course = relation list; teacher = result table. */
   skeleton?: "course" | "teacher";
 };
 
@@ -90,8 +93,76 @@ export type CatalogResultsStatesProps = {
  * lines up with a full result page (desktop CLS). */
 export const CATALOG_SKELETON_ROWS = 20;
 
-/** First-load placeholder: official Table + pagination so row/footer
- * height matches the loaded catalog (Issue #205). */
+/** Course first-load: HeroUI Skeleton stacked like CourseRelationRow
+ * (课名（老师） / 星级+评价 / 四维), not the retired 课程/教师/院系/投稿 table. */
+function CourseRelationSkeletonRows({ rowCount }: { rowCount: number }) {
+  return (
+    <div>
+      {Array.from({ length: rowCount }).map((_, index) => (
+        <div
+          key={index}
+          id={`catalog-skeleton-${index}`}
+          data-catalog-skeleton-row=""
+          className="block border-b border-separator py-3 last:border-b-0"
+        >
+          <Skeleton className="h-4 w-56 max-w-[70%] rounded" />
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+            <Skeleton className="h-4 w-24 rounded" />
+            <Skeleton className="h-3 w-16 rounded" />
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-6 gap-y-0.5">
+            {REVIEW_DIMENSIONS.map((dim) => (
+              <Skeleton key={dim.key} className="h-3 w-20 rounded" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Teacher first-load still matches TeacherResultTable chrome. */
+function TeacherTableSkeleton({ rowCount }: { rowCount: number }) {
+  return (
+    <Table className="dense-table">
+      <Table.ScrollContainer>
+        <Table.Content aria-label="教师资料" className="min-w-[640px]">
+          <Table.Header>
+            <Table.Column isRowHeader>教师</Table.Column>
+            <Table.Column>院系</Table.Column>
+            <Table.Column>投稿</Table.Column>
+            <Table.Column>课程数</Table.Column>
+          </Table.Header>
+          <Table.Body>
+            {Array.from({ length: rowCount }).map((_, index) => (
+              <Table.Row
+                key={index}
+                id={`catalog-skeleton-${index}`}
+                data-catalog-skeleton-row=""
+              >
+                <Table.Cell>
+                  <Skeleton className="h-4 w-24 rounded" />
+                </Table.Cell>
+                <Table.Cell>
+                  <Skeleton className="h-4 w-28 rounded" />
+                </Table.Cell>
+                <Table.Cell>
+                  <Skeleton className="h-4 w-10 rounded" />
+                </Table.Cell>
+                <Table.Cell>
+                  <Skeleton className="h-4 w-10 rounded" />
+                </Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table.Content>
+      </Table.ScrollContainer>
+    </Table>
+  );
+}
+
+/** First-load placeholder + pagination so row/footer height matches
+ * the loaded catalog (Issue #205). */
 function CatalogSkeleton({
   variant,
   rowCount,
@@ -101,65 +172,14 @@ function CatalogSkeleton({
   rowCount: number;
   totalUnit: string;
 }) {
-  const course = variant === "course";
   return (
     <div role="status" aria-label="加载中…">
       <span className="sr-only">加载中…</span>
-      <Table className="dense-table">
-        <Table.ScrollContainer>
-          <Table.Content
-            aria-label={course ? "课程目录" : "教师资料"}
-            className={course ? "min-w-[720px]" : "min-w-[640px]"}
-          >
-            <Table.Header>
-              {course ? (
-                <>
-                  <Table.Column isRowHeader>课程</Table.Column>
-                  <Table.Column>教师</Table.Column>
-                  <Table.Column>院系</Table.Column>
-                  <Table.Column>投稿</Table.Column>
-                </>
-              ) : (
-                <>
-                  <Table.Column isRowHeader>教师</Table.Column>
-                  <Table.Column>院系</Table.Column>
-                  <Table.Column>投稿</Table.Column>
-                  <Table.Column>课程数</Table.Column>
-                </>
-              )}
-            </Table.Header>
-            <Table.Body>
-              {Array.from({ length: rowCount }).map((_, index) => (
-                <Table.Row
-                  key={index}
-                  id={`catalog-skeleton-${index}`}
-                  data-catalog-skeleton-row=""
-                >
-                  <Table.Cell>
-                    {course ? (
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <Skeleton className="h-4 w-3/4 rounded" />
-                        <Skeleton className="h-3 w-1/3 rounded" />
-                      </div>
-                    ) : (
-                      <Skeleton className="h-4 w-24 rounded" />
-                    )}
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Skeleton className="h-4 w-28 rounded" />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Skeleton className="h-4 w-10 rounded" />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Skeleton className="h-4 w-10 rounded" />
-                  </Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Content>
-        </Table.ScrollContainer>
-      </Table>
+      {variant === "course" ? (
+        <CourseRelationSkeletonRows rowCount={rowCount} />
+      ) : (
+        <TeacherTableSkeleton rowCount={rowCount} />
+      )}
       <PaginationFooter
         currentPage={1}
         totalPages={1}
