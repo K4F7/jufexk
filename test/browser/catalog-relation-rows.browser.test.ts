@@ -166,6 +166,22 @@ test("filter box shows the category row and rating sort", async ({
   await expect(page.getByRole("searchbox", { name: "搜索课程" })).toHaveCount(1);
 });
 
+test("sort buttons toggle rating without changing default review-count params", async ({
+  page,
+}) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses");
+
+  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  await expect(page).not.toHaveURL(/[?&]sort=/);
+
+  await filterBox.getByRole("button", { name: "课程评分", exact: true }).click();
+  await expect(page).toHaveURL(/[?&]sort=rating(?:&|$)/);
+
+  await filterBox.getByRole("button", { name: "课评数量", exact: true }).click();
+  await expect(page).not.toHaveURL(/[?&]sort=/);
+});
+
 test("relation rows show rating, review count, and four-dim labels", async ({
   page,
 }) => {
