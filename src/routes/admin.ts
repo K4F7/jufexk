@@ -206,7 +206,8 @@ adminRoutes.get("/api/admin/reviews", async (c) => {
         r.attendance,r.grading,r.grading_score,r.workload,r.rescue,
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
-        r.comment,r.comment_format,r.term,r.status,r.moderator_note,r.created_at,r.reviewed_at,
+        r.comment,r.comment_format,r.headline,r.grade,
+        r.term,r.status,r.moderator_note,r.created_at,r.reviewed_at,
         r.scheme_key,r.scheme_version,
         c.name course_name,c.code,t.name teacher_name
        FROM reviews r JOIN courses c ON c.id=r.course_id

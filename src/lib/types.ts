@@ -109,6 +109,10 @@ export type Review = {
   created_at?: string | null;
   publishedAt?: string | null;
   comment: string;
+  /** 一句话总结本课（#444）；旧行为空串。 */
+  headline?: string;
+  /** 选填成绩（#444），未填写为 null。 */
+  grade?: string | null;
   teaching: string;
   attendance: string;
   grading: string;
@@ -141,6 +145,10 @@ export type PublicReview = {
   comment: string;
   /** 'html' 表示消毒后的富文本补充说明；缺省/null 为纯文本（issue #400）。 */
   comment_format?: string | null;
+  /** 一句话总结本课（#444）；历史/旧行为空串。 */
+  headline?: string;
+  /** 选填成绩（#444）；仅在填写时下发。 */
+  grade?: string | null;
   course_id: number;
   teacher_id: number;
   course_name?: string;
@@ -167,6 +175,10 @@ export type LatestReview = {
   teacher_name: string;
   comment: string;
   comment_format?: string | null;
+  /** 一句话总结本课（#444）；历史/旧行为空串。展示时优先于 comment 纯文本。 */
+  headline?: string;
+  /** 选填成绩（#444）；仅在填写时下发。 */
+  grade?: string | null;
   created_at: string | null;
 };
 

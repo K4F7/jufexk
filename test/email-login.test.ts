@@ -309,6 +309,7 @@ describe("school-email login", () => {
           gain: 2,
         },
         comment: "邮箱会话可以正常投稿",
+        headline: "一句话总结",
       }),
     });
     expect(submitted.status).toBe(200);
