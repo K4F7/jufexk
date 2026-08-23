@@ -14,6 +14,8 @@ import {
   isAllowedCasUrl,
   isSuccessfulCasRedirect,
   normalizeCasUsername,
+  parseCasJsonError,
+  parseErrorTip,
   parseLoginPage,
 } from "../src/lib/jxufe-cas";
 
@@ -45,6 +47,8 @@ let mode:
   | "mfa-stale-execution-then-ok"
   | "reauth-without-mfa"
   | "blocked-attest"
+  | "account-locked"
+  | "mfa-send-msg"
   | "encrypt" = "success";
 let mfaCodeAccepted = "654321";
 let loginGets = 0;
@@ -89,7 +93,8 @@ function installCasMock() {
           mode === "mfa-reauth-get-after-valid" ||
           mode === "mfa-reauth-post-after-valid" ||
           mode === "mfa-login-fails-after-valid" ||
-          mode === "mfa-stale-execution-then-ok";
+          mode === "mfa-stale-execution-then-ok" ||
+          mode === "mfa-send-msg";
         return new Response(loginHtml(mfaLike ? "e1s2" : "e1s1", mode === "encrypt"), {
           status: 200,
           headers: {
@@ -105,6 +110,12 @@ function installCasMock() {
       if (body.includes("wrong-pass") || mode === "wrong-password") {
         return new Response(
           `<html><div id="showErrorTip">用户名或密码错误</div></html>`,
+          { status: 401, headers: { "content-type": "text/html" } },
+        );
+      }
+      if (mode === "account-locked") {
+        return new Response(
+          `<html><div id="showErrorTip">账号已被锁定，请稍后再试</div></html>`,
           { status: 401, headers: { "content-type": "text/html" } },
         );
       }
@@ -142,6 +153,7 @@ function installCasMock() {
         mode === "mfa-reauth-post-after-valid" ||
         mode === "mfa-login-fails-after-valid" ||
         mode === "mfa-stale-execution-then-ok" ||
+        mode === "mfa-send-msg" ||
         mode === "blocked-attest";
       return Response.json({
         code: 0,
@@ -167,13 +179,20 @@ function installCasMock() {
     }
 
     if (url.hostname === "mfa.jxufe.edu.cn" && url.pathname.endsWith("/send")) {
+      if (mode === "mfa-send-msg") {
+        return Response.json({ code: 1, msg: "发送过于频繁，请稍后再试" });
+      }
       return Response.json({ code: 0 });
     }
 
     if (url.hostname === "mfa.jxufe.edu.cn" && url.pathname.endsWith("/valid")) {
       const parsed = JSON.parse(body || "{}") as { code?: string };
       if (mode === "mfa-bad-code" || parsed.code !== mfaCodeAccepted) {
-        return Response.json({ code: 0, data: { status: 0 } });
+        return Response.json({
+          code: 0,
+          msg: "动态口令错误",
+          data: { status: 0 },
+        });
       }
       return Response.json({ code: 0, data: { status: 2 } });
     }
@@ -257,6 +276,24 @@ describe("jxufe cas helpers", () => {
     expect(normalizeCasUsername(" 2202100099 ")).toBe("2202100099");
     expect(normalizeCasUsername("not an id")).toBeNull();
     expect(parseLoginPage(loginHtml()).execution).toBe("e1s1");
+    expect(
+      parseErrorTip(`<html><div id="showErrorTip">账号已被锁定</div></html>`),
+    ).toBe("账号已被锁定");
+    expect(
+      parseErrorTip(
+        `<html><div id="msg" class="errors">密码已过期，请修改密码</div></html>`,
+      ),
+    ).toBe("密码已过期，请修改密码");
+    expect(parseErrorTip("<html><form></form></html>")).toBe("学号或密码不正确");
+    expect(parseCasJsonError({ code: 1, msg: "动态口令错误" })).toBe(
+      "动态口令错误",
+    );
+    expect(
+      parseCasJsonError({
+        code: 1,
+        msg: "http://ssl.jxufe.edu.cn/cas/login?execution=e1",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -268,6 +305,27 @@ describe("jxufe cas login", () => {
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: "学号或密码不正确" });
     expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+  });
+
+  it("forwards a school lock tip from showErrorTip", async () => {
+    mode = "account-locked";
+    installCasMock();
+    const response = await startCas({ username: studentId, password });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: "账号已被锁定，请稍后再试",
+    });
+    expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+  });
+
+  it("forwards a school MFA send tip", async () => {
+    mode = "mfa-send-msg";
+    installCasMock();
+    const response = await startCas({ username: studentId, password });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "发送过于频繁，请稍后再试",
+    });
   });
 
   it("rejects a wrong password without creating a session or identity", async () => {
@@ -367,6 +425,7 @@ describe("jxufe cas login", () => {
 
     const bad = await finishMfa({ challenge: first.challenge, code: "000000" });
     expect(bad.status).toBe(401);
+    expect(await bad.json()).toMatchObject({ error: "动态口令错误" });
 
     const verified = await finishMfa({
       challenge: first.challenge,

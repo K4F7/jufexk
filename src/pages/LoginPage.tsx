@@ -54,6 +54,13 @@ function shouldReturnToCredentials(message: string) {
   return /请重新登录|学号或密码|用户名或密码/.test(message);
 }
 
+function loginErrorTitle(message: string) {
+  if (/锁定|冻结|禁用/.test(message)) return "账号暂时无法登录";
+  if (/过期|初始密码|修改密码/.test(message)) return "需要先更新密码";
+  if (/验证码/.test(message)) return "验证码不正确";
+  return "无法完成登录";
+}
+
 export function LoginPage() {
   const [searchParams] = useSearchParams();
   const backTarget = backTargetFrom(searchParams.get("from"));
@@ -180,7 +187,7 @@ export function LoginPage() {
           ) : redeeming ? (
             <LoginProgressAlert
               title="正在完成登录"
-              description="正在核销邮箱验证链接，请稍候。"
+              description="请稍候。"
             />
           ) : (
             <div className="flex flex-col gap-4">
@@ -188,7 +195,7 @@ export function LoginPage() {
                 <Alert status="danger">
                   <Alert.Indicator />
                   <Alert.Content>
-                    <Alert.Title>无法完成登录</Alert.Title>
+                    <Alert.Title>{loginErrorTitle(error)}</Alert.Title>
                     <Alert.Description>{error}</Alert.Description>
                   </Alert.Content>
                 </Alert>
@@ -201,8 +208,8 @@ export function LoginPage() {
                 >
                   {busy ? (
                     <LoginProgressAlert
-                      title="正在核销验证码"
-                      description="正在向学校确认验证码，请稍候。"
+                      title="正在确认验证码"
+                      description="请稍候。"
                     />
                   ) : (
                     <Alert status="accent">
@@ -246,8 +253,8 @@ export function LoginPage() {
                 >
                   {busy ? (
                     <LoginProgressAlert
-                      title="正在向学校核对学号密码"
-                      description="通常需要几秒，请不要关闭页面。"
+                      title="正在登录"
+                      description="请稍候，通常需要几秒。"
                     />
                   ) : null}
                   <TextField

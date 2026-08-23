@@ -271,8 +271,8 @@ test("CAS submit shows a pending alert and button while waiting", async ({
   await page.getByLabel("校园密码").fill("secret-pass");
   await page.getByRole("button", { name: "登录" }).click();
 
-  await expect(page.getByText("正在向学校核对学号密码")).toBeVisible();
-  await expect(page.getByText("通常需要几秒，请不要关闭页面。")).toBeVisible();
+  await expect(page.getByText("正在登录", { exact: true })).toBeVisible();
+  await expect(page.getByText("请稍候，通常需要几秒。")).toBeVisible();
   await expect(page.getByRole("button", { name: "正在登录…" })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeDisabled();
   await expect(page.getByLabel("校园密码")).toBeDisabled();
@@ -316,13 +316,31 @@ test("MFA submit shows a pending alert while the code is checked", async ({
   await page.getByLabel("验证码").fill("8765");
   await page.getByRole("button", { name: "完成登录" }).click();
 
-  await expect(page.getByText("正在核销验证码")).toBeVisible();
-  await expect(page.getByText("正在向学校确认验证码，请稍候。")).toBeVisible();
+  await expect(page.getByText("正在确认验证码")).toBeVisible();
+  await expect(page.getByText("请稍候。")).toBeVisible();
   await expect(page.getByRole("button", { name: "正在完成登录…" })).toBeVisible();
   await expect(page.getByLabel("验证码")).toBeDisabled();
 
   releaseMfa();
   await expect(page).toHaveURL(/\/courses$/);
+});
+
+test("school CAS tips appear on the login card", async ({ page }) => {
+  await page.route("**/api/auth/cas", async (route) => {
+    return route.fulfill({
+      status: 401,
+      json: { error: "账号已被锁定，请稍后再试" },
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("学号").fill("2202100001");
+  await page.getByLabel("校园密码").fill("secret-pass");
+  await page.getByRole("button", { name: "登录" }).click();
+
+  await expect(page.getByText("账号暂时无法登录")).toBeVisible();
+  await expect(page.getByText("账号已被锁定，请稍后再试")).toBeVisible();
+  await expect(page.getByLabel("学号")).toBeVisible();
 });
 
 test("email magic-link redeeming uses the official progress alert", async ({
@@ -346,7 +364,7 @@ test("email magic-link redeeming uses the official progress alert", async ({
 
   await page.goto("/login?token=magic-link-token");
   await expect(page.getByText("正在完成登录")).toBeVisible();
-  await expect(page.getByText("正在核销邮箱验证链接，请稍候。")).toBeVisible();
+  await expect(page.getByText("请稍候。")).toBeVisible();
   await expect(page.getByLabel("学号")).toHaveCount(0);
 
   releaseVerify();
