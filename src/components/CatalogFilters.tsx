@@ -27,6 +27,8 @@ const ALL_VALUE = "__all__";
 
 const CATEGORY_OPTIONS = [
   { id: "", label: "全部" },
+  { id: "major", label: "专业课" },
+  { id: "public_basic", label: "公共课" },
   { id: "sports", label: "体育课" },
   { id: "english", label: "英语课" },
   { id: "ideology", label: "思政课" },

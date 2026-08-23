@@ -9,11 +9,22 @@ async function mockCatalogApi(page: Page) {
       });
     if (url.pathname === "/api/courses") {
       const category = url.searchParams.get("category") || "";
-      const allowed = new Set(["sports", "english", "ideology", "math", "mooc"]);
+      const allowed = new Set([
+        "major",
+        "public_basic",
+        "sports",
+        "english",
+        "ideology",
+        "math",
+        "mooc",
+      ]);
       if (category && !allowed.has(category)) {
         return route.fulfill({
           status: 400,
-          json: { error: "公开筛选仅支持 sports、english、ideology、math、mooc" },
+          json: {
+            error:
+              "公开筛选仅支持 major、public_basic、sports、english、ideology、math、mooc",
+          },
         });
       }
       const items = [
@@ -92,6 +103,32 @@ async function mockCatalogApi(page: Page) {
           scheme: "ideology",
           mooc: true,
         },
+        {
+          id: 61,
+          code: "MJ0101",
+          name: "计量经济学",
+          category: "general",
+          department: "经济学院",
+          teachers: "专业课教师",
+          teacher_refs: "62:专业课教师",
+          review_count: 1,
+          rating: 4.4,
+          scheme: "major",
+          mooc: false,
+        },
+        {
+          id: 71,
+          code: "PB0101",
+          name: "公共基础导论",
+          category: "general",
+          department: "教务处",
+          teachers: "公共课教师",
+          teacher_refs: "72:公共课教师",
+          review_count: 1,
+          rating: 4.0,
+          scheme: "public_basic",
+          mooc: false,
+        },
       ]
         .filter((item) => {
           if (!category) return true;
@@ -126,21 +163,35 @@ function catalogFirstRow(page: Page) {
 
 test.beforeEach(async ({ page }) => mockCatalogApi(page));
 
-test("course catalog exposes sports, english, ideology, math, and 网课 filters", async ({
+test("course catalog exposes major, public_basic, sports, english, ideology, math, and 网课 filters", async ({
   page,
 }) => {
   await page.goto("/courses");
   const categoryBar = page.getByRole("search", { name: "课程目录筛选" });
   await expect(categoryBar.getByRole("button", { name: "全部" })).toBeVisible();
+  await expect(categoryBar.getByRole("button", { name: "专业课" })).toBeVisible();
+  await expect(categoryBar.getByRole("button", { name: "公共课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "体育课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "英语课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "思政课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "数学课" })).toBeVisible();
   await expect(categoryBar.getByRole("button", { name: "网课" })).toBeVisible();
-  await expect(categoryBar.getByRole("button", { name: "专业课" })).toHaveCount(0);
   await expect(categoryBar.getByRole("button", { name: "公共选修" })).toHaveCount(0);
   await expect(categoryBar.getByRole("button", { name: /sports/i })).toHaveCount(0);
   await expect(categoryBar.getByRole("button", { name: /mooc/i })).toHaveCount(0);
+
+  await categoryBar.getByRole("button", { name: "专业课" }).click();
+  await expect(page).toHaveURL(/category=major/);
+  await expect(page.getByRole("link", { name: "计量经济学" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "公共基础导论" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "篮球" })).toHaveCount(0);
+  await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
+
+  await categoryBar.getByRole("button", { name: "公共课" }).click();
+  await expect(page).toHaveURL(/category=public_basic/);
+  await expect(page.getByRole("link", { name: "公共基础导论" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "计量经济学" })).toHaveCount(0);
+  await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
 
   await categoryBar.getByRole("button", { name: "英语课" }).click();
   await expect(page).toHaveURL(/category=english/);
@@ -182,6 +233,23 @@ test("sports category deep link still works", async ({ page }) => {
   await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
 });
 
+test("major and public_basic deep links are no longer treated as stale", async ({
+  page,
+}) => {
+  await page.goto("/courses?category=major");
+  await expect(page).toHaveURL(/category=major/);
+  await expect(catalogFirstRow(page)).toContainText("计量经济学");
+  await expect(page.getByRole("link", { name: "公共基础导论" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "篮球" })).toHaveCount(0);
+  await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
+
+  await page.goto("/courses?category=public_basic");
+  await expect(page).toHaveURL(/category=public_basic/);
+  await expect(catalogFirstRow(page)).toContainText("公共基础导论");
+  await expect(page.getByRole("link", { name: "计量经济学" })).toHaveCount(0);
+  await expect(page.getByText(/公开筛选仅支持/)).toHaveCount(0);
+});
+
 test("obsolete category query params do not request the public API", async ({
   page,
 }) => {
@@ -191,11 +259,15 @@ test("obsolete category query params do not request the public API", async ({
     if (url.pathname === "/api/courses") courseRequests.push(url.search);
   });
 
-  await page.goto("/courses?category=major");
-  await expect(page.getByRole("link", { name: "中国传统文化导论" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "篮球" })).toBeVisible();
-  await expect(page).not.toHaveURL(/category=/);
-  expect(courseRequests.some((search) => search.includes("category=major"))).toBe(
-    false,
-  );
+  for (const obsolete of ["general", "pe", "required"]) {
+    await page.goto(`/courses?category=${obsolete}`);
+    await expect(
+      page.getByRole("link", { name: "中国传统文化导论" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "篮球" })).toBeVisible();
+    await expect(page).not.toHaveURL(/category=/);
+  }
+  expect(
+    courseRequests.some((search) => /category=(general|pe|required)/.test(search)),
+  ).toBe(false);
 });

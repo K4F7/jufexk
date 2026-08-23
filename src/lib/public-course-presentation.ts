@@ -272,6 +272,8 @@ export function publicSportsMatchSql(alias = "c"): string {
 
 /** Public catalog `?category=` values. Empty means all; others stay 400. */
 export const PUBLIC_CATEGORY_FILTERS = [
+  "major",
+  "public_basic",
   "sports",
   "english",
   "ideology",
@@ -297,7 +299,8 @@ export function publicCategoryFilterError(): string {
 
 /**
  * sports: existing PE presentation match or scheme_key=pe.
- * english / ideology / math: exact scheme_key, excluding mooc-tagged rows.
+ * major / public_basic / english / ideology / math: exact scheme_key,
+ * excluding mooc-tagged rows.
  * mooc: every public course with the mooc tag, regardless of scheme_key.
  */
 export function publicCategoryFilterSql(

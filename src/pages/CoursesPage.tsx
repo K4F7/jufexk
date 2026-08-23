@@ -205,7 +205,8 @@ export function CoursesPage() {
   useEffect(() => setQueryDraft(q), [q]);
   useEffect(() => setDepartmentDraft(department), [department]);
   useEffect(() => {
-    // Stale bookmarks may still carry major/pe/general; those 400 on the API.
+    // Stale bookmarks may still carry pe/general/required; those 400 on the
+    // API. major/public_basic are valid public filters since Issue #364.
     if (!rawCategory || isPublicCategoryFilter(rawCategory)) return;
     const next = new URLSearchParams(params);
     next.delete("category");
