@@ -523,3 +523,55 @@ test("scheme snapshot reviews show one dimension-average chip", async ({
   await expect(page.getByText("上课表现")).toHaveCount(0);
   await expect(page.getByText("点名频率")).toHaveCount(0);
 });
+
+test("four-tier snapshot reviews show four Chinese tier chips and no average", async ({
+  page,
+}) => {
+  await page.route("**/api/courses/8/reviews**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("teacherId") !== "9") return route.fallback();
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            id: "review:2",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "带新四维快照的补充说明",
+            dimensionLabels: [
+              { id: "difficulty", label: "课程难度", option: "简单" },
+              { id: "homework", label: "作业多少", option: "中等" },
+              { id: "grading", label: "给分好坏", option: "杀手" },
+              { id: "gain", label: "收获多少", option: "一般" },
+            ],
+            endorsement_count: 0,
+            endorsable: false,
+          },
+          {
+            id: "review:3",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "旧 1–5 快照的补充说明",
+            dimensionAverage: 3.5,
+            endorsement_count: 0,
+            endorsable: false,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+  });
+
+  await page.goto("/courses/8?teacher=9");
+  const items = reviewItems(page);
+  await expect(items).toHaveCount(2);
+  const tiered = items.nth(0);
+  await expect(tiered.getByText("课程难度 简单", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("作业多少 中等", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("给分好坏 杀手", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("收获多少 一般", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("维度均分")).toHaveCount(0);
+  const legacy = items.nth(1);
+  await expect(legacy.getByText("维度均分 3.5")).toBeVisible();
+  await expect(legacy.getByText("课程难度")).toHaveCount(0);
+});

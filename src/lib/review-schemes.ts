@@ -418,3 +418,43 @@ export function publicDimensionAverage(input: {
   if (!scores) return null;
   return dimensionAverage(scores);
 }
+
+export type PublicDimensionLabel = {
+  id: string;
+  /** Dimension label, e.g. 课程难度. */
+  label: string;
+  /** Chosen option label, e.g. 简单. */
+  option: string;
+};
+
+/**
+ * Public-feed tier labels: only rows with a stored scheme snapshot whose
+ * published version no longer averages its dimensions. Each dimension's
+ * stored score is translated to that version's Chinese option label, in
+ * dimension-definition order. Old 1–5 snapshots are never translated into
+ * the new tier copy, and a snapshot missing any dimension's valid option
+ * yields no labels at all.
+ */
+export function publicDimensionLabels(input: {
+  schemeKey?: unknown;
+  schemeVersion?: unknown;
+  scores?: unknown;
+}): PublicDimensionLabel[] | null {
+  if (typeof input.schemeKey !== "string" || !isSchemeKey(input.schemeKey))
+    return null;
+  const version = Number(input.schemeVersion);
+  if (!Number.isInteger(version) || version < 1) return null;
+  const published = publishedSchemeVersion(input.schemeKey, version);
+  if (!published || published.averagesDimensions) return null;
+  const scores = parseStoredScores(input.scores);
+  if (!scores) return null;
+  const labels: PublicDimensionLabel[] = [];
+  for (const dimension of published.dimensions) {
+    const option = dimension.options.find(
+      (item) => item.value === scores[dimension.id],
+    );
+    if (!option) return null;
+    labels.push({ id: dimension.id, label: dimension.label, option: option.label });
+  }
+  return labels;
+}

@@ -76,6 +76,17 @@ export function PublicReviews({
                     <p className="m-0 break-words text-sm leading-relaxed">
                       {review.comment}
                     </p>
+                    {review.dimensionLabels?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {review.dimensionLabels.map((dimension) => (
+                          <Chip key={dimension.id} size="sm" variant="soft">
+                            <Chip.Label>
+                              {dimension.label} {dimension.option}
+                            </Chip.Label>
+                          </Chip>
+                        ))}
+                      </div>
+                    ) : null}
                     {typeof review.dimensionAverage === "number" ? (
                       <div className="mt-2">
                         <Chip size="sm" variant="soft">

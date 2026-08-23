@@ -90,6 +90,14 @@ export type Review = {
   moderator_note?: string;
 };
 
+export type PublicReviewDimensionLabel = {
+  id: string;
+  /** Dimension label, e.g. 课程难度. */
+  label: string;
+  /** Chosen option label, e.g. 简单. */
+  option: string;
+};
+
 export type PublicReview = {
   id: string | number;
   comment: string;
@@ -101,8 +109,10 @@ export type PublicReview = {
   endorsement_count?: number;
   endorsable?: boolean;
   viewer_endorsed?: boolean;
-  /** Present only when the row has a stored scheme snapshot. */
+  /** Present only for stored snapshots whose scheme version still averages dimensions. */
   dimensionAverage?: number;
+  /** Present only for stored snapshots whose scheme version publishes tier labels. */
+  dimensionLabels?: PublicReviewDimensionLabel[];
 };
 
 export type EndorsementState = {
