@@ -14,6 +14,7 @@ import {
   handleWithdrawRecommend,
 } from "../relation-signals";
 import { snapshotReviewScores } from "../lib/review-schemes";
+import { isExcludedCourseName } from "../lib/course-catalog-policy";
 import { readSecret, turnstileMode } from "../secrets";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
 import type { AppContext } from "./types";
@@ -278,6 +279,8 @@ ordinaryUserRoutes.post("/api/catalog-requests", async (c) => {
     return fail(c, "教师申请不得携带课程字段或随附评价");
   if (kind === "course" && (!courseCode || !courseName))
     return fail(c, "请填写课号和课程名称");
+  if (kind === "course" && isExcludedCourseName(courseName))
+    return fail(c, "班会不纳入课程目录");
   if (!teacherSourceLabel) return fail(c, "请填写来源教师名");
   if (kind === "course" && !category) return fail(c, "请选择评价模板类型");
   if (category && !["general", "sports"].includes(category))

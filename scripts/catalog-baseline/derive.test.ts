@@ -181,6 +181,38 @@ describe("catalog baseline deterministic offline derivation", () => {
     expect(exceptions).toEqual([]);
   });
 
+  it("excludes only the normalized exact course name 班会", async () => {
+    const captureRoot = await tempRoot("excluded-course-capture");
+    const outputRoot = await tempRoot("excluded-course-output");
+    await writeCapturePackage(captureRoot, {
+      batchId: "excluded-course",
+      status: "complete",
+      sourceDictionarySha256: sourceDictionary().sha256,
+      sourceDictionary: sourceDictionary(),
+      queries: [query("main-excluded-course", "2026-1", 2)],
+      snapshots: [{
+        queryId: "main-excluded-course",
+        page: 1,
+        bytes: sourceShapedHtml([
+          `<tr>${cells("[COURSE-HOMEROOM]&#8203;班会&#8288;", "班会教师")}</tr>`,
+          `<tr>${cells("[COURSE-ACTIVITY]班会活动", "活动教师")}</tr>`,
+        ].join("")),
+      }],
+    });
+
+    const manifest = await deriveCatalogBaseline(captureRoot, outputRoot);
+    const inventory = await readJsonLines(join(outputRoot, "inventory.jsonl"));
+    const courses = await readJsonLines(join(outputRoot, "courses.jsonl"));
+    const teachers = await readJsonLines(join(outputRoot, "teachers.jsonl"));
+    const relations = await readJsonLines(join(outputRoot, "relations.jsonl"));
+
+    expect(manifest.status).toBe("derived");
+    expect(inventory.map((record) => record.courseCode)).toEqual(["COURSE-ACTIVITY"]);
+    expect(courses.map((course) => course.currentName)).toEqual(["班会活动"]);
+    expect(teachers.map((teacher) => teacher.sourceTeacherLabel)).toEqual(["活动教师"]);
+    expect(relations.map((relation) => relation.courseCode)).toEqual(["COURSE-ACTIVITY"]);
+  });
+
   it("inherits a blank course cell within and across pages of the same query", async () => {
     const captureRoot = await tempRoot("inheritance-capture");
     const outputRoot = await tempRoot("inheritance-output");

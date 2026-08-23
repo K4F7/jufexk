@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isExcludedCourseName } from "./lib/course-catalog-policy";
 
 export const APPROVED_MANIFEST_SCHEMA = "catalog-baseline-approved-manifest/v1";
 export const APPROVED_RECORD_SCHEMA = "catalog-baseline-approved-record/v1";
@@ -95,6 +96,7 @@ export function parseApprovedChunk(content: string): ApprovedRecord[] {
     const value = record.value;
     if (record.recordType === "course") {
       if (value.schemaVersion !== "catalog-baseline-course/v1" || !requiredText(value.courseCode, 100) || !requiredText(value.currentName) || !requiredText(value.normalizedCurrentName) || !["general", "sports"].includes(String(value.category)) || !Array.isArray(value.sourceCategoryTexts) || value.sourceCategoryTexts.some((text) => typeof text !== "string" || text.length > 500) || !Array.isArray(value.nameVariants) || value.nameVariants.length > 100 || value.nameVariants.some((variant) => !isObject(variant) || !requiredText(variant.rawName) || !requiredText(variant.normalizedName))) throw new Error(`分块第 ${index + 1} 行课程无效`);
+      if (isExcludedCourseName(String(value.currentName)) || isExcludedCourseName(String(value.normalizedCurrentName)) || value.nameVariants.some((variant) => isObject(variant) && (isExcludedCourseName(String(variant.rawName)) || isExcludedCourseName(String(variant.normalizedName))))) throw new Error(`分块第 ${index + 1} 行包含已排除课程`);
     } else if (record.recordType === "teacher") {
       if (value.schemaVersion !== "catalog-baseline-teacher/v1" || !requiredText(value.sourceTeacherLabel) || !requiredText(value.normalizedTeacherLabel)) throw new Error(`分块第 ${index + 1} 行教师无效`);
     } else if (value.schemaVersion !== "catalog-baseline-relation/v2" || !requiredText(value.courseCode, 100) || !requiredText(value.sourceTeacherLabel) || !validateProvenance(value.provenance)) throw new Error(`分块第 ${index + 1} 行关系无效`);
