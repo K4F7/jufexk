@@ -152,6 +152,7 @@ describe("submitted score validation", () => {
     expect(validateReviewNote("  1234567890  ")).toEqual({
       ok: true,
       comment: "1234567890",
+      commentFormat: null,
     });
     expect(validateReviewNote("x".repeat(REVIEW_NOTE_MAX_LENGTH + 1))).toEqual({
       ok: false,

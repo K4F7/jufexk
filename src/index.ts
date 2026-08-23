@@ -83,6 +83,10 @@ import {
   type SchemeKey,
 } from "./lib/review-schemes";
 import {
+  REVIEW_NOTE_HTML_MAX_LENGTH,
+  sanitizeReviewNoteValue,
+} from "./lib/review-note-html";
+import {
   DEFAULT_API_CACHE_CONTROL,
   purgePublicCatalogCache,
   setPublicCatalogCacheHeaders,
@@ -175,7 +179,9 @@ const parseStashedReview = (json: string): StashedReview | null => {
   return {
     scores: object.scores,
     overall,
-    comment: clean(object.comment, 1200),
+    // 暂存的是提交时已消毒的补充说明；HTML 标记不计入 10–1200 字门槛，
+    // 这里只按存储上限截断，批准时 snapshotReviewScores 会重新消毒校验。
+    comment: clean(object.comment, REVIEW_NOTE_HTML_MAX_LENGTH),
     term: clean(object.term, 30),
   };
 };
@@ -463,12 +469,12 @@ const getPublicReviewPage = async (
   const teacherBinds = teacherId ? [teacherId] : [];
   const { results } = await db
     .prepare(
-      `SELECT source_order,sort_key,id,course_id,teacher_id,comment,
+      `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
          course_name,course_code,teacher_name,endorsement_count,
          scheme_key,scheme_version,scores
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
-           phr.course_id,phr.teacher_id,phr.comment,
+           phr.course_id,phr.teacher_id,phr.comment,NULL comment_format,
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores
@@ -478,7 +484,7 @@ const getPublicReviewPage = async (
          WHERE phr.${subject}=?${teacherFilter("phr")}
          UNION ALL
          SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
-           lr.course_id,lr.teacher_id,lr.comment,
+           lr.course_id,lr.teacher_id,lr.comment,NULL comment_format,
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores
@@ -489,7 +495,7 @@ const getPublicReviewPage = async (
            AND trim(COALESCE(lr.comment,''))<>''${teacherFilter("lr")}
          UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
-           r.course_id,r.teacher_id,r.comment,
+           r.course_id,r.teacher_id,r.comment,r.comment_format,
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
            r.scheme_key,r.scheme_version,r.scores
@@ -1281,8 +1287,8 @@ app.post("/api/reviews", async (c) => {
         dedupeKey,
       ),
       c.env.DB.prepare(
-        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,term,submitter_hash,scheme_key,scheme_version,scores,status,reviewed_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
+        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,comment_format,term,submitter_hash,scheme_key,scheme_version,scores,status,reviewed_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
       ).bind(
         courseId,
         teacherId,
@@ -1290,6 +1296,7 @@ app.post("/api/reviews", async (c) => {
         course.category,
         overall,
         snapshot.comment,
+        snapshot.commentFormat,
         term,
         ipHash,
         snapshot.schemeKey,
@@ -1652,7 +1659,7 @@ app.get("/api/admin/reviews", async (c) => {
         r.attendance,r.grading,r.grading_score,r.workload,r.rescue,
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
-        r.comment,r.term,r.status,r.moderator_note,r.created_at,r.reviewed_at,
+        r.comment,r.comment_format,r.term,r.status,r.moderator_note,r.created_at,r.reviewed_at,
         r.scheme_key,r.scheme_version,
         c.name course_name,c.code,t.name teacher_name
        FROM reviews r JOIN courses c ON c.id=r.course_id
@@ -1796,17 +1803,18 @@ app.patch("/api/admin/catalog-requests/:id", async (c) => {
     statements.push(
       c.env.DB.prepare(
         `INSERT INTO reviews(
-           course_id,teacher_id,category,overall,comment,
+           course_id,teacher_id,category,overall,comment,comment_format,
            term,submitter_hash,scheme_key,scheme_version,scores,
            status,reviewed_at
          )
-         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP
+         SELECT c.id,t.id,c.category,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP
          FROM courses c,teachers t
          WHERE c.code=? AND t.source_teacher_label=?
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(
         stashed.overall,
         snapshot.comment,
+        snapshot.commentFormat,
         stashed.term || "",
         request.submitter_hash,
         snapshot.schemeKey,
@@ -1959,8 +1967,15 @@ app.patch("/api/admin/reviews/:id/content", async (c) => {
     return fail(c, "评分必须在 1 到 5 之间");
   const updates: string[] = [];
   const values: unknown[] = [];
+  // 补充说明走与投稿同一套白名单消毒，并重写格式标记（issue #400）。
+  if (Object.hasOwn(b, "comment")) {
+    const note = sanitizeReviewNoteValue(
+      clean(b.comment, REVIEW_NOTE_HTML_MAX_LENGTH),
+    );
+    updates.push("comment=?", "comment_format=?");
+    values.push(note.comment, note.commentFormat);
+  }
   const textFields = [
-    ["comment", "comment", 1200],
     ["teaching", "teaching", 600],
     ["attendance", "attendance", 120],
     ["grading", "grading", 120],
