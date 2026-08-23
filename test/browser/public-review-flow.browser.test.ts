@@ -1,3 +1,13 @@
+/**
+ * Browser coverage for the Issue #402 course detail page: 始终按 课程×教师
+ * 关系展示（默认落到点评数最多的关系），右栏切换其他老师 / 这位老师的其他课，
+ * 点评区带排序与认可，写点评入口进 /submit 预设关系。
+ *
+ * 后端 descope（#410 的缺口不在 #402 实现）：目录走 /api/courses 前端展开
+ * 关系行；点评条目没有逐条 overall/term/created_at（无星级、无学期、
+ * 无学期/评分筛选）；四维档位用 #373 的 dimensionLabels，旧快照显示
+ * 维度均分 Chip。
+ */
 import { expect, test, type Page } from "@playwright/test";
 
 const teacherNineReviews = Array.from({ length: 21 }, (_, index) => ({
@@ -24,8 +34,6 @@ const teacherTenReviews = [1, 2].map((index) => ({
   endorsable: false,
 }));
 
-const allReviews = [...teacherNineReviews, ...teacherTenReviews];
-
 async function mockApi(page: Page) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -41,8 +49,8 @@ async function mockApi(page: Page) {
           logoutPath: "/logout",
         },
       });
-    if (url.pathname === "/api/courses") {
-      const searched = url.searchParams.has("q") && url.searchParams.get("q") !== "";
+    if (url.pathname === "/api/courses" && !url.pathname.includes("/reviews")) {
+      // 目录：课程级行，前端按 teacher_refs 展开成 课程×教师 关系行。
       const items = [
         {
           id: 8,
@@ -50,10 +58,9 @@ async function mockApi(page: Page) {
           name: "中国传统文化导论",
           category: "general",
           department: "人文学院",
-          teachers: "测试教师,另一位教师",
-          teacher_refs: "9:测试教师,10:另一位教师",
           review_count: 23,
-          rating: 4.6,
+          rating: null,
+          teacher_refs: "9:测试教师,10:另一位教师",
         },
         {
           id: 10,
@@ -61,44 +68,11 @@ async function mockApi(page: Page) {
           name: "暂无文字评价课程",
           category: "general",
           department: "测试学院",
-          teachers: null,
-          teacher_refs: null,
           review_count: 0,
           rating: null,
         },
       ];
-      return route.fulfill({
-        json: {
-          items: searched ? [items[1], items[0]] : items,
-          page: 1,
-          pageSize: 20,
-          total: 2,
-          pages: 1,
-        },
-      });
-    }
-    if (url.pathname === "/api/teachers") {
       const searched = url.searchParams.has("q") && url.searchParams.get("q") !== "";
-      const items = [
-        {
-          id: 9,
-          name: "测试教师",
-          department: "人文学院",
-          title: "讲师",
-          review_count: 21,
-          rating: 4.6,
-          course_count: 1,
-        },
-        {
-          id: 11,
-          name: "零评价教师",
-          department: "测试学院",
-          title: "讲师",
-          review_count: 0,
-          rating: null,
-          course_count: 0,
-        },
-      ];
       return route.fulfill({
         json: {
           items: searched ? [items[1], items[0]] : items,
@@ -118,6 +92,7 @@ async function mockApi(page: Page) {
             name: "中国传统文化导论",
             category: "general",
             department: "人文学院",
+            credits: 3,
             teachers: [
               {
                 id: 9,
@@ -154,14 +129,7 @@ async function mockApi(page: Page) {
           json: { items: teacherTenReviews, nextCursor: null },
         });
       }
-      // 未指定教师：返回该课全部公开评价（Issue #201）。
-      if (url.searchParams.has("cursor"))
-        return route.fulfill({
-          json: { items: allReviews.slice(20), nextCursor: null },
-        });
-      return route.fulfill({
-        json: { items: allReviews.slice(0, 20), nextCursor: "all-page-2" },
-      });
+      return route.fulfill({ json: { items: [], nextCursor: null } });
     }
     if (url.pathname === "/api/courses/10")
       return route.fulfill({
@@ -188,25 +156,44 @@ async function mockApi(page: Page) {
               name: "中国传统文化导论",
               category: "general",
               department: "人文学院",
+              review_count: 21,
+              rating: 4.6,
+            },
+            {
+              id: 12,
+              code: "GEN0201",
+              name: "写作与沟通",
+              category: "general",
+              department: "人文学院",
+              review_count: 3,
+              rating: 4.2,
             },
           ],
-          reviews: teacherNineReviews.slice(0, 20),
-          reviewCount: 21,
-          nextReviewCursor: "next-page",
-        },
-      });
-    if (url.pathname === "/api/teachers/11")
-      return route.fulfill({
-        json: {
-          teacher: { id: 11, name: "零评价教师", department: "测试学院", title: "讲师" },
-          courses: [],
           reviews: [],
-          reviewCount: 0,
+          reviewCount: 21,
           nextReviewCursor: null,
         },
       });
-    if (url.pathname === "/api/teachers/9/reviews")
-      return route.fulfill({ json: { items: teacherNineReviews.slice(20), nextCursor: null } });
+    if (url.pathname === "/api/teachers/10")
+      return route.fulfill({
+        json: {
+          teacher: { id: 10, name: "另一位教师", department: "信息学院", title: "讲师" },
+          courses: [
+            {
+              id: 8,
+              code: "GEN0108",
+              name: "中国传统文化导论",
+              category: "general",
+              department: "人文学院",
+              review_count: 2,
+              rating: null,
+            },
+          ],
+          reviews: [],
+          reviewCount: 2,
+          nextReviewCursor: null,
+        },
+      });
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
@@ -217,29 +204,7 @@ function reviewItems(page: Page) {
   return page.getByRole("list", { name: "评价列表" }).getByRole("listitem");
 }
 
-function catalogFirstRow(page: Page, name: "课程目录" | "教师资料") {
-  return page.getByRole("grid", { name }).getByRole("row").nth(1);
-}
-
-/** 教师区是密表（`Table.Content aria-label="任课教师"`）。 */
-function teacherRegion(page: Page) {
-  return page.getByRole("grid", { name: "任课教师" });
-}
-
-function courseSummary(page: Page) {
-  return page.locator("header[aria-label='课程摘要']");
-}
-
-/** 点击院系列切换 `?teacher=`，避免点到姓名链接离开课程页。 */
-async function selectTeacher(page: Page, name: string) {
-  await teacherRegion(page)
-    .getByRole("row", { name: new RegExp(name) })
-    .getByRole("gridcell")
-    .nth(1)
-    .click();
-}
-
-test("course detail shows teachers or reviews, never both", async ({
+test("course detail defaults to the most-reviewed relation", async ({
   page,
 }) => {
   const reviewRequests: string[] = [];
@@ -251,57 +216,65 @@ test("course detail shows teachers or reviews, never both", async ({
 
   await page.goto("/courses/8");
 
-  // 未选教师：只有任课表，不请求、不渲染评价流。
-  await expect(teacherRegion(page)).toBeVisible();
-  await expect(reviewItems(page)).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "评价" })).toHaveCount(0);
-  expect(reviewRequests).toHaveLength(0);
+  // 未带 teacher 参数：落到点评数最多的 测试教师 关系。
+  const heading = page.getByRole("heading", { name: /中国传统文化导论/ });
+  await expect(heading).toContainText("（测试教师）");
+  await expect(page.getByText("4.6", { exact: true })).toBeVisible();
+  await expect(page.getByText("（21 人评价）")).toBeVisible();
+  await expect(page.getByText("课程号：GEN0108")).toBeVisible();
+  // 关系级四维聚合未下发（#410）：头部保留占位；点评条目不再渲染占位行。
+  await expect(page.getByText("课程难度：—")).toBeVisible();
+  // 元信息网格。
+  await expect(page.getByText("开课单位：")).toBeVisible();
+  await expect(page.getByText("人文学院").first()).toBeVisible();
+  await expect(page.getByText("学分：")).toBeVisible();
+  // 关注 / 推荐 / 不推荐占位开关。
+  await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "推荐", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "不推荐" })).toBeVisible();
+  // AI 总结占位块与免责声明（该关系未生成总结时）。
+  await expect(
+    page.getByRole("heading", { name: "AI 总结" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("AI 总结为根据点评内容自动生成，仅供参考"),
+  ).toBeVisible();
 
-  const hint = page.getByText(
-    "选择一位任课教师，查看这位老师在这门课的评价。",
-  );
-  await expect(hint).toBeVisible();
-  const hintBox = await hint.boundingBox();
-  const regionBox = await teacherRegion(page).boundingBox();
-  expect(hintBox && regionBox && hintBox.y + hintBox.height <= regionBox.y + 2).toBe(
-    true,
-  );
-
-  const region = teacherRegion(page);
-  await expect(region.getByRole("row", { name: /另一位教师/ })).toContainText(
-    "2 投",
-  );
-
-  await selectTeacher(page, "测试教师");
-  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
-  await expect(teacherRegion(page)).toHaveCount(0);
+  // 点评区：标题 + 写点评主按钮 + 排序 Select（学期/评分筛选待 #410 投影）。
+  await expect(page.getByRole("heading", { name: "点评" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "写点评" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /排序/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /评分/ })).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(20);
-  await expect(page.getByText("21 条", { exact: true })).toBeVisible();
-  const summary = courseSummary(page);
-  await expect(summary.getByRole("link", { name: "测试教师" })).toBeVisible();
-  await expect(summary).toContainText("任课教师");
-  await expect(summary.locator("dd")).toContainText("人文学院");
-  await expect(page.getByLabel("评价数概览")).toContainText("21");
+  expect(
+    reviewRequests.filter((search) => search.includes("teacherId=9")),
+  ).toHaveLength(1);
 
-  await page.getByRole("button", { name: "返回任课老师" }).click();
-  await expect(page).toHaveURL(/\/courses\/8$/);
-  await expect(teacherRegion(page)).toBeVisible();
-  await expect(reviewItems(page)).toHaveCount(0);
-  await expect(summary.getByRole("link", { name: "测试教师" })).toHaveCount(0);
-  await expect(summary.getByText("任课教师")).toHaveCount(0);
-  expect(reviewRequests.filter((search) => search === "")).toHaveLength(0);
+  // 条目：匿名用户 + 正文；历史行没有认可按钮。默认排序保持后端流顺序：
+  // 第一条即 mock 流的第一条 匿名评价 1。
+  const first = reviewItems(page).first();
+  await expect(first).toContainText("匿名用户");
+  await expect(first).toContainText("匿名评价 1");
+  await expect(
+    first.getByRole("button", { name: /认可/ }),
+  ).toHaveCount(0);
 
-  await selectTeacher(page, "另一位教师");
-  await expect(page).toHaveURL(/\/courses\/8\?teacher=10$/);
-  await expect(teacherRegion(page)).toHaveCount(0);
-  await expect(reviewItems(page)).toHaveCount(2);
-  await expect(page.getByText("2 条", { exact: true })).toBeVisible();
-  await expect(summary.getByRole("link", { name: "另一位教师" })).toBeVisible();
-  await expect(summary.locator("dd")).toContainText("信息学院");
-  await expect(page.getByLabel("评价数概览")).toContainText("2");
+  // 右栏：老师卡 + 其他老师 + 这位老师的其他课。
+  const aside = page.locator("aside");
+  await expect(aside.getByText("测试教师", { exact: true })).toBeVisible();
+  await expect(aside.getByText("教师主页：暂无")).toBeVisible();
+  await expect(
+    aside.getByRole("link", { name: "另一位教师" }),
+  ).toBeVisible();
+  await expect(
+    aside.getByRole("link", { name: "写作与沟通" }),
+  ).toBeVisible();
 });
 
-test("teacher switch restores fully loaded pages from cache", async ({
+test("sidebar switches teachers and the session cache restores loaded pages", async ({
   page,
 }) => {
   const reviewRequests: string[] = [];
@@ -312,22 +285,31 @@ test("teacher switch restores fully loaded pages from cache", async ({
   });
 
   await page.goto("/courses/8");
-  await selectTeacher(page, "测试教师");
-  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(reviewItems(page)).toHaveCount(20);
-  const feed = page.getByRole("list", { name: "评价列表" });
-  await expect(feed.getByRole("link")).toHaveCount(0);
-  await expect(feed.getByRole("listitem").first()).toContainText("匿名评价 1");
   await page.getByRole("button", { name: "继续加载" }).click();
   await expect(reviewItems(page)).toHaveCount(21);
 
-  await page.getByRole("button", { name: "返回任课老师" }).click();
-  await selectTeacher(page, "另一位教师");
+  // 切到另一位教师：2 条；切回：21 条全部从缓存恢复，不重拉。
+  await page
+    .locator("aside")
+    .getByRole("link", { name: "另一位教师" })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=10/);
+  await expect(
+    page.getByRole("heading", { name: /中国传统文化导论（另一位教师）/ }),
+  ).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(2);
+  // 无评分关系：头部灰星 + 人数，不发明评分数字（右栏其他老师仍带真实分）。
+  await expect(page.getByText("（2 人评价）")).toBeVisible();
+  await expect(
+    page.locator("header.mt-3").getByText("4.6", { exact: true }),
+  ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "返回任课老师" }).click();
-  await selectTeacher(page, "测试教师");
-  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await page
+    .locator("aside")
+    .getByRole("link", { name: "测试教师" })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   await expect(reviewItems(page)).toHaveCount(21);
   await expect(page.getByRole("button", { name: "继续加载" })).toHaveCount(0);
   expect(
@@ -338,149 +320,103 @@ test("teacher switch restores fully loaded pages from cache", async ({
   ).toHaveLength(0);
 });
 
-test("teacher home link is the only control that leaves the course page", async ({
+test("write-review entry presets the relation on /submit", async ({ page }) => {
+  await page.goto("/courses/8?teacher=9");
+  await page.getByRole("button", { name: "写点评" }).click();
+  // 访客进表单前先过登录门；from 带回写评价地址。
+  await expect(page).toHaveURL(
+    /\/login\?from=%2Fsubmit%3FcourseId%3D8%26teacherId%3D9/,
+  );
+});
+
+test("course without teachers keeps an honest header and no write entry", async ({
   page,
 }) => {
-  await page.goto("/courses/8");
-  await expect(reviewItems(page)).toHaveCount(0);
-
-  await teacherRegion(page).getByRole("link", { name: "测试教师" }).click();
-  await expect(page).toHaveURL(/\/teachers\/9$/);
+  await page.goto("/courses/10");
   await expect(
-    page.getByRole("heading", { name: "测试教师" }),
+    page.getByRole("heading", { name: "暂无文字评价课程" }),
   ).toBeVisible();
-
-  // ?teacher= 深链与返回按钮仍可用（Issue #201 验收）。
-  await page.goto("/courses/8?teacher=9");
-  await expect(teacherRegion(page)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "返回任课老师" })).toBeVisible();
-  await expect(reviewItems(page)).toHaveCount(20);
-  await expect(page.getByText("21 条", { exact: true })).toBeVisible();
+  await expect(page.getByText("暂无评价").first()).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /认可/ }),
+    page.getByRole("button", { name: "写点评" }),
   ).toHaveCount(0);
-  await courseSummary(page).getByRole("link", { name: "测试教师" }).click();
-  await expect(page).toHaveURL(/\/teachers\/9$/);
-  await page.goto("/courses/8?teacher=9");
-  await page.getByRole("button", { name: "返回任课老师" }).click();
-  await expect(page).toHaveURL(/\/courses\/8$/);
-  await page.getByRole("button", { name: "返回课程目录" }).click();
+  await expect(page.getByText("教师主页：暂无")).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: "暂无评价" }),
+  ).toBeVisible();
+});
+
+test("catalog relation rows link into the matching course×teacher page", async ({
+  page,
+}) => {
+  await page.goto("/courses");
+  await page
+    .getByRole("link", { name: /中国传统文化导论（另一位教师）/ })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=10/);
+  await expect(reviewItems(page)).toHaveCount(2);
+
+  // 面包屑返回课程目录。
+  await page
+    .getByRole("navigation", { name: "面包屑" })
+    .getByRole("link", { name: "课程目录" })
+    .click();
   await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("teacher table shows review counts via RatingCell", async ({
+test("review sort switches the loaded list to most-recognized", async ({
   page,
 }) => {
-  await page.route("**/api/courses/8", (route) =>
-    route.fulfill({
+  await page.route("**/api/courses/8/reviews**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("teacherId") !== "9") return route.fallback();
+    return route.fulfill({
       json: {
-        course: {
-          id: 8,
-          code: "GEN0108",
-          name: "中国传统文化导论",
-          category: "general",
-          department: "人文学院",
-          teachers: [
-            {
-              id: 9,
-              name: "测试教师",
-              department: "人文学院",
-              review_count: 21,
-              rating: null,
-            },
-            {
-              id: 10,
-              name: "另一位教师",
-              department: "信息学院",
-              review_count: 2,
-              rating: null,
-            },
-          ],
-        },
-        reviewCount: 23,
+        items: [
+          {
+            id: "review:1",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "认可较少的评价，补充说明足够长。",
+            endorsement_count: 2,
+            endorsable: true,
+          },
+          {
+            id: "review:2",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "认可最多的评价，补充说明足够长。",
+            endorsement_count: 9,
+            endorsable: true,
+          },
+          {
+            id: "review:3",
+            course_id: 8,
+            teacher_id: 9,
+            comment: "没有认可的评价，补充说明足够长。",
+            endorsement_count: 0,
+            endorsable: true,
+          },
+        ],
+        nextCursor: null,
       },
-    }),
-  );
-  await page.goto("/courses/8");
-  const region = teacherRegion(page);
-  await expect(region.getByRole("row", { name: /测试教师/ })).toContainText(
-    "21 投",
-  );
-  await expect(region.getByRole("row", { name: /另一位教师/ })).toContainText(
-    "2 投",
-  );
-  // rating 为 null 时不发明评分数字（行无障碍名是「另一位教师…2 投」）。
-  await expect(region.getByText("4.6", { exact: true })).toHaveCount(0);
-});
-
-test("empty and mobile states remain accessible without overflow", async ({ page }) => {
-  await page.goto("/courses/10");
-  await expect(page.getByRole("status").filter({ hasText: "教师待补充" })).toBeVisible();
-  await expect(reviewItems(page)).toHaveCount(0);
+    });
+  });
 
   await page.goto("/courses/8?teacher=9");
-  await expect(teacherRegion(page)).toHaveCount(0);
-  await expect(reviewItems(page)).toHaveCount(20);
-  const layout = await page.evaluate(() => ({
-    viewport: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
-});
+  await expect(reviewItems(page)).toHaveCount(3);
+  // 默认排序保持后端流顺序。
+  await expect(reviewItems(page).first()).toContainText("认可较少的评价");
 
-test("catalog teacher link opens that course's teacher review page", async ({
-  page,
-}) => {
-  await page.goto("/courses");
-  await catalogFirstRow(page, "课程目录")
-    .getByRole("link", { name: "测试教师" })
-    .click();
-  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
-  await expect(teacherRegion(page)).toHaveCount(0);
-  await expect(reviewItems(page)).toHaveCount(20);
+  await page.getByRole("button", { name: /排序/ }).click();
+  await page.getByRole("option", { name: "认可最多" }).click();
+  await expect(reviewItems(page).first()).toContainText("认可最多的评价");
+  await expect(reviewItems(page).nth(1)).toContainText("认可较少的评价");
+  await expect(reviewItems(page).last()).toContainText("没有认可的评价");
 
-  await page.goto("/courses?q=中国");
-  await page
-    .getByRole("grid", { name: "课程目录" })
-    .getByRole("row", { name: /中国传统文化导论/ })
-    .getByRole("link", { name: "测试教师" })
-    .click();
-  await expect(page).toHaveURL(/\/courses\/8\?/);
-  await expect(page).toHaveURL(/q=/);
-  await expect(page).toHaveURL(/teacher=9/);
-  await expect(teacherRegion(page)).toHaveCount(0);
-  await expect(reviewItems(page)).toHaveCount(20);
-});
-
-test("course and teacher catalogs preserve default and search result order", async ({ page }) => {
-  await page.goto("/courses");
-  await expect(catalogFirstRow(page, "课程目录")).toContainText("中国传统文化导论");
-  await expect(catalogFirstRow(page, "课程目录")).toContainText(/23.*投/);
-  await expect(page.getByRole("link", { name: "暂无文字评价课程" })).toBeVisible();
-
-  await page.goto("/courses?q=暂无");
-  await expect(catalogFirstRow(page, "课程目录")).toContainText("暂无文字评价课程");
-  await page.getByRole("link", { name: "暂无文字评价课程" }).click();
-  await expect(page).toHaveURL(/\/courses\/10/);
-  await expect(page.getByRole("status").filter({ hasText: "教师待补充" })).toBeVisible();
-
-  await page.goto("/teachers");
-  await expect(catalogFirstRow(page, "教师资料")).toContainText("测试教师");
-  await expect(catalogFirstRow(page, "教师资料")).toContainText(/21.*投/);
-
-  await page.goto("/teachers?q=零评价");
-  await expect(catalogFirstRow(page, "教师资料")).toContainText("零评价教师");
-  await page.getByRole("link", { name: "零评价教师" }).click();
-  await expect(page).toHaveURL(/\/teachers\/11/);
-  await expect(page.getByText("暂无评价", { exact: true })).toBeVisible();
-});
-
-test("teacher detail keeps the unified text stream", async ({ page }) => {
-  await page.goto("/teachers/9");
-  await expect(reviewItems(page)).toHaveCount(20);
-  await expect(
-    page.getByRole("link", { name: "中国传统文化导论（GEN0108）" }).first(),
-  ).toBeVisible();
+  await page.getByRole("button", { name: /排序/ }).click();
+  await page.getByRole("option", { name: "默认" }).click();
+  await expect(reviewItems(page).first()).toContainText("认可较少的评价");
 });
 
 test("scheme snapshot reviews show one dimension-average chip", async ({
@@ -497,9 +433,9 @@ test("scheme snapshot reviews show one dimension-average chip", async ({
             course_id: 8,
             teacher_id: 9,
             comment: "有规则快照的补充说明",
-            dimensionAverage: 3.5,
             endorsement_count: 0,
             endorsable: false,
+            dimensionAverage: 3.5,
           },
           {
             id: "historical:old",
@@ -520,8 +456,101 @@ test("scheme snapshot reviews show one dimension-average chip", async ({
   await expect(items).toHaveCount(2);
   await expect(items.nth(0).getByText("维度均分 3.5")).toBeVisible();
   await expect(items.nth(1).getByText("维度均分")).toHaveCount(0);
+  // 没有快照的历史行不再渲染四维占位行。
+  await expect(items.nth(1).getByText("课程难度")).toHaveCount(0);
   await expect(page.getByText("上课表现")).toHaveCount(0);
   await expect(page.getByText("点名频率")).toHaveCount(0);
+});
+
+test("teacher catalog and detail keep the unified text stream", async ({
+  page,
+}) => {
+  await page.route("**/api/teachers**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/teachers") {
+      const searched = url.searchParams.has("q") && url.searchParams.get("q") !== "";
+      const items = [
+        {
+          id: 9,
+          name: "测试教师",
+          department: "人文学院",
+          title: "讲师",
+          review_count: 21,
+          rating: 4.6,
+          course_count: 1,
+        },
+        {
+          id: 11,
+          name: "零评价教师",
+          department: "测试学院",
+          title: "讲师",
+          review_count: 0,
+          rating: null,
+          course_count: 0,
+        },
+      ];
+      return route.fulfill({
+        json: {
+          items: searched ? [items[1], items[0]] : items,
+          page: 1,
+          pageSize: 20,
+          total: 2,
+          pages: 1,
+        },
+      });
+    }
+    if (url.pathname === "/api/teachers/9")
+      return route.fulfill({
+        json: {
+          teacher: { id: 9, name: "测试教师", department: "人文学院", title: "讲师" },
+          courses: [
+            {
+              id: 8,
+              code: "GEN0108",
+              name: "中国传统文化导论",
+              category: "general",
+              department: "人文学院",
+            },
+          ],
+          reviews: teacherNineReviews.slice(0, 20),
+          reviewCount: 21,
+          nextReviewCursor: "next-page",
+        },
+      });
+    if (url.pathname === "/api/teachers/9/reviews")
+      return route.fulfill({
+        json: { items: teacherNineReviews.slice(20), nextCursor: null },
+      });
+    return route.fallback();
+  });
+
+  await page.goto("/teachers");
+  const grid = page.getByRole("grid", { name: "教师资料" });
+  await expect(grid.getByRole("row").nth(1)).toContainText("测试教师");
+  await expect(grid.getByRole("row").nth(1)).toContainText(/21.*投/);
+
+  await page.goto("/teachers/9");
+  await expect(reviewItems(page)).toHaveCount(20);
+  await expect(
+    page.getByRole("link", { name: "中国传统文化导论（GEN0108）" }).first(),
+  ).toBeVisible();
+});
+
+test("empty and mobile states remain accessible without overflow", async ({
+  page,
+}) => {
+  await page.goto("/courses/10");
+  await expect(
+    page.getByRole("status").filter({ hasText: "暂无评价" }),
+  ).toBeVisible();
+
+  await page.goto("/courses/8?teacher=9");
+  await expect(reviewItems(page)).toHaveCount(20);
+  const layout = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
 });
 
 test("four-tier snapshot reviews show four Chinese tier chips and no average", async ({

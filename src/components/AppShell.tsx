@@ -1,15 +1,30 @@
-import { buttonVariants, Link } from "@heroui/react";
-import { lazy, Suspense, useMemo, type ReactNode } from "react";
-import { NavLink, useLocation, useSearchParams } from "react-router-dom";
+import { buttonVariants, Link, SearchField } from "@heroui/react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  NavLink,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import type { SiteConfig } from "../lib/types";
 import { AccountNavControl } from "./AccountNavControl";
 import { ThemeToggle } from "./ThemeToggle";
 
-const links = [
-  { id: "courses", to: "/courses", label: "课程" },
-  { id: "teachers", to: "/teachers", label: "教师" },
-  { id: "submit", to: "/submit", label: "写评价" },
-] as const;
+/**
+ * Production shell — USTC 评课社区对齐（Issue #402）：
+ * 左簇品牌 + 课程/课评/导师导航 · 居中课程搜索（提交到 /courses?q=）·
+ * 右侧学校名 + 登录（AccountNavControl）+ 主题切换。
+ * 顶栏与页面同底色、无硬分割线；写评价只从课程页「写点评」进入。
+ */
+
+const PI_REVIEW_URL = "https://pi-review.com/universities/661";
 
 /** DEV-only: live shell-nav prototype shell (dynamic so production never ships it). */
 const PrototypeShellLazy = import.meta.env.DEV
@@ -52,28 +67,40 @@ function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
 }
 
 function navSelectedKey(pathname: string): string {
-  if (pathname === "/teachers" || pathname.startsWith("/teachers/")) {
-    return "teachers";
-  }
-  if (pathname === "/submit" || pathname.startsWith("/submit/")) {
-    return "submit";
-  }
+  if (pathname === "/latest") return "latest";
   return "courses";
 }
 
-/**
- * Production shell — visually frozen: left-cluster + button-styled Link nav (prototype C).
- * Brand wordmark · Button secondary/ghost 课程/教师/写评价 · university + ThemeToggle.
- *
- * 「写评价」始终在导航中，不因校园认证或登录状态隐藏。
- */
-function withGlobalSearchParams(path: string, params: URLSearchParams) {
-  if (params.get("module") !== "global-search") return path;
-  const sp = new URLSearchParams();
-  sp.set("module", "global-search");
-  const variant = params.get("variant");
-  if (variant) sp.set("variant", variant);
-  return `${path}?${sp.toString()}`;
+/** Center course search: submit jumps to /courses?q=... (Issue #402). */
+function ShellCourseSearch() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState(params.get("q") ?? "");
+  useEffect(() => {
+    setQuery(params.get("q") ?? "");
+  }, [params]);
+  const submit = (value: string) => {
+    const trimmed = value.trim();
+    navigate(trimmed ? `/courses?q=${encodeURIComponent(trimmed)}` : "/courses");
+  };
+  return (
+    <SearchField
+      fullWidth
+      aria-label="搜索课程"
+      className="w-full"
+      name="shell-course-search"
+      value={query}
+      variant="secondary"
+      onChange={setQuery}
+      onSubmit={submit}
+    >
+      <SearchField.Group>
+        <SearchField.SearchIcon />
+        <SearchField.Input className="w-full" placeholder="搜索课程、老师" />
+        <SearchField.ClearButton aria-label="清空课程搜索" />
+      </SearchField.Group>
+    </SearchField>
+  );
 }
 
 function DefaultShell({
@@ -92,56 +119,71 @@ function DefaultShell({
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);
 
+  const links = [
+    { id: "courses", to: "/courses", label: "课程" },
+    { id: "latest", to: "/latest", label: "课评" },
+  ] as const;
+
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex min-h-14 max-w-[1280px] items-center gap-4 px-4 py-2.5 sm:px-5">
-          <NavLink
-            to={
-              import.meta.env.DEV
-                ? withGlobalSearchParams("/courses", params)
-                : "/courses"
-            }
-            className="shrink-0 text-sm font-semibold tracking-tight text-foreground no-underline"
-          >
-            {siteName}
-          </NavLink>
+      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
+        <div className="mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] sm:px-5">
+          <div className="flex min-w-0 items-center gap-2">
+            <NavLink
+              to={
+                import.meta.env.DEV
+                  ? withGlobalSearchParams("/courses", params)
+                  : "/courses"
+              }
+              className="shrink-0 text-sm font-semibold tracking-tight text-foreground no-underline"
+            >
+              {siteName}
+            </NavLink>
 
-          <nav aria-label="主导航" className="flex min-w-0 items-center gap-1">
-            {links.map((link) => {
-              const active = selectedKey === link.id;
-              const to = import.meta.env.DEV
-                ? withGlobalSearchParams(link.to, params)
-                : link.to;
-              return (
-                <Link
-                  key={link.id}
-                  className={`${buttonVariants({
-                    size: "sm",
-                    variant: active ? "secondary" : "ghost",
-                  })} no-underline`}
-                  href={to}
-                  render={(domProps) => (
-                    <NavLink
-                      {...(domProps as object)}
-                      className={
-                        typeof domProps.className === "string"
-                          ? domProps.className
-                          : undefined
-                      }
-                      to={to}
-                    />
-                  )}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
+            <nav aria-label="主导航" className="flex min-w-0 items-center gap-1">
+              {links.map((link) => {
+                const active = selectedKey === link.id;
+                const to = import.meta.env.DEV
+                  ? withGlobalSearchParams(link.to, params)
+                  : link.to;
+                return (
+                  <Link
+                    key={link.id}
+                    className={`${buttonVariants({
+                      size: "sm",
+                      variant: active ? "secondary" : "ghost",
+                    })} no-underline`}
+                    href={to}
+                    render={(domProps) => (
+                      <NavLink
+                        {...(domProps as object)}
+                        className={
+                          typeof domProps.className === "string"
+                            ? domProps.className
+                            : undefined
+                        }
+                        to={to}
+                      />
+                    )}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
+              {/* 外链用原生 <a>：HeroUI Link 会走 RouterProvider 的 useHref，
+                  把绝对 URL 错当成站内路径。 */}
+              <a
+                className={buttonVariants({ size: "sm", variant: "ghost" })}
+                href={PI_REVIEW_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                导师
+              </a>
+            </nav>
+          </div>
 
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-2">
+          <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
             {showGlobalSearch &&
             globalSearchVariant &&
             GlobalSearchPrototypeLazy ? (
@@ -151,7 +193,12 @@ function DefaultShell({
                   variant={globalSearchVariant}
                 />
               </Suspense>
-            ) : null}
+            ) : (
+              <ShellCourseSearch />
+            )}
+          </div>
+
+          <div className="col-start-2 flex items-center justify-end gap-2 sm:col-start-3">
             <span className="hidden text-xs text-muted sm:inline">
               {universityName}
             </span>
@@ -161,7 +208,7 @@ function DefaultShell({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-4 sm:px-5">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 pb-16 pt-8 sm:px-5">
         {showGlobalSearch &&
         globalSearchVariant &&
         GlobalSearchPrototypeLazy ? (
@@ -182,6 +229,15 @@ function DefaultShell({
       </footer>
     </div>
   );
+}
+
+function withGlobalSearchParams(path: string, params: URLSearchParams) {
+  if (params.get("module") !== "global-search") return path;
+  const sp = new URLSearchParams();
+  sp.set("module", "global-search");
+  const variant = params.get("variant");
+  if (variant) sp.set("variant", variant);
+  return `${path}?${sp.toString()}`;
 }
 
 export function AppShell({

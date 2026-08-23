@@ -1,19 +1,9 @@
 /**
  * Browser coverage for Issue #286: catalog search suggestions.
+ * Issue #402 后课程目录的页内搜索上移到顶栏（纯提交，无建议）；
+ * 建议交互仍在教师目录的页内搜索上。
  */
 import { expect, test, type Page } from "@playwright/test";
-
-const COURSE = {
-  id: 8,
-  code: "GEN0108",
-  name: "高等数学",
-  category: "general",
-  department: "人文学院",
-  teachers: "测试教师",
-  teacher_refs: "9:测试教师",
-  review_count: 1,
-  rating: null,
-};
 
 const TEACHER = {
   id: 9,
@@ -22,7 +12,7 @@ const TEACHER = {
   title: "讲师",
 };
 
-async function mockCatalogApi(page: Page, options: { failSuggest?: boolean } = {}) {
+async function mockCatalogApi(page: Page) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
@@ -50,9 +40,6 @@ async function mockCatalogApi(page: Page, options: { failSuggest?: boolean } = {
         },
       });
     }
-    if (url.pathname === "/api/courses/departments") {
-      return route.fulfill({ json: { items: ["人文学院"] } });
-    }
     if (url.pathname === "/api/teachers") {
       const query = url.searchParams.get("q") || "";
       const items = query && TEACHER.name.includes(query) ? [TEACHER] : [];
@@ -66,25 +53,6 @@ async function mockCatalogApi(page: Page, options: { failSuggest?: boolean } = {
         },
       });
     }
-    if (url.pathname === "/api/courses") {
-      if (options.failSuggest && url.searchParams.get("pageSize") === "8") {
-        return route.fulfill({
-          status: 500,
-          json: { error: "suggest failed" },
-        });
-      }
-      const query = url.searchParams.get("q") || "";
-      const items = query && COURSE.name.includes(query) ? [COURSE] : [];
-      return route.fulfill({
-        json: {
-          items,
-          page: 1,
-          pageSize: Number(url.searchParams.get("pageSize") || 20),
-          total: items.length,
-          pages: 1,
-        },
-      });
-    }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
@@ -93,19 +61,9 @@ async function searchQuery(page: Page) {
   return new URL(page.url()).searchParams.get("q");
 }
 
-test("course search shows suggestions and selecting writes q", async ({
+test("teacher search shows suggestions and selecting writes q", async ({
   page,
 }) => {
-  await mockCatalogApi(page);
-  await page.goto("/courses");
-  await page.getByRole("searchbox", { name: "搜索课程" }).fill("高等");
-  const option = page.getByRole("option", { name: /高等数学/ });
-  await expect(option).toBeVisible({ timeout: 5000 });
-  await option.click();
-  await expect.poll(() => searchQuery(page)).toBe("高等数学");
-});
-
-test("teacher search shows suggestions symmetrically", async ({ page }) => {
   await mockCatalogApi(page);
   await page.goto("/teachers");
   await page.getByRole("searchbox", { name: "搜索教师" }).fill("张");
@@ -119,38 +77,27 @@ test("escape closes suggestions without clearing the field", async ({
   page,
 }) => {
   await mockCatalogApi(page);
-  await page.goto("/courses");
-  const search = page.getByRole("searchbox", { name: "搜索课程" });
-  await search.fill("高等");
-  await expect(page.getByRole("option", { name: /高等数学/ })).toBeVisible({
+  await page.goto("/teachers");
+  const search = page.getByRole("searchbox", { name: "搜索教师" });
+  await search.fill("张");
+  await expect(page.getByRole("option", { name: /张三/ })).toBeVisible({
     timeout: 5000,
   });
   await page.keyboard.press("Escape");
   await expect(page.getByRole("option")).toHaveCount(0);
-  await expect(search).toHaveValue("高等");
+  await expect(search).toHaveValue("张");
 });
 
-test("empty suggestions show official empty state and still submit q", async ({
+test("shell course search submits to /courses?q= without suggestions", async ({
   page,
 }) => {
   await mockCatalogApi(page);
   await page.goto("/courses");
-  await page.getByRole("searchbox", { name: "搜索课程" }).fill("没有这门课");
-  await expect(page.getByText("没有匹配的建议")).toBeVisible({ timeout: 5000 });
-  await expect.poll(() => searchQuery(page)).toBe("没有这门课");
-});
-
-test("no input does not show a suggestion list", async ({ page }) => {
-  await mockCatalogApi(page);
-  await page.goto("/courses");
+  const search = page.getByRole("searchbox", { name: "搜索课程" });
+  await expect(search).toBeVisible();
+  await search.fill("高等");
+  // 顶栏搜索不带建议下拉。
   await expect(page.getByRole("listbox")).toHaveCount(0);
-});
-
-test("failed suggestion request stays silent", async ({ page }) => {
-  await mockCatalogApi(page, { failSuggest: true });
-  await page.goto("/courses");
-  await page.getByRole("searchbox", { name: "搜索课程" }).fill("高等");
-  await page.waitForTimeout(500);
-  await expect(page.getByRole("option")).toHaveCount(0);
-  await expect(page.getByText("没有匹配的建议")).toHaveCount(0);
+  await search.press("Enter");
+  await expect.poll(() => searchQuery(page)).toBe("高等");
 });

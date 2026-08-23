@@ -103,6 +103,7 @@ describe("public PE course presentation", () => {
     expect(isPublicListCategoryFilter("ideology")).toBe(true);
     expect(isPublicListCategoryFilter("math")).toBe(true);
     expect(isPublicListCategoryFilter("mooc")).toBe(true);
+    // Issue #402 / #364：专业课与公共课进入公开筛选集合。
     expect(isPublicListCategoryFilter("major")).toBe(true);
     expect(isPublicListCategoryFilter("public_basic")).toBe(true);
     expect(isPublicListCategoryFilter("pe")).toBe(false);

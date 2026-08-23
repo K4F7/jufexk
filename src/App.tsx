@@ -15,6 +15,7 @@ import type { SiteConfig } from "./lib/types";
 import { AccountPage } from "./pages/AccountPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
+import { LatestPage } from "./pages/LatestPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LogoutPage } from "./pages/LogoutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -141,6 +142,7 @@ export function App() {
             <Route path="/" element={<Navigate to="/courses" replace />} />
             <Route path="/courses" element={<CoursesPage />} />
             <Route path="/courses/:id" element={<CourseDetailPage />} />
+            <Route path="/latest" element={<LatestPage />} />
             <Route path="/teachers" element={<TeachersPage />} />
             <Route path="/teachers/:id" element={<TeacherDetailPage />} />
             <Route path="/login" element={<LoginPage />} />

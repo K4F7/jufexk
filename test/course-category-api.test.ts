@@ -93,6 +93,7 @@ describe("review template kind API contract", () => {
       );
     }
 
+    // Issue #402 / #364：专业课（major）与公共课（public_basic）按 scheme_key 过滤。
     for (const [category, name, otherName] of [
       ["major", "计量经济学", "公共基础导论"],
       ["public_basic", "公共基础导论", "计量经济学"],
