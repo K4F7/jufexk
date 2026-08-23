@@ -6,7 +6,7 @@
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Avatar, Typography } from "@heroui/react";
+import { Typography } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -22,6 +22,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import { CourseAiSummary } from "../components/CourseAiSummary";
 import {
   CourseReviewSection,
@@ -541,13 +542,14 @@ export function CourseDetailPage() {
             className="border border-dashed border-border bg-surface-secondary/60 px-3 py-3"
           >
             <div className="flex flex-col items-center text-center">
-              <Avatar size="lg" className="rounded-full" aria-hidden>
-                <Avatar.Fallback className="rounded-full" />
-              </Avatar>
+              <AnonymousAvatar
+                seed={selectedTeacher.id}
+                size="lg"
+                fallback={selectedTeacher.name.slice(0, 1)}
+              />
               <p className="m-0 mt-2 text-[16px] font-bold text-accent">
                 {selectedTeacher.name}
               </p>
-              <p className="m-0 mt-1 text-[12px] text-muted">教师主页：暂无</p>
             </div>
           </section>
         ) : null}

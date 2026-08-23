@@ -108,6 +108,9 @@ test("latest page lists newest public reviews and deep-links to the course", asy
 
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
   await expect(page.getByText("匿名用户")).toBeVisible();
+  await expect(
+    page.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
+  ).toHaveCount(1);
   await expect(page.getByText("点评了")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "中国传统文化导论（测试教师）" }),

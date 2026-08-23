@@ -212,7 +212,7 @@ test("guest sees counts, no selected state, and a real login link", async ({ pag
   await expect(zero).toHaveAttribute("aria-pressed", "false");
   await prompt.getByRole("link", { name: "使用普通用户登录" }).click();
   await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8%3Fteacher%3D9$/);
-  await expect(page.getByRole("heading", { name: "普通用户登录" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "登录", exact: true })).toBeVisible();
 });
 
 test("signed-in user can endorse and withdraw with pending and selected state", async ({
