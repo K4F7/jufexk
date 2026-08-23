@@ -292,7 +292,10 @@ test("course detail defaults to the most-reviewed relation", async ({
   // 右栏：老师卡 + 其他老师 + 这位老师的其他课。
   const aside = page.locator("aside");
   await expect(aside.getByText("测试教师", { exact: true })).toBeVisible();
-  await expect(aside.getByText("教师主页：暂无")).toBeVisible();
+  await expect(aside.getByText("教师主页：暂无")).toHaveCount(0);
+  await expect(
+    aside.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
+  ).toHaveCount(1);
   await expect(
     aside.getByRole("link", { name: "另一位教师" }),
   ).toBeVisible();

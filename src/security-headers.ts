@@ -8,13 +8,17 @@ export const CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN =
 export const CLOUDFLARE_WEB_ANALYTICS_CONNECT_ORIGIN =
   "https://cloudflareinsights.com";
 
+/** Official HeroUI v3 avatar placeholder host. */
+export const HEROUI_AVATAR_ASSETS_ORIGIN =
+  "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com";
+
 export const ASSET_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   `script-src 'self' ${TURNSTILE_ORIGIN} ${CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN}`,
   `frame-src ${TURNSTILE_ORIGIN}`,
   `connect-src 'self' ${TURNSTILE_ORIGIN} ${CLOUDFLARE_WEB_ANALYTICS_CONNECT_ORIGIN}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  `img-src 'self' data: ${HEROUI_AVATAR_ASSETS_ORIGIN}`,
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
