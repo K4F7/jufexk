@@ -219,6 +219,7 @@ export function publicPeHasTextReviewSql(alias: string): string {
     UNION ALL
     SELECT 1 FROM reviews r
      WHERE r.course_id=${alias}.id AND r.status='approved'
+       AND r.blocked_at IS NULL AND r.deleted_at IS NULL
        AND trim(COALESCE(r.comment,''))<>''
   )`;
 }

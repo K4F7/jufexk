@@ -9,6 +9,8 @@ import { readSecret, type SecretBinding } from "./secrets";
 
 /** 与公开文字流一致的任课评价可见性绑定：已批准且关系/开班绑定有效。 */
 export const publicReviewBindingSql = `
+       AND r.blocked_at IS NULL
+       AND r.deleted_at IS NULL
        AND EXISTS(
          SELECT 1 FROM course_teachers public_relation
          WHERE public_relation.course_id=r.course_id

@@ -18,6 +18,8 @@ describe("secret inventory", () => {
       "IP_HASH_SECRET",
       "TURNSTILE_SECRET",
       "CAMPUS_IDENTITY_SECRET",
+      "MAIL_DELIVERY_TOKEN",
+      "REVIEW_AUTHOR_LOOKUP_TO",
       "CAS_CHALLENGE_SECRET",
     ]);
     expect([...GITHUB_DEPLOY_SECRETS]).toEqual([
@@ -112,7 +114,7 @@ describe("secret inventory", () => {
   it("selects only worker keys from a dotenv file", () => {
     const selected = selectWorkerDevVars(
       parseDotenv(
-        "IP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCAMPUS_IDENTITY_SECRET=id\nCAS_CHALLENGE_SECRET=cas\nCAMPUS_JWT_SECRET=jwt\nMAIL_DELIVERY_TOKEN=mail\nCLOUDFLARE_API_TOKEN=no\n",
+        "IP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCAMPUS_IDENTITY_SECRET=id\nMAIL_DELIVERY_TOKEN=mail\nREVIEW_AUTHOR_LOOKUP_TO=admin@example.test\nCAS_CHALLENGE_SECRET=cas\nCAMPUS_JWT_SECRET=jwt\nCLOUDFLARE_API_TOKEN=no\n",
       ),
     );
     expect(selected.missing).toEqual([]);
@@ -120,6 +122,8 @@ describe("secret inventory", () => {
       "IP_HASH_SECRET",
       "TURNSTILE_SECRET",
       "CAMPUS_IDENTITY_SECRET",
+      "MAIL_DELIVERY_TOKEN",
+      "REVIEW_AUTHOR_LOOKUP_TO",
       "CAS_CHALLENGE_SECRET",
     ]);
     expect(selected.vars.IP_HASH_SECRET).toBe("ip");

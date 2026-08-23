@@ -36,6 +36,10 @@ import { readSecret } from "../secrets";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
 import { loadSiteBanner, sanitizeSiteBanner } from "../site-banner";
 import {
+  deliverReviewAuthorLookup,
+  type ReviewAuthorIdentity,
+} from "../admin-review-author-mail";
+import {
   clean,
   csrfOk,
   digest,
@@ -82,6 +86,63 @@ type CatalogRequestRow = {
   submitter_hash: string;
   author_user_id: string | null;
 };
+
+type AdminReviewTarget = {
+  id: number;
+  status: string;
+  course_id: number;
+  teacher_id: number | null;
+  blocked_at: string | null;
+  deleted_at: string | null;
+};
+
+async function mutateReviewVisibility(
+  c: AppContext,
+  action: "blocked" | "unblocked" | "deleted",
+) {
+  const id = integer(c.req.param("id"));
+  if (!id) return fail(c, "评价 ID 无效");
+  const current = await c.env.DB.prepare(
+    `SELECT id,status,course_id,teacher_id,blocked_at,deleted_at
+     FROM reviews WHERE id=?`,
+  )
+    .bind(id)
+    .first<AdminReviewTarget>();
+  if (!current) return fail(c, "评价不存在", 404);
+  if (action !== "deleted" && current.deleted_at)
+    return fail(c, "已删除评价不能变更屏蔽状态", 409);
+
+  const updateSql =
+    action === "blocked"
+      ? `UPDATE reviews SET blocked_at=CURRENT_TIMESTAMP
+         WHERE id=? AND blocked_at IS NULL AND deleted_at IS NULL RETURNING id`
+      : action === "unblocked"
+        ? `UPDATE reviews SET blocked_at=NULL
+           WHERE id=? AND blocked_at IS NOT NULL AND deleted_at IS NULL RETURNING id`
+        : `UPDATE reviews SET deleted_at=CURRENT_TIMESTAMP
+           WHERE id=? AND deleted_at IS NULL RETURNING id`;
+  const eventGuard =
+    action === "blocked"
+      ? "blocked_at IS NULL AND deleted_at IS NULL"
+      : action === "unblocked"
+        ? "blocked_at IS NOT NULL AND deleted_at IS NULL"
+        : "deleted_at IS NULL";
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO review_moderation_events(review_id,action,note,actor_session_id)
+       SELECT ?,?,'',? FROM reviews WHERE id=? AND ${eventGuard}`,
+    ).bind(id, action, c.get("adminSessionId"), id),
+    c.env.DB.prepare(updateSql).bind(id),
+  ]);
+  const changed = results[1].results.length > 0;
+  if (changed && current.status === "approved") {
+    markPublicCatalogCacheChanged(c);
+    await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id, {
+      immediate: action !== "unblocked",
+    });
+  }
+  return c.json({ ok: true, changed });
+}
 
 async function clientIpHash(c: AppContext) {
   return keyedDigest(
@@ -290,7 +351,7 @@ adminRoutes.get("/api/admin/reviews", async (c) => {
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
         r.comment,r.comment_format,r.headline,r.grade,
-        r.term,r.status,r.moderator_note,r.created_at,r.reviewed_at,
+        r.term,r.status,r.blocked_at,r.deleted_at,r.moderator_note,r.created_at,r.reviewed_at,
         r.scheme_key,r.scheme_version,
         c.name course_name,c.code,t.name teacher_name
        FROM reviews r JOIN courses c ON c.id=r.course_id
@@ -670,6 +731,92 @@ adminRoutes.patch("/api/admin/reviews/:id/content", async (c) => {
     );
   }
   return c.json({ ok: true });
+});
+adminRoutes.post("/api/admin/reviews/:id/block", (c) =>
+  mutateReviewVisibility(c, "blocked"),
+);
+adminRoutes.post("/api/admin/reviews/:id/unblock", (c) =>
+  mutateReviewVisibility(c, "unblocked"),
+);
+adminRoutes.delete("/api/admin/reviews/:id", (c) =>
+  mutateReviewVisibility(c, "deleted"),
+);
+adminRoutes.post("/api/admin/reviews/:id/author-lookup", async (c) => {
+  const id = integer(c.req.param("id"));
+  if (!id) return fail(c, "评价 ID 无效");
+  const review = await c.env.DB.prepare(
+    `SELECT r.id,r.status,r.blocked_at,r.deleted_at,r.submitter_hash,
+       r.author_user_id,r.headline,r.comment,r.created_at,
+       c.code course_code,c.name course_name,COALESCE(t.name,'') teacher_name,
+       u.status author_status,u.created_at author_created_at
+     FROM reviews r
+     JOIN courses c ON c.id=r.course_id
+     LEFT JOIN teachers t ON t.id=r.teacher_id
+     LEFT JOIN users u ON u.id=r.author_user_id
+     WHERE r.id=?`,
+  )
+    .bind(id)
+    .first<{
+      id: number;
+      status: string;
+      blocked_at: string | null;
+      deleted_at: string | null;
+      submitter_hash: string;
+      author_user_id: string | null;
+      headline: string;
+      comment: string;
+      created_at: string;
+      course_code: string;
+      course_name: string;
+      teacher_name: string;
+      author_status: string | null;
+      author_created_at: string | null;
+    }>();
+  if (!review) return fail(c, "评价不存在", 404);
+  const identities = review.author_user_id
+    ? (
+        await c.env.DB.prepare(
+          `SELECT provider,issuer,subject,created_at
+           FROM auth_identities WHERE user_id=? ORDER BY created_at,provider,issuer`,
+        )
+          .bind(review.author_user_id)
+          .all<ReviewAuthorIdentity>()
+      ).results
+    : [];
+  const audit = await c.env.DB.prepare(
+    `INSERT INTO review_moderation_events(review_id,action,note,actor_session_id)
+     VALUES(?,'author_lookup','requested',?)`,
+  )
+    .bind(id, c.get("adminSessionId"))
+    .run();
+  const auditId = Number(audit.meta.last_row_id);
+  const delivery = await deliverReviewAuthorLookup(c.env, {
+    reviewId: review.id,
+    courseCode: review.course_code,
+    courseName: review.course_name,
+    teacherName: review.teacher_name,
+    headline: review.headline,
+    comment: review.comment,
+    reviewCreatedAt: review.created_at,
+    reviewStatus: review.status,
+    blockedAt: review.blocked_at,
+    deletedAt: review.deleted_at,
+    submitterHash: review.submitter_hash,
+    authorUserId: review.author_user_id,
+    authorStatus: review.author_status,
+    authorCreatedAt: review.author_created_at,
+    identities,
+    requestedBySessionId: c.get("adminSessionId")!,
+  });
+  await c.env.DB.prepare(
+    "UPDATE review_moderation_events SET note=? WHERE id=? AND review_id=?",
+  )
+    .bind(delivery, auditId, id)
+    .run();
+  if (delivery === "unconfigured")
+    return fail(c, "管理员邮箱投递尚未配置", 503);
+  if (delivery === "failed") return fail(c, "管理员邮箱投递失败", 502);
+  return c.json({ ok: true, delivered: true });
 });
 adminRoutes.get("/api/admin/reviews/:id/events", async (c) => {
   const id = integer(c.req.param("id"));
