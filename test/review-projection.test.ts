@@ -4,6 +4,7 @@ import {
   CURRENT_SCORES,
   V1_MOOC_SCORES,
   V1_OFFLINE_SCORES,
+  V3_OFFLINE_SCORES,
 } from "./review-score-fixtures";
 
 const origin = "https://example.com";
@@ -419,6 +420,89 @@ describe("public course-teacher review projection", () => {
         env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(
           courseId,
         ),
+        env.DB.prepare("DELETE FROM reviews WHERE course_id=?").bind(courseId),
+        env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(
+          courseId,
+        ),
+        env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId),
+        env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId),
+      ]);
+    }
+  });
+
+  it("shows five tier labels for v3 snapshots and four for v2 snapshots side by side", async () => {
+    const code = `V3LBL-${Date.now()}`;
+    const teacherName = `版本标签教师-${Date.now()}`;
+    const teacher = await env.DB.prepare(
+      "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+    )
+      .bind(teacherName, teacherName, "测试学院")
+      .run();
+    const teacherId = Number(teacher.meta.last_row_id);
+    const course = await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+    )
+      .bind(code, `版本标签课程-${code}`, "general", "测试学院")
+      .run();
+    const courseId = Number(course.meta.last_row_id);
+    await env.DB.prepare(
+      "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+    )
+      .bind(courseId, teacherId)
+      .run();
+
+    const insertSnapshot = (
+      comment: string,
+      schemeVersion: number,
+      scores: Record<string, number>,
+    ) =>
+      env.DB.prepare(
+        `INSERT INTO reviews(
+          course_id,teacher_id,category,overall,comment,term,status,submitter_hash,
+          scheme_key,scheme_version,scores
+        ) VALUES(?,?,?,5,?, '2026 春','approved',?, 'major',?,?)`,
+      )
+        .bind(courseId, teacherId, "general", comment, `hash-${comment}`, schemeVersion, JSON.stringify(scores))
+        .run();
+
+    try {
+      await insertSnapshot("v2 旧快照补充说明", 2, CURRENT_SCORES);
+      await insertSnapshot("v3 考勤快照补充说明", 3, V3_OFFLINE_SCORES);
+
+      const response = await SELF.fetch(
+        `${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`,
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json<{
+        items: Array<{
+          comment: string;
+          dimensionLabels?: Array<{ id: string; label: string; option: string }>;
+        }>;
+      }>();
+      expect(body.items.map((item) => item.comment)).toEqual([
+        "v2 旧快照补充说明",
+        "v3 考勤快照补充说明",
+      ]);
+      // v2 行保持四个标签，不伪造考勤。
+      expect(body.items[0].dimensionLabels).toEqual([
+        { id: "difficulty", label: "课程难度", option: "简单" },
+        { id: "homework", label: "作业多少", option: "中等" },
+        { id: "grading", label: "给分好坏", option: "杀手" },
+        { id: "gain", label: "收获多少", option: "一般" },
+      ]);
+      // v3 行按条展示第五个标签「考勤松紧」。
+      expect(body.items[1].dimensionLabels).toEqual([
+        { id: "difficulty", label: "课程难度", option: "简单" },
+        { id: "homework", label: "作业多少", option: "中等" },
+        { id: "grading", label: "给分好坏", option: "杀手" },
+        { id: "gain", label: "收获多少", option: "一般" },
+        { id: "attendance", label: "考勤松紧", option: "一般" },
+      ]);
+      for (const item of body.items) {
+        expect(item).not.toHaveProperty("dimensionAverage");
+      }
+    } finally {
+      await env.DB.batch([
         env.DB.prepare("DELETE FROM reviews WHERE course_id=?").bind(courseId),
         env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(
           courseId,

@@ -55,7 +55,39 @@ export const TIER3_QUESTIONS = [
 
 export const TIER3_IDS = TIER3_QUESTIONS.map((question) => question.id);
 
+/** v3 追加的公共核第五题：考勤松紧（三档，仅线下适用，#371 锁定文案）。 */
+export const ATTENDANCE_QUESTION = {
+  id: "attendance",
+  label: "考勤松紧",
+  prompt: "考勤松紧",
+  scale: "宽松 / 一般 / 严苛",
+  options: [
+    { value: 1, label: "宽松" },
+    { value: 2, label: "一般" },
+    { value: 3, label: "严苛" },
+  ],
+} as const;
+
+/** Shared v3 copy: the v2 four three-tier questions plus 考勤松紧. */
+export const V3_QUESTIONS = [...TIER3_QUESTIONS, ATTENDANCE_QUESTION] as const;
+
+export const V3_IDS = V3_QUESTIONS.map((question) => question.id);
+
+/** Latest-version scores for an offline course: v3, attendance included. */
+export const V3_OFFLINE_SCORES = {
+  ...CURRENT_SCORES,
+  attendance: 2,
+} as const;
+
 export const CURRENT_SCORES_JSON = JSON.stringify({
+  difficulty: 1,
+  gain: 2,
+  grading: 3,
+  homework: 2,
+});
+
+export const V3_OFFLINE_SCORES_JSON = JSON.stringify({
+  attendance: 2,
   difficulty: 1,
   gain: 2,
   grading: 3,

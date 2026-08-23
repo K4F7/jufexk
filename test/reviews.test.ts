@@ -7,6 +7,9 @@ import {
   REQUIRED_NOTE,
   TIER3_QUESTIONS,
   V1_OFFLINE_SCORES,
+  V3_OFFLINE_SCORES,
+  V3_OFFLINE_SCORES_JSON,
+  V3_QUESTIONS,
 } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
@@ -92,13 +95,13 @@ describe("review submission required scheme scores", () => {
     expect(await response.json()).toMatchObject({ error: "请答完本次适用的评分题" });
   });
 
-  it("accepts the four three-tier scores plus overall and snapshots scheme fields", async () => {
+  it("accepts the five three-tier scores plus overall and snapshots scheme fields", async () => {
     const courseId = await createBoundCourse("general", "REQ002");
     const response = await submit({
       courseId,
       teacherId: 1,
       overall: 5,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       schemeKey: "pe",
       schemeVersion: 99,
     });
@@ -106,8 +109,8 @@ describe("review submission required scheme scores", () => {
     expect(await response.json()).toMatchObject({ ok: true });
     expect(await insertedReview(courseId)).toMatchObject({
       scheme_key: "major",
-      scheme_version: 2,
-      scores: CURRENT_SCORES_JSON,
+      scheme_version: 3,
+      scores: V3_OFFLINE_SCORES_JSON,
       overall: 5,
       comment: REQUIRED_NOTE,
       headline: REQUIRED_HEADLINE,
@@ -116,7 +119,7 @@ describe("review submission required scheme scores", () => {
     });
   });
 
-  it("rejects a missing applicable dimension or a score outside that question's options", async () => {
+  it("requires attendance for offline v3 courses and rejects out-of-option scores", async () => {
     const courseId = await createBoundCourse("general", "REQ003");
     const missing = await submit({
       courseId,
@@ -125,11 +128,22 @@ describe("review submission required scheme scores", () => {
       scores: { difficulty: 1, homework: 2, grading: 3 },
     });
     expect(missing.status).toBe(400);
+    // 旧四维提交缺 attendance：v3 线下课必答考勤。
+    const noAttendance = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: CURRENT_SCORES,
+    });
+    expect(noAttendance.status).toBe(400);
+    expect(await noAttendance.json()).toMatchObject({
+      error: "请答完本次适用的评分题",
+    });
     const range = await submit({
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: { ...CURRENT_SCORES, grading: 5 },
+      scores: { ...V3_OFFLINE_SCORES, grading: 5 },
     });
     expect(range.status).toBe(400);
     expect(await range.json()).toMatchObject({
@@ -137,7 +151,7 @@ describe("review submission required scheme scores", () => {
     });
   });
 
-  it("accepts a mooc course on the latest four questions and rejects leftover v1 keys", async () => {
+  it("accepts a mooc course without attendance and rejects an attendance key for it", async () => {
     const courseId = await createBoundCourse("general", "REQ-MOOC", {
       mooc: true,
     });
@@ -150,7 +164,7 @@ describe("review submission required scheme scores", () => {
     expect(accepted.status).toBe(200);
     expect(await insertedReview(courseId)).toMatchObject({
       scheme_key: "major",
-      scheme_version: 2,
+      scheme_version: 3,
       scores: CURRENT_SCORES_JSON,
     });
     const leftover = await submit({
@@ -161,6 +175,9 @@ describe("review submission required scheme scores", () => {
       term: "2026 秋",
     });
     expect(leftover.status).toBe(400);
+    expect(await leftover.json()).toMatchObject({
+      error: "提交了不适用的评分维度",
+    });
     const oldKeys = await submit({
       courseId,
       teacherId: 1,
@@ -177,7 +194,7 @@ describe("review submission required scheme scores", () => {
       courseId,
       teacherId: 1,
       overall: 3,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       comment: "",
     });
     expect(empty.status).toBe(400);
@@ -188,7 +205,7 @@ describe("review submission required scheme scores", () => {
       courseId,
       teacherId: 1,
       overall: 3,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       comment: "  123456789  ",
     });
     expect(short.status).toBe(400);
@@ -200,7 +217,7 @@ describe("review submission required scheme scores", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       comment:
         '<p>这门课的<strong>给分</strong>很宽松</p><ul><li>作业少</li></ul><script>alert(1)</script><p onclick="x">结尾</p>',
     });
@@ -231,7 +248,7 @@ describe("review submission required scheme scores", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       comment: "绕过前端直接提交的纯文本，数学 < 语文",
     });
     expect(plain.status).toBe(200);
@@ -244,7 +261,7 @@ describe("review submission required scheme scores", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       comment: "<script>alert(1)</script>",
       term: "2026 春",
     });
@@ -257,7 +274,7 @@ describe("review submission required scheme scores", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       comment: `<p><strong>一二三四五六七八九</strong></p>`,
       term: "2026 夏",
     });
@@ -271,7 +288,7 @@ describe("review submission required scheme scores", () => {
       courseId,
       teacherId: 1,
       overall: 5,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       comment,
     });
     expect(response.status).toBe(200);
@@ -296,12 +313,12 @@ describe("review submission required scheme scores", () => {
       courseId: sportsId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
     });
     expect(sports.status).toBe(200);
     expect(await insertedReview(sportsId)).toMatchObject({
       scheme_key: "pe",
-      scheme_version: 2,
+      scheme_version: 3,
     });
 
     const ideologyId = await createBoundCourse("general", "REQ-IDEO", {
@@ -311,12 +328,12 @@ describe("review submission required scheme scores", () => {
       courseId: ideologyId,
       teacherId: 1,
       overall: 5,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
     });
     expect(ideology.status).toBe(200);
     expect(await insertedReview(ideologyId)).toMatchObject({
       scheme_key: "ideology",
-      scheme_version: 2,
+      scheme_version: 3,
     });
   });
 
@@ -341,7 +358,7 @@ describe("review submission required scheme scores", () => {
     const response = await submit({
       courseId,
       teacherId: 1,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
     });
     expect(response.status).toBe(400);
   });
@@ -354,7 +371,7 @@ describe("review submission required scheme scores", () => {
       courseId: Number(course.meta.last_row_id),
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
     });
     expect(response.status).toBe(400);
   });
@@ -365,7 +382,7 @@ describe("review submission required scheme scores", () => {
       teacherId: 1,
       offeringId: 0,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
     });
     expect(response.status).toBe(400);
   });
@@ -375,7 +392,7 @@ describe("review submission required scheme scores", () => {
       teacherId: 1,
       offeringId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
     });
     expect(missingCourse.status).toBe(400);
 
@@ -384,7 +401,7 @@ describe("review submission required scheme scores", () => {
       teacherId: 1,
       offeringId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
     });
     expect(mismatchedCourse.status).toBe(400);
   });
@@ -411,7 +428,7 @@ describe("review submission required scheme scores", () => {
         offeringId,
         teacherId: 1,
         overall: 4,
-        scores: CURRENT_SCORES,
+        scores: V3_OFFLINE_SCORES,
       });
       expect(response.status).toBe(400);
     } finally {
@@ -433,7 +450,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       headline: undefined,
     });
     expect(missing.status).toBe(400);
@@ -445,7 +462,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       headline: "   ",
     });
     expect(blank.status).toBe(400);
@@ -454,7 +471,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       headline: 42,
     });
     expect(nonString.status).toBe(400);
@@ -466,7 +483,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       headline: "长".repeat(81),
     });
     expect(response.status).toBe(400);
@@ -477,7 +494,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       headline: "准".repeat(80),
     });
     expect(exact.status).toBe(200);
@@ -489,7 +506,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       headline: "  划重点多的课  ",
     });
     expect(omitted.status).toBe(200);
@@ -502,7 +519,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       grade: "   ",
     });
     expect(blank.status).toBe(200);
@@ -515,7 +532,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       grade: "9".repeat(21),
     });
     expect(oversize.status).toBe(400);
@@ -527,7 +544,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 4,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       grade: "  A-  ",
     });
     expect(accepted.status).toBe(200);
@@ -540,7 +557,7 @@ describe("review headline and optional grade (issue #444)", () => {
       courseId,
       teacherId: 1,
       overall: 5,
-      scores: CURRENT_SCORES,
+      scores: V3_OFFLINE_SCORES,
       headline: "HL005 一句话",
       grade: "95",
     });
@@ -605,8 +622,8 @@ describe("review headline and optional grade (issue #444)", () => {
 });
 
 describe("course scheme reads for submit", () => {
-  it("returns the same four three-tier questions for major, pe and mooc courses", async () => {
-    type Question = (typeof TIER3_QUESTIONS)[number];
+  it("returns five questions for offline major/pe and four without attendance for mooc", async () => {
+    type Question = (typeof V3_QUESTIONS)[number];
 
     const majorId = await createBoundCourse("general", "OPT-MAJOR");
     const peId = await createBoundCourse("sports", "OPT-PE");
@@ -631,21 +648,21 @@ describe("course scheme reads for submit", () => {
 
     expect(major.course).toMatchObject({
       schemeKey: "major",
-      schemeVersion: 2,
+      schemeVersion: 3,
       tags: [],
     });
     expect(pe.course).toMatchObject({
       schemeKey: "pe",
-      schemeVersion: 2,
+      schemeVersion: 3,
       tags: [],
     });
     expect(mooc.course).toMatchObject({
       schemeKey: "major",
-      schemeVersion: 2,
+      schemeVersion: 3,
       tags: ["mooc"],
     });
-    expect(major.course.applicableQuestions).toEqual(TIER3_QUESTIONS);
-    expect(pe.course.applicableQuestions).toEqual(TIER3_QUESTIONS);
+    expect(major.course.applicableQuestions).toEqual(V3_QUESTIONS);
+    expect(pe.course.applicableQuestions).toEqual(V3_QUESTIONS);
     expect(mooc.course.applicableQuestions).toEqual(TIER3_QUESTIONS);
 
     const options = await SELF.fetch(

@@ -1,9 +1,9 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
-  CURRENT_SCORES,
   REQUIRED_HEADLINE,
   REQUIRED_NOTE,
+  V3_OFFLINE_SCORES,
 } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
@@ -17,7 +17,7 @@ const reviewPayload = {
   courseId: 1,
   teacherId: 1,
   overall: 5,
-  scores: CURRENT_SCORES,
+  scores: V3_OFFLINE_SCORES,
   comment: REQUIRED_NOTE,
   headline: REQUIRED_HEADLINE,
 };
