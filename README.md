@@ -100,7 +100,7 @@ pnpm run dev
 
 ### Turnstile
 
-投稿端已接入标准 Turnstile widget 与服务端 Siteverify。创建 Widget（域名包含 `courses.sein.moe`、`xk.sein.moe`、`localhost`、`127.0.0.1`）后：
+投稿端已接入标准 Turnstile widget 与服务端 Siteverify。创建 Widget（域名包含 `courses.sein.moe`、`localhost`、`127.0.0.1`）后：
 
 1. 将公开 Site Key 配置为 `TURNSTILE_SITE_KEY` 普通变量；
 2. 将对应 Secret 写入 Secrets Store 的 `TURNSTILE_SECRET`；
@@ -110,7 +110,7 @@ Site Key 与 Secret 同时存在时服务端才启用并强制验证。仅有 Si
 
 ## 生产部署
 
-仓库已包含真实 D1 `database_id` 和 `courses.sein.moe` Custom Domain 配置（`xk.sein.moe` 仍绑定以免旧链接失效）。首次部署或应用迁移：
+仓库已包含真实 D1 `database_id` 和 `courses.sein.moe` Custom Domain 配置。首次部署或应用迁移：
 
 ```bash
 pnpm exec wrangler d1 migrations apply jufexk --remote

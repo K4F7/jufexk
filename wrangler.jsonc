@@ -4,10 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-07-15",
   "compatibility_flags": ["nodejs_compat"],
-  "routes": [
-    { "pattern": "courses.sein.moe", "custom_domain": true },
-    { "pattern": "xk.sein.moe", "custom_domain": true },
-  ],
+  "routes": [{ "pattern": "courses.sein.moe", "custom_domain": true }],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
