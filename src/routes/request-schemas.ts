@@ -83,6 +83,14 @@ export const siteBannerSchema = z
   })
   .passthrough();
 
+export const adminAnnouncementSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    content: z.string().trim().min(1).max(10000),
+    author: z.string().trim().min(1).max(120),
+  })
+  .passthrough();
+
 export const moderationSchema = z
   .object({
     status: cleanedField(20),

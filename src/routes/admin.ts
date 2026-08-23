@@ -51,6 +51,7 @@ import {
   siteBannerSchema,
   teacherIdsSchema,
 } from "./request-schemas";
+import announcementRoutes from "./announcements";
 
 const adminRoutes = new Hono<AppEnv>();
 
@@ -1376,4 +1377,5 @@ adminRoutes.put("/api/admin/courses/:id/teachers", async (c) => {
   ]);
   return c.json({ ok: true });
 });
+adminRoutes.route("/", announcementRoutes);
 export default adminRoutes;
