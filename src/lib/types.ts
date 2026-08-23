@@ -11,7 +11,8 @@ export type Course = {
   rating: number | null;
   credits?: number | null;
   description?: string;
-  admin_notice?: string;
+  /** 课程管理员公告（公开纯文本）；未设置时为空串或不下发。 */
+  admin_notice?: string | null;
   admin_notice_updated_at?: string | null;
   enrollment_category?: string;
   teaching_type?: string;
@@ -19,8 +20,6 @@ export type Course = {
   /** Catalog list: "id:name,id:name" for real teacher links */
   teacher_refs?: string;
   teacher_ids?: string;
-  /** 课程管理员公告（公开纯文本）；未设置时为空串或不下发。 */
-  admin_notice?: string | null;
 };
 
 /**
