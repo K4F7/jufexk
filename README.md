@@ -189,7 +189,7 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 
 - [评知校园](https://courses.pinzhixiaoyuan.com/)：课评表单的分段结构、对象绑定与填写节奏是本站投稿问卷的重要参考。
 - [USTC-iCourse / ustc-course](https://github.com/USTC-iCourse/ustc-course)：前端信息架构与公开浏览体验大量参考了贵仓库的设计。课程列表、详情分层、评价阅读节奏都从中受益；四道三档题的方向也对齐 iCourse 的四维标签。非常喜欢这份前端设计。
-- [SeRazon / jufe_cas](https://github.com/SeRazon/jufe_cas)：江财 CAS 代登（含 RSA 加密登录与 MFA）对照该客户端的协议实现。本站只把它当作口令探针，不跟随 ehall ticket，也不持久化 TGT。
+- [SeRazon / jufe_cas](https://github.com/SeRazon/jufe_cas)：江财 CAS 实现
 
 文案、品牌与数据模型均为本站自有；参考的是交互与协议，不是复制站点内容。
 
