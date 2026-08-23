@@ -17,9 +17,14 @@ import {
   handleOrdinaryUserLogout,
   handleOrdinaryUserSession,
 } from "../ordinary-user-session";
+import {
+  handleOrdinaryUserProfile,
+  USER_PROFILE_PATH,
+} from "../ordinary-user-profile";
 
 const authRoutes = new Hono<AppEnv>();
 authRoutes.get("/api/user/session", handleOrdinaryUserSession);
+authRoutes.get(USER_PROFILE_PATH, handleOrdinaryUserProfile);
 authRoutes.post("/api/user/logout", handleOrdinaryUserLogout);
 authRoutes.post(USER_DELETION_PATH, handleRequestOrdinaryUserDeletion);
 authRoutes.post(USER_DELETION_RESTORE_PATH, handleRestoreOrdinaryUserDeletion);

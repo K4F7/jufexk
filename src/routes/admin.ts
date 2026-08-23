@@ -285,7 +285,10 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
   if (!["approved", "rejected"].includes(status))
     return fail(c, "审核结果必须是 approved 或 rejected");
   const request = await c.env.DB.prepare(
-    "SELECT * FROM catalog_requests WHERE id=?",
+    `SELECT status,kind,course_code,course_name,category,teacher_name,
+            teacher_source_label,department,pending_review_json,
+            submitter_hash,author_user_id
+     FROM catalog_requests WHERE id=?`,
   )
     .bind(id)
     .first<CatalogRequestRow>();
