@@ -1,0 +1,175 @@
+import { SELF, env } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import app from "../src/index";
+import adminRoutes from "../src/routes/admin";
+import authRoutes from "../src/routes/auth";
+import importRoutes from "../src/routes/imports";
+import ordinaryUserRoutes from "../src/routes/ordinary-user";
+import publicCatalogRoutes from "../src/routes/public-catalog";
+import {
+  ordinaryWriteHeaders,
+  ordinaryWriteSession,
+  WRITE_ORIGIN,
+} from "./ordinary-write-session";
+
+const routeKey = (route: { method: string; path: string }) =>
+  `${route.method} ${route.path}`;
+
+let adminLoginSequence = 230;
+async function adminHeaders() {
+  const response = await SELF.fetch(`${WRITE_ORIGIN}/api/admin/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: WRITE_ORIGIN,
+      "CF-Connecting-IP": `198.51.100.${adminLoginSequence++}`,
+    },
+    body: JSON.stringify({ password: "test-password" }),
+  });
+  expect(response.status).toBe(200);
+  const body = await response.json<{ csrfToken: string }>();
+  const cookie = (response.headers as Headers & { getSetCookie(): string[] })
+    .getSetCookie()
+    .map((value) => value.split(";", 1)[0])
+    .join("; ");
+  return {
+    "Content-Type": "application/json",
+    Cookie: cookie,
+    Origin: WRITE_ORIGIN,
+    "X-CSRF-Token": body.csrfToken,
+  };
+}
+
+describe("domain route composition", () => {
+  it("assembles every domain router and keeps the admin guard before import routes", () => {
+    const appKeys = app.routes.map(routeKey);
+    const domainRoutes = [
+      publicCatalogRoutes,
+      authRoutes,
+      ordinaryUserRoutes,
+      adminRoutes,
+      importRoutes,
+    ].flatMap((router) => router.routes.map(routeKey));
+
+    expect(appKeys).toEqual(["ALL /api/*", ...domainRoutes]);
+    const adminGuard = appKeys.indexOf("ALL /api/admin/*");
+    expect(adminGuard).toBeGreaterThan(-1);
+    for (const route of importRoutes.routes) {
+      expect(appKeys.indexOf(routeKey(route))).toBeGreaterThan(adminGuard);
+    }
+  });
+
+  it("keeps representative routes in their owning domains", () => {
+    expect(publicCatalogRoutes.routes.map(routeKey)).toContain(
+      "GET /api/courses",
+    );
+    expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/cas");
+    expect(ordinaryUserRoutes.routes.map(routeKey)).toContain(
+      "POST /api/reviews",
+    );
+    expect(adminRoutes.routes.map(routeKey)).toContain(
+      "PATCH /api/admin/reviews/:id",
+    );
+    expect(importRoutes.routes.map(routeKey)).toContain(
+      "POST /api/admin/catalog-baseline/uploads",
+    );
+  });
+
+  it("applies the admin guard to the separately composed import router", async () => {
+    const response = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/admin/catalog-baseline/status`,
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: expect.stringContaining("管理员"),
+    });
+  });
+});
+
+describe("request schemas", () => {
+  it("rejects structurally invalid ordinary-user bodies without writing", async () => {
+    const session = await ordinaryWriteSession("route-schema-invalid");
+    const beforeReviews = await env.DB.prepare(
+      "SELECT COUNT(*) count FROM reviews",
+    ).first<{
+      count: number;
+    }>();
+    const review = await SELF.fetch(`${WRITE_ORIGIN}/api/reviews`, {
+      method: "POST",
+      headers: ordinaryWriteHeaders(session),
+      body: "[]",
+    });
+    expect(review.status).toBe(400);
+
+    const beforeRequests = await env.DB.prepare(
+      "SELECT COUNT(*) count FROM catalog_requests",
+    ).first<{ count: number }>();
+    const catalogRequest = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/catalog-requests`,
+      {
+        method: "POST",
+        headers: ordinaryWriteHeaders(session),
+        body: JSON.stringify({
+          kind: "course",
+          courseCode: "SCHEMA101",
+          courseName: "Schema 测试课",
+          category: "general",
+          teacherSourceLabel: "Schema 教师",
+          review: [],
+        }),
+      },
+    );
+    expect(catalogRequest.status).toBe(400);
+    expect(await catalogRequest.json()).toMatchObject({
+      error: "随附评价格式无效",
+    });
+
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) count FROM reviews").first(),
+    ).toMatchObject(beforeReviews ?? {});
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) count FROM catalog_requests",
+      ).first(),
+    ).toMatchObject(beforeRequests ?? {});
+  });
+
+  it("rejects invalid admin arrays and import envelopes at the HTTP boundary", async () => {
+    const headers = await adminHeaders();
+    const offering = await SELF.fetch(`${WRITE_ORIGIN}/api/admin/offerings`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        courseId: 1,
+        term: "2026-2027-1",
+        section: "A01",
+        teacherIds: [1, "bad"],
+      }),
+    });
+    expect(offering.status).toBe(400);
+    expect(await offering.json()).toMatchObject({ error: "任课教师列表无效" });
+
+    const relationImport = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/admin/import/relations/preview`,
+      { method: "POST", headers, body: "[]" },
+    );
+    expect(relationImport.status).toBe(422);
+    expect(await relationImport.json()).toMatchObject({
+      error: expect.stringContaining("补充包"),
+    });
+
+    const chunk = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/admin/catalog-baseline/uploads/schema/chunks/-1`,
+      { method: "PUT", headers, body: "{}" },
+    );
+    expect(chunk.status).toBe(400);
+    expect(await chunk.json()).toMatchObject({ error: "上传分块路径无效" });
+
+    const preview = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/admin/catalog-baseline/uploads/schema/preview?page=not-a-page`,
+      { headers },
+    );
+    expect(preview.status).toBe(400);
+    expect(await preview.json()).toMatchObject({ error: "预览参数无效" });
+  });
+});
