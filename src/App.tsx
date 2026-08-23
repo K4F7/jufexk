@@ -12,6 +12,7 @@ import { AppShell } from "./components/AppShell";
 import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
+import type { SiteBanner } from "./site-banner";
 import { AccountPage } from "./pages/AccountPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
@@ -74,6 +75,7 @@ function applyColorScheme(mode: "light" | "dark") {
 
 export function App() {
   const [config, setConfig] = useState<SiteConfig | null>(null);
+  const [banner, setBanner] = useState<SiteBanner | null>(null);
 
   useEffect(() => {
     api<SiteConfig>("/api/config")
@@ -87,6 +89,10 @@ export function App() {
           universityName: "江西财经大学",
         });
       });
+  }, []);
+
+  useEffect(() => {
+    api<SiteBanner>("/api/site/banner").then(setBanner).catch(() => setBanner(null));
   }, []);
 
   // Initial visit follows system; manual choice is remembered (foundations).
@@ -137,7 +143,7 @@ export function App() {
     <BrowserRouter>
       <RacClientNavigation>
         <ViewerProvider>
-          <AppShell config={config}>
+          <AppShell banner={banner} config={config}>
             <Routes>
             <Route path="/" element={<Navigate to="/courses" replace />} />
             <Route path="/courses" element={<CoursesPage />} />

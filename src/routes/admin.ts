@@ -20,6 +20,7 @@ import {
 } from "../lib/review-note-html";
 import { readSecret } from "../secrets";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
+import { loadSiteBanner, sanitizeSiteBanner } from "../site-banner";
 import {
   clean,
   csrfOk,
@@ -46,6 +47,7 @@ import {
   adminOfferingSchema,
   adminTeacherSchema,
   moderationSchema,
+  siteBannerSchema,
   teacherIdsSchema,
 } from "./request-schemas";
 
@@ -139,6 +141,25 @@ adminRoutes.post("/api/admin/logout", async (c) => {
   deleteCookie(c, "jufexk_admin", { path: "/" });
   deleteCookie(c, "jufexk_csrf", { path: "/" });
   return c.json({ ok: true });
+});
+adminRoutes.put("/api/admin/banner", async (c) => {
+  const parsedBody = siteBannerSchema.safeParse(await c.req.json<unknown>());
+  if (!parsedBody.success) return fail(c, "Banner HTML 格式或长度无效");
+  const banner = sanitizeSiteBanner(parsedBody.data);
+  if (!banner) return fail(c, "Banner HTML 消毒后过长");
+  const actorSessionId = c.get("adminSessionId") ?? null;
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO site_banner_history(desktop_html,mobile_html,actor_session_id)
+       VALUES(?,?,?)`,
+    ).bind(banner.desktopHtml, banner.mobileHtml, actorSessionId),
+    c.env.DB.prepare(
+      `UPDATE site_banner_current
+       SET desktop_html=?,mobile_html=?,updated_by_session_id=?,updated_at=CURRENT_TIMESTAMP
+       WHERE id=1`,
+    ).bind(banner.desktopHtml, banner.mobileHtml, actorSessionId),
+  ]);
+  return c.json({ ok: true, banner: await loadSiteBanner(c.env.DB) });
 });
 adminRoutes.get("/api/admin/sessions", async (c) => {
   await c.env.DB.batch([

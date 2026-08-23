@@ -14,8 +14,10 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import type { SiteConfig } from "../lib/types";
+import type { SiteBanner as SiteBannerValue } from "../site-banner";
 import { AccountNavControl } from "./AccountNavControl";
 import { ThemeToggle } from "./ThemeToggle";
+import { SiteBanner } from "./SiteBanner";
 
 /**
  * Production shell — USTC 评课社区对齐（Issue #402）：
@@ -104,9 +106,11 @@ function ShellCourseSearch() {
 }
 
 function DefaultShell({
+  banner,
   config,
   children,
 }: {
+  banner: SiteBannerValue | null;
   config: SiteConfig | null;
   children: ReactNode;
 }) {
@@ -205,6 +209,8 @@ function DefaultShell({
         </div>
       </header>
 
+      <SiteBanner banner={banner} />
+
       <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 pb-16 pt-8 sm:px-5 xl:px-4">
         {showGlobalSearch &&
         globalSearchVariant &&
@@ -238,9 +244,11 @@ function withGlobalSearchParams(path: string, params: URLSearchParams) {
 }
 
 export function AppShell({
+  banner,
   config,
   children,
 }: {
+  banner: SiteBannerValue | null;
   config: SiteConfig | null;
   children: React.ReactNode;
 }) {
@@ -248,7 +256,7 @@ export function AppShell({
 
   if (prototypeVariant && PrototypeShellLazy) {
     return (
-      <Suspense fallback={<DefaultShell config={config}>{children}</DefaultShell>}>
+      <Suspense fallback={<DefaultShell banner={banner} config={config}>{children}</DefaultShell>}>
         <PrototypeShellLazy variant={prototypeVariant} config={config}>
           {children}
         </PrototypeShellLazy>
@@ -256,5 +264,5 @@ export function AppShell({
     );
   }
 
-  return <DefaultShell config={config}>{children}</DefaultShell>;
+  return <DefaultShell banner={banner} config={config}>{children}</DefaultShell>;
 }
