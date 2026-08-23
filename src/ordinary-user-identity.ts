@@ -54,6 +54,13 @@ async function lookupIdentityUser(
   db: D1Database,
   input: { provider: string; issuer: string; subject: string },
 ) {
+  return identityUserStatement(db, input).first<OrdinaryUser>();
+}
+
+function identityUserStatement(
+  db: D1Database,
+  input: { provider: string; issuer: string; subject: string },
+) {
   return db
     .prepare(
       `SELECT users.id, users.status,
@@ -62,8 +69,7 @@ async function lookupIdentityUser(
        JOIN users ON users.id = auth_identities.user_id
        WHERE auth_identities.provider=? AND auth_identities.issuer=? AND auth_identities.subject=?`,
     )
-    .bind(input.provider, input.issuer, input.subject)
-    .first<OrdinaryUser>();
+    .bind(input.provider, input.issuer, input.subject);
 }
 
 export async function resolveOrCreateIdentityUser(
@@ -76,7 +82,7 @@ export async function resolveOrCreateIdentityUser(
   const userId = newUserId();
   // Occupy the identity slot first. A lost race must not insert an orphan
   // users row; the winner's user_id is filled only after the slot is taken.
-  await db.batch([
+  const results = await db.batch<OrdinaryUser>([
     db
       .prepare(
         `INSERT OR IGNORE INTO auth_identities(provider,issuer,subject,user_id)
@@ -90,6 +96,7 @@ export async function resolveOrCreateIdentityUser(
          WHERE provider=? AND issuer=? AND subject=?`,
       )
       .bind(input.provider, input.issuer, input.subject),
+    identityUserStatement(db, input),
   ]);
-  return lookupIdentityUser(db, input);
+  return results[2]?.results[0] || null;
 }

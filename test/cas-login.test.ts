@@ -1,6 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { generateKeyPairSync } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import app from "../src/index";
 import {
   AUTH_PROVIDER_CAS,
   CAS_IDENTITY_ISSUER,
@@ -254,6 +255,43 @@ async function finishMfa(body: Record<string, unknown>, ip = nextIp()) {
   });
 }
 
+function delayExpiredChallengePurge(db: D1Database) {
+  let release = () => {};
+  let finished = false;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const delayed = new Proxy(db, {
+    get(target, property) {
+      if (property === "prepare") {
+        return (query: string) => {
+          const statement = target.prepare(query);
+          if (!query.startsWith("DELETE FROM cas_login_challenges WHERE expires_at")) {
+            return statement;
+          }
+          return new Proxy(statement, {
+            get(statementTarget, statementProperty) {
+              if (statementProperty === "run") {
+                return async () => {
+                  await gate;
+                  const result = await statementTarget.run();
+                  finished = true;
+                  return result;
+                };
+              }
+              const value = Reflect.get(statementTarget, statementProperty, statementTarget);
+              return typeof value === "function" ? value.bind(statementTarget) : value;
+            },
+          });
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { db: delayed, release, finished: () => finished };
+}
+
 describe("jxufe cas helpers", () => {
   it("accepts campus hosts and ehall ticket redirects", () => {
     expect(isAllowedCasUrl("https://ssl.jxufe.edu.cn/cas/login")).toBe(true);
@@ -298,6 +336,48 @@ describe("jxufe cas helpers", () => {
 });
 
 describe("jxufe cas login", () => {
+  it("returns a successful login without waiting for expired challenge cleanup", async () => {
+    installCasMock();
+    const delayed = delayExpiredChallengePurge(env.DB);
+    const backgroundTasks: Promise<unknown>[] = [];
+    const executionContext = {
+      waitUntil(promise: Promise<unknown>) {
+        backgroundTasks.push(promise);
+      },
+      passThroughOnException() {},
+    } as ExecutionContext;
+    const bindings = new Proxy(env, {
+      get(target, property) {
+        return property === "DB" ? delayed.db : Reflect.get(target, property, target);
+      },
+    });
+    const responsePromise = app.fetch(
+      new Request(`${origin}/api/auth/cas`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: origin,
+          "CF-Connecting-IP": nextIp(),
+        },
+        body: JSON.stringify({ username: studentId, password }),
+      }),
+      bindings,
+      executionContext,
+    );
+
+    try {
+      await vi.waitFor(() => expect(backgroundTasks).toHaveLength(1));
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      expect(delayed.finished()).toBe(false);
+    } finally {
+      delayed.release();
+      await responsePromise;
+      await Promise.allSettled(backgroundTasks);
+    }
+    expect(delayed.finished()).toBe(true);
+  });
+
   it("treats a 200 login page after POST as a wrong password", async () => {
     mode = "wrong-password-200";
     installCasMock();

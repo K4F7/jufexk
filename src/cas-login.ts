@@ -162,7 +162,7 @@ async function issueOrdinarySession(
 
 export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
-  const purge = purgeExpiredChallenges(c.env.DB).catch(() => {});
+  c.executionCtx.waitUntil(purgeExpiredChallenges(c.env.DB).catch(() => {}));
   const [body, identitySecret, secret, ipHash] = await Promise.all([
     readJsonBody(c),
     readSecret(c.env.CAMPUS_IDENTITY_SECRET),
@@ -189,11 +189,9 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
 
   const result = await startCasPasswordLogin(username, password);
   if (result.ok) {
-    await purge;
     return issueOrdinarySession(c, username, identitySecret);
   }
   if (result.needsMfa) {
-    await purge;
     if (!secret) return fail(c, "登录失败，请稍后重试", 503);
     const id = [...crypto.getRandomValues(new Uint8Array(16))]
       .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -214,7 +212,7 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
 
 export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
-  const purge = purgeExpiredChallenges(c.env.DB).catch(() => {});
+  c.executionCtx.waitUntil(purgeExpiredChallenges(c.env.DB).catch(() => {}));
   const [body, identitySecret, secret, ipHash] = await Promise.all([
     readJsonBody(c),
     readSecret(c.env.CAMPUS_IDENTITY_SECRET),
@@ -249,7 +247,6 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
       expires_at: number;
       consumed_at: number | null;
     }>();
-  await purge;
   if (!row || row.consumed_at != null || row.expires_at <= Math.floor(Date.now() / 1000)) {
     return fail(c, "验证已过期，请重新登录", 401);
   }
