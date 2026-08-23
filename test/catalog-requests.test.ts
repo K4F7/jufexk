@@ -2,9 +2,10 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
   CURRENT_SCORES,
-  CURRENT_SCORES_JSON,
   REQUIRED_NOTE,
   V1_OFFLINE_SCORES,
+  V3_OFFLINE_SCORES,
+  V3_OFFLINE_SCORES_JSON,
 } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
@@ -249,7 +250,7 @@ describe("catalog addition requests", () => {
         overall: 5,
         comment: "随申请一起提交的评价",
         term: "2025 秋",
-        scores: CURRENT_SCORES,
+        scores: V3_OFFLINE_SCORES,
         schemeKey: "pe",
       },
     });
@@ -293,8 +294,8 @@ describe("catalog addition requests", () => {
       course_id: catalogBody.items[0].id,
       term: "2025 秋",
       scheme_key: "major",
-      scheme_version: 2,
-      scores: CURRENT_SCORES_JSON,
+      scheme_version: 3,
+      scores: V3_OFFLINE_SCORES_JSON,
     });
   });
 
@@ -325,7 +326,7 @@ describe("catalog addition requests", () => {
       review: {
         overall: 5,
         comment: "123456789",
-        scores: CURRENT_SCORES,
+        scores: V3_OFFLINE_SCORES,
       },
     });
     expect(response.status).toBe(400);
@@ -548,7 +549,7 @@ describe("catalog addition requests", () => {
       review: {
         overall: 5,
         comment: "并发审批只应创建一次",
-        scores: CURRENT_SCORES,
+        scores: V3_OFFLINE_SCORES,
       },
     });
     const { id } = await submitted.json<{ id: number }>();

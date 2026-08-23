@@ -1,13 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { TIER3_QUESTIONS } from "../review-score-fixtures";
+import { TIER3_QUESTIONS, V3_QUESTIONS } from "../review-score-fixtures";
 
 /**
- * 写评价（Issue #402 + #400 + #447）：入口只从课程页「写点评」；表单对齐 icourse ——
- * 学期 Select（必填）、四维三档（中文档位文案）、1–5 本次推荐度、必填一句话总结
+ * 写评价（Issue #402 + #400 + #447 + #371）：入口只从课程页「写点评」；表单对齐 icourse ——
+ * 学期 Select（必填）、v3 五道三档（四维 + 考勤松紧，中文档位文案）、1–5 本次推荐度、必填一句话总结
  * （headline）、Tiptap 详细评价（三行提示占位）、选填成绩（grade）、匿名发布。
- * 发布成功回到该 课程×教师 的详情页，详情页展示 headline 与成绩。
+ * mooc 课藏考勤题；发布成功回到该 课程×教师 的详情页，详情页展示 headline 与成绩。
  *
- * 四维三档题面与必填详细评价的行为断言承接 #374；编辑器覆盖承接 #400。
+ * 三档题面与必填详细评价的行为断言承接 #374；编辑器覆盖承接 #400。
  */
 const VALID_NOTE = "老师讲课很清楚，收获很大，推荐给学弟学妹。";
 const LONG_COMMENT = "老师讲课条理清楚，期末范围给得准，跟着节奏走基本稳。";
@@ -20,9 +20,9 @@ const offlineCourse = {
   department: "人文学院",
   teachers: "测试教师",
   schemeKey: "major",
-  schemeVersion: 2,
+  schemeVersion: 3,
   tags: [] as string[],
-  applicableQuestions: TIER3_QUESTIONS,
+  applicableQuestions: V3_QUESTIONS,
 };
 
 const moocCourse = {
@@ -33,7 +33,7 @@ const moocCourse = {
   department: "马克思主义学院",
   teachers: "网课教师",
   schemeKey: "ideology",
-  schemeVersion: 2,
+  schemeVersion: 3,
   tags: ["mooc"],
   applicableQuestions: TIER3_QUESTIONS,
 };
@@ -46,9 +46,9 @@ const peCourse = {
   department: "体育学院",
   teachers: "体育教师",
   schemeKey: "pe",
-  schemeVersion: 2,
+  schemeVersion: 3,
   tags: [] as string[],
-  applicableQuestions: TIER3_QUESTIONS,
+  applicableQuestions: V3_QUESTIONS,
 };
 
 const courseDetail = {
@@ -217,10 +217,11 @@ async function answerTier3AndOverall(
   await pickScore(page, "作业多少", "超多");
   await pickScore(page, "给分好坏", "一般");
   await pickScore(page, "收获多少", "没有");
+  await pickScore(page, "考勤松紧", "一般");
   await pickScore(page, "本次推荐度", overall);
 }
 
-/** 专业课/体育课/网课都应看到的同一套四道三档题（中文档位，#374）。 */
+/** 所有课都应看到的公共核四道三档题（中文档位，#374）。 */
 async function expectTier3Questions(page: Page) {
   const difficulty = page.getByRole("radiogroup", { name: "课程难度" });
   await expect(difficulty).toBeVisible();
@@ -252,6 +253,27 @@ async function expectTier3Questions(page: Page) {
 
   await expect(page.getByRole("radiogroup", { name: "本次推荐度" })).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "点名频率" })).toHaveCount(0);
+}
+
+/** v3 线下课的第五道三档题：考勤松紧（宽松 / 一般 / 严苛，#371 锁定文案）。 */
+async function expectAttendanceQuestion(page: Page) {
+  const attendance = page.getByRole("radiogroup", { name: "考勤松紧" });
+  await expect(attendance).toBeVisible();
+  await expect(
+    attendance.getByRole("radio", { name: "宽松", exact: true }),
+  ).toBeVisible();
+  await expect(
+    attendance.getByRole("radio", { name: "一般", exact: true }),
+  ).toBeVisible();
+  await expect(
+    attendance.getByRole("radio", { name: "严苛", exact: true }),
+  ).toBeVisible();
+}
+
+/** 线下课（含未选课时的公共核预览）：五道三档题，无「仅线下适用」提示。 */
+async function expectOfflineQuestions(page: Page) {
+  await expectTier3Questions(page);
+  await expectAttendanceQuestion(page);
   await expect(page.getByText(/仅线下适用/)).toHaveCount(0);
 }
 
@@ -313,8 +335,8 @@ test("gate comes first and the icourse-aligned form appears after entry", async 
   const termSelect = page.getByRole("button", { name: /学期/ });
   await expect(termSelect).toBeVisible();
   await expect(termSelect).toContainText("请选择学期");
-  // 四维三档（中文档位）+ 本次推荐度。
-  await expectTier3Questions(page);
+  // v3 五道三档（中文档位）+ 本次推荐度。
+  await expectOfflineQuestions(page);
   // 一句话总结（必填）在推荐度之后、详细评价之前。
   await expect(
     page.getByRole("textbox", { name: "一句话总结本课" }),
@@ -360,7 +382,7 @@ test("three-tier options show Chinese labels and submit the full payload", async
   await passGate(page);
   await chooseCourse(page, "文化", "中国传统文化导论");
   await pickTeacher(page, "测试教师");
-  await expectTier3Questions(page);
+  await expectOfflineQuestions(page);
 
   await pickTerm(page);
 
@@ -374,9 +396,16 @@ test("three-tier options show Chinese labels and submit the full payload", async
   await expect(page.getByText("请选择收获多少")).toBeVisible();
   expect(posted).toHaveLength(0);
 
-  // 答完四维但缺一句话总结：被拦在 headline（#447，后端必填）。
+  // 再答 收获多少，提交被拦在第五题 考勤松紧。
   await pickScore(page, "收获多少", "很多");
   await expect(page.getByText("请选择收获多少")).toHaveCount(0);
+  await page.getByRole("button", { name: "发布" }).click();
+  await expect(page.getByText("请选择考勤松紧")).toBeVisible();
+  expect(posted).toHaveLength(0);
+
+  // 答完五题但缺一句话总结：被拦在 headline（#447，后端必填）。
+  await pickScore(page, "考勤松紧", "宽松");
+  await expect(page.getByText("请选择考勤松紧")).toHaveCount(0);
   await page.getByRole("button", { name: "发布" }).click();
   await expect(page.getByText("请填写一句话总结本课")).toBeVisible();
   expect(posted).toHaveLength(0);
@@ -395,7 +424,7 @@ test("three-tier options show Chinese labels and submit the full payload", async
     courseId: 8,
     teacherId: 9,
     overall: 5,
-    scores: { difficulty: 1, homework: 2, grading: 1, gain: 1 },
+    scores: { difficulty: 1, homework: 2, grading: 1, gain: 1, attendance: 1 },
     headline: "条理清楚，跟着走基本稳",
     comment: `<p>${LONG_COMMENT}</p>`,
   });
@@ -403,9 +432,8 @@ test("three-tier options show Chinese labels and submit the full payload", async
   expect(posted[0].grade).toBe("");
   expect(typeof posted[0].term).toBe("string");
   expect(posted[0].term).not.toBe("");
-  // 载荷不含旧维度键（#374）。
+  // 载荷不含 v1 旧维度键（#374）；v3 起 attendance 是考勤松紧（#371）。
   expect(posted[0].scores).not.toHaveProperty("teaching");
-  expect(posted[0].scores).not.toHaveProperty("attendance");
   expect(posted[0].scores).not.toHaveProperty("workload");
 
   // 详情页：headline 加粗行在正文上方；未填成绩不展示成绩行。
@@ -428,6 +456,7 @@ test("short comment is blocked before submit", async ({ page }) => {
   await pickScore(page, "作业多少", "中等");
   await pickScore(page, "给分好坏", "超好");
   await pickScore(page, "收获多少", "很多");
+  await pickScore(page, "考勤松紧", "严苛");
   await pickScore(page, "本次推荐度", "4");
   await fillHeadline(page, "短评拦截用例");
   await fillComment(page, "太短");
@@ -463,7 +492,7 @@ test("a note shorter than 10 chars after trim blocks submit", async ({
   expect(posted[0]).toMatchObject({ comment: `<p>${VALID_NOTE}</p>` });
 });
 
-test("mooc course shows the same four three-tier questions without offline hints", async ({
+test("mooc course hides attendance behind the offline-only hint", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
@@ -471,8 +500,13 @@ test("mooc course shows the same four three-tier questions without offline hints
   await passGate(page);
   await chooseCourse(page, "思政", "思政网课");
 
-  // 网课不少题、不换题，也没有「仅线下适用」提示。
+  // 网课只藏考勤题：公共核四维照答，考勤松紧不出现，并给出「仅线下适用」提示。
   await expectTier3Questions(page);
+  await expect(
+    page.getByRole("radiogroup", { name: "考勤松紧" }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/仅线下适用/)).toBeVisible();
+  await expect(page.getByText(/仅线下适用/)).toContainText("考勤松紧");
 
   await pickTeacher(page, "网课教师");
   await pickTerm(page);
@@ -493,17 +527,18 @@ test("mooc course shows the same four three-tier questions without offline hints
     scores: { difficulty: 2, homework: 3, grading: 2, gain: 2 },
     headline: "网课省心，自己安排节奏",
   });
+  expect(posted[0].scores).not.toHaveProperty("attendance");
 });
 
-// #374：体育课与专业课共用同一套四道三档题。
-test("pe course shows the same four three-tier questions as major", async ({
+// #374 + #371：体育课与专业课共用同一套 v3 五道三档题（含考勤松紧）。
+test("pe course shows the same five three-tier questions as major", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
   await passGate(page);
   await chooseCourse(page, "体育", "大学体育");
-  await expectTier3Questions(page);
+  await expectOfflineQuestions(page);
   await expect(
     page.getByRole("button", { name: /任课教师/ }),
   ).toBeEnabled();

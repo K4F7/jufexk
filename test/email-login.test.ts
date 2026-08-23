@@ -307,6 +307,7 @@ describe("school-email login", () => {
           homework: 2,
           grading: 3,
           gain: 2,
+          attendance: 2,
         },
         comment: "邮箱会话可以正常投稿",
         headline: "一句话总结",
