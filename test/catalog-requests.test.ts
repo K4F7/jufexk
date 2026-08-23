@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { hmacHex } from "../src/ordinary-user-session";
 import {
   CURRENT_SCORES,
   REQUIRED_NOTE,
@@ -10,6 +11,7 @@ import {
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
+  ORDINARY_TEST_AUTH_SECRET,
   type OrdinaryWriteSession,
 } from "./ordinary-write-session";
 
@@ -276,7 +278,7 @@ describe("catalog addition requests", () => {
     expect(catalogBody.items[0].teachers).toContain("批准后的教师");
 
     const review = await env.DB.prepare(
-      `SELECT status,comment,term,course_id,scheme_key,scheme_version,scores
+      `SELECT status,comment,term,course_id,scheme_key,scheme_version,scores,author_user_id
          FROM reviews WHERE comment=? LIMIT 1`,
     )
       .bind("随申请一起提交的评价")
@@ -288,6 +290,7 @@ describe("catalog addition requests", () => {
         scheme_key: string;
         scheme_version: number;
         scores: string;
+        author_user_id: string | null;
       }>();
     expect(review).toMatchObject({
       status: "approved",
@@ -296,6 +299,10 @@ describe("catalog addition requests", () => {
       scheme_key: "major",
       scheme_version: 3,
       scores: V3_OFFLINE_SCORES_JSON,
+      author_user_id: await hmacHex(
+        "ordinary-test-user:catalog-request-writer",
+        ORDINARY_TEST_AUTH_SECRET,
+      ),
     });
   });
 

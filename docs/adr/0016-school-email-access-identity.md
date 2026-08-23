@@ -2,6 +2,8 @@
 
 _2026-08-24：#460 为“我的任课评价被认可”通知新增 `reviews.author_user_id` 内部作者关联；公开评价仍匿名，公开 API 永不返回该字段或认可者身份。进入 `pending_deletion` 不删除任课评价或作者关联；将来若实现最终删除，须在 finalize 前匿名化作者关联。_
 
+_2026-08-24：[#459](https://github.com/K4F7/jufexk/issues/459) 的私有个人主页复用 `author_user_id` 查询新任课评价，并让目录补充申请的随附评价继承提交者。只关联上线后的新写入；既有评价与申请保持 `author_user_id = NULL`，不按 `submitter_hash` 认领。个人主页仅返回当前 active 普通用户自己的数据，响应不下发 `users.id`。_
+
 _2026-08-22：生产校园登录只走江财 CAS 代登（#389）。标准 CAS 与 AuthBridge 废弃：`CAMPUS_JWT_ENABLED` 不能再打开 callback，`POST /api/auth/callback` 与 `GET /api/auth/campus` 固定关闭。校学生邮箱验证仍是非 CAS 次要入口。本文的身份三元组、`users.id`、CSRF、封禁/待删除形状与管理员隔离继续有效。_
 
 _2026-08-21：生产登录路径曾改为 `stu.jxufe.edu.cn` 校学生邮箱验证（#324 / #325）。验证信经可配置 HTTPS 投递端点发出（生产为 Resend）；Worker 不直连 SMTP:25。该路径现为备选。_
@@ -59,7 +61,7 @@ Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC �
 - 恢复期 session 形状见上一节。响应与公开接口不得出现 `user_id`、认证身份或学号。
 - `POST /api/user/deletion/restore` 仅当解析到的普通用户当前为 `pending_deletion`，且必须同源与 CSRF。成功后回到 `active` 并清空 `pending_deletion_at`，不重建认可。对 `active` / `banned` / `deleted` / 游客返回冲突或未登录，不改状态。
 - 文案恢复期为 30 天，`restoreUntil` 只供前端说明。本版不 finalize：不加到期清理任务，不删除认证身份，不把账号标为 `deleted`。过了 30 天仍可恢复。`deleted` 只用于写拒绝测试或未来 finalize。
-- #460 起，新任课评价以内部 `author_user_id` 关联普通用户，用于个人数据与认可通知；既有评价不回填，继续保持 `author_user_id = NULL`。公开评价仍匿名，`submitter_hash` 与作者关联均不下发。进入恢复期时保留任课评价及作者关联；未来 finalize 前必须匿名化作者关联。
+- #459 / #460 起，新任课评价以内部 `author_user_id` 关联普通用户，用于个人数据与认可通知；既有评价不回填，继续保持 `author_user_id = NULL`。公开评价仍匿名，`submitter_hash` 与作者关联均不下发。进入恢复期时保留任课评价及作者关联，账号恢复后个人主页数据继续可见；未来 finalize 前必须匿名化作者关联。
 - 本版不提供合并 API，也不按邮箱或学号猜测合并。多个认证主体默认是不同普通用户。将来若出现第二身份信号，合并只遵循这些冲突规则：存续普通用户（只保留一个 `users.id`，被合并方的认证身份迁到存续用户）；认证身份迁移与认可折叠必须在同一事务完成；两边对同一评价都有认可时折叠为一条；同一任课关系上已有两条任课评价时，不得自动丢弃或拼接。
 - 封禁摘要、删号后再注册对抗与永久封禁专用流程另议。管理员 cookie 不能调用普通用户删除或恢复。
 
