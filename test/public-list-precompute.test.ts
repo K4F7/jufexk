@@ -238,8 +238,11 @@ describe("public list query shape", () => {
     await firstBatchStarted;
     const secondRefresh = refreshPublicListPrecomputes(databaseB);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, 15_250));
       expect(secondBatchCalls).toBe(0);
+      openFirstBatch();
+      await firstRefresh;
+      await secondRefresh;
     } finally {
       openFirstBatch();
       await Promise.allSettled([firstRefresh, secondRefresh]);
@@ -268,6 +271,49 @@ describe("public list query shape", () => {
       refresh_lease_until: null,
     });
     expect(missingPinyin?.count).toBe(0);
+  }, 30_000);
+
+  it("bounds repeated refresh lease acquisition races", async () => {
+    await SELF.fetch("https://example.com/api/courses?q=TEST101");
+    await env.DB.prepare(
+      `UPDATE public_precompute_state
+       SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL
+       WHERE id=1`,
+    ).run();
+    let acquireAttempts = 0;
+    const database = new Proxy(env.DB, {
+      get(target, property) {
+        if (property === "prepare")
+          return (query: string) => {
+            if (query.includes("SET refresh_token=?,refresh_lease_until"))
+              return {
+                bind: () => ({
+                  run: async () => {
+                    acquireAttempts += 1;
+                    return { results: [] };
+                  },
+                }),
+              } as unknown as D1PreparedStatement;
+            return target.prepare(query);
+          };
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as D1Database;
+
+    try {
+      await expect(refreshPublicListPrecomputes(database)).rejects.toThrow(
+        /刷新租约获取失败/,
+      );
+      expect(acquireAttempts).toBe(5);
+    } finally {
+      await env.DB.prepare(
+        `UPDATE public_precompute_state
+         SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL
+         WHERE id=1`,
+      ).run();
+      await refreshPublicListPrecomputes(env.DB);
+    }
   });
 
   it("keeps the original refresh error when dirty-state cleanup also fails", async () => {
