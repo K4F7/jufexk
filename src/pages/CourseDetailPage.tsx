@@ -40,7 +40,7 @@ import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import { fourDimLineLabels } from "../lib/dimension-labels";
-import { categoryLabel } from "../lib/labels";
+import { categoryLabel, formatCredits } from "../lib/labels";
 import type {
   Course,
   PublicReviewPage,
@@ -390,7 +390,7 @@ export function CourseDetailPage() {
     ["课程类别", categoryLabel(course.category)],
     ["开课单位", course.department || "—"],
     ["课程层次", course.course_level || "—"],
-    ["学分", course.credits != null ? String(course.credits) : "—"],
+    ["学分", formatCredits(course.credits)],
   ];
   const comparingRecognition =
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
