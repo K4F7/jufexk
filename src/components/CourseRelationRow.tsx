@@ -1,6 +1,8 @@
 /**
  * 课程目录行：一行一条课程×教师。
  * 课程名（老师）→ 星级 + 评价样本 → 四维档位。
+ * HeroUI `.link` 默认是 inline-flex + w-fit + rounded-xl，会缩成一枚
+ * 按钮；目录行用 w-full! / rounded-none! 拉齐内容区全宽。
  */
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import type { CourseRelation } from "../lib/types";
@@ -36,7 +38,7 @@ export function CourseRelationRow({
   return (
     <RouterAriaLink
       to={href}
-      className="block border-b border-separator py-3 no-underline last:border-b-0 hover:bg-surface-secondary/60"
+      className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-surface-secondary/60 hover:no-underline!"
     >
       <span className="block text-[15px] font-medium text-accent">
         {relation.name}
