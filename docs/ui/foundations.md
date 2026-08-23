@@ -17,7 +17,7 @@
 
 - 使用 HeroUI Theme Builder 导出的官方 Sky preset 作为亮色和暗色主题基础。
 - Sky 是品牌与主要交互色。成功、警告和危险继续使用各自的语义色，不能被 Sky 覆盖。
-- **已视觉冻结（sky-tokens）**：官方 Sky accent + 默认 0.5rem 半径与阴影；页面背景/表面/边框采用轻微天空色 tint（来自 Prototype 变体 C 的表面，不含其更紧半径与字段边框）。实现见 `src/styles/globals.css`。
+- **已视觉冻结（sky-tokens，#422 重开后）**：官方 Sky A 画布——HeroUI 默认浅灰底 `oklch(0.9702 0 0)`、官方 Sky accent、亮色 `--foreground: var(--eclipse)` 黑字；0.5rem 半径与默认阴影，`link=foreground`。不再使用 C 的天空色表面 tint。实现见 `src/styles/globals.css`。
 - 初次访问跟随系统主题；用户切换亮暗模式后记住手动选择。
 - 主题开关采用官方示例式亮暗图标交互。
 - 使用 HeroUI 官方组件语言；后续模块可在已冻结 token 上继续压缩留白与信息密度。
@@ -183,7 +183,7 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 
 | UI 模块 | 状态 | 胜出方案 | 确认原因 | Prototype 引用 |
 | --- | --- | --- | --- | --- |
-| Sky 主题 token | 视觉冻结 | **A + C 天空色表面**：官方 Sky accent / 0.5rem 半径 / 默认阴影 / `link=foreground`；表面与边框取 C 的天空色 tint（不含 C 的更紧半径、字段细边框与偏青 accent） | 用户确认 A 为主体，并吸收 C 的天空色表面 | `src/prototype/themes/sky-tokens.css` · 生产：`src/styles/globals.css` |
+| Sky 主题 token | 视觉冻结 | **官方 Sky A 画布**：HeroUI 默认浅灰底 / 白表面 / 中性边框；官方 Sky accent（官网主按钮蓝）；亮色 eclipse 黑字；0.5rem 半径 / 默认阴影 / `link=foreground`。不再取 C 的天空色 tint | #422 用户对照 HeroUI 官网 hero，要求底色用官方浅灰、换用该蓝、黑字；重开原 A+C 冻结 | `src/prototype/themes/sky-tokens.css` · 生产：`src/styles/globals.css` · Issue #422 |
 | 公共 Shell 与顶部导航 | 视觉冻结 | **C — Button 导航**：左簇字标品牌（无「选」方标）· HeroUI `Button` size=`sm`、当前 `secondary` / 非当前 `ghost` · 右校名 + `ThemeToggle` · 顶栏 `min-h-14` + `bg-surface/95` sticky | 用户在官方 A/B/C 三版中确认 C；与主题开关同属 Button 圆角语系 | 生产：`src/components/AppShell.tsx` · 原型对照：`src/prototype/ShellNavVariants.tsx` C |
 | 目录标题与搜索 | 视觉冻结 | **C — 同行工具条**：左 `h1` 标题 + 门数（xs muted）；右 HeroUI `SearchField` `variant=secondary` 全宽；无独立 SectionHead | 用户在 A/B/C 三版中确认 C | 生产：`src/components/CatalogSearchHeader.tsx` · 原型对照：`src/prototype/CatalogSearchVariants.tsx` C |
 | 筛选工具 | 视觉冻结 | **D — A+C 组合**：院系 / 教师搜索 / 教师 Select / 清空 紧贴上方搜索；其下类别 `Button` secondary/ghost 快捷条；扩展位留给未来收藏，生产不展示不可用「即将」入口 | 用户倾向 A+C，确认 D 顺序（类别下移、次级筛选上贴搜索） | 生产：#402 起改为 `src/pages/CoursesPage.tsx` 内联浅蓝筛选框（课程类别行；旧 `CatalogFilters.tsx` 已随工具条下线删除） · 原型对照：`src/prototype/CatalogFiltersVariants.tsx` D |

@@ -49,9 +49,9 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
       "在官方 Sky accent 基础上，高密度目录工具应采用哪套半径、阴影与表面色处理？",
     status: "visually-frozen",
     preview: "gallery",
-    winner: "A+C surfaces",
+    winner: "A official canvas",
     notes:
-      "胜出：A 的 accent/半径/阴影/link + C 的天空色 background/surface/border/separator。已写入 src/styles/globals.css。",
+      "胜出（#422 重开）：官方 Sky A 画布——HeroUI 默认浅灰底、白表面、中性边框；官方 Sky accent；亮色 eclipse 黑字。不再取 C 的天空色 tint。已写入 src/styles/globals.css。",
     variants: [
       {
         key: "A",

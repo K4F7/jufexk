@@ -3,14 +3,16 @@
 
 :root {
   /*
-   * Visually frozen: sky-tokens = A + C 天空色表面
-   * - A: official Sky accent, 0.5rem radius, default shadows, link=foreground
-   * - C: sky-tinted background / surface / border / separator only
+   * Visually frozen (#422): official Sky A canvas
+   * - HeroUI default background / surface / border / separator
+   * - official Sky accent (Get started blue), eclipse black text
+   * - 0.5rem radius, default shadows, link=foreground
    * success / warning / danger: HeroUI defaults (untouched)
    */
   --accent: oklch(0.6204 0.195 253.83);
   --accent-foreground: var(--snow);
   --focus: var(--accent);
+  --foreground: var(--eclipse);
   --link: var(--foreground);
   --radius: 0.5rem;
   --field-radius: calc(var(--radius) * 1.5);
@@ -26,13 +28,12 @@
   --field-shadow:
     0 2px 4px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.06),
     0 0 1px 0 rgba(0, 0, 0, 0.06);
-  /* C sky surfaces (light) */
-  --background: oklch(0.975 0.012 245);
-  --surface: oklch(0.995 0.006 245);
-  --surface-secondary: oklch(0.955 0.015 245);
-  --border: oklch(0.88 0.025 245);
-  --separator: oklch(0.91 0.02 245);
-  --default: oklch(0.94 0.02 245);
+  --background: oklch(0.9702 0 0);
+  --surface: var(--white);
+  --surface-secondary: oklch(0.9524 0.0013 286.37);
+  --border: oklch(90% 0.004 286.32);
+  --separator: oklch(92% 0.004 286.32);
+  --default: oklch(94% 0.001 286.375);
   --serif: "Iowan Old Style", "Noto Serif SC", "Songti SC", Georgia, serif;
   --sans:
     Roboto, -apple-system, BlinkMacSystemFont, "Noto Sans SC",
@@ -53,13 +54,13 @@
   --surface-shadow: 0 0 0 0 transparent inset;
   --overlay-shadow: 0 0 1px 0 rgba(255, 255, 255, 0.3) inset;
   --field-shadow: 0 0 0 0 transparent inset;
-  /* C sky surfaces (dark) */
-  --background: oklch(0.125 0.02 245);
-  --surface: oklch(0.185 0.025 245);
-  --surface-secondary: oklch(0.22 0.03 245);
-  --border: oklch(0.3 0.03 245);
-  --separator: oklch(0.28 0.025 245);
-  --default: oklch(0.26 0.025 245);
+  --foreground: var(--snow);
+  --background: oklch(12% 0.005 285.823);
+  --surface: oklch(0.2103 0.0059 285.89);
+  --surface-secondary: oklch(0.257 0.0037 286.14);
+  --border: oklch(28% 0.006 286.033);
+  --separator: oklch(25% 0.006 286.033);
+  --default: oklch(27.4% 0.006 286.033);
   --default-foreground: var(--snow);
 }
 
