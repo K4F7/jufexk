@@ -6,7 +6,7 @@
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Button, Card, Typography } from "@heroui/react";
+import { Card, Typography, buttonVariants } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -598,9 +598,16 @@ export function CourseDetailPage() {
           </SidePanel>
         ) : null}
 
-        <Button fullWidth href={catalogHref} size="sm" variant="ghost">
+        <RouterAriaLink
+          className={`${buttonVariants({
+            fullWidth: true,
+            size: "sm",
+            variant: "ghost",
+          })} justify-center no-underline`}
+          to={catalogHref}
+        >
           ← 返回课程目录
-        </Button>
+        </RouterAriaLink>
       </aside>
     </div>
   );

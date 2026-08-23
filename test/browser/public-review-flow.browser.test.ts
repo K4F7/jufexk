@@ -302,6 +302,9 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(
     aside.getByRole("link", { name: "写作与沟通" }),
   ).toBeVisible();
+  await expect(
+    aside.getByRole("link", { name: "← 返回课程目录" }),
+  ).toHaveAttribute("href", "/courses");
 });
 
 test("sidebar switches teachers and the session cache restores loaded pages", async ({
