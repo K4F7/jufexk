@@ -7,6 +7,11 @@ CAMPUS_JWT_SECRET=
 CAMPUS_JWT_AES_KEY=
 CAMPUS_IDENTITY_SECRET=
 CAS_CHALLENGE_SECRET=
+# 任课关系 AI 总结（#401）：OpenAI 兼容网关。三者缺一（BASE_URL 缺省为
+# https://api.openai.com/v1）则生成为 no-op，页面不展示总结块。
+# OPENAI_BASE_URL=https://api.openai.com/v1
+# OPENAI_API_KEY=
+# OPENAI_MODEL=
 # Public wrangler vars. AuthBridge / CAMPUS_JWT_ENABLED is abandoned.
 # CAMPUS_JWT_AUD=jufexk
 # CAMPUS_APP_ID=jufexk
