@@ -1,7 +1,7 @@
 /**
  * Browser coverage for /latest：全站最新公开课评流。
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const LATEST = [
   {
@@ -97,6 +97,29 @@ async function mockShellApi(page: Page) {
   });
 }
 
+function firstLatestArticle(page: Page) {
+  return page.locator("article").first();
+}
+
+async function expectStackedAuthorLayout(article: Locator) {
+  const author = article.getByRole("link", { name: "匿名用户#000000" });
+  const date = article.locator("time");
+  const headline = article.getByText("讲得清楚，作业适中");
+  await expect(author).toBeVisible();
+  await expect(date).toBeVisible();
+  await expect(headline).toBeVisible();
+
+  const authorBox = await author.boundingBox();
+  const dateBox = await date.boundingBox();
+  const headlineBox = await headline.boundingBox();
+  expect(authorBox).toBeTruthy();
+  expect(dateBox).toBeTruthy();
+  expect(headlineBox).toBeTruthy();
+  expect(Math.abs((authorBox?.y ?? 0) - (dateBox?.y ?? 0))).toBeLessThan(12);
+  expect(headlineBox?.y ?? 0).toBeGreaterThan((authorBox?.y ?? 0) + (authorBox?.height ?? 0) / 2);
+  expect(headlineBox?.x ?? 0).toBeLessThanOrEqual((authorBox?.x ?? 0) + 24);
+}
+
 test("latest page lists newest public reviews and deep-links to the course", async ({
   page,
 }) => {
@@ -110,55 +133,46 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   await page.goto("/latest");
 
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
-  const author = page.getByRole("link", { name: "匿名用户#000000" });
+  const article = firstLatestArticle(page);
+  const author = article.getByRole("link", { name: "匿名用户#000000" });
   await expect(author).toBeVisible();
   await expect(
     author.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
   ).toHaveCount(1);
-  await expect(page.getByText("点评了")).toBeVisible();
+  expect(await page.getByText("点评了").count()).toBeGreaterThanOrEqual(1);
   await expect(
-    page.getByRole("link", { name: "中国传统文化导论（测试教师）" }),
+    article.getByRole("link", { name: "中国传统文化导论（测试教师）" }),
   ).toBeVisible();
-  await expect(page.getByText("2026-08-20")).toBeVisible();
+  await expect(article.getByText("2026-08-20")).toBeVisible();
   // 有 headline 的条目优先展示 headline 作为摘要，不再显示正文。
-  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+  await expect(article.getByText("讲得清楚，作业适中")).toBeVisible();
   await expect(
-    page.getByText("这门课讲得很清楚，作业量适中。"),
+    article.getByText("这门课讲得很清楚，作业量适中。"),
   ).toHaveCount(0);
   expect(feedRequests.length).toBeGreaterThan(0);
 
-  const moreLinkName = (page.viewportSize()?.width ?? 0) < 640 ? "更多" : "查看全文";
-  await page.getByRole("link", { name: moreLinkName }).click();
+  await article.getByRole("link", { name: "查看全文" }).click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   await expect(
     page.getByRole("heading", { name: /中国传统文化导论/ }),
   ).toBeVisible();
 });
 
-test("latest author layout changes only below the sm breakpoint", async ({ page }) => {
+test("latest author and date share a header row on desktop and mobile", async ({
+  page,
+}) => {
   await mockShellApi(page);
   await page.setViewportSize({ width: 800, height: 720 });
   await page.goto("/latest");
 
-  const author = page.getByRole("link", { name: "匿名用户#000000" });
-  const avatar = page.locator(
-    "img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']:visible",
-  );
-  const desktopAuthorBox = await author.boundingBox();
-  const desktopAvatarBox = await avatar.boundingBox();
-  expect(desktopAuthorBox).toBeTruthy();
-  expect(desktopAvatarBox).toBeTruthy();
-  expect(Math.abs((desktopAuthorBox?.y ?? 0) - (desktopAvatarBox?.y ?? 0))).toBeLessThan(8);
-  await expect(page.getByRole("link", { name: "查看全文" })).toBeVisible();
+  const article = firstLatestArticle(page);
+  await expectStackedAuthorLayout(article);
+  await expect(article.getByRole("link", { name: "查看全文" })).toBeVisible();
 
   await page.setViewportSize({ width: 375, height: 720 });
-  const mobileAuthorBox = await author.boundingBox();
-  const mobileAvatarBox = await avatar.boundingBox();
-  expect(mobileAuthorBox).toBeTruthy();
-  expect(mobileAvatarBox).toBeTruthy();
-  expect(mobileAuthorBox?.y ?? 0).toBeLessThan(mobileAvatarBox?.y ?? 0);
-  const mobileMore = page.getByRole("link", { name: "更多" });
-  await expect(mobileMore).toHaveText(">>更多");
+  await expectStackedAuthorLayout(article);
+  await expect(article.getByRole("link", { name: "查看全文" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "更多" })).toHaveCount(0);
 });
 
 test("latest empty state keeps the official Card composition", async ({ page }) => {
@@ -180,9 +194,42 @@ test("latest feed falls back to comment text when headline is empty", async ({
   await page.goto("/latest");
   await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
 
-  // 历史行没有 headline（服务端投影为空串），回退到正文纯文本。
+  // 历史行没有 headline（服务端投影为空串），哨兵在视口内时自动取下一页。
+  await expect(page.getByText("课堂气氛好，考试不难。")).toBeVisible();
+});
+
+test("latest feed keeps 继续加载 as a retry after an auto-load error", async ({
+  page,
+}) => {
+  let cursorCalls = 0;
+  await mockShellApi(page);
+  await page.route("**/api/reviews/latest*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== "/api/reviews/latest") return route.fallback();
+    const cursor = url.searchParams.get("cursor");
+    if (!cursor) {
+      return route.fulfill({
+        json: { items: [LATEST[0]], nextCursor: "next-latest" },
+      });
+    }
+    cursorCalls += 1;
+    if (cursorCalls === 1) {
+      return route.fulfill({ status: 500, json: { error: "继续加载失败" } });
+    }
+    return route.fulfill({
+      json: { items: [LATEST[1]], nextCursor: null },
+    });
+  });
+
+  await page.goto("/latest");
+  await expect(page.getByRole("alert")).toContainText("继续加载失败");
+  await expect.poll(() => cursorCalls).toBe(1);
+  await page.waitForTimeout(400);
+  expect(cursorCalls).toBe(1);
+
   await page.getByRole("button", { name: "继续加载" }).click();
   await expect(page.getByText("课堂气氛好，考试不难。")).toBeVisible();
+  expect(cursorCalls).toBe(2);
 });
 
 test("latest feed column aligns with the course catalog @mobile-smoke", async ({ page }) => {
