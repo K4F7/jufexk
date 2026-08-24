@@ -88,12 +88,16 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
                       )}
                       {conflict ? (
                         <Chip
-                          className="mt-1"
+                          aria-label="冲突"
+                          className="mt-1 h-4 w-4 min-w-0 justify-center px-0 sm:h-auto sm:w-auto sm:px-2"
                           color="danger"
                           size="sm"
                           variant="soft"
                         >
-                          <Chip.Label>冲突</Chip.Label>
+                          <Chip.Label aria-hidden className="px-0">
+                            <span className="sm:hidden">!</span>
+                            <span className="hidden sm:inline">冲突</span>
+                          </Chip.Label>
                         </Chip>
                       ) : null}
                     </Table.Cell>

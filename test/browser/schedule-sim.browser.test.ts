@@ -107,12 +107,27 @@ test("search, stage, place two courses on the same slot, and keep the plan", asy
     "高等数学（张三）与线性代数（李四）在周一第1–2节冲突",
   );
   const timetable = page.getByRole("grid", { name: "周课表" });
-  await expect(timetable.getByText("冲突").first()).toBeVisible();
+  const conflictBadge = timetable.locator('[data-slot="chip"]').first();
+  await expect(conflictBadge).toHaveAccessibleName("冲突");
   const timetableLink = timetable.getByRole("link", { name: "高等数学（张三）" }).first();
   await expect(timetableLink).toHaveCSS(
     "overflow-wrap",
     (page.viewportSize()?.width ?? 0) < 640 ? "anywhere" : "normal",
   );
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  const conflictCell = timetable.locator('[data-conflict="true"]').first();
+  const badgeBox = await conflictBadge.boundingBox();
+  const cellBox = await conflictCell.boundingBox();
+  expect(badgeBox).toBeTruthy();
+  expect(cellBox).toBeTruthy();
+  expect(badgeBox?.width ?? 0).toBeLessThanOrEqual(cellBox?.width ?? 0);
+  const scrollContainer = timetable.locator('xpath=ancestor::*[@data-slot="table-scroll-container"]');
+  const scrollSize = await scrollContainer.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(scrollSize.scrollWidth).toBeLessThanOrEqual(scrollSize.clientWidth);
 
   await page.reload();
   await expect(timetable.getByText("高等数学（张三）").first()).toBeVisible();
