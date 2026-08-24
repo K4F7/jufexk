@@ -1,6 +1,5 @@
 import { LogoGithub } from "@gravity-ui/icons";
 import { buttonVariants, Separator } from "@heroui/react";
-import { Fragment } from "react";
 import { GITHUB_ISSUES_URL, GITHUB_REPO_URL } from "../lib/site-links";
 import { RouterAriaLink } from "./RouterAriaLink";
 
@@ -43,22 +42,27 @@ export function SiteFooter({
           >
             <LogoGithub />
           </a>
-          <Separator className="h-4" orientation="vertical" />
-          <a
-            className="link text-muted"
-            href={GITHUB_ISSUES_URL}
-            rel="noreferrer"
-            target="_blank"
-          >
-            反馈问题
-          </a>
+          <span className="inline-flex items-center gap-4 whitespace-nowrap">
+            <Separator className="h-4" orientation="vertical" />
+            <a
+              className="link text-muted"
+              href={GITHUB_ISSUES_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              反馈问题
+            </a>
+          </span>
           {INTERNAL_LINKS.map((link) => (
-            <Fragment key={link.to}>
+            <span
+              key={link.to}
+              className="inline-flex items-center gap-4 whitespace-nowrap"
+            >
               <Separator className="h-4" orientation="vertical" />
               <RouterAriaLink className="text-muted" to={link.to}>
                 {link.label}
               </RouterAriaLink>
-            </Fragment>
+            </span>
           ))}
         </nav>
       </div>

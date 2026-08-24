@@ -76,6 +76,13 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "公告" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
   await expect(footerNav.getByRole("separator")).toHaveCount(7);
+
+  for (const link of await footerNav.getByRole("link").all()) {
+    if ((await link.getAttribute("aria-label")) === "GitHub 仓库") continue;
+    const pair = link.locator("..");
+    await expect(pair.getByRole("separator")).toHaveCount(1);
+    await expect(pair).toHaveCSS("white-space", "nowrap");
+  }
 });
 
 test("footer site-info links open their pages", async ({ page }) => {
