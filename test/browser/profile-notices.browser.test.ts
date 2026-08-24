@@ -200,24 +200,32 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(page.getByText("待审核", { exact: true })).toBeVisible();
   await expect(page.getByText("等待审核的点评摘要。")).toBeVisible();
 
-  // 侧栏公开编号与官方头像；点当前头像后再选五张官方图。
-  // 不出现邮箱、学号等标识，也不再导向账号删除。
+  // 侧栏公开编号与官方头像；不出现邮箱、学号等标识，也不再导向账号删除。
   await expect(
     page.getByRole("heading", { name: "匿名用户#000001" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "选择官方头像 1" }),
+    page.getByRole("radio", { name: "选择官方头像 1" }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "更换官方头像" }).click();
   await expect(
     page.getByRole("heading", { name: "选择官方头像" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "选择官方头像 3" }).click();
   await expect(
-    page.getByRole("button", { name: "选择官方头像 3" }),
+    page.getByRole("radio", { name: "选择官方头像 1" }),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: "选择官方头像 3" }).click();
+  await expect(
+    page.getByRole("radio", { name: "选择官方头像 3" }),
   ).toHaveCount(0);
-  await expect(page.getByText("点评了 2 门课程")).toBeVisible();
-  await expect(page.getByText("关注了 1 门课程")).toBeVisible();
+  const profileCard = page.getByRole("article", { name: "匿名用户#000001" });
+  await expect(profileCard.getByText("点评", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("2 门", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("关注", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("1 门", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("公开编号只用于识别作者，不是学号或内部身份。"),
+  ).toHaveCount(0);
   await expect(page.getByRole("link", { name: "账号管理" })).toHaveCount(0);
 });
 
@@ -234,7 +242,9 @@ test("profile page degrades gracefully when the API is missing", async ({
   await expect(
     page.getByRole("heading", { name: "我的主页" }),
   ).toBeVisible();
-  await expect(page.getByText("点评了 — 门课程")).toBeVisible();
+  await expect(
+    page.getByRole("article", { name: "我的主页" }).getByText("— 门", { exact: true }).first(),
+  ).toBeVisible();
 });
 
 test("notices page lists messages and marks all as read", async ({ page }) => {
