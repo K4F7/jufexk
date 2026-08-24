@@ -135,6 +135,19 @@ function SidePanel({
   );
 }
 
+function formatSideRelationStats(
+  rating?: number | null,
+  count?: number | null,
+): string {
+  const numericRating = rating == null ? Number.NaN : Number(rating);
+  const ratingText = Number.isFinite(numericRating)
+    ? numericRating.toFixed(1)
+    : "";
+  const numericCount = Number(count) || 0;
+  const countText = numericCount > 0 ? `（${numericCount}）` : "";
+  return `${ratingText}${countText}`;
+}
+
 function SideRelationRow({
   href,
   label,
@@ -148,20 +161,20 @@ function SideRelationRow({
   rating?: number | null;
   count?: number | null;
 }) {
-  const stats = [
-    rating != null ? rating.toFixed(1) : null,
-    count ? `(${count})` : null,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const stats = formatSideRelationStats(rating, count);
   return (
-    <li className="flex items-baseline justify-between gap-2">
-      <span className="min-w-0">
-        <RouterAriaLink className="min-w-0 truncate" to={href}>
+    <li className="flex items-start justify-between gap-2">
+      <span className="min-w-0 flex-1">
+        <RouterAriaLink
+          className="block! h-auto max-w-full min-w-0 whitespace-normal break-words rounded-none!"
+          to={href}
+        >
           {label}
         </RouterAriaLink>
         {code ? (
-          <span className="block truncate text-xs text-muted">{code}</span>
+          <span className="mt-0.5 block break-all text-xs text-muted">
+            {code}
+          </span>
         ) : null}
       </span>
       {stats ? (

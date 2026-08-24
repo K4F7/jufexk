@@ -193,6 +193,15 @@ async function mockApi(page: Page) {
               review_count: 3,
               rating: 4.2,
             },
+            {
+              id: 13,
+              code: "MARX1001",
+              name: "毛泽东思想和中国特色社会主义理论体系概论",
+              category: "general",
+              department: "马克思主义学院",
+              review_count: 2,
+              rating: 4.1,
+            },
           ],
           reviews: [],
           reviewCount: 21,
@@ -297,12 +306,50 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(
     aside.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
   ).toHaveCount(1);
+  const otherTeachersCard = aside
+    .locator("[data-slot='card']")
+    .filter({ hasText: "其他老师的这门课" });
   await expect(
-    aside.getByRole("link", { name: "另一位教师" }),
+    otherTeachersCard.getByRole("link", { name: "另一位教师" }),
   ).toBeVisible();
+  await expect(otherTeachersCard.getByText("（2）")).toBeVisible();
+  await expect(otherTeachersCard.getByText("4.6")).toHaveCount(0);
+
+  const otherCoursesCard = aside
+    .locator("[data-slot='card']")
+    .filter({ hasText: "这位老师的其他课" });
   await expect(
-    aside.getByRole("link", { name: "写作与沟通" }),
+    otherCoursesCard.getByRole("link", { name: "写作与沟通" }),
   ).toBeVisible();
+  await expect(otherCoursesCard.getByText("4.2（3）")).toBeVisible();
+  await expect(otherCoursesCard.getByText("GEN0201")).toBeVisible();
+  await expect(otherCoursesCard.getByText("4.1（2）")).toBeVisible();
+  await expect(otherCoursesCard.getByText("MARX1001")).toBeVisible();
+  const longCourseName = "毛泽东思想和中国特色社会主义理论体系概论";
+  const longCourseLink = aside.getByRole("link", { name: longCourseName });
+  await expect(longCourseLink).toBeVisible();
+  const longCourseBox = await longCourseLink.evaluate((el) => {
+    const card = el.closest("[data-slot='card']");
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const cardRect = card?.getBoundingClientRect();
+    return {
+      text: el.textContent?.replace(/\s+/g, "") ?? "",
+      overflow: style.overflow,
+      overflowX: style.overflowX,
+      whiteSpace: style.whiteSpace,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      right: rect.right,
+      cardRight: cardRect?.right ?? 0,
+    };
+  });
+  expect(longCourseBox.text).toBe(longCourseName);
+  expect(longCourseBox.whiteSpace).not.toBe("nowrap");
+  expect(longCourseBox.scrollWidth).toBeLessThanOrEqual(
+    longCourseBox.clientWidth + 1,
+  );
+  expect(longCourseBox.right).toBeLessThanOrEqual(longCourseBox.cardRight + 1);
   await expect(
     aside.getByRole("link", { name: "← 返回课程目录" }),
   ).toHaveAttribute("href", "/courses");
