@@ -81,6 +81,9 @@ const SESSION_LOADING_STATUS = (
   <DetailLoadingStatus label="正在读取登录状态…" />
 );
 
+const MFA_OTP_SLOT_CLASS =
+  "size-14 flex-none [&_.input-otp__slot-value]:text-2xl";
+
 export function LoginPage() {
   const [searchParams] = useSearchParams();
   const backTarget = backTargetFrom(searchParams.get("from"));
@@ -291,11 +294,12 @@ export function LoginPage() {
                     </Alert.Content>
                   </Alert>
                 )}
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col items-center gap-2">
                   <Label>验证码</Label>
                   <InputOTP
                     aria-label="验证码"
                     autoComplete="one-time-code"
+                    className="justify-center gap-3"
                     inputMode="numeric"
                     isDisabled={busy}
                     maxLength={4}
@@ -306,10 +310,10 @@ export function LoginPage() {
                     onChange={setMfaCode}
                   >
                     <InputOTP.Group>
-                      <InputOTP.Slot index={0} />
-                      <InputOTP.Slot index={1} />
-                      <InputOTP.Slot index={2} />
-                      <InputOTP.Slot index={3} />
+                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={0} />
+                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={1} />
+                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={2} />
+                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={3} />
                     </InputOTP.Group>
                   </InputOTP>
                 </div>
