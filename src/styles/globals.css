@@ -155,40 +155,12 @@ a:focus-visible {
   border-color: var(--danger);
 }
 
-.review-note-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid var(--separator);
-}
-
-.review-note-link-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid var(--separator);
-}
-
 .review-note-editable {
   padding: 0.55rem 0.7rem;
   min-height: 8rem;
   font-size: 0.875rem;
   line-height: 1.6;
   outline: none;
-}
-
-/* Tiptap Placeholder：空态提示（可多行），仅装饰，不进提交内容。 */
-.review-note-editable p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  white-space: pre-line;
-  color: var(--muted);
-  float: left;
-  height: 0;
-  pointer-events: none;
 }
 
 .review-note-editable p,
