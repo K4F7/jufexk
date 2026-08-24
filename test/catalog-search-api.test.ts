@@ -19,7 +19,11 @@ const search = async (path: string, query: string) => {
   );
   expect(response.status).toBe(200);
   return response.json<{
-    items: Array<{ name: string; teachers?: string | null }>;
+    items: Array<{
+      name: string;
+      teachers?: string | null;
+      teacher_name?: string | null;
+    }>;
     total: number;
   }>();
 };
@@ -182,6 +186,164 @@ describe("按教师命中的课程行", () => {
   });
 });
 
+describe("任课关系列表按精确教师名收窄", () => {
+  it("精确教师名只返回该教师的任课行", async () => {
+    const body = await search(
+      "/api/courses",
+      `view=relations&q=${secondTeacher}`,
+    );
+    expect(body.items.map((item) => item.teacher_name)).toEqual([secondTeacher]);
+    expect(body.items.map((item) => item.name)).toEqual([mathCourse]);
+    expect(body.total).toBe(1);
+  });
+
+  it("搜课名仍返回该课全部任课教师", async () => {
+    const body = await search("/api/courses", `view=relations&q=${mathCourse}`);
+    expect(body.items.map((item) => item.teacher_name).sort()).toEqual(
+      [firstTeacher, secondTeacher].sort(),
+    );
+    expect(body.total).toBe(2);
+  });
+
+  it("课名 + 精确教师名只留下该教师", async () => {
+    const body = await search(
+      "/api/courses",
+      `view=relations&q=${mathCourse} ${secondTeacher}`,
+    );
+    expect(body.items.map((item) => item.teacher_name)).toEqual([secondTeacher]);
+    expect(body.items.map((item) => item.name)).toEqual([mathCourse]);
+    expect(body.total).toBe(1);
+  });
+
+  it("来源教师名精确命中也只返回该教师", async () => {
+    const sourceLabel = "搜索来源名1";
+    const displayName = "搜索来源显示名";
+    const [teacher, course] = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+      ).bind(sourceLabel, displayName, department),
+      env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department) VALUES(?,?,'general',?)",
+      ).bind("SEARCH-SRC", "搜索来源课", department),
+    ]);
+    const teacherId = Number(teacher.meta.last_row_id);
+    const courseId = Number(course.meta.last_row_id);
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+      ).bind(courseId, teacherId),
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+      ).bind(courseId, firstTeacherId),
+      env.DB.prepare(
+        "UPDATE public_precompute_state SET fingerprint='stale' WHERE id=1",
+      ),
+    ]);
+    const body = await search("/api/courses", `view=relations&q=${sourceLabel}`);
+    expect(body.items.map((item) => item.teacher_name)).toEqual([displayName]);
+    expect(body.items.map((item) => item.name)).toEqual(["搜索来源课"]);
+    expect(body.total).toBe(1);
+  });
+});
+
+describe("任课关系列表按模糊教师名前置", () => {
+  const yangTeacher = "搜索杨师";
+  const classmateTeacher = "搜索魏师";
+  const popularTeacher = "搜索热门师";
+  const sharedCourse = "搜索模糊共课";
+  const popularCourse = "搜索模糊热门课";
+
+  beforeAll(async () => {
+    const insertReviews = (courseId: number, teacherId: number, count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        env.DB.prepare(
+          `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,status,submitter_hash)
+           VALUES(?,?,'general',4,?,?,?)`,
+        ).bind(
+          courseId,
+          teacherId,
+          `搜索模糊评价${courseId}-${teacherId}-${index}`,
+          "approved",
+          `search-fuzzy-${courseId}-${teacherId}-${index}`,
+        ),
+      );
+
+    const [yang, classmate, popular, shared, hot] = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+      ).bind(yangTeacher, yangTeacher, department),
+      env.DB.prepare(
+        "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+      ).bind(classmateTeacher, classmateTeacher, department),
+      env.DB.prepare(
+        "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+      ).bind(popularTeacher, popularTeacher, department),
+      env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department) VALUES(?,?,'general',?)",
+      ).bind("SEARCH-FUZZY-SHARE", sharedCourse, department),
+      env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department) VALUES(?,?,'general',?)",
+      ).bind("SEARCH-FUZZY-HOT", popularCourse, department),
+    ]);
+    const yangId = Number(yang.meta.last_row_id);
+    const classmateId = Number(classmate.meta.last_row_id);
+    const popularId = Number(popular.meta.last_row_id);
+    const sharedId = Number(shared.meta.last_row_id);
+    const hotId = Number(hot.meta.last_row_id);
+
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+      ).bind(sharedId, yangId),
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+      ).bind(sharedId, classmateId),
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+      ).bind(hotId, popularId),
+      ...insertReviews(sharedId, yangId, 2),
+      ...insertReviews(sharedId, classmateId, 6),
+      ...insertReviews(hotId, popularId, 9),
+      env.DB.prepare(
+        "UPDATE public_precompute_state SET fingerprint='stale' WHERE id=1",
+      ),
+    ]);
+  });
+
+  it("姓氏片段把名字含该字的教师排在高评同课老师前面", async () => {
+    const body = await search("/api/courses", "view=relations&q=杨");
+    const names = body.items.map((item) => item.teacher_name);
+    const yangIndex = names.indexOf(yangTeacher);
+    const classmateIndex = names.indexOf(classmateTeacher);
+    const popularIndex = names.indexOf(popularTeacher);
+    expect(yangIndex).toBeGreaterThanOrEqual(0);
+    expect(body.items[0]?.teacher_name).toContain("杨");
+    const firstWithoutYang = names.findIndex(
+      (name) => name != null && !name.includes("杨"),
+    );
+    if (firstWithoutYang >= 0) {
+      expect(firstWithoutYang).toBeGreaterThan(yangIndex);
+    }
+    if (classmateIndex >= 0) {
+      expect(classmateIndex).toBeGreaterThan(yangIndex);
+    }
+    if (popularIndex >= 0) {
+      expect(popularIndex).toBeGreaterThan(yangIndex);
+    }
+  });
+
+  it("课名片段仍返回该课全部任课教师", async () => {
+    const body = await search("/api/courses", `view=relations&q=搜索高`);
+    expect(body.items.map((item) => item.name)).toContain(mathCourse);
+    expect(
+      body.items
+        .filter((item) => item.name === mathCourse)
+        .map((item) => item.teacher_name)
+        .sort(),
+    ).toEqual([firstTeacher, secondTeacher].sort());
+  });
+});
+
 describe("拼音与首字母检索", () => {
   const advancedMath = "高等数学";
   const zhangTeacher = "张拼音师";
@@ -214,6 +376,11 @@ describe("拼音与首字母检索", () => {
     const teachers = await search("/api/teachers", "q=zhang");
     expect(teachers.items.map((item) => item.name)).toContain(zhangTeacher);
     expect(await courseNames("q=zhang")).toContain(advancedMath);
+    const relations = await search("/api/courses", "view=relations&q=zhang");
+    expect(relations.items.map((item) => item.teacher_name)).toContain(
+      zhangTeacher,
+    );
+    expect(relations.items.map((item) => item.name)).toContain(advancedMath);
   });
 
   it("汉字查询与通配符字面量保持原行为", async () => {

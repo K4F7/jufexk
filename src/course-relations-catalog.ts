@@ -4,10 +4,10 @@ import {
   andSearchTerms,
   andSearchTermsWithPinyin,
   containsPattern,
-  delimitedExactSql,
   likeSql,
   parseSearchTerms,
   prefixPattern,
+  type SearchFilter,
 } from "./lib/catalog-search";
 import {
   isPublicListCategoryFilter,
@@ -71,11 +71,67 @@ function withPublicNames(row: RelationRow): RelationRow {
   };
 }
 
+async function loadExactTeacherHits(
+  db: D1Database,
+  terms: string[],
+): Promise<{ ids: number[]; matchedTerms: Set<string> }> {
+  if (!terms.length) return { ids: [], matchedTerms: new Set() };
+  const placeholders = terms.map(() => "?").join(",");
+  const { results } = await db
+    .prepare(
+      `SELECT id,name,source_teacher_label FROM teachers WHERE name IN (${placeholders}) OR source_teacher_label IN (${placeholders})`,
+    )
+    .bind(...terms, ...terms)
+    .all<{ id: number; name: string; source_teacher_label: string }>();
+  const ids = new Set<number>();
+  const matchedTerms = new Set<string>();
+  const termSet = new Set(terms);
+  for (const row of results ?? []) {
+    const id = Number(row.id);
+    if (!Number.isSafeInteger(id) || id <= 0) continue;
+    ids.add(id);
+    if (termSet.has(row.name)) matchedTerms.add(row.name);
+    if (termSet.has(row.source_teacher_label)) {
+      matchedTerms.add(row.source_teacher_label);
+    }
+  }
+  return { ids: [...ids], matchedTerms };
+}
+
+function relationRowHit(terms: string[]): SearchFilter {
+  if (!terms.length) return { sql: "", args: [] };
+  const textSql = [
+    likeSql("c.name"),
+    likeSql("c.code"),
+    likeSql("c.department"),
+    likeSql("pcc.family_label"),
+    likeSql("t.name"),
+    likeSql("t.source_teacher_label"),
+  ].join(" OR ");
+  return {
+    sql: terms
+      .map((term) =>
+        isAsciiLetterTerm(term)
+          ? `(${textSql} OR ${likeSql("pcc.pinyin_text")})`
+          : `(${textSql})`,
+      )
+      .join(" AND "),
+    args: terms.flatMap((term) => {
+      const textArgs = andSearchTerms([term], textSql).args;
+      return isAsciiLetterTerm(term)
+        ? [...textArgs, containsPattern(term)]
+        : textArgs;
+    }),
+  };
+}
+
 async function loadVirtualPeRelations(
   db: D1Database,
   searchTerms: string[],
   teacherId: number | null,
   department: string,
+  exactTeacherIds: number[],
+  courseSearchTerms: string[],
 ): Promise<RelationRow[]> {
   if (department) return [];
   const items: RelationRow[] = [];
@@ -93,7 +149,16 @@ async function loadVirtualPeRelations(
     if (!teachers.length) continue;
     const filtered = teacherId
       ? teachers.filter((teacher) => teacher.id === teacherId)
-      : teachers;
+      : exactTeacherIds.length
+        ? teachers.filter((teacher) => exactTeacherIds.includes(teacher.id))
+        : courseSearchTerms.length
+          ? teachers.filter((teacher) =>
+              courseSearchTerms.every(
+                (term) =>
+                  sport.label.includes(term) || teacher.name.includes(term),
+              ),
+            )
+          : teachers;
     for (const teacher of filtered) {
       items.push({
         course_id: sport.id,
@@ -143,19 +208,31 @@ export async function listCourseRelations(
 
   const categoryFilter = publicCategoryFilterSql(cat, "c");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
+  const exactTeachers = await loadExactTeacherHits(c.env.DB, searchTerms);
+  const exactTeacherIds = exactTeachers.ids;
+  const exactTeacherFilter =
+    exactTeacherIds.length === 0
+      ? ""
+      : ` AND ct.teacher_id IN (${exactTeacherIds.map(() => "?").join(",")})`;
+  const courseSearchTerms = searchTerms.filter(
+    (term) => !exactTeachers.matchedTerms.has(term),
+  );
   const searchGroup = andSearchTermsWithPinyin(
-    searchTerms,
+    courseSearchTerms,
     likeSql("pcc.match_text"),
     likeSql("pcc.pinyin_text"),
     isAsciiLetterTerm,
   );
-  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const rowHit = relationRowHit(courseSearchTerms);
+  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}${rowHit.sql ? ` AND ${rowHit.sql}` : ""}${exactTeacherFilter}`;
   const args = [
     ...categoryFilter.args,
     department,
     department,
     ...(teacherId === null ? [] : [teacherId]),
     ...searchGroup.args,
+    ...rowHit.args,
+    ...exactTeacherIds,
   ];
   const relationCount = () =>
     c.env.DB.prepare(
@@ -163,6 +240,7 @@ export async function listCourseRelations(
        FROM courses c
        ${publicCourseCanonicalJoin}
        LEFT JOIN course_teachers ct ON ct.course_id=c.id
+       LEFT JOIN teachers t ON t.id=ct.teacher_id
        WHERE ${where}`,
     )
       .bind(...args)
@@ -180,10 +258,11 @@ export async function listCourseRelations(
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
        WHEN ${likeSql("c.department")} THEN 4
-       WHEN ${delimitedExactSql("pcc.teacher_variant_text")} THEN 5
-       WHEN ${likeSql("pcc.teacher_variant_text")} THEN 6
-       WHEN ${likeSql("pcc.pinyin_text")} THEN 7
-       ELSE 8
+       WHEN t.name=? OR t.source_teacher_label=? THEN 5
+       WHEN ${likeSql("t.name")} OR ${likeSql("t.source_teacher_label")} THEN 6
+       WHEN ${likeSql("t.name")} OR ${likeSql("t.source_teacher_label")} THEN 7
+       WHEN ${likeSql("pcc.pinyin_text")} THEN 8
+       ELSE 9
      END,review_count DESC,c.name,c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)`;
   const searchRankArgs = [
     search,
@@ -196,7 +275,11 @@ export async function listCourseRelations(
     search,
     prefixPattern(search),
     search,
+    search,
     prefixPattern(search),
+    prefixPattern(search),
+    containsPattern(search),
+    containsPattern(search),
     containsPattern(search),
   ];
   const orderBy =
@@ -250,6 +333,8 @@ export async function listCourseRelations(
           searchTerms,
           teacherId,
           department,
+          exactTeacherIds,
+          courseSearchTerms,
         )
       : [];
   const extras = virtualItems.filter(
