@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
 import { handleCampusAuthStatus } from "../campus-jwt";
-import { handleCasLogin, handleCasMfa } from "../cas-login";
+import {
+  DEV_LOGIN_PATH,
+  handleCasLogin,
+  handleCasMfa,
+  handleDevLogin,
+} from "../cas-login";
 import {
   handleEmailLoginRequest,
   handleEmailLoginVerify,
@@ -34,5 +39,6 @@ authRoutes.post("/api/auth/email", handleEmailLoginRequest);
 authRoutes.post("/api/auth/verify", handleEmailLoginVerify);
 authRoutes.post("/api/auth/cas", handleCasLogin);
 authRoutes.post("/api/auth/cas/mfa", handleCasMfa);
+authRoutes.post(DEV_LOGIN_PATH, handleDevLogin);
 
 export default authRoutes;

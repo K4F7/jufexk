@@ -336,6 +336,91 @@ describe("jxufe cas helpers", () => {
 });
 
 describe("jxufe cas login", () => {
+  it("lets the Vite preview origin pass when wrangler rewrites Host and URL over HTTP", async () => {
+    const response = await SELF.fetch("http://courses.sein.moe/api/auth/cas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://127.0.0.1:5173",
+        "CF-Connecting-IP": nextIp(),
+      },
+      body: JSON.stringify({ username: "not-an-id", password: "x" }),
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "学号或密码不正确" });
+  });
+
+  it("lets the Vite preview origin pass when wrangler rewrites the public hostname", async () => {
+    const response = await SELF.fetch("https://courses.sein.moe/api/auth/cas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://127.0.0.1:5173",
+        Host: "127.0.0.1:8787",
+        "CF-Connecting-IP": nextIp(),
+      },
+      body: JSON.stringify({ username: "not-an-id", password: "x" }),
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "学号或密码不正确" });
+  });
+
+  it("lets the Vite preview origin pass origin check on a loopback worker", async () => {
+    const response = await SELF.fetch("http://127.0.0.1:8787/api/auth/cas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://127.0.0.1:5173",
+        "CF-Connecting-IP": nextIp(),
+      },
+      body: JSON.stringify({ username: "not-an-id", password: "x" }),
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "学号或密码不正确" });
+  });
+
+  it("lets localhost preview talk to a 127.0.0.1 worker without origin failure", async () => {
+    const response = await SELF.fetch("http://localhost:8787/api/auth/cas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://127.0.0.1:5173",
+        "CF-Connecting-IP": nextIp(),
+      },
+      body: JSON.stringify({ username: "not-an-id", password: "x" }),
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "学号或密码不正确" });
+  });
+
+  it("still rejects a public attacker origin against a loopback worker", async () => {
+    const response = await SELF.fetch("http://127.0.0.1:8787/api/auth/cas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://attacker.example",
+        "CF-Connecting-IP": nextIp(),
+      },
+      body: JSON.stringify({ username: "not-an-id", password: "x" }),
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "来源校验失败" });
+  });
+
+  it("still rejects a preview origin against a public site origin", async () => {
+    const mismatched = await SELF.fetch(`${origin}/api/auth/cas`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://127.0.0.1:5173",
+        "CF-Connecting-IP": nextIp(),
+      },
+      body: JSON.stringify({ username: studentId, password }),
+    });
+    expect(mismatched.status).toBe(403);
+    expect(await mismatched.json()).toMatchObject({ error: "来源校验失败" });
+  });
+
   it("returns a successful login without waiting for expired challenge cleanup", async () => {
     installCasMock();
     const delayed = delayExpiredChallengePurge(env.DB);

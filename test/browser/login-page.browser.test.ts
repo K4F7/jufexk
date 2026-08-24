@@ -46,6 +46,19 @@ async function mockApi(page: Page) {
           logoutPath: "/logout",
         },
       });
+    if (url.pathname === "/api/auth/dev")
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          csrfToken: "csrf-user",
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
+    if (url.pathname === "/api/user/profile")
+      return route.fulfill({
+        json: { reviews: [], follows: [], review_count: 0, follow_count: 0 },
+      });
     if (url.pathname === "/api/auth/cas/mfa")
       return route.fulfill({
         json: {
@@ -101,7 +114,8 @@ test("direct visit shows the CAS form without extra copy or a back link", async 
   await expect(page.getByRole("heading", { name: "登录", exact: true })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeVisible();
   await expect(page.getByLabel("校园密码")).toBeVisible();
-  await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "本地测试登录" })).toBeVisible();
   await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(0);
   await expect(page.getByText("也可以改用校学生邮箱验证")).toHaveCount(0);
   await expect(page.getByText("校园 JWT 登录尚未开放")).toHaveCount(0);
@@ -157,11 +171,11 @@ test("MFA step drops a leftover password error and names 企业微信", async ({
   await page.goto("/login");
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByText("学号或密码不正确")).toBeVisible();
 
   await page.getByLabel("校园密码").fill("secret-pass");
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByText("学号或密码不正确")).toHaveCount(0);
   await expect(page.getByText("请输入验证码")).toBeVisible();
   await expect(page.getByText(/企业微信/)).toBeVisible();
@@ -202,7 +216,7 @@ test("post-OTP password failure returns to the credential form", async ({
   await page.goto("/login");
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByLabel("验证码").fill("8765");
   await page.getByRole("button", { name: "完成登录" }).click();
   await expect(page.getByLabel("学号")).toBeVisible();
@@ -217,7 +231,8 @@ test("submitting campus credentials shows the CAS login control", async ({
   await page.goto("/login");
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
-  await expect(page.getByRole("button", { name: "登录" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "本地测试登录" })).toBeVisible();
 });
 
 test("session bootstrap shows a loading status before the form", async ({
@@ -267,7 +282,7 @@ test("CAS submit shows a pending alert and button while waiting", async ({
   await page.goto("/login");
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
 
   await expect(page.getByText("正在登录", { exact: true })).toBeVisible();
   await expect(page.getByText("请稍候，通常需要几秒。")).toBeVisible();
@@ -310,7 +325,7 @@ test("MFA submit shows a pending alert while the code is checked", async ({
   await page.goto("/login");
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByLabel("验证码").fill("8765");
   await page.getByRole("button", { name: "完成登录" }).click();
 
@@ -334,7 +349,7 @@ test("school CAS tips appear on the login card", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
 
   await expect(page.getByText("账号暂时无法登录")).toBeVisible();
   await expect(page.getByText("账号已被锁定，请稍后再试")).toBeVisible();
@@ -372,7 +387,7 @@ test("email magic-link redeeming uses the official progress alert", async ({
 async function submitCampusLogin(page: Page) {
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
 }
 
 test("returns to the internal source page given by from", async ({ page }) => {
@@ -422,5 +437,21 @@ test("guest recognition prompt reaches login and returns to the source page", as
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
   await expect(
     page.getByRole("button", { name: "认可这条评价，还没有人认可" }),
+  ).toBeVisible();
+});
+
+test("dev-only local login goes to the personal homepage", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "本地测试登录" }).click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByText("我的主页")).toBeVisible();
+});
+
+test("dev-only local login honors a safe from target", async ({ page }) => {
+  await page.goto("/login?from=/courses/8");
+  await page.getByRole("button", { name: "本地测试登录" }).click();
+  await expect(page).toHaveURL(/\/courses\/8$/);
+  await expect(
+    page.getByRole("heading", { name: "中国传统文化导论" }),
   ).toBeVisible();
 });

@@ -12,6 +12,8 @@ export const LOGOUT_PATH = "/logout";
 export const USER_SESSION_PATH = "/api/user/session";
 export const USER_LOGOUT_PATH = "/api/user/logout";
 const EMAIL_SESSION_TTL_SECONDS = 86400;
+/** Used only when wrangler is HTTP-local and CAMPUS_IDENTITY_SECRET is unset. */
+const LOCAL_DEV_IDENTITY_FALLBACK = "jufexk-local-dev-identity";
 
 /**
  * Ordinary-user session types. Campus login is CAS password proxy.
@@ -81,9 +83,69 @@ const guestSession = (): OrdinaryUserSession => ({
   logoutPath: LOGOUT_PATH,
 });
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+const isLoopbackHttpOrigin = (value: string) => {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      LOOPBACK_HOSTS.has(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+};
+
+/** Host may be `127.0.0.1:8787` while wrangler rewrites `c.req.url` to the custom domain. */
+const loopbackHostHeader = (host: string | undefined) => {
+  if (!host) return "";
+  const hostname = host.startsWith("[")
+    ? host.slice(0, Math.max(host.indexOf("]"), 0) + 1)
+    : host.split(":")[0];
+  return LOOPBACK_HOSTS.has(hostname) ? hostname : "";
+};
+
+/**
+ * wrangler remaps Host + URL to the custom domain (courses.sein.moe) over
+ * HTTP. Production is HTTPS, so this never matches the live Worker.
+ */
+const isWranglerLocalRewrite = (c: Context, origin: string) => {
+  try {
+    return new URL(c.req.url).protocol === "http:" && isLoopbackHttpOrigin(origin);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Same-origin writes, plus local preview (`pnpm prototype` on :5173) talking
+ * to wrangler (`pnpm dev` on :8787) through the Vite /api proxy.
+ * Production hosts still require an exact Origin match.
+ */
 export const originOk = (c: Context) => {
   const origin = c.req.header("Origin");
-  return origin === new URL(c.req.url).origin;
+  if (!origin) return false;
+  const requestOrigin = new URL(c.req.url).origin;
+  if (origin === requestOrigin) return true;
+  if (!isLoopbackHttpOrigin(origin)) return false;
+  return (
+    isLoopbackHttpOrigin(requestOrigin) ||
+    Boolean(loopbackHostHeader(c.req.header("Host"))) ||
+    isWranglerLocalRewrite(c, origin)
+  );
+};
+
+/** wrangler / Vite loopback only — production Worker hostnames never match. */
+export const isLoopbackWorkerRequest = (c: Context) => {
+  if (loopbackHostHeader(c.req.header("Host"))) return true;
+  try {
+    const url = new URL(c.req.url);
+    if (LOOPBACK_HOSTS.has(url.hostname)) return true;
+    return isWranglerLocalRewrite(c, c.req.header("Origin") || "");
+  } catch {
+    return false;
+  }
 };
 
 const randomToken = () =>
@@ -135,6 +197,21 @@ async function resolveTestHmacUser(c: Context): Promise<OrdinaryUser | null> {
   return loadOrCreateUser(c.env.DB, stableId);
 }
 
+/** Production reads CAMPUS_IDENTITY_SECRET; local wrangler may have the binding empty. */
+export async function ordinaryUserIdentitySecret(c: Context): Promise<string> {
+  const secret = await readSecret(
+    (c.env as { CAMPUS_IDENTITY_SECRET?: Parameters<typeof readSecret>[0] })
+      .CAMPUS_IDENTITY_SECRET,
+  );
+  if (secret) return secret;
+  try {
+    if (new URL(c.req.url).protocol === "http:") return LOCAL_DEV_IDENTITY_FALLBACK;
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
 export async function issueEmailSessionCookie(
   c: Context,
   userId: string,
@@ -160,7 +237,7 @@ async function resolveEmailSessionUser(c: Context): Promise<OrdinaryUser | null>
   if (!isStableUserId(userId) || !Number.isFinite(exp) || exp <= Date.now() / 1000) {
     return null;
   }
-  const identitySecret = await readSecret(c.env.CAMPUS_IDENTITY_SECRET);
+  const identitySecret = await ordinaryUserIdentitySecret(c);
   if (!identitySecret || !mac) return null;
   const expected = await hmacHex(`email-session:v1:${userId}:${exp}`, identitySecret);
   if (!timingSafeEqualHex(expected, mac)) return null;
