@@ -1,59 +1,31 @@
 /**
  * Teacher detail — icourse two-column IA.
  *
- * Left: 课程（共 N 门） stacked list + 评价文字流.
+ * Left: 课程（共 N 门） stacked list.
  * Right: identity Card (avatar / name / department / course & review counts).
  *
- * DEV-only: ?module=teaching-reviews-feed replaces the review section with #71 prototype.
+ * 教师页不展示跨课程评价流；评价只在课程页按任课关系查看。
  *
  * Back restores teacher-catalog URL state (drops prototype params if any).
  * Issue #482 · docs/ui/foundations.md §详情体验.
  */
 import { Card, Typography } from "@heroui/react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useParams } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import {
   DetailErrorAlert,
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
-import { EmptyBox } from "../components/EmptyBox";
-import { PublicReviews } from "../components/PublicReviews";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
-import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
-import type {
-  Course,
-  PublicReview,
-  Review,
-  Teacher,
-} from "../lib/types";
-
-/** DEV-only: 任课评价文字流 (module 12 / #71 承接 #68). */
-const TeachingReviewsFeedPrototypeLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/TeachingReviewsFeedVariants").then((m) => ({
-        default: m.TeachingReviewsFeedPrototype,
-      })),
-    )
-  : null;
-
-function useTeachingReviewsFeedPrototypeVariant(): "A" | null {
-  const [params] = useSearchParams();
-  return useMemo(() => {
-    if (!import.meta.env.DEV) return null;
-    if (params.get("module") !== "teaching-reviews-feed") return null;
-    return "A";
-  }, [params]);
-}
+import type { Course, Teacher } from "../lib/types";
 
 type Detail = {
   teacher: Teacher;
   courses: Course[];
-  reviews?: PublicReview[];
   reviewCount: number;
-  nextReviewCursor: string | null;
 };
 
 function TeacherIdentityCard({
@@ -107,23 +79,17 @@ function TeacherIdentityCard({
 export function TeacherDetailPage() {
   const { id } = useParams();
   const location = useLocation();
-  const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const reviewFeed = usePublicReviewPagination("teachers", id);
 
   useEffect(() => {
     let cancelled = false;
     setData(null);
     setError("");
-    reviewFeed.reset([], null);
     (async () => {
       try {
         const d = await api<Detail>(`/api/teachers/${id}`);
-        if (!cancelled) {
-          setData(d);
-          reviewFeed.reset(d.reviews ?? [], d.nextReviewCursor);
-        }
+        if (!cancelled) setData(d);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       }
@@ -131,7 +97,7 @@ export function TeacherDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, reviewFeed.reset]);
+  }, [id]);
 
   if (error) {
     return (
@@ -150,7 +116,6 @@ export function TeacherDetailPage() {
 
   const t = data.teacher;
   const courses = data.courses ?? [];
-  const reviews = reviewFeed.reviews;
   const courseCount = t.course_count ?? courses.length;
 
   /** Restore catalog filters; drop prototype module/variant if present. */
@@ -161,9 +126,6 @@ export function TeacherDetailPage() {
     const q = sp.toString();
     return q ? `/teachers?${q}` : "/teachers";
   })();
-
-  const comparingTeachingFeed =
-    Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
 
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -186,33 +148,6 @@ export function TeacherDetailPage() {
           </Typography>
           <TeacherCourseTable items={courses} teacherId={t.id} />
         </section>
-
-        {comparingTeachingFeed &&
-        teachingFeedVariant &&
-        TeachingReviewsFeedPrototypeLazy ? (
-          <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
-            <TeachingReviewsFeedPrototypeLazy
-              key={teachingFeedVariant}
-              variant={teachingFeedVariant}
-              model={{
-                counterpartMode: "course",
-                hostLabel: t.name,
-                liveReviews: reviews as unknown as Review[],
-                liveRatingCount: reviews.length,
-              }}
-            />
-          </Suspense>
-        ) : (
-          <PublicReviews
-            rows={reviews}
-            counterpart="course"
-            total={data.reviewCount}
-            hasMore={Boolean(reviewFeed.nextCursor)}
-            isLoadingMore={reviewFeed.isLoadingMore}
-            loadMoreError={reviewFeed.loadMoreError}
-            onLoadMore={reviewFeed.loadMore}
-          />
-        )}
       </div>
 
       <aside className="space-y-3 self-start">
