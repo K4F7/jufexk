@@ -38,6 +38,9 @@ export const SUMMARY_DEBOUNCE_SECONDS = 24 * 3600;
 export const SUMMARY_OUTPUT_MAX_CHARS = 4000;
 export const SUMMARY_GATEWAY_TIMEOUT_MS = 120_000;
 export const AI_SUMMARY_DISCLAIMER = "AI 总结为根据点评内容自动生成，仅供参考";
+export const SUMMARY_LEASE_SECONDS =
+  Math.ceil(SUMMARY_GATEWAY_TIMEOUT_MS / 1000) + 60;
+export const SUMMARY_LEASE_RETRY_DELAY_SECONDS = SUMMARY_LEASE_SECONDS;
 
 /** 单条评价进提示词的长度上限，防止一条超长正文吃掉全部预算。 */
 const SUMMARY_PER_REVIEW_MAX_CHARS = 3000;
@@ -239,6 +242,7 @@ type ChatCompletionResponse = {
 type SummaryRequestResult = {
   summary: string | null;
   detail?: string;
+  retryable?: boolean;
 };
 
 /** 调用 OpenAI 兼容网关；任何失败返回 null，由调用方保留旧总结。 */
@@ -279,7 +283,15 @@ async function requestSummaryResult(
     if (!response.ok) {
       const detail = `gateway_http_${response.status}`;
       console.error(JSON.stringify({ event: "summary_gateway_http", status: response.status }));
-      return { summary: null, detail };
+      return {
+        summary: null,
+        detail,
+        retryable:
+          response.status === 408 ||
+          response.status === 425 ||
+          response.status === 429 ||
+          response.status >= 500,
+      };
     }
     const data = await response.json<ChatCompletionResponse>();
     const content = data.choices?.[0]?.message?.content;
@@ -290,7 +302,11 @@ async function requestSummaryResult(
   } catch (error) {
     const name = error instanceof Error ? error.name : "error";
     console.error(JSON.stringify({ event: "summary_gateway_error", name }));
-    return { summary: null, detail: name === "TimeoutError" ? "gateway_timeout" : "gateway_error" };
+    return {
+      summary: null,
+      detail: name === "TimeoutError" ? "gateway_timeout" : "gateway_error",
+      retryable: true,
+    };
   }
 }
 
@@ -298,6 +314,7 @@ export type SummaryRecomputeOutcome =
   | "updated"
   | "cleared"
   | "unchanged"
+  | "superseded"
   | "unconfigured"
   | "failed"
   | "no-relation";
@@ -307,7 +324,20 @@ export type SummaryRecomputeResult = {
   reviewCount: number;
   totalChars: number;
   detail?: string;
+  retryable?: boolean;
+  sourceHash?: string;
 };
+
+/** 公开评价输入的稳定哈希，用于抵御 Queue 至少一次投递造成的重复计费。 */
+export async function summarySourceHash(
+  reviews: SummaryReviewInput[],
+): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(reviews));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
 
 /**
  * 重算单个任课关系的总结：低于门槛时清空已有总结；接口失败保留旧文；
@@ -322,33 +352,61 @@ export async function recomputeRelationSummary(
 ): Promise<SummaryRecomputeResult> {
   const relation = await db
     .prepare(
-      `SELECT ct.ai_summary,c.name course_name,t.name teacher_name
+      `SELECT ct.ai_summary,ct.ai_summary_source_hash,c.name course_name,t.name teacher_name
        FROM course_teachers ct
        JOIN courses c ON c.id=ct.course_id
        JOIN teachers t ON t.id=ct.teacher_id
        WHERE ct.course_id=? AND ct.teacher_id=?`,
     )
     .bind(courseId, teacherId)
-    .first<{ ai_summary: string; course_name: string; teacher_name: string }>();
+    .first<{
+      ai_summary: string;
+      ai_summary_source_hash: string;
+      course_name: string;
+      teacher_name: string;
+    }>();
   if (!relation) return { outcome: "no-relation", reviewCount: 0, totalChars: 0 };
   const reviews = await collectRelationReviewTexts(db, courseId, teacherId);
   const totalChars = reviews.reduce((sum, review) => sum + review.text.length, 0);
+  const sourceHash = await summarySourceHash(reviews);
+  if (relation.ai_summary_source_hash === sourceHash)
+    return {
+      outcome: "unchanged",
+      reviewCount: reviews.length,
+      totalChars,
+      sourceHash,
+    };
   const prompt = buildSummaryPrompt({
     courseName: relation.course_name,
     teacherName: relation.teacher_name,
     reviews: reviews.map((review) => review.text),
   });
   if (!prompt) {
-    if (relation.ai_summary.trim()) {
+    const hadSummary = Boolean(relation.ai_summary.trim());
+    if (hadSummary) {
       await db
         .prepare(
-          "UPDATE course_teachers SET ai_summary='',ai_summary_updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND teacher_id=?",
+          "UPDATE course_teachers SET ai_summary='',ai_summary_source_hash=?,ai_summary_updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND teacher_id=?",
         )
-        .bind(courseId, teacherId)
+        .bind(sourceHash, courseId, teacherId)
         .run();
-      return { outcome: "cleared", reviewCount: reviews.length, totalChars };
+    } else {
+      // Record the source hash without starting the 24h debounce clock. An
+      // empty relation that has never had a summary must stay due so later
+      // reviews can still generate once they cross the threshold.
+      await db
+        .prepare(
+          "UPDATE course_teachers SET ai_summary_source_hash=? WHERE course_id=? AND teacher_id=?",
+        )
+        .bind(sourceHash, courseId, teacherId)
+        .run();
     }
-    return { outcome: "unchanged", reviewCount: reviews.length, totalChars };
+    return {
+      outcome: hadSummary ? "cleared" : "unchanged",
+      reviewCount: reviews.length,
+      totalChars,
+      sourceHash,
+    };
   }
   const gateway = await summaryGateway(env);
   if (!gateway)
@@ -360,14 +418,31 @@ export async function recomputeRelationSummary(
       reviewCount: reviews.length,
       totalChars,
       detail: requested.detail,
+      retryable: requested.retryable,
+      sourceHash,
+    };
+  const latestSourceHash = await summarySourceHash(
+    await collectRelationReviewTexts(db, courseId, teacherId),
+  );
+  if (latestSourceHash !== sourceHash)
+    return {
+      outcome: "superseded",
+      reviewCount: reviews.length,
+      totalChars,
+      sourceHash,
     };
   await db
     .prepare(
-      "UPDATE course_teachers SET ai_summary=?,ai_summary_updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND teacher_id=?",
+      "UPDATE course_teachers SET ai_summary=?,ai_summary_source_hash=?,ai_summary_updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND teacher_id=?",
     )
-    .bind(requested.summary, courseId, teacherId)
+    .bind(requested.summary, sourceHash, courseId, teacherId)
     .run();
-  return { outcome: "updated", reviewCount: reviews.length, totalChars };
+  return {
+    outcome: "updated",
+    reviewCount: reviews.length,
+    totalChars,
+    sourceHash,
+  };
 }
 
 export type QualifyingSummaryRelation = {
@@ -453,240 +528,156 @@ export async function isSummaryRecomputeDue(
   return !fresh;
 }
 
-type SummaryScheduleContext = {
-  env: SummaryGatewayEnv & { DB: D1Database };
-  /** 结构类型即可：Hono 与 workers-types 的 ExecutionContext 定义不同。 */
-  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-};
-
-/** 租约略长于网关超时，崩溃的 isolate 过期后由下一次触发回收。 */
-const SUMMARY_LOCK_LEASE_SECONDS =
-  Math.ceil(SUMMARY_GATEWAY_TIMEOUT_MS / 1000) + 60;
-
-type PendingSummaryJob = {
+export type AiSummaryQueueMessage = {
   courseId: number;
   teacherId: number;
   immediate: boolean;
 };
 
-async function enqueueSummaryRecompute(
+type SummaryQueueSender = {
+  send(message: AiSummaryQueueMessage): Promise<unknown>;
+};
+
+export type AiSummaryQueueEnv = SummaryGatewayEnv & {
+  DB: D1Database;
+  AI_SUMMARY_QUEUE: SummaryQueueSender;
+};
+
+type SummaryScheduleContext = {
+  env: AiSummaryQueueEnv;
+};
+
+function isAiSummaryQueueMessage(value: unknown): value is AiSummaryQueueMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Partial<AiSummaryQueueMessage>;
+  return (
+    Number.isSafeInteger(message.courseId) &&
+    Number.isSafeInteger(message.teacherId) &&
+    (message.courseId as number) > 0 &&
+    (message.teacherId as number) > 0 &&
+    typeof message.immediate === "boolean"
+  );
+}
+
+async function acquireSummaryLease(
   db: D1Database,
   courseId: number,
   teacherId: number,
-  immediate: boolean,
-) {
+): Promise<string | null> {
+  const token = crypto.randomUUID();
+  const acquired = await db
+    .prepare(
+      `INSERT INTO summary_recompute_leases(
+         course_id, teacher_id, lease_token, lease_until
+       ) VALUES(?, ?, ?, unixepoch() + ?)
+       ON CONFLICT(course_id, teacher_id) DO UPDATE SET
+         lease_token=excluded.lease_token,
+         lease_until=excluded.lease_until
+       WHERE summary_recompute_leases.lease_until <= unixepoch()
+       RETURNING lease_token`,
+    )
+    .bind(courseId, teacherId, token, SUMMARY_LEASE_SECONDS)
+    .first<{ lease_token: string }>();
+  return acquired?.lease_token === token ? token : null;
+}
+
+async function releaseSummaryLease(
+  db: D1Database,
+  message: AiSummaryQueueMessage,
+  token: string,
+): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO summary_recompute_pending(course_id, teacher_id, immediate)
-       VALUES(?, ?, ?)
-       ON CONFLICT(course_id, teacher_id) DO UPDATE SET
-         immediate = MAX(summary_recompute_pending.immediate, excluded.immediate)`,
+      `DELETE FROM summary_recompute_leases
+       WHERE course_id=? AND teacher_id=? AND lease_token=?`,
     )
-    .bind(courseId, teacherId, immediate ? 1 : 0)
+    .bind(message.courseId, message.teacherId, token)
     .run();
 }
 
-async function tryAcquireSummaryLock(db: D1Database): Promise<boolean> {
-  const acquired = await db
-    .prepare(
-      `UPDATE summary_recompute_lock
-       SET lease_until = unixepoch() + ?
-       WHERE id = 1
-         AND (lease_until IS NULL OR lease_until <= unixepoch())
-       RETURNING id`,
-    )
-    .bind(SUMMARY_LOCK_LEASE_SECONDS)
-    .first();
-  return Boolean(acquired);
+function isPersistedRelationId(value: number | null | undefined): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
 }
 
-async function releaseSummaryLock(db: D1Database) {
-  await db
-    .prepare(
+/**
+ * Cutover helper: parent isolates persisted work in summary_recompute_lock /
+ * summary_recompute_pending. After the Queue migration those rows are otherwise
+ * never read, so enqueue them once and clear the D1 tables.
+ */
+export async function drainPersistedSummaryJobs(
+  env: AiSummaryQueueEnv,
+): Promise<number> {
+  const jobs = new Map<string, AiSummaryQueueMessage>();
+  const remember = (courseId: number, teacherId: number, immediate: boolean) => {
+    const key = `${courseId}:${teacherId}`;
+    const existing = jobs.get(key);
+    if (existing) {
+      existing.immediate = existing.immediate || immediate;
+      return;
+    }
+    jobs.set(key, { courseId, teacherId, immediate });
+  };
+
+  const locked = await env.DB.prepare(
+    `SELECT course_id, teacher_id, immediate
+     FROM summary_recompute_lock
+     WHERE id = 1`,
+  ).first<{
+    course_id: number | null;
+    teacher_id: number | null;
+    immediate: number;
+  }>();
+  if (
+    locked &&
+    isPersistedRelationId(locked.course_id) &&
+    isPersistedRelationId(locked.teacher_id)
+  ) {
+    remember(locked.course_id, locked.teacher_id, locked.immediate === 1);
+  }
+
+  const pending = await env.DB.prepare(
+    `SELECT course_id, teacher_id, immediate
+     FROM summary_recompute_pending
+     ORDER BY enqueued_at ASC, course_id ASC, teacher_id ASC`,
+  ).all<{
+    course_id: number;
+    teacher_id: number;
+    immediate: number;
+  }>();
+  for (const row of pending.results) {
+    if (
+      !isPersistedRelationId(row.course_id) ||
+      !isPersistedRelationId(row.teacher_id)
+    )
+      continue;
+    remember(row.course_id, row.teacher_id, row.immediate === 1);
+  }
+
+  if (!jobs.size) return 0;
+  for (const job of jobs.values()) {
+    await env.AI_SUMMARY_QUEUE.send(job);
+  }
+  await env.DB.batch([
+    env.DB.prepare(
       `UPDATE summary_recompute_lock
        SET course_id = NULL, teacher_id = NULL, immediate = 0,
            locked_at = NULL, lease_until = NULL
        WHERE id = 1`,
-    )
-    .run();
-}
-
-async function clearCurrentSummaryJob(db: D1Database) {
-  await db
-    .prepare(
-      `UPDATE summary_recompute_lock
-       SET course_id = NULL, teacher_id = NULL, immediate = 0
-       WHERE id = 1`,
-    )
-    .run();
-}
-
-async function hasPendingSummaryJob(db: D1Database): Promise<boolean> {
-  return Boolean(
-    await db
-      .prepare("SELECT 1 pending FROM summary_recompute_pending LIMIT 1")
-      .first(),
-  );
-}
-
-async function claimNextSummaryJob(
-  db: D1Database,
-): Promise<PendingSummaryJob | null> {
-  const current = await db
-    .prepare(
-      `SELECT course_id, teacher_id, immediate
-       FROM summary_recompute_lock WHERE id = 1`,
-    )
-    .first<{
-      course_id: number | null;
-      teacher_id: number | null;
-      immediate: number;
-    }>();
-  if (
-    current &&
-    Number.isSafeInteger(current.course_id) &&
-    Number.isSafeInteger(current.teacher_id) &&
-    (current.course_id as number) > 0 &&
-    (current.teacher_id as number) > 0
-  ) {
-    await db
-      .prepare(
-        `UPDATE summary_recompute_lock
-         SET locked_at = CURRENT_TIMESTAMP, lease_until = unixepoch() + ?
-         WHERE id = 1`,
-      )
-      .bind(SUMMARY_LOCK_LEASE_SECONDS)
-      .run();
-    return {
-      courseId: current.course_id as number,
-      teacherId: current.teacher_id as number,
-      immediate: current.immediate === 1,
-    };
-  }
-
-  const next = await db
-    .prepare(
-      `SELECT course_id, teacher_id, immediate
-       FROM summary_recompute_pending
-       ORDER BY enqueued_at ASC, course_id ASC, teacher_id ASC
-       LIMIT 1`,
-    )
-    .first<{
-      course_id: number;
-      teacher_id: number;
-      immediate: number;
-    }>();
-  if (!next) return null;
-  await db.batch([
-    db
-      .prepare(
-        `UPDATE summary_recompute_lock
-         SET course_id = ?, teacher_id = ?, immediate = ?,
-             locked_at = CURRENT_TIMESTAMP, lease_until = unixepoch() + ?
-         WHERE id = 1`,
-      )
-      .bind(
-        next.course_id,
-        next.teacher_id,
-        next.immediate,
-        SUMMARY_LOCK_LEASE_SECONDS,
-      ),
-    db
-      .prepare(
-        "DELETE FROM summary_recompute_pending WHERE course_id = ? AND teacher_id = ?",
-      )
-      .bind(next.course_id, next.teacher_id),
+    ),
+    env.DB.prepare("DELETE FROM summary_recompute_pending"),
   ]);
-  return {
-    courseId: next.course_id,
-    teacherId: next.teacher_id,
-    immediate: next.immediate === 1,
-  };
-}
-
-function dispatchSummaryTask(
-  c: SummaryScheduleContext,
-  task: Promise<unknown>,
-): Promise<unknown> | undefined {
-  let ctx: SummaryScheduleContext["executionCtx"];
-  try {
-    ctx = c.executionCtx;
-  } catch {
-    ctx = undefined;
-  }
-  if (ctx && typeof ctx.waitUntil === "function") {
-    ctx.waitUntil(task);
-    return;
-  }
-  return task;
-}
-
-async function runLockedSummaryRecompute(
-  c: SummaryScheduleContext,
-  fetchImpl?: typeof fetch,
-): Promise<void> {
-  let item: PendingSummaryJob | null = null;
-  try {
-    item = await claimNextSummaryJob(c.env.DB);
-    if (!item) {
-      await releaseSummaryLock(c.env.DB);
-      if (
-        (await hasPendingSummaryJob(c.env.DB)) &&
-        (await tryAcquireSummaryLock(c.env.DB))
-      ) {
-        const recovered = runLockedSummaryRecompute(c, fetchImpl);
-        const dispatched = dispatchSummaryTask(c, recovered);
-        if (dispatched) await dispatched;
-      }
-      return;
-    }
-    const result = await recomputeRelationSummary(
-      c.env,
-      c.env.DB,
-      item.courseId,
-      item.teacherId,
-      fetchImpl,
-    );
-    console.log(
-      JSON.stringify({
-        event: "summary_recompute",
-        courseId: item.courseId,
-        teacherId: item.teacherId,
-        outcome: result.outcome,
-        reviewCount: result.reviewCount,
-      }),
-    );
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "summary_recompute_error",
-        courseId: item?.courseId,
-        teacherId: item?.teacherId,
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  }
-  try {
-    await clearCurrentSummaryJob(c.env.DB);
-  } catch {
-    // 仍尝试把锁交给下一件，避免队列卡住。
-  }
-  const next = runLockedSummaryRecompute(c, fetchImpl);
-  const dispatched = dispatchSummaryTask(c, next);
-  if (dispatched) await dispatched;
+  return jobs.size;
 }
 
 /**
- * 公开评价内容变更后的后台重算入口。全站同一时刻只跑一条关系：
- * 已有任务在跑时入队去重，当前任务结束后再 waitUntil 下一条。
- * 有执行上下文时挂 waitUntil，否则（脚本/测试）就地执行；
- * 任务内部吞掉所有异常，绝不影响主请求。
+ * HTTP 侧只负责把关系标识入队；正文由 consumer 从 D1 重新读取，评价发布和
+ * 管理操作不会等待最长 120 秒的模型调用。
  */
 export async function scheduleRelationSummaryRecompute(
   c: SummaryScheduleContext,
   courseId: number | null | undefined,
   teacherId: number | null | undefined,
-  options: { immediate?: boolean; fetchImpl?: typeof fetch } = {},
+  options: { immediate?: boolean } = {},
 ): Promise<void> {
   if (
     !Number.isSafeInteger(courseId) ||
@@ -695,16 +686,179 @@ export async function scheduleRelationSummaryRecompute(
     (teacherId as number) <= 0
   )
     return;
-  const course = courseId as number;
-  const teacher = teacherId as number;
-  const immediate = options.immediate === true;
-  if (!(await isSummaryRecomputeDue(c.env.DB, course, teacher, immediate)))
+  try {
+    await drainPersistedSummaryJobs(c.env);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "summary_cutover_drain_error",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+  try {
+    await c.env.AI_SUMMARY_QUEUE.send({
+      courseId: courseId as number,
+      teacherId: teacherId as number,
+      immediate: options.immediate === true,
+    });
+  } catch (error) {
+    // The caller has typically already committed its D1 mutation (review
+    // insert, admin reject, ...). Queue outage must not turn that into a 500.
+    console.error(
+      JSON.stringify({
+        event: "summary_enqueue_error",
+        courseId,
+        teacherId,
+        immediate: options.immediate === true,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
+/** 单条 Queue 消息的处理入口；异常和临时网关故障由 Queue 自动重试并最终进 DLQ。 */
+export async function consumeAiSummaryMessage(
+  message: Message<AiSummaryQueueMessage>,
+  env: AiSummaryQueueEnv,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  if (!isAiSummaryQueueMessage(message.body)) {
+    message.ack();
     return;
-  await enqueueSummaryRecompute(c.env.DB, course, teacher, immediate);
-  if (!(await tryAcquireSummaryLock(c.env.DB))) return;
-  const task = runLockedSummaryRecompute(c, options.fetchImpl);
-  const dispatched = dispatchSummaryTask(c, task);
-  if (dispatched) await dispatched;
+  }
+  const body = message.body;
+  let token: string;
+  try {
+    const acquired = await acquireSummaryLease(env.DB, body.courseId, body.teacherId);
+    if (!acquired) {
+      message.retry({ delaySeconds: SUMMARY_LEASE_RETRY_DELAY_SECONDS });
+      return;
+    }
+    token = acquired;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "summary_lease_acquire_error",
+        courseId: body.courseId,
+        teacherId: body.teacherId,
+        attempt: message.attempts,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    message.retry();
+    return;
+  }
+
+  let retry = false;
+  let enqueueLatest = false;
+  try {
+    if (
+      !(await isSummaryRecomputeDue(
+        env.DB,
+        body.courseId,
+        body.teacherId,
+        body.immediate,
+      ))
+    ) {
+      // The source hash is intentionally not needed here: non-immediate work
+      // remains subject to the existing 24-hour debounce contract.
+    } else {
+      const result = await recomputeRelationSummary(
+        env,
+        env.DB,
+        body.courseId,
+        body.teacherId,
+        fetchImpl,
+      );
+      console.log(
+        JSON.stringify({
+          event: "summary_recompute",
+          courseId: body.courseId,
+          teacherId: body.teacherId,
+          outcome: result.outcome,
+          reviewCount: result.reviewCount,
+          attempt: message.attempts,
+        }),
+      );
+      retry = result.outcome === "failed" && result.retryable === true;
+      if (result.sourceHash && result.outcome !== "failed") {
+        const latestHash = await summarySourceHash(
+          await collectRelationReviewTexts(env.DB, body.courseId, body.teacherId),
+        );
+        enqueueLatest = latestHash !== result.sourceHash;
+      }
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "summary_recompute_error",
+        courseId: body.courseId,
+        teacherId: body.teacherId,
+        attempt: message.attempts,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    retry = true;
+  } finally {
+    try {
+      await releaseSummaryLease(env.DB, body, token);
+    } catch (error) {
+      retry = true;
+      console.error(
+        JSON.stringify({
+          event: "summary_lease_release_error",
+          courseId: body.courseId,
+          teacherId: body.teacherId,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+  if (retry) {
+    message.retry();
+    return;
+  }
+  if (enqueueLatest) {
+    try {
+      await env.AI_SUMMARY_QUEUE.send({
+        courseId: body.courseId,
+        teacherId: body.teacherId,
+        immediate: true,
+      });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "summary_requeue_error",
+          courseId: body.courseId,
+          teacherId: body.teacherId,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      message.retry();
+      return;
+    }
+  }
+  message.ack();
+}
+
+export async function consumeAiSummaryQueue(
+  batch: MessageBatch<AiSummaryQueueMessage>,
+  env: AiSummaryQueueEnv,
+): Promise<void> {
+  try {
+    await drainPersistedSummaryJobs(env);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "summary_cutover_drain_error",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+  await Promise.all(
+    batch.messages.map((message) => consumeAiSummaryMessage(message, env)),
+  );
 }
 
 const inlineSummaryHtml = (text: string) =>

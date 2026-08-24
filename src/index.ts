@@ -6,6 +6,10 @@ import {
 } from "./lib/public-catalog-cache";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
 import { shouldRefreshPublicListPrecomputes } from "./public-list-precompute";
+import {
+  consumeAiSummaryQueue,
+  type AiSummaryQueueMessage,
+} from "./review-summary";
 import adminRoutes from "./routes/admin";
 import authRoutes from "./routes/auth";
 import importRoutes from "./routes/imports";
@@ -50,4 +54,9 @@ app.onError((e, c) => {
   );
   return fail(c, "服务器暂时开小差了", 500);
 });
-export default app;
+const worker = Object.assign(app, { queue: consumeAiSummaryQueue });
+
+export default worker satisfies ExportedHandler<
+  Cloudflare.Env,
+  AiSummaryQueueMessage
+>;

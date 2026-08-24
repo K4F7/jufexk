@@ -12,6 +12,11 @@
       "migrations_dir": "migrations",
     },
   ],
+  "queues": {
+    "producers": [
+      { "binding": "AI_SUMMARY_QUEUE", "queue": "jufexk-ai-summary-test" },
+    ],
+  },
   "vars": {
     "SITE_NAME": "非官方课评@JUFE",
     "UNIVERSITY_NAME": "江西财经大学",

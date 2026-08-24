@@ -19,6 +19,22 @@
       "migrations_dir": "migrations",
     },
   ],
+  "queues": {
+    "producers": [
+      { "binding": "AI_SUMMARY_QUEUE", "queue": "jufexk-ai-summary" },
+    ],
+    "consumers": [
+      {
+        "queue": "jufexk-ai-summary",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "retry_delay": 30,
+        "dead_letter_queue": "jufexk-ai-summary-dlq",
+        "max_concurrency": 2,
+      },
+    ],
+  },
   "vars": {
     "SITE_NAME": "非官方课评@JUFE",
     "UNIVERSITY_NAME": "江西财经大学",
