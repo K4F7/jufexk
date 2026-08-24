@@ -9,8 +9,12 @@ import {
 } from "../lib/jwxt-schedule-text";
 
 export function JwxtScheduleImport({
+  canEdit,
+  onNeedLogin,
   onImport,
 }: {
+  canEdit: boolean;
+  onNeedLogin: () => void;
   onImport: (rows: JwxtImportRow[]) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -34,7 +38,17 @@ export function JwxtScheduleImport({
 
   return (
     <>
-      <Button size="sm" variant="secondary" onPress={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="secondary"
+        onPress={() => {
+          if (!canEdit) {
+            onNeedLogin();
+            return;
+          }
+          setOpen(true);
+        }}
+      >
         从本科教务导入
       </Button>
       <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>

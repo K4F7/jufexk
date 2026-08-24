@@ -8,6 +8,7 @@ export const JWXT_CHANNEL2_URL = "https://jwxt.jxufe.edu.cn/jxcjcaslogin";
 export const EHALL_URL = "http://ehall.jxufe.edu.cn/";
 export const JWXT_IMPORT_HASH_PREFIX = "jwxt-import=";
 export const JWXT_IMPORT_VERSION = 1;
+export const JWXT_PENDING_IMPORT_KEY = "jufexk-jwxt-pending-import";
 
 export type JwxtImportRow = {
   courseName: string;
@@ -333,4 +334,24 @@ export function readJwxtImportHash(hash: string): JwxtImportPayload | null {
 
 export function jwxtImportHash(payload: JwxtImportPayload): string {
   return `#${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload(payload)}`;
+}
+
+export function stashPendingJwxtImport(payload: JwxtImportPayload) {
+  if (typeof sessionStorage === "undefined") return;
+  sessionStorage.setItem(JWXT_PENDING_IMPORT_KEY, JSON.stringify(payload));
+}
+
+export function takePendingJwxtImport(): JwxtImportPayload | null {
+  if (typeof sessionStorage === "undefined") return null;
+  const raw = sessionStorage.getItem(JWXT_PENDING_IMPORT_KEY);
+  if (!raw) return null;
+  sessionStorage.removeItem(JWXT_PENDING_IMPORT_KEY);
+  try {
+    const parsed = JSON.parse(raw) as { v?: number; rows?: unknown };
+    if (parsed.v !== JWXT_IMPORT_VERSION || !Array.isArray(parsed.rows)) return null;
+    const rows = parsed.rows.filter(isImportRow);
+    return rows.length ? { v: JWXT_IMPORT_VERSION, rows } : null;
+  } catch {
+    return null;
+  }
 }
