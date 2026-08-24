@@ -1,3 +1,4 @@
+import { Star, StarFill } from "@gravity-ui/icons";
 import {
   Button,
   Card,
@@ -121,14 +122,17 @@ function OverallStarRating({
           <Radio key={score} value={score}>
             <Radio.Content>
               <Radio.Control className="size-auto border-0 bg-transparent p-0 shadow-none">
-                <span
-                  aria-hidden
-                  className={`pointer-events-none [font-variant-emoji:text] text-xl leading-none ${
-                    filled ? "text-accent" : "text-border"
-                  }`}
-                >
-                  ★
-                </span>
+                {filled ? (
+                  <StarFill
+                    aria-hidden
+                    className="pointer-events-none size-5 text-accent"
+                  />
+                ) : (
+                  <Star
+                    aria-hidden
+                    className="pointer-events-none size-5 text-border"
+                  />
+                )}
               </Radio.Control>
               <span className="sr-only">{score} 星</span>
             </Radio.Content>
