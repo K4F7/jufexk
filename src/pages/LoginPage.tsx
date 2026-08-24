@@ -99,7 +99,7 @@ function AlreadyLoggedInAlert() {
     <Alert status="success">
       <Alert.Indicator />
       <Alert.Content>
-        <Alert.Title>已登入</Alert.Title>
+        <Alert.Title>已登录</Alert.Title>
       </Alert.Content>
     </Alert>
   );

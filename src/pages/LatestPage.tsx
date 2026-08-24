@@ -2,7 +2,7 @@
  * 最新课评 /latest：全站公开文字评价，按发表时间倒序。
  * 数据走 GET /api/reviews/latest（游标分页）。
  */
-import { Button, Spinner, Typography } from "@heroui/react";
+import { Button, Card, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
 import {
   ReviewAuthor,
@@ -88,19 +88,18 @@ export function LatestPage() {
           正在加载最新课评…
         </p>
       ) : items.length === 0 ? (
-        <div
-          className="rounded border border-dashed border-border px-4 py-6 text-center text-muted sm:px-7 sm:py-7"
-          role="status"
-        >
-          <div className="font-medium text-foreground">暂时还没有公开课评</div>
-          <p className="mb-0 mt-1 text-sm">
-            先到
-            <RouterAriaLink to="/courses" className="text-accent">
-              课程列表
-            </RouterAriaLink>
-            看看，或通过课程页的「写点评」分享第一门课的体验。
-          </p>
-        </div>
+        <Card role="status">
+          <Card.Header>
+            <Card.Title>暂时还没有公开课评</Card.Title>
+            <Card.Description>
+              先到
+              <RouterAriaLink to="/courses" className="text-accent">
+                课程列表
+              </RouterAriaLink>
+              看看，或通过课程页的「写点评」分享第一门课的体验。
+            </Card.Description>
+          </Card.Header>
+        </Card>
       ) : (
         <div>
           {items.map((review) => (
@@ -180,8 +179,12 @@ function LatestReviewItem({
           />
         )}
       </div>
-      <RouterAriaLink to={moreHref} className="text-[calc(13/15*1rem)] text-accent">
-        {">>更多"}
+      <RouterAriaLink
+        aria-label={isMobileLayout ? "更多" : undefined}
+        to={moreHref}
+        className="text-[calc(13/15*1rem)] text-accent"
+      >
+        {isMobileLayout ? ">>更多" : "查看全文"}
       </RouterAriaLink>
     </div>
   );
