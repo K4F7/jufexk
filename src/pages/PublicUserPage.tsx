@@ -101,11 +101,11 @@ export function PublicUserPage() {
           {profile.note ? (
             <p className="mt-2 text-sm text-muted">{profile.note}</p>
           ) : (
-            <p className="mt-2 text-sm text-muted">已过审的公开任课评价</p>
+            <p className="mt-2 text-sm text-muted">公开点评</p>
           )}
         </header>
         {profile.reviews.length === 0 ? (
-          <p className="text-sm text-muted">暂时还没有公开任课评价。</p>
+          <p className="text-sm text-muted">暂时还没有公开点评。</p>
         ) : (
           <ul className="m-0 list-none p-0">
             {profile.reviews.map((review) => (
@@ -122,7 +122,7 @@ export function PublicUserPage() {
             <Card.Description>
               {profile.reserved
                 ? "来自以前的学长学姐的评价"
-                : `${profile.review_count} 条公开任课评价`}
+                : `${profile.review_count} 条公开点评`}
             </Card.Description>
           </Card.Header>
           {profile.reserved || profile.viewer_is_self ? null : (
@@ -172,7 +172,7 @@ function PublicUserReviewItem({ review }: { review: LatestReview }) {
         </div>
       )}
       <RouterAriaLink to={moreHref} className="text-sm text-accent">
-        {">>更多"}
+        查看全文
       </RouterAriaLink>
     </li>
   );

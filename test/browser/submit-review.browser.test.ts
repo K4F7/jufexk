@@ -352,9 +352,9 @@ test("gate comes first and the icourse-aligned form appears after entry", async 
     page.getByText("如果不记得了，可以随便选一个 :)"),
   ).toBeVisible();
   await expect(
-    page.getByText("可以搜索课名，老师，课号，选择对应的课"),
+    page.getByText("可以搜索课名、老师或课号，再选出对应的课。"),
   ).toBeVisible();
-  await expect(page.getByText("选择对应的老师")).toBeVisible();
+  await expect(page.getByText("选择这门课的任课老师")).toBeVisible();
   // v3 五道三档（中文档位）+ 本次推荐度。
   await expectOfflineQuestions(page);
   await expect(

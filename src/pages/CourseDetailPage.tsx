@@ -6,7 +6,7 @@
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Card, Typography, buttonVariants } from "@heroui/react";
+import { Alert, Breadcrumbs, Card, Typography, buttonVariants } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -33,7 +33,6 @@ import {
   DetailErrorAlert,
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
-import { EmptyBox } from "../components/EmptyBox";
 import { FourDimLine } from "../components/FourDimLine";
 import { RelationSignalControls } from "../components/RelationSignalControls";
 import { RouterAriaLink } from "../components/RouterAriaLink";
@@ -344,7 +343,7 @@ export function CourseDetailPage() {
     };
   }, [effectiveTeacherId]);
 
-  // /latest 的「>>更多」深链：评价到达后滚动到对应条目。
+  // /latest 的「查看全文」深链：评价到达后滚动到对应条目。
   const scrolledHashRef = useRef("");
   useEffect(() => {
     scrolledHashRef.current = "";
@@ -421,21 +420,20 @@ export function CourseDetailPage() {
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <nav aria-label="面包屑" className="text-[calc(12/15*1rem)] text-muted">
-          <RouterAriaLink to={catalogHref} className="text-muted">
-            课程目录
-          </RouterAriaLink>
-          <span className="mx-1.5">/</span>
-          {course.name}
+        <nav aria-label="面包屑">
+          <Breadcrumbs>
+            <Breadcrumbs.Item href={catalogHref}>课程目录</Breadcrumbs.Item>
+            <Breadcrumbs.Item>{course.name}</Breadcrumbs.Item>
+          </Breadcrumbs>
         </nav>
 
         {submitted ? (
-          <p
-            className="mt-3 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[calc(13/15*1rem)] text-success"
-            role="status"
-          >
-            评价已发布，感谢分享。
-          </p>
+          <Alert className="mt-3" status="success">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>评价已发布，感谢分享。</Alert.Title>
+            </Alert.Content>
+          </Alert>
         ) : null}
 
         <header className="mt-3">
@@ -525,18 +523,28 @@ export function CourseDetailPage() {
                 AI 总结为根据点评内容自动生成，仅供参考
               </p>
             </div>
-            <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-secondary/60 px-4 py-4 text-[calc(13/15*1rem)] text-muted">
-              {relationCount > 0
-                ? "AI 总结暂未生成：点评积累后会自动出现在这里。"
-                : "点评还不够，暂时无法生成总结。"}
-            </div>
+            <Card className="mt-4">
+              <Card.Content>
+                <p className="m-0 text-sm text-muted">
+                  {relationCount > 0
+                    ? "AI 总结暂未生成：点评积累后会自动出现在这里。"
+                    : "点评还不够，暂时无法生成总结。"}
+                </p>
+              </Card.Content>
+            </Card>
           </section>
         )}
 
         {comparingRecognition &&
         recognitionVariant &&
         ReviewRecognitionPrototypeLazy ? (
-          <Suspense fallback={<EmptyBox role="status">加载认可原型…</EmptyBox>}>
+          <Suspense
+            fallback={
+              <p className="mt-4 text-sm text-muted" role="status">
+                加载认可原型…
+              </p>
+            }
+          >
             <ReviewRecognitionPrototypeLazy
               key={recognitionVariant}
               variant={recognitionVariant}

@@ -1,10 +1,9 @@
-import { Alert, Button, Chip, Separator, Spinner, Typography } from "@heroui/react";
+import { Alert, Button, Card, Chip, Separator, Spinner, Typography } from "@heroui/react";
 import { useViewer } from "../hooks/useViewer";
 import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
 import { Stars } from "./Stars";
-import { EmptyBox } from "./EmptyBox";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 import { ReviewAuthor } from "./ReviewAuthor";
@@ -162,7 +161,11 @@ export function PublicReviews({
           </span>
         </div>
       ) : (
-        <EmptyBox>暂无评价</EmptyBox>
+        <Card role="status">
+          <Card.Header>
+            <Card.Title>暂无评价</Card.Title>
+          </Card.Header>
+        </Card>
       )}
     </section>
   );

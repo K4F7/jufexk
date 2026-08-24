@@ -45,7 +45,7 @@ export function LogoutPage() {
               <Alert.Content>
                 <Alert.Title>已退出登录</Alert.Title>
                 <Alert.Description>
-                  普通用户会话已清除，当前为游客状态。
+                  你已退出，现在是游客。
                 </Alert.Description>
               </Alert.Content>
             </Alert>
@@ -56,7 +56,7 @@ export function LogoutPage() {
               <Alert.Content>
                 <Alert.Title>退出失败</Alert.Title>
                 <Alert.Description>
-                  网络或服务暂时不可用，请重试；关闭页面也会随会话过期自动退出。
+                  网络或服务暂时不可用，请重试。也可以直接关掉页面。
                 </Alert.Description>
               </Alert.Content>
             </Alert>

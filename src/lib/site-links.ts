@@ -16,22 +16,22 @@ export const SITE_RESOURCES = [
   {
     href: "https://courses.pinzhixiaoyuan.com/",
     title: "评知校园",
-    note: "课评表单的分段结构、对象绑定与填写节奏是本站投稿问卷的重要参考。",
+    note: "课评表单的分段和填写节奏参考了这家站点。",
   },
   {
     href: "https://github.com/USTC-iCourse/ustc-course",
     title: "USTC-iCourse / ustc-course",
-    note: "前端信息架构与公开浏览体验大量参考了贵仓库的设计；四道三档题的方向也对齐 iCourse 的四维标签。",
+    note: "公开浏览的页面结构和四维标签参考了这个仓库。",
   },
   {
     href: "https://github.com/XiaLing233/tongji-course-scheduler",
     title: "XiaLing233 / tongji-course-scheduler",
-    note: "排课模拟参考了贵仓库的选课模拟器；冲突检测与周课表交互节奏从中受益。对象仍是本站课程×教师任课关系，不是开课班目录。",
+    note: "排课模拟的冲突检测和周课表交互参考了这个项目。",
     extra: { href: "https://xk.xialing.icu", title: "线上演示" },
   },
   {
     href: "https://github.com/SeRazon/jufe_cas",
     title: "SeRazon / jufe_cas",
-    note: "江财 CAS 实现。",
+    note: "江财统一身份登录实现。",
   },
 ] as const;

@@ -1,7 +1,7 @@
 /**
  * 全部消息 /notices（#460 前端）：仅登录普通用户可见，访客重定向到登录页。
  * 打开本页即调用 POST /api/user/notifications/read 清零未读，
- * 并广播事件让顶栏角标同步消失。接口未上线时提示「数据接口尚未就绪」。
+ * 并广播事件让顶栏角标同步消失。接口失败时提示暂时加载不了。
  */
 import { Alert, Chip, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
@@ -84,10 +84,8 @@ export function NoticesPage() {
         <Alert className="mt-4" status="accent">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>数据接口尚未就绪</Alert.Title>
-            <Alert.Description>
-              站内消息接口（#460）尚未上线，消息列表暂时无法加载，请稍后再来。
-            </Alert.Description>
+            <Alert.Title>消息暂时加载不了</Alert.Title>
+            <Alert.Description>请稍后再试。</Alert.Description>
           </Alert.Content>
         </Alert>
       ) : loading ? (

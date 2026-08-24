@@ -126,7 +126,7 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   ).toHaveCount(0);
   expect(feedRequests.length).toBeGreaterThan(0);
 
-  await page.getByRole("link", { name: ">>更多" }).click();
+  await page.getByRole("link", { name: "查看全文" }).click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   await expect(
     page.getByRole("heading", { name: /中国传统文化导论/ }),

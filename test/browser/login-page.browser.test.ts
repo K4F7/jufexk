@@ -298,7 +298,7 @@ test("CAS submit shows a pending alert and button while waiting", async ({
   await page.getByRole("button", { name: "登录", exact: true }).click();
 
   await expect(page.getByText("正在登录", { exact: true })).toBeVisible();
-  await expect(page.getByText("请稍候，通常需要几秒。")).toBeVisible();
+  await expect(page.getByText("通常只要几秒。")).toBeVisible();
   await expect(page.getByRole("button", { name: "正在登录…" })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeDisabled();
   await expect(page.getByLabel("校园密码")).toBeDisabled();
@@ -343,7 +343,7 @@ test("MFA submit shows a pending alert while the code is checked", async ({
   await page.getByRole("button", { name: "完成登录" }).click();
 
   await expect(page.getByText("正在确认验证码")).toBeVisible();
-  await expect(page.getByText("请稍候。")).toBeVisible();
+  await expect(page.getByText("马上就好。")).toBeVisible();
   await expect(page.getByRole("button", { name: "正在完成登录…" })).toBeVisible();
   await expect(page.getByLabel("验证码")).toBeDisabled();
 
@@ -390,7 +390,7 @@ test("email magic-link redeeming uses the official progress alert", async ({
 
   await page.goto("/login?token=magic-link-token");
   await expect(page.getByText("正在完成登录")).toBeVisible();
-  await expect(page.getByText("请稍候。")).toBeVisible();
+  await expect(page.getByText("马上就好。")).toBeVisible();
   await expect(page.getByLabel("学号")).toHaveCount(0);
 
   releaseVerify();

@@ -1,7 +1,7 @@
 /**
  * Browser coverage for /profile 个人主页 and /notices 全部消息
  * (frontend for issues #459 / #460). Backend endpoints are mocked; the pages
- * must degrade to「数据接口尚未就绪」when they 404.
+ * must degrade to a normal load-error alert when they 404.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 
@@ -238,7 +238,8 @@ test("profile page degrades gracefully when the API is missing", async ({
   );
   await page.goto("/profile");
 
-  await expect(page.getByText("数据接口尚未就绪")).toBeVisible();
+  await expect(page.getByText("个人主页暂时加载不了")).toBeVisible();
+  await expect(page.getByText("请稍后再试。")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "我的主页" }),
   ).toBeVisible();
@@ -285,7 +286,8 @@ test("notices page shows the empty state and survives a missing API", async ({
   });
   await mockApi(page, missing);
   await page.goto("/notices");
-  await expect(page.getByText("数据接口尚未就绪")).toBeVisible();
+  await expect(page.getByText("消息暂时加载不了")).toBeVisible();
+  await expect(page.getByText("请稍后再试。")).toBeVisible();
 });
 
 test("account menu links to 我的主页 and 消息 with an unread badge", async ({

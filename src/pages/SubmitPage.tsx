@@ -453,7 +453,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           onSelectionChange={onCourseChange}
         >
           <Label>课程</Label>
-          <Description>可以搜索课名，老师，课号，选择对应的课</Description>
+          <Description>可以搜索课名、老师或课号，再选出对应的课。</Description>
           <ComboBox.InputGroup>
             <Input placeholder="搜索课程" />
             <ComboBox.Trigger />
@@ -493,7 +493,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           onChange={(value) => setTeacherId(value ? String(value) : "")}
         >
           <Label>任课教师</Label>
-          <Description>选择对应的老师</Description>
+          <Description>选择这门课的任课老师</Description>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
@@ -584,9 +584,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         <TextField name="grade" value={grade} onChange={setGrade}>
           <Label>你的成绩</Label>
           <Input maxLength={20} placeholder="选填，退课请填W" />
-          <Description>
-            可选. 分享你的成绩有助于同学们进行更全面的判断.
-          </Description>
+          <Description>选填。分享成绩，方便同学们综合判断。</Description>
         </TextField>
 
         <Checkbox isSelected={realName} name="realName" onChange={setRealName}>

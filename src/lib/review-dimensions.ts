@@ -11,7 +11,7 @@ export const REVIEW_DIMENSIONS = [
 ] as const;
 
 /**
- * 评价条目的锚点 id：/latest 的「>>更多」跳到课程页对应评价。
+ * 评价条目的锚点 id：/latest 的「查看全文」跳到课程页对应评价。
  * 公开 id 形如 review:1 / historical:x / legacy:2，折叠成 HTML id 安全形式。
  */
 export function reviewAnchorId(id: string | number): string {
