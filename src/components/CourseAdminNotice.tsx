@@ -52,9 +52,14 @@ export function CourseAdminNotice({
     }
   };
 
+  const hasNotice = Boolean(notice);
+
+  // 无公告时对普通访客整块不渲染；管理员仍看到可编辑的空状态框。
+  if (!hasNotice && !adminAuthed) return null;
+
   return (
     <>
-      {notice ? (
+      {hasNotice ? (
         <Card className="mt-6">
           <Card.Header>
             <Card.Title>管理员公告</Card.Title>
@@ -72,7 +77,7 @@ export function CourseAdminNotice({
         <div className="mt-4 rounded-md border border-dashed border-border bg-surface-secondary/60 px-3 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="m-0 text-[12px] font-medium text-muted">
-              管理员公告（仅管理员可编辑，公开展示）
+              {hasNotice ? "管理员公告（仅管理员可编辑，公开展示）" : "暂无公告"}
             </p>
             {!editing ? (
               <Button
@@ -85,7 +90,7 @@ export function CourseAdminNotice({
                   setEditing(true);
                 }}
               >
-                {notice ? "编辑公告" : "设置公告"}
+                {hasNotice ? "编辑公告" : "设置公告"}
               </Button>
             ) : null}
           </div>
