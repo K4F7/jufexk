@@ -17,7 +17,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { relationDetailHref } from "../components/CourseRelationRow";
 import { DetailErrorAlert } from "../components/DetailFeedback";
-import { JwxtScheduleImport } from "../components/JwxtScheduleImport";
+import {
+  JwxtScheduleImport,
+  JWXT_IMPORT_NOTICE,
+} from "../components/JwxtScheduleImport";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { Stars } from "../components/Stars";
@@ -259,7 +262,7 @@ export function SchedulePage() {
     setImportNotice(
       skipped
         ? `已导入 ${incoming.length} 门课，另有 ${skipped} 行没有可识别的上课时间。`
-        : `已从本科教务导入 ${incoming.length} 门课。课表只在你自己的浏览器里处理。`,
+        : `已从本科教务导入 ${incoming.length} 门课。${JWXT_IMPORT_NOTICE}`,
     );
   }
 

@@ -56,7 +56,7 @@ export function LogoutPage() {
               <Alert.Content>
                 <Alert.Title>退出失败</Alert.Title>
                 <Alert.Description>
-                  网络或服务暂时不可用，请重试。也可以直接关掉页面。
+                  网络或服务暂时不可用，退出没有完成，请重试。
                 </Alert.Description>
               </Alert.Content>
             </Alert>

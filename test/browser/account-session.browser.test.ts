@@ -204,6 +204,10 @@ test("logout failure offers a retry that recovers", async ({ page }) => {
   await page.goto("/logout");
   await page.getByRole("button", { name: "确认退出" }).click();
   await expect(page.getByText("退出失败")).toBeVisible();
+  await expect(
+    page.getByText("网络或服务暂时不可用，退出没有完成，请重试。"),
+  ).toBeVisible();
+  await expect(page.getByText("也可以直接关掉页面")).toHaveCount(0);
 
   mock.logoutFails = false;
   await page.getByRole("button", { name: "重试退出" }).click();
