@@ -382,14 +382,27 @@ export async function recomputeRelationSummary(
     reviews: reviews.map((review) => review.text),
   });
   if (!prompt) {
-    await db
-      .prepare(
-        "UPDATE course_teachers SET ai_summary='',ai_summary_source_hash=?,ai_summary_updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND teacher_id=?",
-      )
-      .bind(sourceHash, courseId, teacherId)
-      .run();
+    const hadSummary = Boolean(relation.ai_summary.trim());
+    if (hadSummary) {
+      await db
+        .prepare(
+          "UPDATE course_teachers SET ai_summary='',ai_summary_source_hash=?,ai_summary_updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND teacher_id=?",
+        )
+        .bind(sourceHash, courseId, teacherId)
+        .run();
+    } else {
+      // Record the source hash without starting the 24h debounce clock. An
+      // empty relation that has never had a summary must stay due so later
+      // reviews can still generate once they cross the threshold.
+      await db
+        .prepare(
+          "UPDATE course_teachers SET ai_summary_source_hash=? WHERE course_id=? AND teacher_id=?",
+        )
+        .bind(sourceHash, courseId, teacherId)
+        .run();
+    }
     return {
-      outcome: relation.ai_summary.trim() ? "cleared" : "unchanged",
+      outcome: hadSummary ? "cleared" : "unchanged",
       reviewCount: reviews.length,
       totalChars,
       sourceHash,
@@ -582,6 +595,80 @@ async function releaseSummaryLease(
     .run();
 }
 
+function isPersistedRelationId(value: number | null | undefined): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
+}
+
+/**
+ * Cutover helper: parent isolates persisted work in summary_recompute_lock /
+ * summary_recompute_pending. After the Queue migration those rows are otherwise
+ * never read, so enqueue them once and clear the D1 tables.
+ */
+export async function drainPersistedSummaryJobs(
+  env: AiSummaryQueueEnv,
+): Promise<number> {
+  const jobs = new Map<string, AiSummaryQueueMessage>();
+  const remember = (courseId: number, teacherId: number, immediate: boolean) => {
+    const key = `${courseId}:${teacherId}`;
+    const existing = jobs.get(key);
+    if (existing) {
+      existing.immediate = existing.immediate || immediate;
+      return;
+    }
+    jobs.set(key, { courseId, teacherId, immediate });
+  };
+
+  const locked = await env.DB.prepare(
+    `SELECT course_id, teacher_id, immediate
+     FROM summary_recompute_lock
+     WHERE id = 1`,
+  ).first<{
+    course_id: number | null;
+    teacher_id: number | null;
+    immediate: number;
+  }>();
+  if (
+    locked &&
+    isPersistedRelationId(locked.course_id) &&
+    isPersistedRelationId(locked.teacher_id)
+  ) {
+    remember(locked.course_id, locked.teacher_id, locked.immediate === 1);
+  }
+
+  const pending = await env.DB.prepare(
+    `SELECT course_id, teacher_id, immediate
+     FROM summary_recompute_pending
+     ORDER BY enqueued_at ASC, course_id ASC, teacher_id ASC`,
+  ).all<{
+    course_id: number;
+    teacher_id: number;
+    immediate: number;
+  }>();
+  for (const row of pending.results) {
+    if (
+      !isPersistedRelationId(row.course_id) ||
+      !isPersistedRelationId(row.teacher_id)
+    )
+      continue;
+    remember(row.course_id, row.teacher_id, row.immediate === 1);
+  }
+
+  if (!jobs.size) return 0;
+  for (const job of jobs.values()) {
+    await env.AI_SUMMARY_QUEUE.send(job);
+  }
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id = NULL, teacher_id = NULL, immediate = 0,
+           locked_at = NULL, lease_until = NULL
+       WHERE id = 1`,
+    ),
+    env.DB.prepare("DELETE FROM summary_recompute_pending"),
+  ]);
+  return jobs.size;
+}
+
 /**
  * HTTP 侧只负责把关系标识入队；正文由 consumer 从 D1 重新读取，评价发布和
  * 管理操作不会等待最长 120 秒的模型调用。
@@ -599,11 +686,35 @@ export async function scheduleRelationSummaryRecompute(
     (teacherId as number) <= 0
   )
     return;
-  await c.env.AI_SUMMARY_QUEUE.send({
-    courseId: courseId as number,
-    teacherId: teacherId as number,
-    immediate: options.immediate === true,
-  });
+  try {
+    await drainPersistedSummaryJobs(c.env);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "summary_cutover_drain_error",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+  try {
+    await c.env.AI_SUMMARY_QUEUE.send({
+      courseId: courseId as number,
+      teacherId: teacherId as number,
+      immediate: options.immediate === true,
+    });
+  } catch (error) {
+    // The caller has typically already committed its D1 mutation (review
+    // insert, admin reject, ...). Queue outage must not turn that into a 500.
+    console.error(
+      JSON.stringify({
+        event: "summary_enqueue_error",
+        courseId,
+        teacherId,
+        immediate: options.immediate === true,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 }
 
 /** 单条 Queue 消息的处理入口；异常和临时网关故障由 Queue 自动重试并最终进 DLQ。 */
@@ -735,6 +846,16 @@ export async function consumeAiSummaryQueue(
   batch: MessageBatch<AiSummaryQueueMessage>,
   env: AiSummaryQueueEnv,
 ): Promise<void> {
+  try {
+    await drainPersistedSummaryJobs(env);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "summary_cutover_drain_error",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
   await Promise.all(
     batch.messages.map((message) => consumeAiSummaryMessage(message, env)),
   );

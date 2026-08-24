@@ -5,6 +5,8 @@ import {
   buildSummaryPrompt,
   collectRelationReviewTexts,
   consumeAiSummaryMessage,
+  consumeAiSummaryQueue,
+  drainPersistedSummaryJobs,
   expectedSummaryLength,
   hasInjectionMarker,
   isSummaryRecomputeDue,
@@ -378,7 +380,8 @@ describe("recomputeRelationSummary", () => {
     expect(result.outcome).toBe("unchanged");
     const row = await relationSummaryRow(courseId);
     expect(row?.ai_summary_source_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(row?.ai_summary_updated_at).not.toBeNull();
+    expect(row?.ai_summary_updated_at).toBeNull();
+    expect(await isSummaryRecomputeDue(env.DB, courseId, 1, false)).toBe(true);
   });
 });
 
@@ -593,79 +596,84 @@ describe("AI summary queue consumer", () => {
     expect(Object.keys(sent[0]).sort()).toEqual(["courseId", "immediate", "teacherId"]);
   });
 
-  it("recomputes again if the same relation is enqueued while already running", async () => {
-    await env.DB.prepare(
-      `UPDATE summary_recompute_lock
-       SET course_id=NULL, teacher_id=NULL, immediate=0, locked_at=NULL, lease_until=NULL
-       WHERE id=1`,
-    ).run();
-    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
-    const courseId = await createBoundCourse("REQ");
-    await seedApprovedReviews(courseId, 5, "再入队");
+  it("does not start the debounce clock for an empty below-threshold summary", async () => {
+    const courseId = await createBoundCourse("QTH");
+    await seedReview(courseId, "第一条短评，内容足够十个字");
+    const first = queueMessage({ courseId, teacherId: 1, immediate: false });
+    await consumeAiSummaryMessage(first.message, queueEnv(), okGatewayFetch([]));
+    expect(first.state.acked).toBe(true);
+    expect((await relationSummaryRow(courseId))?.ai_summary_updated_at).toBeNull();
+    expect(await isSummaryRecomputeDue(env.DB, courseId, 1, false)).toBe(true);
 
-    let started = 0;
-    let releaseFirst = () => {};
-    const firstHold = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+    await seedApprovedReviews(courseId, 4, "后续");
+    const later = queueMessage({ courseId, teacherId: 1, immediate: false });
     const calls: FetchCall[] = [];
-    const gated = (async (input: any, init: any) => {
-      const request = new Request(input, init);
-      const body = await request.json();
-      calls.push({
-        url: request.url,
-        authorization: request.headers.get("authorization") || "",
-        body,
-      });
-      started += 1;
-      if (started === 1) await firstHold;
-      return new Response(
-        JSON.stringify({
-          choices: [{ message: { content: `## 考试\n第${started}次` } }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as typeof fetch;
-
-    const ctx = { env: { ...env, ...gatewayEnv } };
-    const first = scheduleRelationSummaryRecompute(ctx, courseId, 1, {
-      fetchImpl: gated,
-    });
-    const deadline = Date.now() + 2000;
-    while (started === 0) {
-      if (Date.now() > deadline) throw new Error("gateway was not called");
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    await scheduleRelationSummaryRecompute(ctx, courseId, 1, { fetchImpl: gated });
-    releaseFirst();
-    await first;
-    expect(calls).toHaveLength(2);
+    await consumeAiSummaryMessage(later.message, queueEnv(), okGatewayFetch(calls));
+    expect(calls).toHaveLength(1);
+    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("## 考试\n客观总结正文");
   });
 
-  it("recovers a job left on the lock before draining newer pending work", async () => {
-    const firstCourse = await createBoundCourse("LK1");
-    const secondCourse = await createBoundCourse("LK2");
-    await seedApprovedReviews(firstCourse, 5, "锁恢复甲");
-    await seedApprovedReviews(secondCourse, 5, "锁恢复乙");
+  it("drains leftover D1 lock and pending jobs into the Queue", async () => {
+    const lockedCourse = await createBoundCourse("DR1");
+    const pendingCourse = await createBoundCourse("DR2");
     await env.DB.prepare(
       `UPDATE summary_recompute_lock
-       SET course_id=?, teacher_id=1, immediate=0,
+       SET course_id=?, teacher_id=1, immediate=1,
            locked_at=CURRENT_TIMESTAMP, lease_until=unixepoch()-1
        WHERE id=1`,
     )
-      .bind(firstCourse)
+      .bind(lockedCourse)
       .run();
     await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+    await env.DB.prepare(
+      `INSERT INTO summary_recompute_pending(course_id,teacher_id,immediate)
+       VALUES(?,1,0)`,
+    )
+      .bind(pendingCourse)
+      .run();
 
-    const calls: FetchCall[] = [];
-    const ctx = { env: { ...env, ...gatewayEnv } };
-    await scheduleRelationSummaryRecompute(ctx, secondCourse, 1, {
-      fetchImpl: okGatewayFetch(calls),
-    });
-    expect(calls).toHaveLength(2);
-    const prompts = calls.map((call) => String(call.body.messages?.[1]?.content || ""));
-    expect(prompts[0]).toContain("锁恢复甲");
-    expect(prompts[1]).toContain("锁恢复乙");
+    const sent: AiSummaryQueueMessage[] = [];
+    expect(await drainPersistedSummaryJobs(queueEnv(sent))).toBe(2);
+    expect(sent).toEqual([
+      { courseId: lockedCourse, teacherId: 1, immediate: true },
+      { courseId: pendingCourse, teacherId: 1, immediate: false },
+    ]);
+    expect(
+      (await env.DB.prepare("SELECT course_id FROM summary_recompute_lock WHERE id=1").first<{
+        course_id: number | null;
+      }>())?.course_id,
+    ).toBeNull();
+    expect(
+      (await env.DB.prepare("SELECT COUNT(*) AS n FROM summary_recompute_pending").first<{
+        n: number;
+      }>())?.n,
+    ).toBe(0);
+
+    const again: AiSummaryQueueMessage[] = [];
+    expect(await drainPersistedSummaryJobs(queueEnv(again))).toBe(0);
+    expect(again).toEqual([]);
+  });
+
+  it("drains persisted D1 jobs when a Queue batch arrives", async () => {
+    const leftover = await createBoundCourse("DRQ");
+    await env.DB.prepare(
+      `INSERT INTO summary_recompute_pending(course_id,teacher_id,immediate)
+       VALUES(?,1,1)`,
+    )
+      .bind(leftover)
+      .run();
+    const sent: AiSummaryQueueMessage[] = [];
+    const current = queueMessage({ courseId: leftover, teacherId: 1, immediate: false });
+    await consumeAiSummaryQueue(
+      { messages: [current.message] } as MessageBatch<AiSummaryQueueMessage>,
+      queueEnv(sent),
+    );
+    expect(sent).toEqual([{ courseId: leftover, teacherId: 1, immediate: true }]);
+    expect(
+      (await env.DB.prepare("SELECT COUNT(*) AS n FROM summary_recompute_pending").first<{
+        n: number;
+      }>())?.n,
+    ).toBe(0);
   });
 });
 
@@ -775,6 +783,46 @@ describe("summary recompute triggers", () => {
     );
     expect(sixth.status).toBe(200);
     expect(sent).toHaveLength(2);
+  });
+
+  it("keeps a published review successful when the Queue send fails", async () => {
+    const courseId = await createBoundCourse("QFL");
+    const failingEnv = {
+      ...env,
+      ...gatewayEnv,
+      AI_SUMMARY_QUEUE: {
+        async send() {
+          throw new Error("queue unavailable");
+        },
+      },
+    };
+    writeSession ??= await ordinaryWriteSession("summary-trigger-writer");
+    const response = await app.fetch(
+      new Request(`${origin}/api/reviews`, {
+        method: "POST",
+        headers: {
+          ...ordinaryWriteHeaders(writeSession),
+          "CF-Connecting-IP": `203.0.113.${ipSequence++}`,
+        },
+        body: JSON.stringify({
+          courseId,
+          teacherId: 1,
+          overall: 4,
+          scores: V3_OFFLINE_SCORES,
+          comment: "队列故障时评价仍应发布成功",
+          headline: "一句话总结",
+        }),
+      }),
+      failingEnv,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true });
+    const stored = await env.DB.prepare(
+      "SELECT comment FROM reviews WHERE course_id=? AND teacher_id=1 ORDER BY id DESC LIMIT 1",
+    )
+      .bind(courseId)
+      .first<{ comment: string }>();
+    expect(stored?.comment).toContain("队列故障");
   });
 
   it("marks rejection-triggered work immediate so the consumer bypasses debounce", async () => {
