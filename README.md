@@ -88,15 +88,12 @@ pnpm run dev
 | ---- | ---- |
 | `SITE_NAME` / `UNIVERSITY_NAME` | 站点与学校显示名 |
 | `TURNSTILE_SITE_KEY` | Turnstile 公开 Site Key |
-| `MAIL_DELIVERY_URL` / `MAIL_FROM` | 验证信 HTTPS 投递端点与发件人（Resend） |
 
-`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL` 仍留在配置里，但 AuthBridge 校园 JWT 与标准 CAS 回调已废弃，不能再作为登录路径。
+AuthBridge 校园 JWT（`CAMPUS_JWT_*` / `CAMPUS_APP_ID` / `AUTHBRIDGE_BASE_URL`）与校学生邮箱投递（`MAIL_*`）已从 Worker 配置淘汰，不能再作为登录路径。
 
 ### 密钥（Cloudflare Secrets Store）
 
-`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_IDENTITY_SECRET`、`MAIL_DELIVERY_TOKEN`、`CAS_CHALLENGE_SECRET`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与 Turnstile Secret 不同的随机值。管理员按校园学号绑定，不再使用共享 `ADMIN_PASSWORD`。
-
-`CAMPUS_JWT_SECRET` 与 `CAMPUS_JWT_AES_KEY` 是已废弃 AuthBridge 占位密钥。完整清单与轮换见 `docs/secrets.md`。
+`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_IDENTITY_SECRET`、`CAS_CHALLENGE_SECRET`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与 Turnstile Secret 不同的随机值。管理员按校园学号绑定，不再使用共享 `ADMIN_PASSWORD`。完整清单与轮换见 `docs/secrets.md`。
 
 ### Turnstile
 

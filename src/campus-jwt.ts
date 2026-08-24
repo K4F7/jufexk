@@ -30,23 +30,13 @@ export type CampusAuthStatus = {
   logoutPath: string;
   callbackPath: string;
   contract: typeof CAMPUS_AUTH_CONTRACT;
-  appId?: string;
-  audience?: string;
-  authBridgeBaseUrl?: string;
 };
 
 export function campusJwtLive(_env?: { CAMPUS_JWT_ENABLED?: string }) {
   return false;
 }
 
-export function campusAuthStatus(
-  _env?: {
-    CAMPUS_JWT_ENABLED?: string;
-    CAMPUS_APP_ID?: string;
-    CAMPUS_JWT_AUD?: string;
-    AUTHBRIDGE_BASE_URL?: string;
-  },
-): CampusAuthStatus {
+export function campusAuthStatus(): CampusAuthStatus {
   return {
     enabled: false,
     reason: "abandoned",
@@ -254,5 +244,5 @@ export async function verifyCampusJwtHs256(
 }
 
 export async function handleCampusAuthStatus(c: Context) {
-  return c.json(campusAuthStatus(c.env));
+  return c.json(campusAuthStatus());
 }
