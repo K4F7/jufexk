@@ -33,7 +33,10 @@ import {
   resolveOrdinaryUser,
 } from "../ordinary-user-session";
 import { readSecret } from "../secrets";
-import { scheduleRelationSummaryRecompute } from "../review-summary";
+import {
+  listQualifyingSummaryRelations,
+  scheduleRelationSummaryRecompute,
+} from "../review-summary";
 import { loadSiteBanner, sanitizeSiteBanner } from "../site-banner";
 import {
   deliverReviewAuthorLookup,
@@ -67,6 +70,7 @@ import {
   adminUserBlockSchema,
   moderationSchema,
   siteBannerSchema,
+  summaryRecomputeSchema,
   teacherIdsSchema,
 } from "./request-schemas";
 import announcementRoutes from "./announcements";
@@ -1585,6 +1589,24 @@ adminRoutes.put("/api/admin/courses/:id/teachers", async (c) => {
     ),
   ]);
   return c.json({ ok: true });
+});
+adminRoutes.get("/api/admin/summaries/qualifying", async (c) => {
+  const items = await listQualifyingSummaryRelations(c.env.DB);
+  return c.json({ ok: true, total: items.length, items });
+});
+adminRoutes.post("/api/admin/summaries/recompute", async (c) => {
+  const parsedBody = summaryRecomputeSchema.safeParse(
+    await c.req.json<unknown>(),
+  );
+  if (!parsedBody.success) return fail(c, "课程或教师 ID 无效");
+  const courseId = parsedBody.data.courseId;
+  const teacherId = parsedBody.data.teacherId;
+  if (!courseId || !teacherId || courseId < 1 || teacherId < 1)
+    return fail(c, "课程或教师 ID 无效");
+  await scheduleRelationSummaryRecompute(c, courseId, teacherId, {
+    immediate: true,
+  });
+  return c.json({ ok: true, courseId, teacherId, outcome: "queued" }, 202);
 });
 adminRoutes.get("/api/admin/student-bindings", async (c) =>
   c.json({ items: await listAdminStudentBindings(c.env.DB) }),

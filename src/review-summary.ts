@@ -33,6 +33,7 @@ export const SUMMARY_MIN_TOTAL_CHARS = 3000;
 export const SUMMARY_PROMPT_MAX_CHARS = 32000;
 export const SUMMARY_DEBOUNCE_SECONDS = 24 * 3600;
 export const SUMMARY_OUTPUT_MAX_CHARS = 4000;
+export const SUMMARY_GATEWAY_TIMEOUT_MS = 120_000;
 export const AI_SUMMARY_DISCLAIMER = "AI 总结为根据点评内容自动生成，仅供参考";
 
 /** 单条评价进提示词的长度上限，防止一条超长正文吃掉全部预算。 */
@@ -172,6 +173,27 @@ export async function collectRelationReviewTexts(
 }
 
 /**
+ * USTC 评课社区的目标字数：过短评不生成；总字数不足 2000 用 200；
+ * 2000–4999 按总字数 / 10 四舍五入；再长封顶 500。
+ */
+export function expectedSummaryLength(
+  reviewCount: number,
+  totalChars: number,
+): number | null {
+  if (reviewCount < SUMMARY_MIN_REVIEWS && totalChars < SUMMARY_MIN_TOTAL_CHARS)
+    return null;
+  if (totalChars < 2000) return 200;
+  if (totalChars < 5000) return Math.round(totalChars / 10);
+  return 500;
+}
+
+function summarySubject(courseName: string, teacherName: string): string {
+  const teacher = teacherName.trim();
+  const titledCourse = `《${courseName}》`;
+  return teacher ? `${teacher}老师的${titledCourse}` : titledCourse;
+}
+
+/**
  * 组装提示词。低于门槛（公开评不足 5 条且总字数不足约 3000）返回 null；
  * 超过约 32k 时按排序从尾部截断。
  */
@@ -185,21 +207,9 @@ export function buildSummaryPrompt(input: {
     .filter(Boolean)
     .map((text) => text.slice(0, SUMMARY_PER_REVIEW_MAX_CHARS));
   const totalChars = texts.reduce((sum, text) => sum + text.length, 0);
-  if (texts.length < SUMMARY_MIN_REVIEWS && totalChars < SUMMARY_MIN_TOTAL_CHARS)
-    return null;
-  const header = `你正在为课程评价站整理一份「课程 × 教师」的公开评价总结。
-
-课程：${input.courseName}
-任课教师：${input.teacherName}
-
-请根据下面 ${texts.length} 条学生公开评价写一份 200 到 500 字的客观总结，要求：
-1. 只依据给出的评价内容，不得编造评价中没有的信息；
-2. 围绕考试、给分、作业、教学、课程内容五个方面归纳，评价没提到的方面可以不写；
-3. 评价之间存在分歧时，两边的观点都要写出来；
-4. 可以引用评价原句，但不要逐条罗列；
-5. 全文只用「## 」分段小标题组织，不要写开场白、结束语或评价条数。
-
-公开评价如下：
+  const expectedLength = expectedSummaryLength(texts.length, totalChars);
+  if (expectedLength == null) return null;
+  const header = `根据下列点评，尽可能简洁、全面、客观地总结${summarySubject(input.courseName, input.teacherName)}课程的考试、给分、作业、教学水平、课程内容等，以便让同学们更好地选课。注意字数限制，${expectedLength} 字左右。尽量忠于点评内容，可以引用点评中的原句，点评中如果有写得特别精彩的句子建议引用。如果有冲突的观点，应客观总结双方的观点。不要说废话，不要胡编乱造。不需要全文大标题，只要分段小标题。
 
 `;
   let prompt = header;
@@ -223,12 +233,25 @@ type ChatCompletionResponse = {
   choices?: Array<{ message?: { content?: unknown } }>;
 };
 
+type SummaryRequestResult = {
+  summary: string | null;
+  detail?: string;
+};
+
 /** 调用 OpenAI 兼容网关；任何失败返回 null，由调用方保留旧总结。 */
 export async function requestSummary(
   gateway: SummaryGateway,
   prompt: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string | null> {
+  return (await requestSummaryResult(gateway, prompt, fetchImpl)).summary;
+}
+
+async function requestSummaryResult(
+  gateway: SummaryGateway,
+  prompt: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SummaryRequestResult> {
   try {
     const response = await fetchImpl(`${gateway.baseUrl}/chat/completions`, {
       method: "POST",
@@ -243,21 +266,28 @@ export async function requestSummary(
           {
             role: "system",
             content:
-              "你是课程评价整理助手，只输出客观、带分段小标题的 Markdown 总结，不编造评价中没有的信息。",
+              "你是 JUFE 评课平台的一个课程总结助手，旨在为每门课程的点评生成简洁、客观、全面的总结。",
           },
           { role: "user", content: prompt },
         ],
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(SUMMARY_GATEWAY_TIMEOUT_MS),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const detail = `gateway_http_${response.status}`;
+      console.error(JSON.stringify({ event: "summary_gateway_http", status: response.status }));
+      return { summary: null, detail };
+    }
     const data = await response.json<ChatCompletionResponse>();
     const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== "string") return null;
+    if (typeof content !== "string")
+      return { summary: null, detail: "gateway_empty_content" };
     const summary = content.trim().slice(0, SUMMARY_OUTPUT_MAX_CHARS);
-    return summary || null;
-  } catch {
-    return null;
+    return summary ? { summary } : { summary: null, detail: "gateway_empty_content" };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "error";
+    console.error(JSON.stringify({ event: "summary_gateway_error", name }));
+    return { summary: null, detail: name === "TimeoutError" ? "gateway_timeout" : "gateway_error" };
   }
 }
 
@@ -273,6 +303,7 @@ export type SummaryRecomputeResult = {
   outcome: SummaryRecomputeOutcome;
   reviewCount: number;
   totalChars: number;
+  detail?: string;
 };
 
 /**
@@ -319,16 +350,84 @@ export async function recomputeRelationSummary(
   const gateway = await summaryGateway(env);
   if (!gateway)
     return { outcome: "unconfigured", reviewCount: reviews.length, totalChars };
-  const summary = await requestSummary(gateway, prompt, fetchImpl);
-  if (!summary)
-    return { outcome: "failed", reviewCount: reviews.length, totalChars };
+  const requested = await requestSummaryResult(gateway, prompt, fetchImpl);
+  if (!requested.summary)
+    return {
+      outcome: "failed",
+      reviewCount: reviews.length,
+      totalChars,
+      detail: requested.detail,
+    };
   await db
     .prepare(
       "UPDATE course_teachers SET ai_summary=?,ai_summary_updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND teacher_id=?",
     )
-    .bind(summary, courseId, teacherId)
+    .bind(requested.summary, courseId, teacherId)
     .run();
   return { outcome: "updated", reviewCount: reviews.length, totalChars };
+}
+
+export type QualifyingSummaryRelation = {
+  courseId: number;
+  teacherId: number;
+  courseName: string;
+  teacherName: string;
+  courseCode: string;
+  reviewCount: number;
+  rawChars: number;
+};
+
+/**
+ * SQL 近似门槛：公开历史评 + 已批准历史评 + 已批准任课评。
+ * 用原文 LENGTH，可能略宽于纯文本门槛；最终仍由 recomputeRelationSummary 判定。
+ */
+export async function listQualifyingSummaryRelations(
+  db: D1Database,
+): Promise<QualifyingSummaryRelation[]> {
+  const { results } = await db
+    .prepare(
+      `WITH public_texts AS (
+         SELECT phr.course_id, phr.teacher_id, phr.comment AS comment
+         FROM public_historical_reviews phr
+         UNION ALL
+         SELECT lr.course_id, lr.teacher_id, lr.comment
+         FROM legacy_reviews lr
+         WHERE lr.status='approved' AND trim(COALESCE(lr.comment,''))<>''
+         UNION ALL
+         SELECT r.course_id, r.teacher_id, r.comment
+         FROM reviews r
+         WHERE r.status='approved' AND trim(COALESCE(r.comment,''))<>''
+           ${publicReviewBindingSql}
+       )
+       SELECT ct.course_id, ct.teacher_id, c.name course_name, t.name teacher_name,
+         c.code course_code, COUNT(*) review_count, SUM(LENGTH(pt.comment)) raw_chars
+       FROM course_teachers ct
+       JOIN courses c ON c.id=ct.course_id
+       JOIN teachers t ON t.id=ct.teacher_id
+       JOIN public_texts pt ON pt.course_id=ct.course_id AND pt.teacher_id=ct.teacher_id
+       GROUP BY ct.course_id, ct.teacher_id
+       HAVING review_count>=? OR raw_chars>=?
+       ORDER BY ct.course_id, ct.teacher_id`,
+    )
+    .bind(SUMMARY_MIN_REVIEWS, SUMMARY_MIN_TOTAL_CHARS)
+    .all<{
+      course_id: number;
+      teacher_id: number;
+      course_name: string;
+      teacher_name: string;
+      course_code: string;
+      review_count: number;
+      raw_chars: number;
+    }>();
+  return results.map((row) => ({
+    courseId: row.course_id,
+    teacherId: row.teacher_id,
+    courseName: row.course_name,
+    teacherName: row.teacher_name,
+    courseCode: row.course_code,
+    reviewCount: row.review_count,
+    rawChars: row.raw_chars,
+  }));
 }
 
 /** 24 小时去抖：immediate（驳回/撤回/删除）绕过；从未更新或超过 24h 才算到期。 */
@@ -357,62 +456,155 @@ type SummaryScheduleContext = {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 };
 
-/**
- * 公开评价内容变更后的后台重算入口。有执行上下文时挂 waitUntil 异步执行，
- * 否则（脚本/测试）就地执行；任务内部吞掉所有异常，绝不影响主请求。
- */
-export async function scheduleRelationSummaryRecompute(
-  c: SummaryScheduleContext,
-  courseId: number | null | undefined,
-  teacherId: number | null | undefined,
-  options: { immediate?: boolean } = {},
-): Promise<void> {
+/** 租约略长于网关超时，崩溃的 isolate 过期后由下一次触发回收。 */
+const SUMMARY_LOCK_LEASE_SECONDS =
+  Math.ceil(SUMMARY_GATEWAY_TIMEOUT_MS / 1000) + 60;
+
+type PendingSummaryJob = {
+  courseId: number;
+  teacherId: number;
+  immediate: boolean;
+};
+
+async function enqueueSummaryRecompute(
+  db: D1Database,
+  courseId: number,
+  teacherId: number,
+  immediate: boolean,
+) {
+  await db
+    .prepare(
+      `INSERT INTO summary_recompute_pending(course_id, teacher_id, immediate)
+       VALUES(?, ?, ?)
+       ON CONFLICT(course_id, teacher_id) DO UPDATE SET
+         immediate = MAX(summary_recompute_pending.immediate, excluded.immediate)`,
+    )
+    .bind(courseId, teacherId, immediate ? 1 : 0)
+    .run();
+}
+
+async function tryAcquireSummaryLock(db: D1Database): Promise<boolean> {
+  const acquired = await db
+    .prepare(
+      `UPDATE summary_recompute_lock
+       SET lease_until = unixepoch() + ?
+       WHERE id = 1
+         AND (lease_until IS NULL OR lease_until <= unixepoch())
+       RETURNING id`,
+    )
+    .bind(SUMMARY_LOCK_LEASE_SECONDS)
+    .first();
+  return Boolean(acquired);
+}
+
+async function releaseSummaryLock(db: D1Database) {
+  await db
+    .prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id = NULL, teacher_id = NULL, immediate = 0,
+           locked_at = NULL, lease_until = NULL
+       WHERE id = 1`,
+    )
+    .run();
+}
+
+async function clearCurrentSummaryJob(db: D1Database) {
+  await db
+    .prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id = NULL, teacher_id = NULL, immediate = 0
+       WHERE id = 1`,
+    )
+    .run();
+}
+
+async function hasPendingSummaryJob(db: D1Database): Promise<boolean> {
+  return Boolean(
+    await db
+      .prepare("SELECT 1 pending FROM summary_recompute_pending LIMIT 1")
+      .first(),
+  );
+}
+
+async function claimNextSummaryJob(
+  db: D1Database,
+): Promise<PendingSummaryJob | null> {
+  const current = await db
+    .prepare(
+      `SELECT course_id, teacher_id, immediate
+       FROM summary_recompute_lock WHERE id = 1`,
+    )
+    .first<{
+      course_id: number | null;
+      teacher_id: number | null;
+      immediate: number;
+    }>();
   if (
-    !Number.isSafeInteger(courseId) ||
-    !Number.isSafeInteger(teacherId) ||
-    (courseId as number) <= 0 ||
-    (teacherId as number) <= 0
-  )
-    return;
-  const course = courseId as number;
-  const teacher = teacherId as number;
-  const task = (async () => {
-    try {
-      if (
-        !(await isSummaryRecomputeDue(
-          c.env.DB,
-          course,
-          teacher,
-          options.immediate === true,
-        ))
+    current &&
+    Number.isSafeInteger(current.course_id) &&
+    Number.isSafeInteger(current.teacher_id) &&
+    (current.course_id as number) > 0 &&
+    (current.teacher_id as number) > 0
+  ) {
+    await db
+      .prepare(
+        `UPDATE summary_recompute_lock
+         SET locked_at = CURRENT_TIMESTAMP, lease_until = unixepoch() + ?
+         WHERE id = 1`,
       )
-        return;
-      const result = await recomputeRelationSummary(
-        c.env,
-        c.env.DB,
-        course,
-        teacher,
-      );
-      console.log(
-        JSON.stringify({
-          event: "summary_recompute",
-          courseId: course,
-          teacherId: teacher,
-          outcome: result.outcome,
-          reviewCount: result.reviewCount,
-        }),
-      );
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          event: "summary_recompute_error",
-          courseId: course,
-          teacherId: teacher,
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
-  })();
+      .bind(SUMMARY_LOCK_LEASE_SECONDS)
+      .run();
+    return {
+      courseId: current.course_id as number,
+      teacherId: current.teacher_id as number,
+      immediate: current.immediate === 1,
+    };
+  }
+
+  const next = await db
+    .prepare(
+      `SELECT course_id, teacher_id, immediate
+       FROM summary_recompute_pending
+       ORDER BY enqueued_at ASC, course_id ASC, teacher_id ASC
+       LIMIT 1`,
+    )
+    .first<{
+      course_id: number;
+      teacher_id: number;
+      immediate: number;
+    }>();
+  if (!next) return null;
+  await db
+    .prepare(
+      "DELETE FROM summary_recompute_pending WHERE course_id = ? AND teacher_id = ?",
+    )
+    .bind(next.course_id, next.teacher_id)
+    .run();
+  await db
+    .prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id = ?, teacher_id = ?, immediate = ?,
+           locked_at = CURRENT_TIMESTAMP, lease_until = unixepoch() + ?
+       WHERE id = 1`,
+    )
+    .bind(
+      next.course_id,
+      next.teacher_id,
+      next.immediate,
+      SUMMARY_LOCK_LEASE_SECONDS,
+    )
+    .run();
+  return {
+    courseId: next.course_id,
+    teacherId: next.teacher_id,
+    immediate: next.immediate === 1,
+  };
+}
+
+function dispatchSummaryTask(
+  c: SummaryScheduleContext,
+  task: Promise<unknown>,
+): Promise<unknown> | undefined {
   let ctx: SummaryScheduleContext["executionCtx"];
   try {
     ctx = c.executionCtx;
@@ -423,7 +615,102 @@ export async function scheduleRelationSummaryRecompute(
     ctx.waitUntil(task);
     return;
   }
-  await task;
+  return task;
+}
+
+async function runLockedSummaryRecompute(
+  c: SummaryScheduleContext,
+  fetchImpl?: typeof fetch,
+): Promise<void> {
+  let item: PendingSummaryJob | null = null;
+  try {
+    item = await claimNextSummaryJob(c.env.DB);
+    if (!item) {
+      await releaseSummaryLock(c.env.DB);
+      if (
+        (await hasPendingSummaryJob(c.env.DB)) &&
+        (await tryAcquireSummaryLock(c.env.DB))
+      ) {
+        const recovered = runLockedSummaryRecompute(c, fetchImpl);
+        const dispatched = dispatchSummaryTask(c, recovered);
+        if (dispatched) await dispatched;
+      }
+      return;
+    }
+    if (
+      await isSummaryRecomputeDue(
+        c.env.DB,
+        item.courseId,
+        item.teacherId,
+        item.immediate,
+      )
+    ) {
+      const result = await recomputeRelationSummary(
+        c.env,
+        c.env.DB,
+        item.courseId,
+        item.teacherId,
+        fetchImpl,
+      );
+      console.log(
+        JSON.stringify({
+          event: "summary_recompute",
+          courseId: item.courseId,
+          teacherId: item.teacherId,
+          outcome: result.outcome,
+          reviewCount: result.reviewCount,
+        }),
+      );
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "summary_recompute_error",
+        courseId: item?.courseId,
+        teacherId: item?.teacherId,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+  try {
+    await clearCurrentSummaryJob(c.env.DB);
+  } catch {
+    // 仍尝试把锁交给下一件，避免队列卡住。
+  }
+  const next = runLockedSummaryRecompute(c, fetchImpl);
+  const dispatched = dispatchSummaryTask(c, next);
+  if (dispatched) await dispatched;
+}
+
+/**
+ * 公开评价内容变更后的后台重算入口。全站同一时刻只跑一条关系：
+ * 已有任务在跑时入队去重，当前任务结束后再 waitUntil 下一条。
+ * 有执行上下文时挂 waitUntil，否则（脚本/测试）就地执行；
+ * 任务内部吞掉所有异常，绝不影响主请求。
+ */
+export async function scheduleRelationSummaryRecompute(
+  c: SummaryScheduleContext,
+  courseId: number | null | undefined,
+  teacherId: number | null | undefined,
+  options: { immediate?: boolean; fetchImpl?: typeof fetch } = {},
+): Promise<void> {
+  if (
+    !Number.isSafeInteger(courseId) ||
+    !Number.isSafeInteger(teacherId) ||
+    (courseId as number) <= 0 ||
+    (teacherId as number) <= 0
+  )
+    return;
+  const course = courseId as number;
+  const teacher = teacherId as number;
+  const immediate = options.immediate === true;
+  if (!(await isSummaryRecomputeDue(c.env.DB, course, teacher, immediate)))
+    return;
+  await enqueueSummaryRecompute(c.env.DB, course, teacher, immediate);
+  if (!(await tryAcquireSummaryLock(c.env.DB))) return;
+  const task = runLockedSummaryRecompute(c, options.fetchImpl);
+  const dispatched = dispatchSummaryTask(c, task);
+  if (dispatched) await dispatched;
 }
 
 const inlineSummaryHtml = (text: string) =>
