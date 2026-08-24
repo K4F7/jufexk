@@ -50,6 +50,49 @@ describe("ordinary-user blocking", () => {
     );
     expect(session.authenticated).toBe(true);
     expect(inactive.status).toBe(409);
+
+    const missingStatus = await SELF.fetch(
+      `${origin}/api/admin/users/missing`,
+      { headers: { Cookie: auth.cookie } },
+    );
+    expect(missingStatus.status).toBe(404);
+  });
+
+  it("returns mute status without extra identity fields", async () => {
+    const auth = await login();
+    const userKey = "block-status-reader";
+    await ordinaryWriteSession(userKey);
+    const stableId = await setOrdinaryUserStatus(userKey, "active");
+
+    const anonymous = await SELF.fetch(`${origin}/api/admin/users/${stableId}`);
+    expect(anonymous.status).toBe(401);
+
+    const before = await SELF.fetch(`${origin}/api/admin/users/${stableId}`, {
+      headers: { Cookie: auth.cookie },
+    });
+    expect(before.status).toBe(200);
+    expect(await before.json()).toEqual({
+      userRef: stableId,
+      blocked: false,
+      blockedUntil: null,
+    });
+
+    await SELF.fetch(`${origin}/api/admin/users/${stableId}/block`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ days: 3 }),
+    });
+    const blocked = await SELF.fetch(`${origin}/api/admin/users/${stableId}`, {
+      headers: { Cookie: auth.cookie },
+    });
+    const body = await blocked.json<Record<string, unknown>>();
+    expect(body).toEqual({
+      userRef: stableId,
+      blocked: true,
+      blockedUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
+    expect(JSON.stringify(body)).not.toContain("email");
+    expect(JSON.stringify(body)).not.toContain("muted_until");
   });
 
   it("blocks writes, keeps the session authenticated, unblocks immediately, and expires automatically", async () => {

@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Card,
   Description,
   Form,
   Label,
@@ -13,8 +14,9 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { api } from "../../lib/api";
 import { formatReviewDate } from "../../lib/review-date";
-import type { BannerRecord, SiteBanner } from "../../lib/types";
-import { AdminGate, AdminPageHeader } from "./AdminGate";
+import type { BannerRecord } from "../../lib/types";
+import type { SiteBanner } from "../../site-banner";
+import { AdminLayout } from "./AdminGate";
 
 /**
  * 全站 Banner 设置（/admin/banner）：桌面版 + 移动版 HTML，
@@ -22,15 +24,12 @@ import { AdminGate, AdminPageHeader } from "./AdminGate";
  */
 export function AdminBannerPage() {
   return (
-    <AdminGate>
-      <section className="max-w-[760px]">
-        <AdminPageHeader
-          title="全站 Banner"
-          description="提交后全站顶栏下方展示；桌面版与移动版分别下发，移动版留空时回落到桌面版。支持 HTML，展示前会再消毒一次。"
-        />
-        <BannerEditor />
-      </section>
-    </AdminGate>
+    <AdminLayout
+      title="全站 Banner"
+      description="提交后全站顶栏下方展示；桌面版与移动版分别下发，移动版留空时回落到桌面版。支持 HTML，展示前会再消毒一次。"
+    >
+      <BannerEditor />
+    </AdminLayout>
   );
 }
 
@@ -45,11 +44,11 @@ function BannerEditor() {
 
   const load = useCallback(async () => {
     const [current, records] = await Promise.all([
-      api<{ banner: SiteBanner | null }>("/api/site/banner"),
+      api<SiteBanner>("/api/site/banner"),
       api<{ items: BannerRecord[] }>("/api/admin/banners"),
     ]);
-    setDesktop(current.banner?.desktop_html ?? "");
-    setMobile(current.banner?.mobile_html ?? "");
+    setDesktop(current.desktopHtml ?? "");
+    setMobile(current.mobileHtml ?? "");
     setHistory(records.items);
   }, []);
 
@@ -67,7 +66,7 @@ function BannerEditor() {
     setPending(true);
     try {
       await api("/api/admin/banner", {
-        method: "POST",
+        method: "PUT",
         body: JSON.stringify({ desktopHtml: desktop, mobileHtml: mobile }),
       });
       setSaved(true);
@@ -85,43 +84,63 @@ function BannerEditor() {
 
   return (
     <>
-      <Form className="flex flex-col gap-4" onSubmit={onSubmit}>
-        <TextField fullWidth name="desktopHtml" value={desktop} onChange={setDesktop}>
-          <Label>桌面版 banner（支持 HTML）</Label>
-          <TextArea className="w-full" rows={3} />
-          <Description>留空则桌面端不展示 banner。</Description>
-        </TextField>
-        <TextField fullWidth name="mobileHtml" value={mobile} onChange={setMobile}>
-          <Label>移动版 banner（支持 HTML）</Label>
-          <TextArea className="w-full" rows={3} />
-          <Description>留空时移动端回落展示桌面版内容。</Description>
-        </TextField>
-        <div>
-          <Button isPending={pending} type="submit" variant="primary">
-            提交
-          </Button>
-        </div>
-        {saved ? (
-          <Alert role="status" status="success">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>已保存</Alert.Title>
-              <Alert.Description>
-                新的 banner 已生效，刷新公开页面即可看到。
-              </Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : null}
-        {error ? (
-          <Alert role="alert" status="danger">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>保存失败</Alert.Title>
-              <Alert.Description>{error}</Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : null}
-      </Form>
+      <Card>
+        <Card.Header>
+          <Card.Title>当前内容</Card.Title>
+          <Card.Description>
+            留空桌面版则桌面端不展示；移动版留空时回落桌面版。
+          </Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <Form className="flex flex-col gap-4" onSubmit={onSubmit}>
+            <TextField
+              fullWidth
+              name="desktopHtml"
+              value={desktop}
+              onChange={setDesktop}
+            >
+              <Label>桌面版 banner（支持 HTML）</Label>
+              <TextArea className="w-full" rows={3} />
+              <Description>留空则桌面端不展示 banner。</Description>
+            </TextField>
+            <TextField
+              fullWidth
+              name="mobileHtml"
+              value={mobile}
+              onChange={setMobile}
+            >
+              <Label>移动版 banner（支持 HTML）</Label>
+              <TextArea className="w-full" rows={3} />
+              <Description>留空时移动端回落展示桌面版内容。</Description>
+            </TextField>
+            <div>
+              <Button isPending={pending} type="submit" variant="primary">
+                提交
+              </Button>
+            </div>
+            {saved ? (
+              <Alert role="status" status="success">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>已保存</Alert.Title>
+                  <Alert.Description>
+                    新的 banner 已生效，刷新公开页面即可看到。
+                  </Alert.Description>
+                </Alert.Content>
+              </Alert>
+            ) : null}
+            {error ? (
+              <Alert role="alert" status="danger">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>保存失败</Alert.Title>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            ) : null}
+          </Form>
+        </Card.Content>
+      </Card>
 
       <Typography className="mb-0 mt-10 text-[16px] font-bold" type="h2">
         设置历史{history ? `（共 ${history.length} 次）` : ""}
@@ -140,17 +159,17 @@ function BannerEditor() {
                   <Table.Row key={record.id} id={String(record.id)}>
                     <Table.Cell>
                       <span className="whitespace-nowrap text-[12px] text-muted">
-                        {formatReviewDate(record.created_at) || "—"}
+                        {formatReviewDate(record.createdAt) || "—"}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
                       <span className="line-clamp-2 break-all text-[12px]">
-                        {record.desktop_html || "—"}
+                        {record.desktopHtml || "—"}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
                       <span className="line-clamp-2 break-all text-[12px]">
-                        {record.mobile_html || "—"}
+                        {record.mobileHtml || "—"}
                       </span>
                     </Table.Cell>
                   </Table.Row>

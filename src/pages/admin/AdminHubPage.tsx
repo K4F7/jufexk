@@ -1,111 +1,119 @@
-import { Button, Card, Input, Label, TextField } from "@heroui/react";
+import { Button, Card, Form, SearchField } from "@heroui/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { RouterAriaLink } from "../../components/RouterAriaLink";
-import { AdminGate, AdminPageHeader } from "./AdminGate";
+import { AdminLayout } from "./AdminGate";
+
+function HubCard({
+  title,
+  description,
+  to,
+  action,
+  className,
+}: {
+  title: string;
+  description: string;
+  to: string;
+  action: string;
+  className?: string;
+}) {
+  return (
+    <Card className={className}>
+      <Card.Header>
+        <Card.Title>{title}</Card.Title>
+        <Card.Description>{description}</Card.Description>
+      </Card.Header>
+      <Card.Footer>
+        <RouterAriaLink to={to}>{action}</RouterAriaLink>
+      </Card.Footer>
+    </Card>
+  );
+}
 
 /**
- * 管理首页（对齐 icourse：没有独立后台首页，这里只做参考目录）。
- * 屏蔽/删除点评、查询作者、课程管理员公告都嵌在课程详情页上。
+ * 管理首页：站点 / 权限 / 课程页动作分组。
+ * 屏蔽点评、查询作者、课程管理员公告仍嵌在课程详情页上。
  */
 export function AdminHubPage() {
   const navigate = useNavigate();
   const [userRef, setUserRef] = useState("");
 
-  const goUser = () => {
-    const ref = userRef.trim();
+  const goUser = (value: string) => {
+    const ref = value.trim();
     if (ref) navigate(`/admin/users/${encodeURIComponent(ref)}`);
   };
 
   return (
-    <AdminGate>
-      <section>
-        <AdminPageHeader
-          title="管理后台"
-          description="全站 Banner、公告栏与管理员学号在这里维护；屏蔽点评、查询作者、课程设置管理员公告嵌在课程详情页上。"
+    <AdminLayout
+      title="管理后台"
+      description="全站 Banner、公告栏与管理员学号在这里维护；屏蔽点评、查询作者、课程管理员公告嵌在课程详情页上。"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <HubCard
+          action="打开 Banner"
+          description="顶栏下方的全站公告条；桌面版与移动版分别设置，含设置历史。"
+          title="全站 Banner"
+          to="/admin/banner"
         />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Card>
-            <Card.Header>
-              <Card.Title>
-                <RouterAriaLink className="text-accent" to="/admin/banner">
-                  全站 Banner
-                </RouterAriaLink>
-              </Card.Title>
-              <Card.Description>
-                顶栏下方的全站公告条；桌面版与移动版分别设置，含设置历史。
-              </Card.Description>
-            </Card.Header>
-          </Card>
-          <Card>
-            <Card.Header>
-              <Card.Title>
-                <RouterAriaLink className="text-accent" to="/announcements">
-                  公告栏
-                </RouterAriaLink>
-              </Card.Title>
-              <Card.Description>
-                公开公告列表；管理员可发布、编辑、删除。
-              </Card.Description>
-            </Card.Header>
-          </Card>
-          <Card>
-            <Card.Header>
-              <Card.Title>
-                <RouterAriaLink className="text-accent" to="/admin/admins">
-                  管理员学号
-                </RouterAriaLink>
-              </Card.Title>
-              <Card.Description>
-                手动绑定一位或多位校园登录学号；对方登录后即可进入管理分区。
-              </Card.Description>
-            </Card.Header>
-          </Card>
-          <Card>
-            <Card.Header>
-              <Card.Title>用户禁言</Card.Title>
-              <Card.Description>
-                输入用户引用进入禁言管理。用户引用来自「查询作者资料」的管理员邮件，不对外公开。
-              </Card.Description>
-            </Card.Header>
-            <Card.Content>
-              <form
-                className="flex items-end gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  goUser();
-                }}
+        <HubCard
+          action="打开公告栏"
+          description="公开公告列表；管理员可发布、编辑、删除。"
+          title="公告栏"
+          to="/announcements"
+        />
+        <HubCard
+          action="管理员学号"
+          description="手动绑定一位或多位校园登录学号；对方登录后即可进入管理分区。"
+          title="管理员学号"
+          to="/admin/admins"
+        />
+        <Card>
+          <Card.Header>
+            <Card.Title>用户禁言</Card.Title>
+            <Card.Description>
+              输入作者资料邮件中的「站内用户 ID」。禁言期间无法提交评价或认可。
+            </Card.Description>
+          </Card.Header>
+          <Card.Content>
+            <Form
+              className="flex items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                goUser(userRef);
+              }}
+            >
+              <SearchField
+                aria-label="站内用户 ID"
+                className="min-w-0 flex-1"
+                name="userRef"
+                value={userRef}
+                variant="secondary"
+                onChange={setUserRef}
+                onSubmit={goUser}
               >
-                <TextField
-                  className="flex-1"
-                  name="userRef"
-                  value={userRef}
-                  onChange={setUserRef}
-                >
-                  <Label>用户引用</Label>
-                  <Input placeholder="例如作者资料邮件中的引用" />
-                </TextField>
-                <Button type="submit" variant="secondary">
-                  前往
-                </Button>
-              </form>
-            </Card.Content>
-          </Card>
-          <Card>
-            <Card.Header>
-              <Card.Title>课程页上的管理动作</Card.Title>
-              <Card.Description>
-                在课程详情页逐条点评上屏蔽 / 解除屏蔽 / 删除 / 查询作者资料；课程头部可设置管理员公告。
-              </Card.Description>
-            </Card.Header>
-            <Card.Content>
-              <RouterAriaLink className="text-accent" to="/courses">
-                前往课程目录 →
-              </RouterAriaLink>
-            </Card.Content>
-          </Card>
-        </div>
-      </section>
-    </AdminGate>
+                <SearchField.Group>
+                  <SearchField.SearchIcon />
+                  <SearchField.Input
+                    className="w-full"
+                    placeholder="站内用户 ID"
+                  />
+                  <SearchField.ClearButton aria-label="清空用户 ID" />
+                </SearchField.Group>
+              </SearchField>
+              <Button type="submit" variant="secondary">
+                前往
+              </Button>
+            </Form>
+          </Card.Content>
+        </Card>
+        <HubCard
+          action="前往课程目录"
+          className="sm:col-span-2"
+          description="在课程详情页逐条点评上屏蔽 / 解除屏蔽 / 删除 / 查询作者资料；课程头部可设置管理员公告。"
+          title="课程页上的管理动作"
+          to="/courses"
+        />
+      </div>
+    </AdminLayout>
   );
 }

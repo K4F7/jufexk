@@ -13,27 +13,25 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { api } from "../../lib/api";
+import { formatReviewDate } from "../../lib/review-date";
 import type { AdminUserBlockStatus } from "../../lib/types";
-import { AdminGate, AdminPageHeader } from "./AdminGate";
+import { AdminLayout } from "./AdminGate";
 
 /**
- * 用户禁言管理（/admin/users/:userRef，仅管理员）。
- * 站点没有公开用户主页；userRef 是管理员侧的不透明引用，
- * 来自「查询作者资料」的管理员邮件。页面不展示 email、学号、users.id。
+ * 用户禁言管理（/admin/users/:id，仅管理员）。
+ * 站点没有公开用户主页；路径参数来自「查询作者资料」邮件中的站内用户 ID。
+ * 页面不展示 email、学号。
  */
 export function AdminUserBlockPage() {
   const { id } = useParams();
   const userRef = id ?? "";
   return (
-    <AdminGate>
-      <section className="max-w-[560px]">
-        <AdminPageHeader
-          title="用户禁言"
-          description="禁言期间该用户无法提交评价或认可；解除后立即恢复。"
-        />
-        <UserBlockPanel userRef={userRef} />
-      </section>
-    </AdminGate>
+    <AdminLayout
+      title="用户禁言"
+      description="禁言期间该用户无法提交评价或认可；解除后立即恢复。"
+    >
+      <UserBlockPanel userRef={userRef} />
+    </AdminLayout>
   );
 }
 
@@ -55,7 +53,7 @@ function UserBlockPanel({ userRef }: { userRef: string }) {
   useEffect(() => {
     if (!userRef) {
       setLoading(false);
-      setError("缺少用户引用。");
+      setError("缺少站内用户 ID。");
       return;
     }
     setLoading(true);
@@ -114,6 +112,7 @@ function UserBlockPanel({ userRef }: { userRef: string }) {
   }
 
   const blocked = !!status?.blocked;
+  const untilLabel = formatReviewDate(status?.blockedUntil);
   return (
     <Card>
       <Card.Header>
@@ -130,13 +129,13 @@ function UserBlockPanel({ userRef }: { userRef: string }) {
           )}
         </Card.Title>
         <Card.Description>
-          用户引用：{status?.user_ref || userRef}
+          站内用户 ID：{status?.userRef || userRef}
         </Card.Description>
       </Card.Header>
       <Card.Content>
         <p className="m-0 text-[13px]">
           {blocked
-            ? `该用户已被禁言${status?.blocked_until ? `，将于 ${status.blocked_until} 解除` : ""}。`
+            ? `该用户已被禁言${untilLabel ? `，将于 ${untilLabel} 解除` : ""}。`
             : "该用户当前未被禁言。"}
         </p>
         <Form className="mt-4 flex flex-col gap-3" onSubmit={onBlock}>

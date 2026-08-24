@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyChangedPaths } from "../scripts/ci/classify-changed-paths.mjs";
 import bindAdminWorkflow from "../.github/workflows/bind-admin-students.yml?raw";
 import ciWorkflow from "../.github/workflows/ci.yml?raw";
+import playwrightConfig from "../playwright.config.ts?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
 import migrateWorkflow from "../.github/workflows/migrate.yml?raw";
 import packageJsonRaw from "../package.json?raw";
@@ -59,6 +60,8 @@ describe("classifyChangedPaths", () => {
       "pnpm exec playwright test --project=mobile-chromium --grep @mobile-smoke --shard=${{ matrix.shard }}",
     );
     expect(ciWorkflow).not.toContain("matrix.project");
+    expect(playwrightConfig).toContain('name: "mobile-chromium"');
+    expect(playwrightConfig).toContain('testIgnore: ["admin*.browser.test.ts"]');
   });
 
   it("requires every selected CI matrix to complete successfully", () => {

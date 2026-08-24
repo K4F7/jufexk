@@ -40,7 +40,7 @@ export function CourseAdminNotice({
     try {
       await api(`/api/admin/courses/${courseId}/notice`, {
         method: "PUT",
-        body: JSON.stringify({ notice: draft }),
+        body: JSON.stringify({ content: draft }),
       });
       setEditing(false);
       onSaved();

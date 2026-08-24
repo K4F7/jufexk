@@ -128,4 +128,34 @@ describe.sequential("site banner", () => {
       await env.DB.prepare("SELECT COUNT(*) count FROM site_banner_history").first(),
     ).toEqual({ count: 0 });
   });
+
+  it("lists banner history without session identifiers", async () => {
+    const anonymous = await SELF.fetch(`${origin}/api/admin/banners`);
+    expect(anonymous.status).toBe(401);
+
+    const auth = await login();
+    await SELF.fetch(`${origin}/api/admin/banner`, {
+      method: "PUT",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ desktopHtml: "<p>桌面</p>", mobileHtml: "" }),
+    });
+
+    const listed = await SELF.fetch(`${origin}/api/admin/banners`, {
+      headers: { Cookie: auth.cookie },
+    });
+    expect(listed.status).toBe(200);
+    const body = await listed.json<{
+      items: Array<Record<string, unknown>>;
+    }>();
+    expect(body.items).toEqual([
+      {
+        id: expect.any(Number),
+        desktopHtml: "<p>桌面</p>",
+        mobileHtml: "",
+        createdAt: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(body)).not.toContain("session");
+    expect(JSON.stringify(body)).not.toContain("actor");
+  });
 });

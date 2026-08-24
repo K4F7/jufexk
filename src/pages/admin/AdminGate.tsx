@@ -1,10 +1,17 @@
-import { Button, Typography, buttonVariants } from "@heroui/react";
+import { Tabs, Typography, buttonVariants } from "@heroui/react";
 import type { ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { RouterAriaLink } from "../../components/RouterAriaLink";
 import { useAdminSession } from "../../hooks/useAdminSession";
 import { useViewer } from "../../hooks/useViewer";
+
+const ADMIN_TABS = [
+  { id: "hub", href: "/admin", label: "概览" },
+  { id: "banner", href: "/admin/banner", label: "Banner" },
+  { id: "announcements", href: "/announcements", label: "公告" },
+  { id: "admins", href: "/admin/admins", label: "学号" },
+] as const;
 
 /**
  * 管理员分区门禁：已绑定学号的校园登录会在探测 /api/admin/session 时
@@ -46,7 +53,54 @@ export function AdminGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** 管理分区统一页头：标题 + 说明 + 回管理首页 / 退出。 */
+function adminTabKey(pathname: string): string {
+  if (pathname === "/admin/banner") return "banner";
+  if (pathname === "/admin/admins") return "admins";
+  if (
+    pathname === "/announcements" ||
+    pathname.startsWith("/admin/announcements/")
+  ) {
+    return "announcements";
+  }
+  return "hub";
+}
+
+/** 管理分区内的官方 Tabs 导航，href 接到 React Router，可新标签打开。 */
+export function AdminSectionNav() {
+  const { pathname } = useLocation();
+  return (
+    <Tabs className="mb-6 w-full" selectedKey={adminTabKey(pathname)}>
+      <Tabs.ListContainer>
+        <Tabs.List aria-label="管理分区">
+          {ADMIN_TABS.map((tab, index) => (
+            <Tabs.Tab
+              key={tab.id}
+              href={tab.href}
+              id={tab.id}
+              render={(domProps) => (
+                <NavLink
+                  {...(domProps as object)}
+                  className={
+                    typeof domProps.className === "string"
+                      ? domProps.className
+                      : undefined
+                  }
+                  to={tab.href}
+                />
+              )}
+            >
+              {index > 0 ? <Tabs.Separator /> : null}
+              {tab.label}
+              <Tabs.Indicator />
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+      </Tabs.ListContainer>
+    </Tabs>
+  );
+}
+
+/** 管理分区统一页头：标题 + 说明。分区切换走 AdminSectionNav。 */
 export function AdminPageHeader({
   title,
   description,
@@ -54,26 +108,35 @@ export function AdminPageHeader({
   title: string;
   description?: string;
 }) {
-  const { logout } = useAdminSession();
-  const navigate = useNavigate();
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <Typography className="m-0 text-[22px] font-bold" type="h1">
-          {title}
-        </Typography>
-        {description ? (
-          <p className="mb-0 mt-1 text-[13px] text-muted">{description}</p>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 gap-2">
-        <Button size="sm" variant="ghost" onPress={() => navigate("/admin")}>
-          管理首页
-        </Button>
-        <Button size="sm" variant="outline" onPress={() => void logout()}>
-          退出
-        </Button>
-      </div>
+    <div className="mb-4">
+      <Typography className="m-0 text-[22px] font-bold" type="h1">
+        {title}
+      </Typography>
+      {description ? (
+        <p className="mb-0 mt-1 text-[13px] text-muted">{description}</p>
+      ) : null}
     </div>
+  );
+}
+
+/** 已登录管理员的分区骨架：页头 + Tabs + 内容。 */
+export function AdminLayout({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <AdminGate>
+      <section className="mx-auto max-w-[860px]">
+        <AdminPageHeader description={description} title={title} />
+        <AdminSectionNav />
+        {children}
+      </section>
+    </AdminGate>
   );
 }

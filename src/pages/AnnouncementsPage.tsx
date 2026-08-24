@@ -1,10 +1,11 @@
-import { AlertDialog, Button, Typography } from "@heroui/react";
+import { AlertDialog, Button, Typography, buttonVariants } from "@heroui/react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   DetailErrorAlert,
   DetailLoadingStatus,
 } from "../components/DetailFeedback";
+import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useAdminSession } from "../hooks/useAdminSession";
 import { api } from "../lib/api";
 import { formatReviewDate } from "../lib/review-date";
@@ -47,12 +48,20 @@ export function AnnouncementsPage() {
           公告栏
         </Typography>
         {adminReady && isAdmin ? (
-          <Button
-            variant="primary"
-            onPress={() => navigate("/admin/announcements/new")}
-          >
-            发布公告
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <RouterAriaLink
+              className={`${buttonVariants({ variant: "ghost" })} no-underline`}
+              to="/admin"
+            >
+              管理首页
+            </RouterAriaLink>
+            <Button
+              variant="primary"
+              onPress={() => navigate("/admin/announcements/new")}
+            >
+              发布公告
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -88,10 +97,7 @@ export function AnnouncementsPage() {
                 {a.content}
               </p>
               <p className="mb-0 mt-2 text-[12px] text-muted">
-                发表于 {formatReviewDate(a.created_at) || "—"}
-                {a.updated_at && a.updated_at !== a.created_at
-                  ? ` · 更新于 ${formatReviewDate(a.updated_at)}`
-                  : ""}
+                发表于 {formatReviewDate(a.time) || "—"}
               </p>
               {adminReady && isAdmin ? (
                 <div className="mt-3 flex gap-2">

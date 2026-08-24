@@ -1,5 +1,6 @@
 import { Badge, Button, Chip, Dropdown, Label, buttonVariants } from "@heroui/react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAdminSession } from "../hooks/useAdminSession";
 import { useViewer } from "../hooks/useViewer";
 import { useUnreadNotificationCount } from "../hooks/useUnreadNotifications";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -11,11 +12,12 @@ import { RouterAriaLink } from "./RouterAriaLink";
  * Guests always get a real login link: CAS password proxy is the
  * production path. AuthBridge callback is abandoned.
  *
- * 登录后菜单含「我的主页」与「消息」（#459 / #460）；未读数接口不可用时
- * 隐藏角标，不影响菜单本身。
+ * 登录后菜单含「我的主页」与「消息」（#459 / #460）；管理员会话再多一项
+ * 「管理后台」。未读数接口不可用时隐藏角标，不影响菜单本身。
  */
 export function AccountNavControl() {
   const { viewer, ready } = useViewer();
+  const { authed: adminAuthed, ready: adminReady } = useAdminSession();
   const location = useLocation();
   const navigate = useNavigate();
   const unread = useUnreadNotificationCount(viewer.authenticated);
@@ -55,6 +57,7 @@ export function AccountNavControl() {
             if (key === "profile") navigate("/profile");
             if (key === "notices") navigate("/notices");
             if (key === "account") navigate("/account");
+            if (key === "admin") navigate("/admin");
             if (key === "logout") navigate(viewer.logoutPath);
           }}
         >
@@ -75,6 +78,11 @@ export function AccountNavControl() {
           <Dropdown.Item id="account" textValue="账号管理">
             <Label>账号管理</Label>
           </Dropdown.Item>
+          {adminReady && adminAuthed ? (
+            <Dropdown.Item id="admin" textValue="管理后台">
+              <Label>管理后台</Label>
+            </Dropdown.Item>
+          ) : null}
           <Dropdown.Item id="logout" textValue="退出登录">
             <Label>退出登录</Label>
           </Dropdown.Item>
