@@ -23,7 +23,6 @@
 [![pnpm](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-评价必须绑定课程的具体任课教师。公开内容经管理员人工审核后匿名展示；学号、邮箱与站内用户标识均不公开。
 
 本站不是学校官方服务，目录来自获授权采集的教务可见开课全量，评价来自学生投稿与已审核的历史文字资料。
 
@@ -122,10 +121,6 @@ pnpm run deploy
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID
 
 CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `pnpm exec wrangler d1 export`，并将备份保存到受限存储。
-
-## 目录基线
-
-课程、教师与任课关系由审核通过的原子目录基线包统一发布。基线发布后，旧式 CSV 合并 / 跳过入口永久返回 `409`；新增目录实体必须走目录补充申请及管理员审核。当前 JUFE 权威包为 `scripts/catalog-baseline/captures/full-approved-v2/manifest.json` 对应的 v2 基线。采集、派生、审核与发布流程见 `docs/catalog-baseline-acquisition.md`。
 
 ### 投稿问卷
 
