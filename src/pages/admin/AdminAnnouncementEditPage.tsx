@@ -1,6 +1,8 @@
 import {
   Alert,
   Button,
+  Card,
+  Description,
   Form,
   Input,
   Label,
@@ -12,7 +14,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { api } from "../../lib/api";
 import type { Announcement } from "../../lib/types";
-import { AdminGate, AdminPageHeader } from "./AdminGate";
+import { AdminLayout } from "./AdminGate";
+
+const DEFAULT_AUTHOR = "站务组";
 
 /**
  * 公告发布 / 编辑（/admin/announcements/:id，`new` 为新建）。
@@ -22,15 +26,12 @@ export function AdminAnnouncementEditPage() {
   const { id } = useParams();
   const isNew = id === "new" || !id;
   return (
-    <AdminGate>
-      <section className="max-w-[640px]">
-        <AdminPageHeader
-          title={isNew ? "发布公告" : "编辑公告"}
-          description="公告为纯文本，公开页面只读展示。"
-        />
-        {isNew ? <AnnouncementForm /> : <ExistingAnnouncementLoader id={id!} />}
-      </section>
-    </AdminGate>
+    <AdminLayout
+      title={isNew ? "发布公告" : "编辑公告"}
+      description="公告为纯文本，公开页面只读展示。"
+    >
+      {isNew ? <AnnouncementForm /> : <ExistingAnnouncementLoader id={id!} />}
+    </AdminLayout>
   );
 }
 
@@ -78,6 +79,7 @@ function AnnouncementForm({ existing }: { existing?: Announcement }) {
   const navigate = useNavigate();
   const [title, setTitle] = useState(existing?.title ?? "");
   const [content, setContent] = useState(existing?.content ?? "");
+  const [author, setAuthor] = useState(existing?.author || DEFAULT_AUTHOR);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -86,15 +88,16 @@ function AnnouncementForm({ existing }: { existing?: Announcement }) {
     setError("");
     setPending(true);
     try {
+      const body = JSON.stringify({ title, content, author });
       if (existing) {
         await api(`/api/admin/announcements/${existing.id}`, {
           method: "PUT",
-          body: JSON.stringify({ title, content }),
+          body,
         });
       } else {
         await api("/api/admin/announcements", {
           method: "POST",
-          body: JSON.stringify({ title, content }),
+          body,
         });
       }
       navigate("/announcements");
@@ -106,48 +109,63 @@ function AnnouncementForm({ existing }: { existing?: Announcement }) {
   };
 
   return (
-    <Form className="flex flex-col gap-4" onSubmit={onSubmit}>
-      <TextField
-        fullWidth
-        isRequired
-        name="title"
-        value={title}
-        onChange={setTitle}
-      >
-        <Label>标题</Label>
-        <Input />
-      </TextField>
-      <TextField
-        fullWidth
-        isRequired
-        name="content"
-        value={content}
-        onChange={setContent}
-      >
-        <Label>内容</Label>
-        <TextArea className="w-full" rows={8} />
-      </TextField>
-      <div className="flex gap-2">
-        <Button isPending={pending} type="submit" variant="primary">
-          提交
-        </Button>
-        <Button
-          type="button"
-          variant="tertiary"
-          onPress={() => navigate("/announcements")}
-        >
-          取消
-        </Button>
-      </div>
-      {error ? (
-        <Alert role="alert" status="danger">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>保存失败</Alert.Title>
-            <Alert.Description>{error}</Alert.Description>
-          </Alert.Content>
-        </Alert>
-      ) : null}
-    </Form>
+    <Card>
+      <Card.Content>
+        <Form className="flex flex-col gap-4" onSubmit={onSubmit}>
+          <TextField
+            fullWidth
+            isRequired
+            name="title"
+            value={title}
+            onChange={setTitle}
+          >
+            <Label>标题</Label>
+            <Input />
+          </TextField>
+          <TextField
+            fullWidth
+            isRequired
+            name="author"
+            value={author}
+            onChange={setAuthor}
+          >
+            <Label>署名</Label>
+            <Input />
+            <Description>一般填站务组。</Description>
+          </TextField>
+          <TextField
+            fullWidth
+            isRequired
+            name="content"
+            value={content}
+            onChange={setContent}
+          >
+            <Label>内容</Label>
+            <TextArea className="w-full" rows={8} />
+          </TextField>
+          <div className="flex gap-2">
+            <Button isPending={pending} type="submit" variant="primary">
+              提交
+            </Button>
+            <Button
+              type="button"
+              variant="tertiary"
+              onPress={() => navigate("/announcements")}
+            >
+              取消
+            </Button>
+          </div>
+          {error ? (
+            <Alert role="alert" status="danger">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>保存失败</Alert.Title>
+                <Alert.Description>{error}</Alert.Description>
+              </Alert.Content>
+            </Alert>
+          ) : null}
+        </Form>
+      </Card.Content>
+    </Card>
   );
 }

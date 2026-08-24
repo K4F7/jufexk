@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Card,
   Description,
   Form,
   Label,
@@ -12,7 +13,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { api } from "../../lib/api";
 import type { AdminStudentBinding } from "../../lib/types";
-import { AdminGate, AdminPageHeader } from "./AdminGate";
+import { AdminLayout } from "./AdminGate";
 
 /**
  * 管理员学号绑定（/admin/admins）。
@@ -20,15 +21,12 @@ import { AdminGate, AdminPageHeader } from "./AdminGate";
  */
 export function AdminStudentBindingsPage() {
   return (
-    <AdminGate>
-      <section className="max-w-[720px]">
-        <AdminPageHeader
-          title="管理员学号"
-          description="绑定后，持有这些校园统一身份学号的人登录即可进入管理分区。明文学号不会保存或回显。"
-        />
-        <StudentBindingsEditor />
-      </section>
-    </AdminGate>
+    <AdminLayout
+      title="管理员学号"
+      description="绑定后，持有这些校园统一身份学号的人登录即可进入管理分区。明文学号不会保存或回显。"
+    >
+      <StudentBindingsEditor />
+    </AdminLayout>
   );
 }
 
@@ -95,25 +93,33 @@ function StudentBindingsEditor() {
 
   return (
     <>
-      <Form className="flex flex-col gap-3" onSubmit={(e) => void onSubmit(e)}>
-        <TextField
-          isRequired
-          name="usernames"
-          value={text}
-          onChange={setText}
-        >
-          <Label>学号</Label>
-          <TextArea placeholder="每行一个，或用逗号分隔。可一次填写多位。" />
-          <Description>
-            使用江财统一身份学号。绑定后对方用校园登录打开 /admin 即可，不必再输口令。
-          </Description>
-        </TextField>
-        <div>
-          <Button isPending={pending} type="submit" variant="primary">
-            绑定
-          </Button>
-        </div>
-      </Form>
+      <Card>
+        <Card.Header>
+          <Card.Title>绑定学号</Card.Title>
+          <Card.Description>一次可填写多位，用换行或逗号分隔。</Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <Form className="flex flex-col gap-3" onSubmit={(e) => void onSubmit(e)}>
+            <TextField
+              isRequired
+              name="usernames"
+              value={text}
+              onChange={setText}
+            >
+              <Label>学号</Label>
+              <TextArea placeholder="每行一个，或用逗号分隔。可一次填写多位。" />
+              <Description>
+                使用江财统一身份学号。绑定后对方用校园登录打开 /admin 即可，不必再输口令。
+              </Description>
+            </TextField>
+            <div>
+              <Button isPending={pending} type="submit" variant="primary">
+                绑定
+              </Button>
+            </div>
+          </Form>
+        </Card.Content>
+      </Card>
       {message ? (
         <Alert className="mt-4" role="status" status="success">
           <Alert.Indicator />

@@ -245,22 +245,12 @@ export type SiteConfig = {
   turnstileSiteKey?: string;
 };
 
-/**
- * 全站 Banner（公开载荷，`GET /api/site/banner`）。
- * 管理员录入的消毒 HTML；桌面版与移动版分别在下发内容非空时展示。
- */
-export type SiteBanner = {
-  desktop_html: string;
-  mobile_html: string;
-  updated_at?: string | null;
-};
-
-/** Banner 设置历史行（`GET /api/admin/banners`，最新在前）。 */
+/** Banner 设置历史行（`GET /api/admin/banners`，最新在前）。不回显会话标识。 */
 export type BannerRecord = {
   id: number;
-  desktop_html: string;
-  mobile_html: string;
-  created_at?: string | null;
+  desktopHtml: string;
+  mobileHtml: string;
+  createdAt: string;
 };
 
 /** 公告栏条目（`GET /api/announcements` 公开只读；管理员经 /api/admin/announcements 维护）。 */
@@ -268,18 +258,18 @@ export type Announcement = {
   id: number;
   title: string;
   content: string;
-  created_at?: string | null;
-  updated_at?: string | null;
+  author: string;
+  time: string;
 };
 
 /**
- * 用户禁言状态（`GET /api/admin/users/:userRef`，仅管理员）。
- * userRef 是管理员侧的不透明用户引用；永远不暴露 email、学号、users.id。
+ * 用户禁言状态（`GET /api/admin/users/:id`，仅管理员）。
+ * 路径里的 id 来自作者资料邮件的「站内用户 ID」；不回显 email、学号。
  */
 export type AdminUserBlockStatus = {
-  user_ref: string;
+  userRef: string;
   blocked: boolean;
-  blocked_until?: string | null;
+  blockedUntil: string | null;
 };
 
 /**

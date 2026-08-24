@@ -258,6 +258,29 @@ adminRoutes.put("/api/admin/banner", async (c) => {
   ]);
   return c.json({ ok: true, banner: await loadSiteBanner(c.env.DB) });
 });
+adminRoutes.get("/api/admin/banners", async (c) => {
+  const rows = (
+    await c.env.DB.prepare(
+      `SELECT id,desktop_html,mobile_html,created_at
+       FROM site_banner_history
+       ORDER BY id DESC
+       LIMIT 50`,
+    ).all<{
+      id: number;
+      desktop_html: string;
+      mobile_html: string;
+      created_at: string;
+    }>()
+  ).results;
+  return c.json({
+    items: rows.map((row) => ({
+      id: row.id,
+      desktopHtml: row.desktop_html,
+      mobileHtml: row.mobile_html,
+      createdAt: row.created_at,
+    })),
+  });
+});
 adminRoutes.get("/api/admin/sessions", async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
@@ -302,6 +325,29 @@ adminRoutes.post("/api/admin/sessions/revoke-others", async (c) => {
     .bind(c.get("adminSessionId"))
     .run();
   return c.json({ ok: true, count: result.meta.changes || 0 });
+});
+adminRoutes.get("/api/admin/users/:id", async (c) => {
+  const id = clean(c.req.param("id"), 128);
+  if (!id) return fail(c, "用户 ID 无效");
+  const user = await c.env.DB.prepare(
+    "SELECT id, muted_until FROM users WHERE id=?",
+  )
+    .bind(id)
+    .first<{ id: string; muted_until: number | null }>();
+  if (!user) return fail(c, "用户不存在", 404);
+  const mutedUntil = user.muted_until;
+  if (mutedUntil == null || mutedUntil <= Date.now() / 1000) {
+    return c.json({
+      userRef: user.id,
+      blocked: false,
+      blockedUntil: null,
+    });
+  }
+  return c.json({
+    userRef: user.id,
+    blocked: true,
+    blockedUntil: new Date(mutedUntil * 1000).toISOString(),
+  });
 });
 adminRoutes.post("/api/admin/users/:id/block", async (c) => {
   const id = clean(c.req.param("id"), 128);
