@@ -448,7 +448,7 @@ test("three-tier options show Chinese labels and submit the full payload", async
   expect(posted[0].scores).not.toHaveProperty("workload");
 
   const item = page.getByRole("list", { name: "评价列表" }).getByRole("listitem").first();
-  await expect(item.getByText(LONG_COMMENT)).toBeVisible();
+  await expect(item.getByText(LONG_COMMENT).first()).toBeVisible();
   await expect(item.getByText(/成绩/)).toHaveCount(0);
 });
 
@@ -599,6 +599,6 @@ test("optional grade is submitted and shown on the course detail", async ({
     .getByRole("list", { name: "评价列表" })
     .getByRole("listitem")
     .first();
-  await expect(item.getByText(VALID_NOTE)).toBeVisible();
+  await expect(item.getByText(VALID_NOTE).first()).toBeVisible();
   await expect(item.getByText("成绩 A-", { exact: true })).toBeVisible();
 });
