@@ -2,7 +2,7 @@
  * 个人主页 /profile（#459 / #493）：展示当前登录普通用户的公开编号、
  * 官方头像、自己的点评与关注的任课关系。页面不出现邮箱、学号或 users.id。
  */
-import { Alert, Avatar, Button, Card, Chip, Spinner, Typography } from "@heroui/react";
+import { Alert, Avatar, Button, Card, Chip, Popover, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import {
@@ -79,6 +79,7 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!ready || !viewer.authenticated) return;
@@ -131,7 +132,10 @@ export function ProfilePage() {
   const avatarKey = profile?.avatar_key ?? 0;
 
   const changeAvatar = async (nextKey: number) => {
-    if (savingAvatar || nextKey === avatarKey) return;
+    if (savingAvatar || nextKey === avatarKey) {
+      setAvatarPickerOpen(false);
+      return;
+    }
     setSavingAvatar(true);
     try {
       const updated = await api<{
@@ -152,6 +156,7 @@ export function ProfilePage() {
             }
           : current,
       );
+      setAvatarPickerOpen(false);
     } finally {
       setSavingAvatar(false);
     }
@@ -240,10 +245,47 @@ export function ProfilePage() {
       <aside className="min-w-0">
         <Card role="article" aria-labelledby="profile-card-heading">
           <Card.Header className="items-center text-center">
-            <Avatar size="lg">
-              <Avatar.Image alt="" src={officialAvatarSrc(avatarKey)} />
-              <Avatar.Fallback>匿</Avatar.Fallback>
-            </Avatar>
+            <Popover isOpen={avatarPickerOpen} onOpenChange={setAvatarPickerOpen}>
+              <Button
+                aria-label="更换官方头像"
+                isIconOnly
+                isPending={savingAvatar}
+                variant="ghost"
+              >
+                <Avatar size="lg">
+                  <Avatar.Image alt="" src={officialAvatarSrc(avatarKey)} />
+                  <Avatar.Fallback>匿</Avatar.Fallback>
+                </Avatar>
+              </Button>
+              <Popover.Content>
+                <Popover.Dialog>
+                  <Popover.Heading>选择官方头像</Popover.Heading>
+                  <div
+                    role="group"
+                    aria-label="选择官方头像"
+                    className="mt-2 flex flex-wrap justify-center gap-2"
+                  >
+                    {HEROUI_AVATAR_PLACEHOLDERS.map((src, key) => (
+                      <Button
+                        key={src}
+                        isIconOnly
+                        size="sm"
+                        variant={avatarKey === key ? "primary" : "outline"}
+                        aria-label={`选择官方头像 ${key + 1}`}
+                        aria-pressed={avatarKey === key}
+                        isPending={savingAvatar && avatarKey !== key}
+                        onPress={() => void changeAvatar(key)}
+                      >
+                        <Avatar size="sm">
+                          <Avatar.Image alt="" src={src} />
+                          <Avatar.Fallback>匿</Avatar.Fallback>
+                        </Avatar>
+                      </Button>
+                    ))}
+                  </div>
+                </Popover.Dialog>
+              </Popover.Content>
+            </Popover>
             <Card.Title id="profile-card-heading">
               {handle || "我的主页"}
             </Card.Title>
@@ -253,25 +295,6 @@ export function ProfilePage() {
           </Card.Header>
           <Card.Content>
             <div className="flex flex-col gap-3 text-sm">
-              <div role="group" aria-label="选择官方头像" className="flex flex-wrap justify-center gap-2">
-                {HEROUI_AVATAR_PLACEHOLDERS.map((src, key) => (
-                  <Button
-                    key={src}
-                    isIconOnly
-                    size="sm"
-                    variant={avatarKey === key ? "primary" : "outline"}
-                    aria-label={`选择官方头像 ${key + 1}`}
-                    aria-pressed={avatarKey === key}
-                    isPending={savingAvatar && avatarKey !== key}
-                    onPress={() => void changeAvatar(key)}
-                  >
-                    <Avatar size="sm">
-                      <Avatar.Image alt="" src={src} />
-                      <Avatar.Fallback>匿</Avatar.Fallback>
-                    </Avatar>
-                  </Button>
-                ))}
-              </div>
               <span>点评了 {available && !loading ? reviewCount : "—"} 门课程</span>
               <span>关注了 {available && !loading ? followCount : "—"} 门课程</span>
             </div>
