@@ -466,8 +466,13 @@ const QR_DATA_URL =
 test("QR tab shows the official image and scan copy", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("tab", { name: "扫码登录" }).click();
-  await expect(page.getByRole("img", { name: "微信或企业微信登录二维码" })).toBeVisible();
-  await expect(page.getByText("使用微信或企业微信扫一扫登录")).toBeVisible();
+  const hint = page.getByText("使用微信或企业微信扫一扫登录");
+  const qr = page.getByRole("img", { name: "微信或企业微信登录二维码" });
+  await expect(hint).toBeVisible();
+  await expect(qr).toBeVisible();
+  const hintBox = await hint.boundingBox();
+  const qrBox = await qr.boundingBox();
+  expect(hintBox && qrBox && hintBox.y < qrBox.y).toBeTruthy();
 });
 
 test("expired QR shows official copy and refresh requests a new challenge", async ({
