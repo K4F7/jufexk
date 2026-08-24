@@ -13,7 +13,7 @@ _2026-08-25：[#540](https://github.com/K4F7/jufexk/issues/540) 取代 #486/#488
 - **采纳浏览器同源 JSON 导入/导出**，DTO 与未来代理响应同一形状（`JwxtSnapshot` v1 / `JwxtOffering`）。
 - **不提交**半可用 Worker 代理、凭据表、Cookie jar 或代理 ADR。
 - 页面加载不访问教务；手动刷新只导入本机快照；候选与快照放 IndexedDB，小型计划放 localStorage。
-- 导出 JSON 失败关闭 Cookie / 学号 / 姓名。
+- 导出 JSON 失败关闭 Cookie / 学生学号 / 学生姓名；来源教师名属于开课班字段。快照按学期、培养层次、年级、专业组合分库存储，同组合的分页与类别按 `captured` 合并。
 
 闸门以后若用授权账号验证成功，再另开 issue 加代理，不得在未验证链路上半开接口。
 

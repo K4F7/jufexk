@@ -12,6 +12,24 @@ const loginExpiredHtml = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/login-expired.html"),
   "utf8",
 );
+const secondSelectionJson = JSON.stringify({
+  ...JSON.parse(snapshotJson),
+  grade: { id: "2023", label: "2023" },
+  planned: [
+    {
+      ...JSON.parse(snapshotJson).planned[1],
+      courseCode: "CS202",
+      courseName: "数据结构",
+      section: "02",
+    },
+  ],
+  publicElectives: [],
+});
+const catalogRelations = [
+  { course_id: 8, code: "10100001", name: "高等数学", category: "general", department: "数学", teacher_id: 9, teacher_name: "教师甲", rating: 4.2, review_count: 6 },
+  { course_id: 10, code: "10200001", name: "微观经济学", category: "general", department: "经济", teacher_id: 11, teacher_name: "教师辰", rating: 4.3, review_count: 7 },
+  { course_id: 20, code: "30100001", name: "书法鉴赏", category: "general", department: "艺术", teacher_id: 21, teacher_name: "教师巳", rating: 4.5, review_count: 9 },
+];
 
 async function mockScheduleApi(page: Page, authenticated = true) {
   await page.route("**/api/**", async (route) => {
@@ -50,6 +68,10 @@ async function mockScheduleApi(page: Page, authenticated = true) {
     if (url.pathname.startsWith("/api/jwxt")) {
       return route.fulfill({ status: 404, json: { error: "jwxt proxy disabled" } });
     }
+    if (url.pathname === "/api/courses") {
+      const items = catalogRelations.filter((relation) => relation.code === url.searchParams.get("q"));
+      return route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 50, pages: 1 } });
+    }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
@@ -61,6 +83,11 @@ async function importSnapshot(page: Page, text: string) {
   await expect(dialog.getByRole("heading", { name: "刷新教务数据" })).toBeVisible();
   await dialog.getByPlaceholder(/browser-export/).fill(text);
   await dialog.getByRole("button", { name: "导入快照" }).click();
+}
+
+async function chooseFilter(page: Page, label: string, option: string) {
+  await page.getByRole("button", { name: new RegExp(label) }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
 }
 
 test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mobile-smoke", async ({
@@ -80,6 +107,8 @@ test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mo
   await page.getByRole("tab", { name: "计划内" }).click();
   const planned = page.getByLabel("计划内课程");
   await expect(planned).toContainText("微观经济学");
+  await expect(planned).toContainText("30/60 · 余 30");
+  await expect(planned.getByRole("link", { name: "4.3 · 7 条" })).toBeVisible();
   await planned.getByRole("button", { name: "加入课表" }).first().click();
   await expect(page.getByLabel("本学期计划")).toContainText("微观经济学");
 
@@ -129,6 +158,30 @@ test("login-expired fixture surfaces session expiry without writing a snapshot",
   await importSnapshot(page, loginExpiredHtml);
   await expect(page.getByText("教务登录已失效", { exact: true })).toBeVisible();
   await expect(page.getByText("还没有教务数据")).toBeVisible();
+});
+
+test("switches candidate data only between cached selection snapshots", async ({ page }) => {
+  await mockScheduleApi(page);
+  await page.goto("/schedule");
+  await importSnapshot(page, snapshotJson);
+
+  await chooseFilter(page, "年级", "2023");
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await expect(page.getByLabel("计划内课程")).not.toContainText("微观经济学");
+  await expect(page.getByText("这一类还没有课程。")).toBeVisible();
+
+  await importSnapshot(page, secondSelectionJson);
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await expect(page.getByLabel("计划内课程")).toContainText("数据结构");
+
+  await chooseFilter(page, "年级", "2024");
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await expect(page.getByLabel("计划内课程")).toContainText("微观经济学");
+  await expect(page.getByLabel("计划内课程")).not.toContainText("数据结构");
+
+  await chooseFilter(page, "年级", "2023");
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await expect(page.getByLabel("计划内课程")).toContainText("数据结构");
 });
 
 test("guest can see a cached plan but must log in to refresh", async ({ page }) => {

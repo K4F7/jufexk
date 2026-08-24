@@ -79,8 +79,20 @@ _Avoid_: 实时镜像、常驻爬虫
 _Avoid_: 公开开课班列表、教学班、全校课表
 
 **教务快照（Jwxt snapshot）**：
-版本化、可导入导出的本机 JSON，包含学期/培养层次/年级/专业/课程类别字典、已选开课班、计划内候选与公共选修。协议闸门未通过前，这是排课模拟的唯一教务数据入口；JSON 不得含 Cookie、学号、姓名。
+版本化、可导入导出的本机 JSON，包含学期/培养层次/年级/专业/课程类别字典、已选开课班、计划内候选与公共选修。协议闸门未通过前，这是排课模拟的唯一教务数据入口；来源教师名属于开课班字段，JSON 不得含 Cookie、学生学号或学生姓名。
 _Avoid_: Worker 半可用代理、凭据表、Cookie 导出
+
+**校园教务代理会话（Campus JWXT proxy session）**：
+未来只有在授权协议闸门通过后才可能建立的短期、密封、与本站用户及会话指纹绑定的上游教务会话。当前版本不存在这种会话或对应 API；浏览器快照不能被称作代理会话。
+_Avoid_: 本站登录会话、浏览器快照、长期教务凭据
+
+**教务已选开课班（Enrolled JWXT offering）**：
+学生在教务中的真实已选结果，刷新快照后作为基础课表更新；它在本站仍只是本地模拟条目，不代表本站能正式选课或退课。
+_Avoid_: 本站已收藏、本地候选、退课记录
+
+**模拟排除（Simulation exclusion）**：
+`origin=enrolled` 条目的本地 `included=false` 状态。表示不在当前模拟课表中占格，不会向教务发起退课；同一稳定班次刷新后继续保留，可由学生恢复。
+_Avoid_: 退课、删除教务已选、隐藏公开课程
 
 **本地课表计划（Local schedule plan）**：
 排课模拟在本机保存的学期分桶计划（v2）。条目带 `origin=enrolled|planned|public|legacy`、`included` 与稳定键 `term+courseCode+section`。小型计划放 localStorage，候选与教务快照放 IndexedDB。v1 手填计划自动迁成 `legacy`。

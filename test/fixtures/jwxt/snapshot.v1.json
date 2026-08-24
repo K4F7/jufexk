@@ -74,9 +74,9 @@
       "weekText": "1-16",
       "timeText": "星期一 第1-2节",
       "place": "教学楼A101",
-      "capacityLimit": null,
-      "capacitySelected": null,
-      "capacityAvailable": null,
+      "capacityLimit": 60,
+      "capacitySelected": 30,
+      "capacityAvailable": 30,
       "enrollStatus": "已选",
       "meetings": [
         {
@@ -164,9 +164,9 @@
       "weekText": "1-16",
       "timeText": "星期四 第6-7节",
       "place": "",
-      "capacityLimit": null,
-      "capacitySelected": null,
-      "capacityAvailable": null,
+      "capacityLimit": 60,
+      "capacitySelected": 30,
+      "capacityAvailable": 30,
       "enrollStatus": "",
       "meetings": [
         {

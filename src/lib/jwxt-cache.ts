@@ -3,7 +3,11 @@
  * 页面加载只读本机缓存，不访问教务。
  */
 import { loadPlan, savePlan, type SchedulePlanV2 } from "./jwxt-plan";
-import type { JwxtSnapshotV1 } from "./jwxt-snapshot";
+import {
+  mergeSnapshots,
+  snapshotSelectionKey,
+  type JwxtSnapshotV1,
+} from "./jwxt-snapshot";
 
 export const JWXT_IDB_NAME = "jufexk-jwxt";
 export const JWXT_IDB_VERSION = 1;
@@ -30,7 +34,9 @@ export async function saveSnapshotCache(snapshot: JwxtSnapshotV1): Promise<void>
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(JWXT_SNAPSHOT_STORE, "readwrite");
-      tx.objectStore(JWXT_SNAPSHOT_STORE).put(snapshot, JWXT_SNAPSHOT_KEY);
+      const store = tx.objectStore(JWXT_SNAPSHOT_STORE);
+      store.put(snapshot, snapshotSelectionKey(snapshot));
+      store.delete(JWXT_SNAPSHOT_KEY);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error("快照写入失败"));
     });
@@ -40,13 +46,25 @@ export async function saveSnapshotCache(snapshot: JwxtSnapshotV1): Promise<void>
 }
 
 export async function loadSnapshotCache(): Promise<JwxtSnapshotV1 | null> {
-  if (typeof indexedDB === "undefined") return null;
+  return (await loadSnapshotCaches())[0] ?? null;
+}
+
+export async function loadSnapshotCaches(): Promise<JwxtSnapshotV1[]> {
+  if (typeof indexedDB === "undefined") return [];
   const db = await openDb();
   try {
-    return await new Promise<JwxtSnapshotV1 | null>((resolve, reject) => {
+    return await new Promise<JwxtSnapshotV1[]>((resolve, reject) => {
       const tx = db.transaction(JWXT_SNAPSHOT_STORE, "readonly");
-      const request = tx.objectStore(JWXT_SNAPSHOT_STORE).get(JWXT_SNAPSHOT_KEY);
-      request.onsuccess = () => resolve((request.result as JwxtSnapshotV1) ?? null);
+      const request = tx.objectStore(JWXT_SNAPSHOT_STORE).getAll();
+      request.onsuccess = () => {
+        const merged = new Map<string, JwxtSnapshotV1>();
+        for (const snapshot of request.result as JwxtSnapshotV1[]) {
+          const key = snapshotSelectionKey(snapshot);
+          const previous = merged.get(key);
+          merged.set(key, previous ? mergeSnapshots(previous, snapshot) : snapshot);
+        }
+        resolve([...merged.values()]);
+      };
       request.onerror = () => reject(request.error ?? new Error("快照读取失败"));
     });
   } finally {
@@ -60,7 +78,7 @@ export async function clearSnapshotCache(): Promise<void> {
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(JWXT_SNAPSHOT_STORE, "readwrite");
-      tx.objectStore(JWXT_SNAPSHOT_STORE).delete(JWXT_SNAPSHOT_KEY);
+      tx.objectStore(JWXT_SNAPSHOT_STORE).clear();
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error("快照删除失败"));
     });

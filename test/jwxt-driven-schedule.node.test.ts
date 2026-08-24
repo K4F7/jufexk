@@ -5,6 +5,10 @@ import iconv from "iconv-lite";
 import { describe, expect, it } from "vitest";
 import { offeringKey } from "../src/lib/jwxt-offering";
 import {
+  jwxtSnapshotBookmarkletSource,
+  parseJwxtBookmarkletMeetings,
+} from "../src/lib/jwxt-import-bookmarklet";
+import {
   emptyPlan,
   joinOffering,
   mergeEnrolledRefresh,
@@ -15,6 +19,7 @@ import {
   emptySnapshot,
   exportedJsonIsClean,
   importSnapshotText,
+  mergeSnapshots,
   serializeSnapshot,
   snapshotFromHtml,
 } from "../src/lib/jwxt-snapshot";
@@ -105,6 +110,12 @@ describe("jwxt table fixtures", () => {
     expect(expired).toMatchObject({ ok: false, kind: "login-expired" });
     const malformed = parseJwxtTableHtml(readFixture("malformed.html"));
     expect(malformed.ok).toBe(false);
+    const pageOne = snapshotFromHtml(readFixture("pagination-page1.html"), "planned");
+    expect(pageOne.ok).toBe(true);
+    if (pageOne.ok) {
+      const pageTwo = snapshotFromHtml(readFixture("pagination-page2.html"), "planned", pageOne.snapshot);
+      expect(pageTwo.ok && pageTwo.snapshot.planned).toHaveLength(3);
+    }
   });
 
   it("round-trips fixtures through GBK without replacement characters", () => {
@@ -154,6 +165,80 @@ describe("snapshot import/export", () => {
       ok: false,
       kind: "login-expired",
     });
+  });
+
+  it("fails closed for malformed offerings and forbidden unknown fields", () => {
+    const malformed = {
+      ...emptySnapshot(),
+      captured: ["planned"],
+      planned: [{ courseCode: "C1", courseName: "残缺课程", meetings: [] }],
+    };
+    expect(importSnapshotText(JSON.stringify(malformed))).toMatchObject({ ok: false, kind: "malformed" });
+    expect(importSnapshotText(JSON.stringify({
+      ...emptySnapshot(),
+      debug: { JSESSIONID: "secret" },
+    }))).toMatchObject({ ok: false, kind: "forbidden" });
+  });
+
+  it("merges only the buckets declared by a paged browser capture", () => {
+    const base = {
+      ...emptySnapshot(),
+      term: { id: "T1", label: "学期一" },
+      enrolled: [offering({ courseCode: "E1", courseName: "已选", section: "01" })],
+      planned: [offering({ courseCode: "P1", courseName: "旧分页", section: "01" })],
+    };
+    const incoming = {
+      ...base,
+      captured: ["planned" as const],
+      enrolled: [],
+      planned: [offering({ courseCode: "P2", courseName: "新分页", section: "02" })],
+    };
+    const merged = mergeSnapshots(base, incoming);
+    expect(merged.enrolled[0]?.courseName).toBe("已选");
+    expect(merged.planned.map((item) => item.courseName)).toEqual(["旧分页", "新分页"]);
+  });
+
+  it("does not collapse different same-section courses when the source omits course codes", () => {
+    const base = {
+      ...emptySnapshot(),
+      term: { id: "T1", label: "学期一" },
+      captured: ["planned" as const],
+      planned: [offering({ courseCode: "", courseName: "课程甲", section: "01" })],
+    };
+    const incoming = {
+      ...base,
+      planned: [offering({ courseCode: "", courseName: "课程乙", section: "01" })],
+    };
+    expect(mergeSnapshots(base, incoming).planned.map((item) => item.courseName))
+      .toEqual(["课程甲", "课程乙"]);
+  });
+
+  it("merges enrolled pagination captures without dropping the previous page", () => {
+    const base = {
+      ...emptySnapshot(),
+      term: { id: "T1", label: "学期一" },
+      captured: ["enrolled" as const],
+      enrolled: [offering({ courseCode: "E1", courseName: "已选甲", section: "01" })],
+    };
+    const incoming = {
+      ...base,
+      enrolled: [offering({ courseCode: "E2", courseName: "已选乙", section: "02" })],
+    };
+    expect(mergeSnapshots(base, incoming).enrolled.map((item) => item.courseName))
+      .toEqual(["已选甲", "已选乙"]);
+  });
+
+  it("puts structured odd-week meetings into the real bookmarklet export", () => {
+    expect(parseJwxtBookmarkletMeetings("星期二 第3-4节；星期五 第8节", "1-8单周", "A101"))
+      .toEqual([
+        { weekday: 2, startPeriod: 3, endPeriod: 4, weeks: [1, 3, 5, 7], place: "A101" },
+        { weekday: 5, startPeriod: 8, endPeriod: 8, weeks: [1, 3, 5, 7], place: "A101" },
+      ]);
+    const source = jwxtSnapshotBookmarkletSource();
+    expect(source).toContain("meetings: meetings(timeText,weekText,place)");
+    expect(source).toContain('if (planned.length) captured.push("planned")');
+    expect(source).toContain('if (publicElectives.length) captured.push("public")');
+    expect(source).toContain("2*1024*1024");
   });
 });
 
@@ -213,6 +298,41 @@ describe("plan v2", () => {
     expect(math?.included).toBe(false);
     expect(plan.terms[termB]).toBeUndefined();
     expect(plan.terms[termA].some((item) => item.courseName === "选修")).toBe(true);
+  });
+
+  it("uses a normalized stable key and lets refreshed enrollment replace the same local section", () => {
+    const termId = " 2025-2026-2 ";
+    expect(offeringKey(termId, " C+1 ", " 01 ")).toBe("2025-2026-2|C%2B1|01");
+    const local = joinOffering(
+      emptyPlan(termId.trim()),
+      offering({ courseCode: "C+1", courseName: "候选课", section: "01" }),
+      "planned",
+      termId.trim(),
+    );
+    expect(local.ok).toBe(true);
+    if (!local.ok) return;
+    const refreshed = mergeEnrolledRefresh(local.plan, {
+      ...emptySnapshot(),
+      term: { id: termId.trim(), label: "当前学期" },
+      enrolled: [offering({ courseCode: "C+1", courseName: "教务已选", section: "01" })],
+    });
+    expect(refreshed.terms[termId.trim()]).toHaveLength(1);
+    expect(refreshed.terms[termId.trim()][0]).toMatchObject({ origin: "enrolled", courseName: "教务已选" });
+  });
+
+  it("migrates persisted v2 plus-delimited keys before the next enrolled refresh", () => {
+    const joined = joinOffering(
+      emptyPlan("T1"),
+      offering({ courseCode: "C1", courseName: "旧缓存", section: "01" }),
+      "planned",
+      "T1",
+    );
+    expect(joined.ok).toBe(true);
+    if (!joined.ok) return;
+    const persisted = structuredClone(joined.plan);
+    persisted.terms.T1[0].key = "T1+C1+01";
+    const migrated = parsePlan(JSON.stringify(persisted));
+    expect(migrated.terms.T1[0].key).toBe("T1|C1|01");
   });
 
   it("atomically swaps the same course section and blocks week-intersect conflicts", () => {
