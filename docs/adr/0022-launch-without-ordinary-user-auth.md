@@ -22,7 +22,7 @@ _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到�
 ## 邮箱验证的约束
 
 - 允许域只有 `stu.jxufe.edu.cn`，精确匹配，不含 `jxufe.edu.cn` 主域及其他子域；扩域需另行决定。
-- 验证信经可配置 HTTPS 投递端点发出（生产为 Resend `https://api.resend.com/emails`）。Worker 不能直连 SMTP:25。
+- 验证信经可配置 HTTPS 投递端点发出。#483 起生产不再绑定 `MAIL_*`；测试夹具仍可注入投递 URL。Worker 不能直连 SMTP:25。
 - 真实 `stu.jxufe.edu.cn` 进箱与魔法链接登录验收见人工票 #327。
 - ADR-0016 的身份契约照旧：邮箱哈希只作认证身份 `subject`，不当业务主键；`users.id` 稳定匿名；公开只读不要求登录；凭据已验证不等于免 CSRF。
 

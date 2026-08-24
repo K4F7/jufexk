@@ -85,7 +85,7 @@ Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC �
 
 Secrets Store：
 
-- `CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_IDENTITY_SECRET` 已绑定。现值为开通前占位，上线前换成校方应用密钥
+- `CAMPUS_IDENTITY_SECRET` 仍绑定。`CAMPUS_JWT_SECRET` 与 `CAMPUS_JWT_AES_KEY` 已按 #483 从 Worker 解绑，不要再开通 AuthBridge
 - AuthBridge `jwt_key` 若为偶数位 hex，按原始字节做 HS256，不要按 UTF-8 字符串验签
 - 占位或真实值都不得提交进仓库或日志
 
