@@ -136,11 +136,10 @@ function DefaultShell({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
-        {/* 窄屏三行:品牌+账号/主题 · 主导航(可换行) · 全宽搜索;
-            lg+ 恢复 左簇品牌导航 / 居中搜索 / 右侧账号 单行三列。 */}
-        <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-5 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] xl:px-4">
-          {/* contents 让品牌与导航在窄屏直接成为 grid 项;lg+ 还原为左簇 flex 容器。 */}
-          <div className="contents lg:flex lg:min-w-0 lg:items-center lg:gap-2">
+        {/* 堆叠到 xl；左列 min-content，避免 1280px 生产站名+四链把主导航折行撑高顶栏。 */}
+        <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-5 xl:grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] xl:px-4">
+          {/* contents 让品牌与导航在窄屏直接成为 grid 项;xl+ 还原为左簇 flex 容器。 */}
+          <div className="contents xl:flex xl:items-center xl:gap-2">
             <NavLink
               to={
                 import.meta.env.DEV
@@ -154,7 +153,7 @@ function DefaultShell({
 
             <nav
               aria-label="主导航"
-              className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1 lg:col-span-1 lg:row-start-auto"
+              className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1 xl:col-span-1 xl:row-start-auto xl:min-w-min xl:flex-nowrap"
             >
               {links.map((link) => {
                 const active = selectedKey === link.id;
@@ -198,7 +197,7 @@ function DefaultShell({
             </nav>
           </div>
 
-          <div className="col-span-2 row-start-3 min-w-0 lg:col-span-1 lg:col-start-2 lg:row-start-1">
+          <div className="col-span-2 row-start-3 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1">
             {showGlobalSearch &&
             globalSearchVariant &&
             GlobalSearchPrototypeLazy ? (
@@ -213,7 +212,7 @@ function DefaultShell({
             )}
           </div>
 
-          <div className="col-start-2 row-start-1 flex items-center justify-end gap-2 lg:col-start-3">
+          <div className="col-start-2 row-start-1 flex items-center justify-end gap-2 xl:col-start-3">
             <AccountNavControl />
             <ThemeToggle />
           </div>
