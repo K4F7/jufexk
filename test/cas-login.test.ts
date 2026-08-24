@@ -337,15 +337,27 @@ describe("jxufe cas helpers", () => {
 
 describe("jxufe cas login", () => {
   it("lets the Vite preview origin pass when wrangler rewrites Host and URL over HTTP", async () => {
-    const response = await SELF.fetch("http://courses.sein.moe/api/auth/cas", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: "http://127.0.0.1:5173",
-        "CF-Connecting-IP": nextIp(),
+    // HTTP custom-domain URLs are not bound in the test worker, so SELF.fetch
+    // can leave the isolate and hang. Drive the rewrite URL in-process instead.
+    const response = await app.fetch(
+      new Request("http://courses.sein.moe/api/auth/cas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://127.0.0.1:5173",
+          "CF-Connecting-IP": nextIp(),
+        },
+        body: JSON.stringify({ username: "ab", password: "x" }),
+      }),
+      env,
+      {
+        waitUntil(promise) {
+          void promise.catch(() => {});
+        },
+        passThroughOnException() {},
+        props: {},
       },
-      body: JSON.stringify({ username: "not-an-id", password: "x" }),
-    });
+    );
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: "学号或密码不正确" });
   });
