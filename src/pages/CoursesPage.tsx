@@ -40,6 +40,7 @@ import {
 } from "../components/CatalogSearchHeader";
 import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import {
@@ -70,6 +71,7 @@ const SORT_OPTIONS = [
 
 const ALL_CATEGORY_KEY = "all";
 const DEFAULT_SORT_KEY = "reviews";
+const MOBILE_FILTER_QUERY = "(max-width: 639px)";
 
 function firstSelectedKey(keys: Iterable<Key>): string | undefined {
   const [key] = keys;
@@ -89,7 +91,7 @@ const RELATION_CATALOG_COPY: CatalogResultsCopy = {
     query ? `没有找到匹配「${query}」的课程` : "没有符合筛选条件的课程",
   emptyFilteredDesc: "试试调整关键词或类别。",
   emptyCatalogTitle: "目录暂无课程数据",
-  emptyCatalogDesc: "目录还在整理，请稍后再来看看。",
+  emptyCatalogDesc: "请稍后再来，或联系维护者导入公开目录。",
   clearLabel: "清空筛选",
   totalUnit: "条",
 };
@@ -115,6 +117,7 @@ function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
 }
 
 export function CoursesPage() {
+  const isMobileFilterLayout = useMediaQuery(MOBILE_FILTER_QUERY);
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
@@ -322,6 +325,7 @@ export function CoursesPage() {
           className="flex flex-col items-start sm:inline-flex sm:flex-row sm:items-center"
           disallowEmptySelection
           isDetached
+          orientation={isMobileFilterLayout ? "vertical" : "horizontal"}
           selectedKeys={[sort || DEFAULT_SORT_KEY]}
           selectionMode="single"
           size="sm"

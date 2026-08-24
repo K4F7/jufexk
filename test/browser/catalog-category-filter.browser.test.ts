@@ -158,6 +158,18 @@ async function mockCatalogApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockCatalogApi(page));
 
+test("sort controls expose an orientation matching the responsive layout", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 720 });
+  await page.goto("/courses");
+  const sortGroup = page.getByRole("radiogroup", { name: "排序方式" });
+  await expect(sortGroup).toHaveAttribute("aria-orientation", "vertical");
+
+  await page.setViewportSize({ width: 800, height: 720 });
+  await expect(sortGroup).toHaveAttribute("aria-orientation", "horizontal");
+});
+
 test("category row exposes 通识课 instead of 专业课/公共课 and filters by scheme", async ({
   page,
 }) => {

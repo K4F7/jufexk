@@ -1,4 +1,4 @@
-import { Table } from "@heroui/react";
+import { Chip, Table } from "@heroui/react";
 import {
   buildOccupied,
   cellHasConflict,
@@ -87,9 +87,14 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
                         </ul>
                       )}
                       {conflict ? (
-                        <div className="mt-1 text-[calc(11/15*1rem)] text-danger">
-                          冲突
-                        </div>
+                        <Chip
+                          className="mt-1"
+                          color="danger"
+                          size="sm"
+                          variant="soft"
+                        >
+                          <Chip.Label>冲突</Chip.Label>
+                        </Chip>
                       ) : null}
                     </Table.Cell>
                   );

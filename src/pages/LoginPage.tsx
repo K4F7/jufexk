@@ -7,6 +7,7 @@ import {
   Input,
   InputOTP,
   Label,
+  REGEXP_ONLY_DIGITS,
   Skeleton,
   Spinner,
   Tabs,
@@ -98,7 +99,7 @@ function AlreadyLoggedInAlert() {
     <Alert status="success">
       <Alert.Indicator />
       <Alert.Content>
-        <Alert.Title>已登录</Alert.Title>
+        <Alert.Title>已登入</Alert.Title>
       </Alert.Content>
     </Alert>
   );
@@ -107,10 +108,6 @@ function AlreadyLoggedInAlert() {
 const SESSION_LOADING_STATUS = (
   <DetailLoadingStatus label="正在读取登录状态…" />
 );
-
-/* 窄屏（<sm）用 size-11 + Group gap-2：4 槽约 234px，360px 视口卡片内不溢出。 */
-const MFA_OTP_SLOT_CLASS =
-  "size-11 flex-none [&_.input-otp__slot-value]:text-xl sm:size-14 sm:[&_.input-otp__slot-value]:text-2xl";
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -378,13 +375,12 @@ export function LoginPage() {
   return (
     <section aria-labelledby="login-heading" className="mx-auto max-w-xl py-8">
       <Card
-        className="pb-6"
         role="article"
         aria-labelledby="login-heading"
         variant="secondary"
       >
         <Card.Header>
-          <Card.Title className="text-xl" id="login-heading">
+          <Card.Title id="login-heading">
             登录
           </Card.Title>
         </Card.Header>
@@ -398,7 +394,7 @@ export function LoginPage() {
           <Card.Content>
             <LoginProgressAlert
               title="正在完成登录"
-              description="马上就好。"
+              description="请稍候。"
             />
           </Card.Content>
         ) : challenge ? (
@@ -413,7 +409,7 @@ export function LoginPage() {
                 {busy ? (
                   <LoginProgressAlert
                     title="正在确认验证码"
-                    description="马上就好。"
+                    description="请稍候。"
                   />
                 ) : (
                   <Alert status="accent">
@@ -428,7 +424,7 @@ export function LoginPage() {
                     </Alert.Content>
                   </Alert>
                 )}
-                <div className="flex flex-col items-center gap-2">
+                <div className="mx-auto flex w-[280px] flex-col gap-2">
                   <Label>验证码</Label>
                   <InputOTP
                     aria-label="验证码"
@@ -438,22 +434,22 @@ export function LoginPage() {
                     isDisabled={busy}
                     maxLength={4}
                     name="mfa"
-                    pattern="^[0-9]+$"
+                    pattern={REGEXP_ONLY_DIGITS}
                     value={mfaCode}
                     variant="secondary"
                     onChange={setMfaCode}
                   >
                     <InputOTP.Group className="gap-2 sm:gap-3">
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={0} />
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={1} />
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={2} />
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={3} />
+                      <InputOTP.Slot index={0} />
+                      <InputOTP.Slot index={1} />
+                      <InputOTP.Slot index={2} />
+                      <InputOTP.Slot index={3} />
                     </InputOTP.Group>
                   </InputOTP>
                 </div>
               </div>
             </Card.Content>
-            <Card.Footer className="mt-6 flex flex-col gap-2">
+            <Card.Footer className="mt-4 flex flex-col gap-2">
               <Button
                 fullWidth
                 isDisabled={mfaCode.length !== 4}
@@ -500,7 +496,7 @@ export function LoginPage() {
                     {busy ? (
                       <LoginProgressAlert
                         title="正在登录"
-                        description="通常只要几秒。"
+                        description="请稍候，通常需要几秒。"
                       />
                     ) : null}
                     <TextField
@@ -549,7 +545,7 @@ export function LoginPage() {
                       <Skeleton className="mx-auto h-48 w-48 rounded-lg" />
                       <LoginProgressAlert
                         title="正在获取二维码"
-                        description="马上就好。"
+                        description="请稍候。"
                       />
                     </>
                   ) : null}
