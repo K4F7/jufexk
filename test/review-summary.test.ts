@@ -401,6 +401,81 @@ describe("summary recompute single-flight", () => {
     expect((await relationSummaryRow(firstCourse))?.ai_summary).toBe("## 考试\n串行总结");
     expect((await relationSummaryRow(secondCourse))?.ai_summary).toBe("## 考试\n串行总结");
   });
+
+  it("recomputes again if the same relation is enqueued while already running", async () => {
+    await env.DB.prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id=NULL, teacher_id=NULL, immediate=0, locked_at=NULL, lease_until=NULL
+       WHERE id=1`,
+    ).run();
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+    const courseId = await createBoundCourse("REQ");
+    await seedApprovedReviews(courseId, 5, "再入队");
+
+    let started = 0;
+    let releaseFirst = () => {};
+    const firstHold = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const calls: FetchCall[] = [];
+    const gated = (async (input: any, init: any) => {
+      const request = new Request(input, init);
+      const body = await request.json();
+      calls.push({
+        url: request.url,
+        authorization: request.headers.get("authorization") || "",
+        body,
+      });
+      started += 1;
+      if (started === 1) await firstHold;
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: `## 考试\n第${started}次` } }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const ctx = { env: { ...env, ...gatewayEnv } };
+    const first = scheduleRelationSummaryRecompute(ctx, courseId, 1, {
+      fetchImpl: gated,
+    });
+    const deadline = Date.now() + 2000;
+    while (started === 0) {
+      if (Date.now() > deadline) throw new Error("gateway was not called");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await scheduleRelationSummaryRecompute(ctx, courseId, 1, { fetchImpl: gated });
+    releaseFirst();
+    await first;
+    expect(calls).toHaveLength(2);
+  });
+
+  it("recovers a job left on the lock before draining newer pending work", async () => {
+    const firstCourse = await createBoundCourse("LK1");
+    const secondCourse = await createBoundCourse("LK2");
+    await seedApprovedReviews(firstCourse, 5, "锁恢复甲");
+    await seedApprovedReviews(secondCourse, 5, "锁恢复乙");
+    await env.DB.prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id=?, teacher_id=1, immediate=0,
+           locked_at=CURRENT_TIMESTAMP, lease_until=unixepoch()-1
+       WHERE id=1`,
+    )
+      .bind(firstCourse)
+      .run();
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+
+    const calls: FetchCall[] = [];
+    const ctx = { env: { ...env, ...gatewayEnv } };
+    await scheduleRelationSummaryRecompute(ctx, secondCourse, 1, {
+      fetchImpl: okGatewayFetch(calls),
+    });
+    expect(calls).toHaveLength(2);
+    const prompts = calls.map((call) => String(call.body.messages?.[1]?.content || ""));
+    expect(prompts[0]).toContain("锁恢复甲");
+    expect(prompts[1]).toContain("锁恢复乙");
+  });
 });
 
 describe("renderSummaryHtml", () => {

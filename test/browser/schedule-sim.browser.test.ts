@@ -159,11 +159,13 @@ test("opens the official jwxt door and imports pasted class times locally", asyn
     "href",
     "https://jwxt.jxufe.edu.cn/jxcjcaslogin",
   );
+  await expect(dialog).toContainText("课程名会发到选课志用来匹配目录");
   await dialog.getByPlaceholder("高等数学 张三 星期一 第1-2节").fill(
     "高等数学 张三 星期一 第1-2节",
   );
   await dialog.getByRole("button", { name: "导入粘贴内容" }).click();
   await expect(page.getByRole("status")).toContainText("已从本科教务导入");
+  await expect(page.getByRole("status")).toContainText("课程名会发到选课志用来匹配目录");
   await expect(page.getByLabel("已选课程").getByRole("link", { name: "高等数学（张三）" })).toBeVisible();
   await expect(
     page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
@@ -267,7 +269,7 @@ test("guest can see courses but must log in to add or import", async ({
   const loginDialog = page.getByRole("dialog");
   await expect(loginDialog).toContainText("导入需要先登录");
   await expect(page.getByRole("link", { name: "打开本科教务" })).toHaveCount(0);
-  await loginDialog.getByRole("button", { name: "去登录" }).click();
+  await loginDialog.getByRole("link", { name: "去登录" }).click();
   await expect(page).toHaveURL(/\/login\?from=%2Fschedule/);
 });
 

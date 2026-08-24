@@ -14,7 +14,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       web: ${{ steps.classify.outputs.web }}
-      offline: ${{ steps.classify.outputs.offline }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -28,8 +27,8 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: bash scripts/ci/list-changed-paths.sh | node scripts/ci/classify-changed-paths.mjs
 
-  web:
-    name: web
+  web_static:
+    name: web_static
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
@@ -47,18 +46,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm run check
+      - run: pnpm run check:static
 
-  offline:
-    name: offline
+  vitest_workers:
+    name: vitest_workers (${{ matrix.shard }})
     needs: changes
-    if: needs.changes.outputs.web != 'true' && needs.changes.outputs.offline == 'true'
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: ["1/3", "2/3", "3/3"]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -69,13 +68,43 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec wrangler types
-      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec vitest run --no-file-parallelism --shard=${{ matrix.shard }}
+
+  browser:
+    name: browser (${{ matrix.project }}, ${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - project: chromium
+            shard: "1/2"
+          - project: chromium
+            shard: "2/2"
+          - project: mobile-chromium
+            shard: "1/2"
+          - project: mobile-chromium
+            shard: "2/2"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}
 
   check:
     name: check
-    needs: [changes, web, offline]
-    if: always() && !cancelled()
+    needs: [changes, web_static, vitest_workers, browser]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -83,15 +112,20 @@ jobs:
         run: |
           set -euo pipefail
           changes="${{ needs.changes.result }}"
-          web="${{ needs.web.result }}"
-          offline="${{ needs.offline.result }}"
-          echo "changes=$changes web=$web offline=$offline"
+          web_required="${{ needs.changes.outputs.web }}"
+          web_static="${{ needs.web_static.result }}"
+          vitest_workers="${{ needs.vitest_workers.result }}"
+          browser="${{ needs.browser.result }}"
+          echo "changes=$changes web_required=$web_required web_static=$web_static vitest_workers=$vitest_workers browser=$browser"
           if [[ "$changes" != "success" ]]; then
             exit 1
           fi
-          if [[ "$web" != "success" && "$web" != "skipped" ]]; then
-            exit 1
+          expected="skipped"
+          if [[ "$web_required" == "true" ]]; then
+            expected="success"
           fi
-          if [[ "$offline" != "success" && "$offline" != "skipped" ]]; then
-            exit 1
-          fi
+          for result in "$web_static" "$vitest_workers" "$browser"; do
+            if [[ "$result" != "$expected" ]]; then
+              exit 1
+            fi
+          done

@@ -1,6 +1,5 @@
 import { Button, Label, Modal, TextArea, TextField, buttonVariants } from "@heroui/react";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { jwxtImportBookmarkletHref } from "../lib/jwxt-import-bookmarklet";
 import {
   EHALL_URL,
@@ -8,6 +7,7 @@ import {
   JWXT_CHANNEL2_URL,
   type JwxtImportRow,
 } from "../lib/jwxt-schedule-text";
+import { RouterAriaLink } from "./RouterAriaLink";
 
 /** 导入说明与成功提示共用：课表本机处理，课程名会发到选课志匹配目录。 */
 export const JWXT_IMPORT_NOTICE =
@@ -22,7 +22,6 @@ export function JwxtScheduleImport({
   loginHref: string;
   onImport: (rows: JwxtImportRow[]) => void;
 }) {
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [paste, setPaste] = useState("");
@@ -60,7 +59,7 @@ export function JwxtScheduleImport({
       </Button>
       <Modal.Backdrop isOpen={loginOpen} onOpenChange={setLoginOpen}>
         <Modal.Container>
-          <Modal.Dialog className="sm:max-w-[400px]">
+          <Modal.Dialog>
             <Modal.CloseTrigger />
             <Modal.Header>
               <Modal.Heading>导入需要先登录</Modal.Heading>
@@ -72,9 +71,12 @@ export function JwxtScheduleImport({
               <Button slot="close" variant="tertiary">
                 取消
               </Button>
-              <Button variant="primary" onPress={() => navigate(loginHref)}>
+              <RouterAriaLink
+                className={`${buttonVariants({ variant: "primary" })} no-underline`}
+                to={loginHref}
+              >
                 去登录
-              </Button>
+              </RouterAriaLink>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

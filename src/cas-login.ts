@@ -38,6 +38,8 @@ const REQUEST_RATE_LIMIT = 5;
 const MFA_RATE_SECONDS = 900;
 const MFA_RATE_LIMIT = 20;
 const QR_STATUS_RATE_LIMIT = 200;
+/** Looser than per-challenge 200: blocks fabricated status ids on one IP. */
+const QR_STATUS_IP_RATE_LIMIT = 2000;
 
 type CasChallengeHold = CasMfaHold | CasQrHold;
 
@@ -304,7 +306,7 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
 
   const challenge = typeof body?.challenge === "string" ? body.challenge.trim() : "";
   const code = typeof body?.code === "string" ? body.code.trim() : "";
-  if (!challenge || !/^\d{4,8}$/.test(code) || !identitySecret || !secret) {
+  if (!challenge || !/^\d{4}$/.test(code) || !identitySecret || !secret) {
     return fail(c, "验证码不正确", 401);
   }
 
@@ -378,9 +380,9 @@ export async function handleCasQrStatus(c: Context<{ Bindings: CasEnv }>) {
     ipHash &&
     !(await takeRateLimit(
       c.env.DB,
-      `cas-qr-status:${ipHash}`,
+      `cas-qr-status-ip:${ipHash}`,
       REQUEST_RATE_SECONDS,
-      QR_STATUS_RATE_LIMIT,
+      QR_STATUS_IP_RATE_LIMIT,
     ))
   ) {
     return fail(c, "请求过于频繁，请稍后再试", 429);
@@ -389,6 +391,16 @@ export async function handleCasQrStatus(c: Context<{ Bindings: CasEnv }>) {
   if (!identitySecret || !secret) return fail(c, "登录失败，请稍后重试", 503);
   const challenge = challengeIdFromBody(body);
   if (!challenge) return c.json({ status: "expired" });
+  if (
+    !(await takeRateLimit(
+      c.env.DB,
+      `cas-qr-status:${challenge}`,
+      REQUEST_RATE_SECONDS,
+      QR_STATUS_RATE_LIMIT,
+    ))
+  ) {
+    return fail(c, "请求过于频繁，请稍后再试", 429);
+  }
 
   const row = await loadChallengeRow(c.env.DB, challenge);
   if (!row || row.consumed_at != null || row.expires_at <= Math.floor(Date.now() / 1000)) {

@@ -577,26 +577,26 @@ async function claimNextSummaryJob(
       immediate: number;
     }>();
   if (!next) return null;
-  await db
-    .prepare(
-      "DELETE FROM summary_recompute_pending WHERE course_id = ? AND teacher_id = ?",
-    )
-    .bind(next.course_id, next.teacher_id)
-    .run();
-  await db
-    .prepare(
-      `UPDATE summary_recompute_lock
-       SET course_id = ?, teacher_id = ?, immediate = ?,
-           locked_at = CURRENT_TIMESTAMP, lease_until = unixepoch() + ?
-       WHERE id = 1`,
-    )
-    .bind(
-      next.course_id,
-      next.teacher_id,
-      next.immediate,
-      SUMMARY_LOCK_LEASE_SECONDS,
-    )
-    .run();
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE summary_recompute_lock
+         SET course_id = ?, teacher_id = ?, immediate = ?,
+             locked_at = CURRENT_TIMESTAMP, lease_until = unixepoch() + ?
+         WHERE id = 1`,
+      )
+      .bind(
+        next.course_id,
+        next.teacher_id,
+        next.immediate,
+        SUMMARY_LOCK_LEASE_SECONDS,
+      ),
+    db
+      .prepare(
+        "DELETE FROM summary_recompute_pending WHERE course_id = ? AND teacher_id = ?",
+      )
+      .bind(next.course_id, next.teacher_id),
+  ]);
   return {
     courseId: next.course_id,
     teacherId: next.teacher_id,
@@ -640,31 +640,22 @@ async function runLockedSummaryRecompute(
       }
       return;
     }
-    if (
-      await isSummaryRecomputeDue(
-        c.env.DB,
-        item.courseId,
-        item.teacherId,
-        item.immediate,
-      )
-    ) {
-      const result = await recomputeRelationSummary(
-        c.env,
-        c.env.DB,
-        item.courseId,
-        item.teacherId,
-        fetchImpl,
-      );
-      console.log(
-        JSON.stringify({
-          event: "summary_recompute",
-          courseId: item.courseId,
-          teacherId: item.teacherId,
-          outcome: result.outcome,
-          reviewCount: result.reviewCount,
-        }),
-      );
-    }
+    const result = await recomputeRelationSummary(
+      c.env,
+      c.env.DB,
+      item.courseId,
+      item.teacherId,
+      fetchImpl,
+    );
+    console.log(
+      JSON.stringify({
+        event: "summary_recompute",
+        courseId: item.courseId,
+        teacherId: item.teacherId,
+        outcome: result.outcome,
+        reviewCount: result.reviewCount,
+      }),
+    );
   } catch (error) {
     console.error(
       JSON.stringify({

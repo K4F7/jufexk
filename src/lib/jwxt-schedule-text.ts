@@ -135,13 +135,13 @@ export function mergeAdjacentSlots(slots: ParsedJwxtSlot[]): ParsedJwxtSlot[] {
   const merged: ParsedJwxtSlot[] = [];
   for (const slot of sorted) {
     const previous = merged[merged.length - 1];
-    const sameWeeks =
+    const canMerge =
       previous &&
       previous.weekday === slot.weekday &&
       previous.weeks.join(",") === slot.weeks.join(",") &&
-      previous.endPeriod + 1 === slot.startPeriod;
-    if (sameWeeks && previous) {
-      previous.endPeriod = slot.endPeriod;
+      previous.endPeriod + 1 >= slot.startPeriod;
+    if (canMerge && previous) {
+      previous.endPeriod = Math.max(previous.endPeriod, slot.endPeriod);
     } else {
       merged.push({ ...slot, weeks: [...slot.weeks] });
     }
@@ -220,12 +220,16 @@ function extractFromGrid(tableHtml: string): JwxtImportRow[] {
       const [first, ...rest] = raw.split(/\n| {2,}/).map((part) => part.trim()).filter(Boolean);
       if (!first) continue;
       const split = splitCourseCell(first);
+      const periodLabel =
+        period.startPeriod === period.endPeriod
+          ? String(period.startPeriod)
+          : `${period.startPeriod}-${period.endPeriod}`;
       extracted.push({
         courseName: split.courseName,
         courseCode: split.courseCode,
         teacherName: rest[0] || "",
         weekText: "",
-        timeText: `${["", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][day.weekday]} 第${period.startPeriod}节`,
+        timeText: `${["", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][day.weekday]} 第${periodLabel}节`,
       });
     }
   }
@@ -276,11 +280,14 @@ export function extractJwxtImportRowsFromText(text: string): JwxtImportRow[] {
     const timeText = trimmed.slice(timeStart).trim();
     if (!periodPair(timeText)) continue;
     const parts = before.split(/\s+/);
-    const split = splitCourseCell(parts[0] || "");
+    const numbered = /^\d{8,12}$/.test(parts[0] || "") && Boolean(parts[1]);
+    const split = splitCourseCell(
+      numbered ? `${parts[0]} ${parts[1]}` : parts[0] || "",
+    );
     rows.push({
       courseName: split.courseName,
       courseCode: split.courseCode,
-      teacherName: parts.slice(1).join(" "),
+      teacherName: parts.slice(numbered ? 2 : 1).join(" "),
       weekText: "",
       timeText,
     });
@@ -336,22 +343,40 @@ export function jwxtImportHash(payload: JwxtImportPayload): string {
   return `#${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload(payload)}`;
 }
 
-export function stashPendingJwxtImport(payload: JwxtImportPayload) {
-  if (typeof sessionStorage === "undefined") return;
-  sessionStorage.setItem(JWXT_PENDING_IMPORT_KEY, JSON.stringify(payload));
+function pendingImportStorage(): Storage | undefined {
+  try {
+    return globalThis.sessionStorage;
+  } catch {
+    return undefined;
+  }
 }
 
-export function takePendingJwxtImport(): JwxtImportPayload | null {
-  if (typeof sessionStorage === "undefined") return null;
-  const raw = sessionStorage.getItem(JWXT_PENDING_IMPORT_KEY);
+export function stashPendingJwxtImport(payload: JwxtImportPayload) {
+  pendingImportStorage()?.setItem(JWXT_PENDING_IMPORT_KEY, JSON.stringify(payload));
+}
+
+export function peekPendingJwxtImport(): JwxtImportPayload | null {
+  const storage = pendingImportStorage();
+  const raw = storage?.getItem(JWXT_PENDING_IMPORT_KEY);
   if (!raw) return null;
-  sessionStorage.removeItem(JWXT_PENDING_IMPORT_KEY);
   try {
     const parsed = JSON.parse(raw) as { v?: number; rows?: unknown };
-    if (parsed.v !== JWXT_IMPORT_VERSION || !Array.isArray(parsed.rows)) return null;
+    if (parsed.v !== JWXT_IMPORT_VERSION || !Array.isArray(parsed.rows)) {
+      storage?.removeItem(JWXT_PENDING_IMPORT_KEY);
+      return null;
+    }
     const rows = parsed.rows.filter(isImportRow);
-    return rows.length ? { v: JWXT_IMPORT_VERSION, rows } : null;
+    if (!rows.length) {
+      storage?.removeItem(JWXT_PENDING_IMPORT_KEY);
+      return null;
+    }
+    return { v: JWXT_IMPORT_VERSION, rows };
   } catch {
+    storage?.removeItem(JWXT_PENDING_IMPORT_KEY);
     return null;
   }
+}
+
+export function clearPendingJwxtImport() {
+  pendingImportStorage()?.removeItem(JWXT_PENDING_IMPORT_KEY);
 }

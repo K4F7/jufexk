@@ -61,13 +61,17 @@ export async function takeNextPublicCode(db: D1Database): Promise<number> {
     .prepare(
       `UPDATE user_public_code_seq
        SET next_code = next_code + 1
-       WHERE id = 1
+       WHERE id = 1 AND next_code <= ${PUBLIC_CODE_MAX}
        RETURNING next_code - 1 AS public_code`,
     )
     .first<{ public_code: number }>();
-  const code = Number(row?.public_code);
+  if (!row) throw new Error("public code sequence exhausted");
+  const code = Number(row.public_code);
   if (!Number.isInteger(code) || code < FIRST_USER_PUBLIC_CODE) {
     throw new Error("public code sequence missing");
+  }
+  if (code > PUBLIC_CODE_MAX) {
+    throw new Error("public code sequence exhausted");
   }
   return code;
 }

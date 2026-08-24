@@ -1,6 +1,8 @@
 import { REVIEW_DIMENSIONS } from "./review-dimensions";
 import {
+  isSchemeKey,
   publicDimensionLabels,
+  publishedSchemeVersion,
   type PublicDimensionLabel,
 } from "./review-schemes";
 
@@ -9,6 +11,16 @@ export type FourDimSnapshot = {
   schemeVersion?: unknown;
   scores?: unknown;
 };
+
+function schemeOptionOrder(snapshot: FourDimSnapshot, dimensionId: string) {
+  if (typeof snapshot.schemeKey !== "string" || !isSchemeKey(snapshot.schemeKey))
+    return [];
+  const version = Number(snapshot.schemeVersion);
+  if (!Number.isInteger(version) || version < 1) return [];
+  const published = publishedSchemeVersion(snapshot.schemeKey, version);
+  const dimension = published?.dimensions.find((item) => item.id === dimensionId);
+  return dimension?.options.map((item) => item.label) ?? [];
+}
 
 /**
  * 关系级四维代表档位（#410）：只聚合带新四维快照的公开评价
@@ -26,11 +38,18 @@ export function aggregateRelationDimensionLabels(
     if (!labels) continue;
     for (const item of labels) {
       if (!meta.has(item.id)) {
-        meta.set(item.id, { label: item.label, optionOrder: [] });
-      }
-      const entry = meta.get(item.id);
-      if (entry && !entry.optionOrder.includes(item.option)) {
-        entry.optionOrder.push(item.option);
+        const optionOrder = schemeOptionOrder(snapshot, item.id);
+        meta.set(item.id, {
+          label: item.label,
+          optionOrder: optionOrder.includes(item.option)
+            ? optionOrder
+            : [...optionOrder, item.option],
+        });
+      } else {
+        const entry = meta.get(item.id);
+        if (entry && !entry.optionOrder.includes(item.option)) {
+          entry.optionOrder.push(item.option);
+        }
       }
       const options = counts.get(item.id) ?? new Map<string, number>();
       options.set(item.option, (options.get(item.option) ?? 0) + 1);

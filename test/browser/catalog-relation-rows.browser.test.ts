@@ -182,6 +182,30 @@ test("sort buttons toggle rating without changing default review-count params", 
   await expect(page).not.toHaveURL(/[?&]sort=/);
 });
 
+test("search query relabels the default sort as 相关度", async ({ page }) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses?q=中国");
+
+  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  await expect(
+    filterBox.getByRole("radio", { name: "相关度", exact: true }),
+  ).toBeVisible();
+  await expect(
+    filterBox.getByRole("radio", { name: "课评数量", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    filterBox.getByRole("radio", { name: "课程评分", exact: true }),
+  ).toBeVisible();
+
+  await page.goto("/courses");
+  await expect(
+    filterBox.getByRole("radio", { name: "课评数量", exact: true }),
+  ).toBeVisible();
+  await expect(
+    filterBox.getByRole("radio", { name: "相关度", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("relation rows show rating, review count, and four-dim labels", async ({
   page,
 }) => {

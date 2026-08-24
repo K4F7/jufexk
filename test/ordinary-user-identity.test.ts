@@ -5,6 +5,7 @@ import {
   CAS_IDENTITY_ISSUER,
   resolveOrCreateIdentityUser,
 } from "../src/ordinary-user-identity";
+import { PUBLIC_CODE_MAX } from "../src/public-handle";
 
 function countD1RoundTrips(database: D1Database) {
   let roundTrips = 0;
@@ -87,15 +88,61 @@ describe("ordinary-user identity lookup latency", () => {
       ),
     );
 
-    expect(new Set(users.map((user) => user?.id)).size).toBe(1);
     const identity = await env.DB.prepare(
       "SELECT user_id FROM auth_identities WHERE provider=? AND issuer=? AND subject=?",
     )
       .bind(AUTH_PROVIDER_CAS, CAS_IDENTITY_ISSUER, subject)
       .first<{ user_id: string }>();
+    expect(identity?.user_id).toMatch(/^[0-9a-f]{32}$/);
+    expect(users).toHaveLength(8);
+    for (const user of users) {
+      expect(user).not.toBeNull();
+      expect(user?.id).toBe(identity?.user_id);
+    }
+    expect(new Set(users.map((user) => user?.id)).size).toBe(1);
     const rows = await env.DB.prepare("SELECT COUNT(*) AS count FROM users WHERE id=?")
       .bind(identity?.user_id)
       .first<{ count: number }>();
     expect(rows?.count).toBe(1);
+  });
+
+  it("does not mint a 7-digit public code when the sequence is exhausted", async () => {
+    const previous = await env.DB.prepare(
+      "SELECT next_code FROM user_public_code_seq WHERE id=1",
+    ).first<{ next_code: number }>();
+    const usersBefore = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users",
+    ).first<{ n: number }>();
+    try {
+      await env.DB.prepare(
+        "UPDATE user_public_code_seq SET next_code=? WHERE id=1",
+      )
+        .bind(PUBLIC_CODE_MAX + 1)
+        .run();
+      const created = await resolveOrCreateIdentityUser(env.DB, {
+        provider: AUTH_PROVIDER_CAS,
+        issuer: CAS_IDENTITY_ISSUER,
+        subject: `cas-cap-${crypto.randomUUID()}`,
+      });
+      expect(created).toBeNull();
+      const maxCode = await env.DB.prepare(
+        "SELECT MAX(public_code) AS n FROM users",
+      ).first<{ n: number | null }>();
+      expect(Number(maxCode?.n || 0)).toBeLessThanOrEqual(PUBLIC_CODE_MAX);
+      const usersAfter = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM users",
+      ).first<{ n: number }>();
+      expect(usersAfter?.n).toBe(usersBefore?.n);
+      const seq = await env.DB.prepare(
+        "SELECT next_code FROM user_public_code_seq WHERE id=1",
+      ).first<{ next_code: number }>();
+      expect(seq?.next_code).toBe(PUBLIC_CODE_MAX + 1);
+    } finally {
+      await env.DB.prepare(
+        "UPDATE user_public_code_seq SET next_code=? WHERE id=1",
+      )
+        .bind(previous?.next_code)
+        .run();
+    }
   });
 });

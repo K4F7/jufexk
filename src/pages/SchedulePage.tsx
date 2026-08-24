@@ -31,9 +31,10 @@ import {
   stagedCoursesFromJwxtImport,
 } from "../lib/jwxt-schedule-import";
 import {
+  clearPendingJwxtImport,
+  peekPendingJwxtImport,
   readJwxtImportHash,
   stashPendingJwxtImport,
-  takePendingJwxtImport,
   type JwxtImportRow,
 } from "../lib/jwxt-schedule-text";
 import {
@@ -225,6 +226,9 @@ function StagedCourseCard({
   );
 }
 
+/** Survives Strict Mode remount; a useRef would reset and double-apply. */
+let pendingJwxtImportTask: Promise<void> | null = null;
+
 export function SchedulePage() {
   const { viewer, ready } = useViewer();
   const canEdit = viewer.authenticated;
@@ -256,14 +260,19 @@ export function SchedulePage() {
     const { courses: incoming, skipped } = stagedCoursesFromJwxtImport(rows, relations);
     if (incoming.length === 0) {
       setImportNotice("没有解析到可排的上课时间。");
-      return;
+      return false;
     }
-    setCourses((current) => mergeImportedCourses(current, incoming));
+    setCourses((current) => {
+      const next = mergeImportedCourses(current, incoming);
+      saveSchedulePlan(next);
+      return next;
+    });
     setImportNotice(
       skipped
         ? `已导入 ${incoming.length} 门课，另有 ${skipped} 行没有可识别的上课时间。`
         : `已从本科教务导入 ${incoming.length} 门课。${JWXT_IMPORT_NOTICE}`,
     );
+    return true;
   }
 
   useEffect(() => {
@@ -275,13 +284,21 @@ export function SchedulePage() {
 
   useEffect(() => {
     if (!ready) return;
-    const pending = takePendingJwxtImport();
+    const pending = peekPendingJwxtImport();
     if (!pending) return;
     if (!viewer.authenticated) {
       stashPendingJwxtImport(pending);
       return;
     }
-    void applyJwxtImport(pending.rows);
+    if (pendingJwxtImportTask) return;
+    pendingJwxtImportTask = applyJwxtImport(pending.rows)
+      .then((applied) => {
+        if (applied) clearPendingJwxtImport();
+      })
+      .catch(() => {})
+      .finally(() => {
+        pendingJwxtImportTask = null;
+      });
   }, [ready, viewer.authenticated]);
 
   useEffect(() => {

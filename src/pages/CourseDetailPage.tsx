@@ -19,6 +19,7 @@ import {
 } from "react";
 import {
   useLocation,
+  useNavigate,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -41,6 +42,7 @@ import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { categoryLabel, formatCredits } from "../lib/labels";
+import { reviewAnchorId } from "../lib/review-dimensions";
 import type {
   Course,
   PublicReviewPage,
@@ -80,6 +82,14 @@ function parseTeacherId(search: string): number | null {
   if (!raw || !TEACHER_ID_RE.test(raw)) return null;
   const n = Number(raw);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+function decodeHashTarget(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 function getOrLoad<T>(
@@ -164,6 +174,7 @@ function SideRelationRow({
 export function CourseDetailPage() {
   const { id } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const recognitionVariant = useReviewRecognitionPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
@@ -193,7 +204,8 @@ export function CourseDetailPage() {
       : undefined) ??
     teachers[0] ??
     null;
-  const effectiveTeacherId = selectedTeacher?.id ?? urlTeacherId;
+  /** 课程到达后只用校验过的任课教师；加载中可先按 URL 教师并行拉评价。 */
+  const effectiveTeacherId = course ? selectedTeacher?.id : urlTeacherId;
   const relationTerms = selectedTeacher?.terms ?? [];
   const effectiveReviewTerm = relationTerms.includes(reviewTerm)
     ? reviewTerm
@@ -240,6 +252,38 @@ export function CourseDetailPage() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!course) return;
+    const params = new URLSearchParams(location.search);
+    if (!params.has("teacher")) return;
+    const relationTeachers = course.teachers ?? [];
+    const valid =
+      urlTeacherId != null &&
+      relationTeachers.some((teacher) => teacher.id === urlTeacherId);
+    if (valid) return;
+    const next = new URLSearchParams(location.search);
+    const fallbackId = relationTeachers[0]?.id;
+    if (fallbackId != null) next.set("teacher", String(fallbackId));
+    else next.delete("teacher");
+    const search = next.toString();
+    if (search === params.toString()) return;
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [
+    course,
+    urlTeacherId,
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
 
   /** 管理员公告保存后重拉课程详情（只刷新课程载荷，不动评价缓存）。 */
   const reloadCourse = useCallback(async () => {
@@ -345,24 +389,67 @@ export function CourseDetailPage() {
 
   // /latest 的「查看全文」深链：评价到达后滚动到对应条目。
   const scrolledHashRef = useRef("");
-  useEffect(() => {
+  const hashChaseDoneRef = useRef("");
+  const hashChaseScopeRef = useRef("");
+  const hashChaseScope = `${id}:${effectiveTeacherId ?? ""}:${location.hash}`;
+  if (hashChaseScopeRef.current !== hashChaseScope) {
+    hashChaseScopeRef.current = hashChaseScope;
     scrolledHashRef.current = "";
-  }, [id]);
+    hashChaseDoneRef.current = "";
+  }
   useLayoutEffect(() => {
     const raw = location.hash.replace(/^#/, "");
     if (!raw || scrolledHashRef.current === raw) return;
-    let target = raw;
-    try {
-      target = decodeURIComponent(raw);
-    } catch {
-      /* keep raw */
-    }
+    const target = decodeHashTarget(raw);
     const el = document.getElementById(target);
     if (el) {
       scrolledHashRef.current = raw;
+      hashChaseDoneRef.current = raw;
       el.scrollIntoView({ block: "start" });
     }
   }, [location.hash, data, reviewFeed.reviews]);
+
+  /** hash 不在已加载列表且还有下一页时继续 loadMore；失败或没有更多则停。 */
+  useEffect(() => {
+    const raw = location.hash.replace(/^#/, "");
+    if (!raw || hashChaseDoneRef.current === raw) return;
+    if (scrolledHashRef.current === raw) {
+      hashChaseDoneRef.current = raw;
+      return;
+    }
+    if (!course || reviewsLoading || recognitionVariant) return;
+    if (reviewsError) {
+      hashChaseDoneRef.current = raw;
+      return;
+    }
+    const target = decodeHashTarget(raw);
+    if (
+      reviewFeed.reviews.some((review) => reviewAnchorId(review.id) === target)
+    ) {
+      return;
+    }
+    if (reviewFeed.loadMoreError) {
+      hashChaseDoneRef.current = raw;
+      return;
+    }
+    if (!reviewFeed.nextCursor) {
+      hashChaseDoneRef.current = raw;
+      return;
+    }
+    if (reviewFeed.isLoadingMore) return;
+    void handleLoadMore();
+  }, [
+    location.hash,
+    course,
+    reviewsLoading,
+    reviewsError,
+    recognitionVariant,
+    reviewFeed.reviews,
+    reviewFeed.nextCursor,
+    reviewFeed.isLoadingMore,
+    reviewFeed.loadMoreError,
+    handleLoadMore,
+  ]);
 
   if (error) {
     return (

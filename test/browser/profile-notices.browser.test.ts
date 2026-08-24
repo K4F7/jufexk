@@ -9,6 +9,8 @@ type MockState = {
   authenticated: boolean;
   profile: unknown;
   profileStatus: number;
+  avatarFailsRemaining: number;
+  avatarError: string;
   notifications: unknown;
   notificationsStatus: number;
   unreadCount: number | null;
@@ -60,6 +62,8 @@ function state(overrides: Partial<MockState> = {}): MockState {
       follow_count: 1,
     },
     profileStatus: 200,
+    avatarFailsRemaining: 0,
+    avatarError: "头像保存失败",
     notifications: [
       {
         id: "n1",
@@ -117,6 +121,10 @@ async function mockApi(page: Page, mock: MockState) {
     if (url.pathname === "/api/user/profile")
       return fulfillJson(route, mock.profile, mock.profileStatus);
     if (url.pathname === "/api/user/profile/avatar") {
+      if (mock.avatarFailsRemaining > 0) {
+        mock.avatarFailsRemaining -= 1;
+        return fulfillJson(route, { error: mock.avatarError }, 500);
+      }
       const profile = mock.profile as {
         avatar_key?: number;
         public_code?: number;
@@ -246,6 +254,25 @@ test("profile page degrades gracefully when the API is missing", async ({
   await expect(
     page.getByRole("article", { name: "我的主页" }).getByText("— 门", { exact: true }).first(),
   ).toBeVisible();
+});
+
+test("avatar save failure shows a retryable alert", async ({
+  page,
+}) => {
+  await mockApi(page, state({ avatarFailsRemaining: 1 }));
+  await page.goto("/profile");
+
+  await page.getByRole("button", { name: "更换官方头像" }).click();
+  await page.getByRole("radio", { name: "选择官方头像 3" }).click();
+  await expect(page.getByText("头像未能保存")).toBeVisible();
+  await expect(page.getByText("头像保存失败")).toBeVisible();
+  await expect(page.getByRole("button", { name: "重试" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "更换官方头像" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "重试" }).click();
+  await expect(page.getByText("头像未能保存")).toHaveCount(0);
 });
 
 test("notices page lists messages and marks all as read", async ({ page }) => {

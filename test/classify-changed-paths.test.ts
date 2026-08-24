@@ -1,47 +1,74 @@
 import { describe, expect, it } from "vitest";
 import { classifyChangedPaths } from "../scripts/ci/classify-changed-paths.mjs";
 import bindAdminWorkflow from "../.github/workflows/bind-admin-students.yml?raw";
+import ciWorkflow from "../.github/workflows/ci.yml?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
 import migrateWorkflow from "../.github/workflows/migrate.yml?raw";
+import packageJsonRaw from "../package.json?raw";
+
+const packageScripts = (JSON.parse(packageJsonRaw) as { scripts: Record<string, string> }).scripts;
 
 describe("classifyChangedPaths", () => {
   it("treats an empty change set as web so CI stays conservative", () => {
-    expect(classifyChangedPaths([])).toEqual({ web: true, offline: false });
+    expect(classifyChangedPaths([])).toEqual({ web: true });
   });
 
   it("skips web CI for documentation and markdown-only changes", () => {
     expect(
       classifyChangedPaths(["docs/adr/0001-legacy-review-tiered-moderation.md", "README.md", "AGENTS.md"]),
-    ).toEqual({ web: false, offline: false });
+    ).toEqual({ web: false });
   });
 
   it("skips web CI for agent docs", () => {
     expect(classifyChangedPaths([".agents/skills/heroui-react/SKILL.md"])).toEqual({
       web: false,
-      offline: false,
     });
   });
 
-  it("routes grok workflows to offline CI without Playwright", () => {
+  it("runs full web CI for changes outside the documented skip paths", () => {
     expect(classifyChangedPaths([".grok/workflows/ustc-aligned-review-v1.rhai"])).toEqual({
-      web: false,
-      offline: true,
+      web: true,
     });
-  });
-
-  it("keeps mixed grok and docs changes on the offline path", () => {
-    expect(
-      classifyChangedPaths(["docs/adr/0024-retire-ocr-and-old-import-packages.md", ".grok/workflows/ustc-aligned-review-v1.rhai"]),
-    ).toEqual({ web: false, offline: true });
-  });
-
-  it("runs full web CI when the site, worker, or GitHub workflow changes", () => {
-    expect(classifyChangedPaths(["src/pages/CoursesPage.tsx"])).toEqual({ web: true, offline: false });
-    expect(classifyChangedPaths([".github/workflows/ci.yml"])).toEqual({ web: true, offline: false });
+    expect(classifyChangedPaths(["src/pages/CoursesPage.tsx"])).toEqual({ web: true });
+    expect(classifyChangedPaths([".github/workflows/ci.yml"])).toEqual({ web: true });
     expect(classifyChangedPaths(["package.json", ".grok/workflows/ustc-aligned-review-v1.rhai"])).toEqual({
       web: true,
-      offline: true,
     });
+  });
+
+  it("splits full web CI across static, Workers, and browser jobs", () => {
+    expect(ciWorkflow).not.toContain("offline");
+    expect(ciWorkflow.match(/^  web_static:/gm)).toHaveLength(1);
+    expect(ciWorkflow).toContain("pnpm run check:static");
+    expect(packageScripts["check:static"]).toBe(
+      "wrangler types && tsc --noEmit && pnpm run test:static && vite build && wrangler deploy --dry-run",
+    );
+    expect(packageScripts["test:static"]).toBe(
+      "vitest run --config vitest.node.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
+    );
+    expect(ciWorkflow).toContain('shard: ["1/3", "2/3", "3/3"]');
+    expect(ciWorkflow).toContain(
+      "pnpm exec vitest run --no-file-parallelism --shard=${{ matrix.shard }}",
+    );
+    expect(ciWorkflow.match(/fail-fast: true/g)).toHaveLength(2);
+
+    for (const project of ["chromium", "mobile-chromium"]) {
+      for (const shard of ["1/2", "2/2"]) {
+        expect(ciWorkflow).toContain(`- project: ${project}\n            shard: "${shard}"`);
+      }
+    }
+    expect(ciWorkflow).toContain(
+      "pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}",
+    );
+  });
+
+  it("requires every selected CI matrix to complete successfully", () => {
+    expect(ciWorkflow).toContain("needs: [changes, web_static, vitest_workers, browser]");
+    expect(ciWorkflow).toContain("if: always()");
+    expect(ciWorkflow).toContain('expected="skipped"');
+    expect(ciWorkflow).toContain('if [[ "$web_required" == "true" ]]');
+    expect(ciWorkflow).toContain('expected="success"');
+    expect(ciWorkflow).toContain('if [[ "$result" != "$expected" ]]');
   });
 
   it("keeps deploy gated on web changes and ignores offline trees", () => {
