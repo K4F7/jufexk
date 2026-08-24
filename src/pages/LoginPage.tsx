@@ -108,8 +108,9 @@ const SESSION_LOADING_STATUS = (
   <DetailLoadingStatus label="正在读取登录状态…" />
 );
 
+/* 窄屏（<sm）用 size-11 + gap-2：4 槽约 234px，360px 视口卡片内不溢出。 */
 const MFA_OTP_SLOT_CLASS =
-  "size-14 flex-none [&_.input-otp__slot-value]:text-2xl";
+  "size-11 flex-none [&_.input-otp__slot-value]:text-xl sm:size-14 sm:[&_.input-otp__slot-value]:text-2xl";
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -432,7 +433,7 @@ export function LoginPage() {
                   <InputOTP
                     aria-label="验证码"
                     autoComplete="one-time-code"
-                    className="justify-center gap-3"
+                    className="justify-center gap-2 sm:gap-3"
                     inputMode="numeric"
                     isDisabled={busy}
                     maxLength={4}

@@ -203,7 +203,7 @@ function ErrorPanel({
 }) {
   return (
     <div
-      className="rounded border border-dashed border-danger/40 px-7 py-7 text-center"
+      className="rounded border border-dashed border-danger/40 px-4 py-6 text-center sm:px-7 sm:py-7"
       role="alert"
     >
       <div className="font-medium text-foreground">{title}</div>
@@ -242,7 +242,7 @@ function EmptyPanel({
 
   return (
     <div
-      className="rounded border border-dashed border-border px-7 py-7 text-center text-muted"
+      className="rounded border border-dashed border-border px-4 py-6 text-center text-muted sm:px-7 sm:py-7"
       role="status"
     >
       <div className="font-medium text-foreground">{title}</div>

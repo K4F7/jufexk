@@ -415,8 +415,9 @@ export function SchedulePage() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        <div>
+      {/* 窄屏显式 grid-cols-1：隐式 auto 轨道会被课表 min-content 撑出横向溢出。 */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <div className="min-w-0">
           <SearchField
             aria-label="搜索要排的课程"
             className="mb-3 w-full"

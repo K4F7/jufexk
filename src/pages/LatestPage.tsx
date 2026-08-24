@@ -81,7 +81,7 @@ export function LatestPage() {
         </p>
       ) : items.length === 0 ? (
         <div
-          className="rounded border border-dashed border-border px-7 py-7 text-center text-muted"
+          className="rounded border border-dashed border-border px-4 py-6 text-center text-muted sm:px-7 sm:py-7"
           role="status"
         >
           <div className="font-medium text-foreground">暂时还没有公开课评</div>
@@ -137,7 +137,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
         />
       </span>
       <div className="min-w-0 flex-1">
-        <header className="flex items-baseline justify-between gap-3">
+        <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="m-0 min-w-0 text-[calc(13/15*1rem)] leading-6">
             <span className="text-muted">点评了 </span>
             <RouterAriaLink
