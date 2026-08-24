@@ -290,9 +290,7 @@ test("first load shows skeleton rows and keeps the header height stable", async 
   ).toBeVisible();
   await expect(header.getByText("共 4 条", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "pagination" }).getByText("共 4 条", {
-      exact: true,
-    }),
+    page.getByLabel("pagination").getByText("共 4 条", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("status", { name: "加载中…" })).toHaveCount(0);
 
