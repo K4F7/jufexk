@@ -420,10 +420,12 @@ export function CourseDetailPage() {
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <Breadcrumbs aria-label="面包屑">
-          <Breadcrumbs.Item href={catalogHref}>课程目录</Breadcrumbs.Item>
-          <Breadcrumbs.Item>{course.name}</Breadcrumbs.Item>
-        </Breadcrumbs>
+        <nav aria-label="面包屑">
+          <Breadcrumbs>
+            <Breadcrumbs.Item href={catalogHref}>课程目录</Breadcrumbs.Item>
+            <Breadcrumbs.Item>{course.name}</Breadcrumbs.Item>
+          </Breadcrumbs>
+        </nav>
 
         {submitted ? (
           <Alert className="mt-3" status="success">

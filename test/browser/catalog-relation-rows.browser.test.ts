@@ -288,7 +288,12 @@ test("first load shows skeleton rows and keeps the header height stable", async 
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }).first(),
   ).toBeVisible();
-  await expect(page.getByText("共 4 条", { exact: true })).toBeVisible();
+  await expect(header.getByText("共 4 条", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "pagination" }).getByText("共 4 条", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(page.getByRole("status", { name: "加载中…" })).toHaveCount(0);
 
   const after = await header.boundingBox();

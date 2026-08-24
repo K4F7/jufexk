@@ -130,10 +130,12 @@ export function TeacherDetailPage() {
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <Breadcrumbs aria-label="面包屑">
-          <Breadcrumbs.Item href={catalogHref}>教师目录</Breadcrumbs.Item>
-          <Breadcrumbs.Item>{t.name}</Breadcrumbs.Item>
-        </Breadcrumbs>
+        <nav aria-label="面包屑">
+          <Breadcrumbs>
+            <Breadcrumbs.Item href={catalogHref}>教师目录</Breadcrumbs.Item>
+            <Breadcrumbs.Item>{t.name}</Breadcrumbs.Item>
+          </Breadcrumbs>
+        </nav>
 
         <section className="mt-3 mb-6" aria-labelledby="teacher-courses-heading">
           <Typography
