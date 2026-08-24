@@ -205,15 +205,18 @@ test("profile page renders own reviews, follows and stats", async ({
     page.getByRole("heading", { name: "匿名用户#000001" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "选择官方头像 1" }),
+    page.getByRole("radio", { name: "选择官方头像 1" }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "更换官方头像" }).click();
   await expect(
     page.getByRole("heading", { name: "选择官方头像" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "选择官方头像 3" }).click();
   await expect(
-    page.getByRole("button", { name: "选择官方头像 3" }),
+    page.getByRole("radio", { name: "选择官方头像 1" }),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: "选择官方头像 3" }).click();
+  await expect(
+    page.getByRole("radio", { name: "选择官方头像 3" }),
   ).toHaveCount(0);
   const profileCard = page.getByRole("article");
   await expect(profileCard.getByText("点评")).toBeVisible();
