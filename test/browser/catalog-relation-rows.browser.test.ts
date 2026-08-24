@@ -151,7 +151,7 @@ test("filter box shows the category row and rating sort", async ({
   }
   await expect(filterBox.getByText("排序方式：")).toBeVisible();
   await expect(
-    filterBox.getByRole("radio", { name: "课评数量", exact: true }),
+    filterBox.getByRole("radio", { name: "评价数量", exact: true }),
   ).toBeVisible();
   await expect(
     filterBox.getByRole("radio", { name: "课程评分", exact: true }),
@@ -178,7 +178,7 @@ test("sort buttons toggle rating without changing default review-count params", 
   await filterBox.getByRole("radio", { name: "课程评分", exact: true }).click();
   await expect(page).toHaveURL(/[?&]sort=rating(?:&|$)/);
 
-  await filterBox.getByRole("radio", { name: "课评数量", exact: true }).click();
+  await filterBox.getByRole("radio", { name: "评价数量", exact: true }).click();
   await expect(page).not.toHaveURL(/[?&]sort=/);
 });
 
@@ -191,7 +191,7 @@ test("search query relabels the default sort as 相关度", async ({ page }) => 
     filterBox.getByRole("radio", { name: "相关度", exact: true }),
   ).toBeVisible();
   await expect(
-    filterBox.getByRole("radio", { name: "课评数量", exact: true }),
+    filterBox.getByRole("radio", { name: "评价数量", exact: true }),
   ).toHaveCount(0);
   await expect(
     filterBox.getByRole("radio", { name: "课程评分", exact: true }),
@@ -199,7 +199,7 @@ test("search query relabels the default sort as 相关度", async ({ page }) => 
 
   await page.goto("/courses");
   await expect(
-    filterBox.getByRole("radio", { name: "课评数量", exact: true }),
+    filterBox.getByRole("radio", { name: "评价数量", exact: true }),
   ).toBeVisible();
   await expect(
     filterBox.getByRole("radio", { name: "相关度", exact: true }),
