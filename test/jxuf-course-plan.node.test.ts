@@ -28,6 +28,21 @@ describe("parseCategoryPath", () => {
     });
   });
 
+  it("treats 体育课/必修课 as requirement, not courseLevel", () => {
+    expect(parseCategoryPath("体育课/必修课")).toMatchObject({
+      bucket: "体育课",
+      mid: "",
+      requirement: "必修课",
+      teachingType: "",
+      noise: false,
+    });
+    expect(selectJxufCoursePlan(["体育课/必修课"])).toEqual({
+      enrollmentCategory: "",
+      teachingType: "",
+      courseLevel: "",
+    });
+  });
+
   it("drops empty and honor-track labels", () => {
     for (const text of [
       "任选课/公共课",

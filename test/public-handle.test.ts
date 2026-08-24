@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { hmacHex } from "../src/ordinary-user-session";
 import {
   FIRST_USER_PUBLIC_CODE,
+  PUBLIC_CODE_MAX,
   RESERVED_PUBLIC_CODE,
   formatPublicHandle,
+  takeNextPublicCode,
 } from "../src/public-handle";
 import {
   ORDINARY_TEST_AUTH_SECRET,
@@ -95,5 +97,36 @@ describe("public handle assignment", () => {
     expect(body.public_code).toBeGreaterThanOrEqual(1);
     expect(body.handle).toBe(formatPublicHandle(body.public_code));
     expect(JSON.stringify(body)).not.toContain(await stableUserId(session.userId));
+  });
+
+  it("stops assigning public codes past 999999", async () => {
+    const previous = await env.DB.prepare(
+      "SELECT next_code FROM user_public_code_seq WHERE id=1",
+    ).first<{ next_code: number }>();
+    try {
+      await env.DB.prepare(
+        "UPDATE user_public_code_seq SET next_code=? WHERE id=1",
+      )
+        .bind(PUBLIC_CODE_MAX)
+        .run();
+      expect(await takeNextPublicCode(env.DB)).toBe(PUBLIC_CODE_MAX);
+      await expect(takeNextPublicCode(env.DB)).rejects.toThrow(
+        /public code sequence exhausted/,
+      );
+      const seq = await env.DB.prepare(
+        "SELECT next_code FROM user_public_code_seq WHERE id=1",
+      ).first<{ next_code: number }>();
+      expect(seq?.next_code).toBe(PUBLIC_CODE_MAX + 1);
+      const maxCode = await env.DB.prepare(
+        "SELECT MAX(public_code) AS n FROM users",
+      ).first<{ n: number | null }>();
+      expect(Number(maxCode?.n || 0)).toBeLessThanOrEqual(PUBLIC_CODE_MAX);
+    } finally {
+      await env.DB.prepare(
+        "UPDATE user_public_code_seq SET next_code=? WHERE id=1",
+      )
+        .bind(previous?.next_code)
+        .run();
+    }
   });
 });

@@ -221,7 +221,7 @@ test("guest can see courses but must log in to add or import", async ({
   const loginDialog = page.getByRole("dialog");
   await expect(loginDialog).toContainText("导入需要先登录");
   await expect(page.getByRole("link", { name: "打开本科教务" })).toHaveCount(0);
-  await loginDialog.getByRole("button", { name: "去登录" }).click();
+  await loginDialog.getByRole("link", { name: "去登录" }).click();
   await expect(page).toHaveURL(/\/login\?from=%2Fschedule/);
 });
 

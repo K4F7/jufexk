@@ -16,6 +16,7 @@ describe("site and repository icon", () => {
     expect(indexHtml).toContain(
       'property="og:url" content="https://courses.sein.moe/"',
     );
+    expect(indexHtml).not.toContain("xk.sein.moe");
   });
 
   it("shows the public site name on the document and README icon", () => {

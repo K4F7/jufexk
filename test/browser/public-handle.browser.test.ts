@@ -127,3 +127,58 @@ test("numbered handle page can follow when logged in", async ({ page }) => {
   await page.getByRole("button", { name: "关注" }).click();
   await expect(page.getByRole("button", { name: "取消关注" })).toBeVisible();
 });
+
+test("follow error stays on the loaded profile", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    const request = route.request();
+    if (url.pathname === "/api/config")
+      return route.fulfill({
+        json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+      });
+    if (url.pathname === "/api/user/session")
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          csrfToken: "csrf-user",
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
+    if (url.pathname === "/api/u/000002" && request.method() === "GET")
+      return route.fulfill({
+        json: {
+          public_code: 2,
+          handle: "匿名用户#000002",
+          avatar_key: 2,
+          reserved: false,
+          followable: true,
+          viewer_followed: false,
+          viewer_is_self: false,
+          note: null,
+          review_count: 0,
+          reviews: [],
+        },
+      });
+    if (url.pathname === "/api/u/000002/follow") {
+      return route.fulfill({
+        status: 500,
+        json: { error: "暂时无法关注" },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: "not mocked" } });
+  });
+
+  await page.goto("/u/000002");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "匿名用户#000002" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "关注" }).click();
+  await expect(page.getByText("关注失败")).toBeVisible();
+  await expect(page.getByText("暂时无法关注")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "匿名用户#000002" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
+  await expect(page.getByText("公开主页加载失败")).toHaveCount(0);
+});

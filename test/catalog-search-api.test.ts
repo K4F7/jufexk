@@ -215,6 +215,15 @@ describe("任课关系列表按精确教师名收窄", () => {
     expect(body.total).toBe(1);
   });
 
+  it("两个不同精确教师名求交为空", async () => {
+    const body = await search(
+      "/api/courses",
+      `view=relations&q=${firstTeacher} ${secondTeacher}`,
+    );
+    expect(body.items).toEqual([]);
+    expect(body.total).toBe(0);
+  });
+
   it("来源教师名精确命中也只返回该教师", async () => {
     const sourceLabel = "搜索来源名1";
     const displayName = "搜索来源显示名";
@@ -411,6 +420,15 @@ describe("预计算 match_text", () => {
       .run();
     await staleFingerprint();
     expect(await courseNames("q=搜索线代别名")).toEqual([linearCourse]);
+    const relations = await search(
+      "/api/courses",
+      "view=relations&q=搜索线代别名",
+    );
+    expect(relations.items.map((item) => item.name)).toEqual([linearCourse]);
+    expect(relations.items.map((item) => item.teacher_name)).toEqual([
+      firstTeacher,
+    ]);
+    expect(relations.total).toBe(1);
   });
 
   it("改课名后下一次公开列表能搜到新名字", async () => {

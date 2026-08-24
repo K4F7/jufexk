@@ -88,6 +88,8 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "关于我们" })).toBeVisible();
   await expect(page.getByText(/非官方课程—教师评价站/)).toBeVisible();
   await expect(page.getByText(/点评会绑到具体任课老师/)).toBeVisible();
+  await expect(page.getByText(/公开内容匿名发布，站方可拒绝或撤回/)).toBeVisible();
+  await expect(page.getByText(/经人工审核/)).toHaveCount(0);
 
   await footerNav.getByRole("link", { name: "联系我们" }).click();
   await expect(page).toHaveURL(/\/contact$/);
@@ -117,6 +119,9 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page).toHaveURL(/\/terms$/);
   await expect(page.getByRole("heading", { name: "使用条款" })).toBeVisible();
   await expect(page.getByText(/不构成学校官方意见/)).toBeVisible();
+  await expect(page.getByText(/任课评价匿名公开/)).toBeVisible();
+  await expect(page.getByText(/站方可以拒绝、编辑或撤回公开内容/)).toBeVisible();
+  await expect(page.getByText(/经审核后/)).toHaveCount(0);
   await expect(page.getByText(/MIT License/)).toBeVisible();
 
   await footerNav.getByRole("link", { name: "公告" }).click();

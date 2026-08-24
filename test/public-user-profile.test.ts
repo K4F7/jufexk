@@ -1,7 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { hmacHex } from "../src/ordinary-user-session";
-import { formatPublicCode, formatPublicHandle } from "../src/public-handle";
+import {
+  defaultAvatarKey,
+  formatPublicCode,
+  formatPublicHandle,
+} from "../src/public-handle";
 import {
   ORDINARY_TEST_AUTH_SECRET,
   WRITE_ORIGIN,
@@ -38,7 +42,11 @@ describe("public user profile and follow", () => {
       reserved: boolean;
       followable: boolean;
       note: string;
-      reviews: Array<{ author_public_code: number; comment: string }>;
+      reviews: Array<{
+        author_public_code: number;
+        author_avatar_key: number;
+        comment: string;
+      }>;
     }>();
     expect(body).toMatchObject({
       public_code: 0,
@@ -52,6 +60,9 @@ describe("public user profile and follow", () => {
     ).toBe(true);
     expect(
       body.reviews.every((review) => review.author_public_code === 0),
+    ).toBe(true);
+    expect(
+      body.reviews.every((review) => review.author_avatar_key === 0),
     ).toBe(true);
     expect(JSON.stringify(body)).not.toMatch(/"id":"[0-9a-f]{32}"/);
 
@@ -187,5 +198,40 @@ describe("public user profile and follow", () => {
       }>()
     ).items.find((item) => item.comment === "公开流作者点评");
     expect(authored?.author_public_code).toBe(public_code);
+  });
+
+  it("uses the stored avatar_key on numbered profile reviews", async () => {
+    const author = await ordinaryWriteSession("stored-avatar-author");
+    const { id, public_code } = await publicCodeFor(author.userId);
+    const storedKey = (defaultAvatarKey(public_code) + 1) % 5;
+    const patched = await SELF.fetch(`${WRITE_ORIGIN}/api/user/profile/avatar`, {
+      method: "PATCH",
+      headers: ordinaryWriteHeaders(author),
+      body: JSON.stringify({ avatar_key: storedKey }),
+    });
+    expect(patched.status).toBe(200);
+    await env.DB.prepare(
+      `INSERT INTO reviews(
+         course_id,teacher_id,category,overall,comment,status,
+         submitter_hash,author_user_id
+       ) VALUES(1,1,'general',5,'头像随存储值','approved','avatar-stored',?)`,
+    )
+      .bind(id)
+      .run();
+
+    const response = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/u/${formatPublicCode(public_code)}`,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json<{
+      avatar_key: number;
+      reviews: Array<{ comment: string; author_avatar_key: number }>;
+    }>();
+    expect(body.avatar_key).toBe(storedKey);
+    expect(body.avatar_key).not.toBe(defaultAvatarKey(public_code));
+    const authored = body.reviews.find(
+      (review) => review.comment === "头像随存储值",
+    );
+    expect(authored?.author_avatar_key).toBe(storedKey);
   });
 });

@@ -90,6 +90,67 @@ describe("course plan attributes", () => {
     });
   });
 
+  it("rejects an oversized course code instead of truncating it", async () => {
+    const auth = await adminHeaders();
+    const oversized = `${"9".repeat(101)}`;
+    const response = await SELF.fetch(
+      `${origin}/api/admin/import/course-plan-attributes`,
+      {
+        method: "POST",
+        headers: auth,
+        body: JSON.stringify({
+          items: [{ courseCode: oversized, credits: 1 }],
+        }),
+      },
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "第 1 条课号过长" });
+  });
+
+  it("matches a course code longer than 40 characters without slicing", async () => {
+    const stamp = String(Date.now());
+    const code = `${stamp}A`.padEnd(41, "A");
+    expect(code.length).toBeGreaterThan(40);
+    expect(code.length).toBeLessThanOrEqual(100);
+    await env.DB.prepare(
+      "INSERT INTO courses(code,name,category,department) VALUES(?,?,?,?)",
+    )
+      .bind(code, "超长课号课", "general", "")
+      .run();
+    const auth = await adminHeaders();
+    const apply = await SELF.fetch(
+      `${origin}/api/admin/import/course-plan-attributes`,
+      {
+        method: "POST",
+        headers: auth,
+        body: JSON.stringify({
+          items: [
+            {
+              courseCode: code,
+              credits: 3,
+              enrollmentCategory: "专业内选修课",
+            },
+          ],
+        }),
+      },
+    );
+    expect(apply.status).toBe(200);
+    expect(await apply.json()).toEqual({
+      received: 1,
+      updated: 1,
+      missing: [],
+    });
+    const stored = await env.DB.prepare(
+      "SELECT credits,enrollment_category FROM courses WHERE code=?",
+    )
+      .bind(code)
+      .first();
+    expect(stored).toEqual({
+      credits: 3,
+      enrollment_category: "专业内选修课",
+    });
+  });
+
   it("rejects empty payloads and does not create courses", async () => {
     const auth = await adminHeaders();
     const empty = await SELF.fetch(

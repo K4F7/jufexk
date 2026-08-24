@@ -23,6 +23,7 @@ export type CoursePlanAttributeResult = {
 };
 
 const MAX_ITEMS = 200;
+const COURSE_CODE_MAX = 100;
 
 const asText = (value: unknown, max: number) => {
   if (value === undefined) return undefined;
@@ -56,9 +57,16 @@ export function parseCoursePlanAttributeItems(
     if (!item || typeof item !== "object" || Array.isArray(item))
       throw new CoursePlanAttributeError(`第 ${index + 1} 条无效`);
     const row = item as Record<string, unknown>;
-    const courseCode = asText(row.courseCode, 40);
+    if (row.courseCode !== undefined && typeof row.courseCode !== "string")
+      throw new CoursePlanAttributeError("课程方案字段必须是文本");
+    const courseCode =
+      typeof row.courseCode === "string"
+        ? row.courseCode.normalize("NFC").trim()
+        : "";
     if (!courseCode)
       throw new CoursePlanAttributeError(`第 ${index + 1} 条缺少课号`);
+    if (courseCode.length > COURSE_CODE_MAX)
+      throw new CoursePlanAttributeError(`第 ${index + 1} 条课号过长`);
     if (seen.has(courseCode))
       throw new CoursePlanAttributeError(`课号重复：${courseCode}`);
     seen.add(courseCode);

@@ -1,11 +1,17 @@
 import { JWXT_IMPORT_HASH_PREFIX } from "./jwxt-schedule-text";
 
+export function isJwxtImportHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === "jwxt.jxufe.edu.cn" || host.endsWith(".jwxt.jxufe.edu.cn");
+}
+
 /** 在学生已打开的 jwxt 页运行：只回传课表行，不读 Cookie。 */
 export function jwxtImportBookmarkletSource(origin: string): string {
   const site = origin.replace(/\/$/, "");
   return `(function(){
   var origin=${JSON.stringify(site)};
-  if (!/jwxt\\.jxufe\\.edu\\.cn$/i.test(location.hostname)) {
+  var host=String(location.hostname||"").toLowerCase();
+  if (host!=="jwxt.jxufe.edu.cn" && !host.endsWith(".jwxt.jxufe.edu.cn")) {
     alert("请先打开本科教务（jwxt.jxufe.edu.cn）再点这个书签");
     return;
   }
@@ -46,10 +52,11 @@ export function jwxtImportBookmarkletSource(origin: string): string {
         var name=textOf(cells[ci]||{});
         var time=textOf(cells[ti]||{});
         if (!name||!time) continue;
-        if (/CASTGC|JSESSIONID|password|cookie/i.test(name+time)) continue;
+        if (/CASTGC|JSESSIONID|password|passwd|cookie/i.test(name+time)) continue;
+        var codeMatch=/^(\\d{8,12})\\s+(.+)$/.exec(name);
         rows.push({
-          courseName:name,
-          courseCode:"",
+          courseName: codeMatch?codeMatch[2]:name,
+          courseCode: codeMatch?codeMatch[1]:"",
           teacherName: ji>=0?textOf(cells[ji]||{}):"",
           weekText: wi>=0?textOf(cells[wi]||{}):"",
           timeText:time

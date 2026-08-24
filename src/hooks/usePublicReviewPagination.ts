@@ -2,6 +2,14 @@ import { useCallback, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { PublicReview, PublicReviewPage } from "../lib/types";
 
+export function mergePublicReviewPages(
+  existing: PublicReview[],
+  incoming: PublicReview[],
+): PublicReview[] {
+  const seen = new Set(existing.map((review) => review.id));
+  return [...existing, ...incoming.filter((review) => !seen.has(review.id))];
+}
+
 export function usePublicReviewPagination(
   subject: "courses" | "teachers",
   id: string | undefined,
@@ -43,7 +51,7 @@ export function usePublicReviewPagination(
         `/api/${subject}/${id}/reviews?${query}`,
       );
       const accumulated = {
-        items: [...reviewsRef.current, ...page.items],
+        items: mergePublicReviewPages(reviewsRef.current, page.items),
         nextCursor: page.nextCursor,
         total: page.total,
       };

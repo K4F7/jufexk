@@ -541,7 +541,7 @@ export function LoginPage() {
                 <div className="flex flex-col gap-4">
                   {qrPhase === "loading" || qrPhase === "idle" ? (
                     <>
-                      <Skeleton className="mx-auto h-48 w-48 rounded-lg" />
+                      <Skeleton className="mx-auto h-48 w-48" />
                       <LoginProgressAlert
                         title="正在获取二维码"
                         description="马上就好。"

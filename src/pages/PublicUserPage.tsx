@@ -22,6 +22,7 @@ export function PublicUserPage() {
   const { viewer, ready } = useViewer();
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
   const [error, setError] = useState("");
+  const [followError, setFollowError] = useState("");
   const [loading, setLoading] = useState(true);
   const [followPending, setFollowPending] = useState(false);
 
@@ -29,6 +30,7 @@ export function PublicUserPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
+    setFollowError("");
     api<PublicUserProfile>(`/api/u/${code}`)
       .then((data) => {
         if (!cancelled) setProfile(data);
@@ -55,6 +57,7 @@ export function PublicUserPage() {
       return;
     }
     setFollowPending(true);
+    setFollowError("");
     try {
       const path = `/api/u/${formatPublicCode(profile.public_code)}/follow`;
       const result = await api<{ viewer_followed: boolean }>(path, {
@@ -64,7 +67,7 @@ export function PublicUserPage() {
         current ? { ...current, viewer_followed: result.viewer_followed } : current,
       );
     } catch (reason) {
-      setError((reason as Error).message || "关注失败");
+      setFollowError((reason as Error).message || "关注失败");
     } finally {
       setFollowPending(false);
     }
@@ -126,7 +129,7 @@ export function PublicUserPage() {
             </Card.Description>
           </Card.Header>
           {profile.reserved || profile.viewer_is_self ? null : (
-            <Card.Footer className="justify-center">
+            <Card.Footer className="flex flex-col items-center gap-2">
               <Button
                 variant={profile.viewer_followed ? "secondary" : "primary"}
                 isPending={followPending}
@@ -134,6 +137,9 @@ export function PublicUserPage() {
               >
                 {profile.viewer_followed ? "取消关注" : "关注"}
               </Button>
+              {followError ? (
+                <DetailErrorAlert title="关注失败" message={followError} />
+              ) : null}
             </Card.Footer>
           )}
         </Card>

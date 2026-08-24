@@ -82,8 +82,11 @@ type PublicAuthorReviewRow = {
   created_at: string;
 };
 
-function mapPublicAuthorReviews(rows: PublicAuthorReviewRow[], publicCode: number) {
-  const avatarKey = defaultAvatarKey(publicCode);
+function mapPublicAuthorReviews(
+  rows: PublicAuthorReviewRow[],
+  publicCode: number,
+  avatarKey: number,
+) {
   return rows.map((row) => {
     const rawName = row.course_name || "";
     const grade = publicGrade(row.grade);
@@ -126,7 +129,11 @@ async function loadReservedProfile(db: D1Database) {
     viewer_is_self: false,
     note: "来自以前的学长学姐的评价",
     review_count: results.length,
-    reviews: mapPublicAuthorReviews(results, RESERVED_PUBLIC_CODE),
+    reviews: mapPublicAuthorReviews(
+      results,
+      RESERVED_PUBLIC_CODE,
+      defaultAvatarKey(RESERVED_PUBLIC_CODE),
+    ),
   };
 }
 
@@ -172,7 +179,7 @@ async function loadNumberedProfile(
     viewer_is_self: viewerIsSelf,
     note: null,
     review_count: results.length,
-    reviews: mapPublicAuthorReviews(results, publicCode),
+    reviews: mapPublicAuthorReviews(results, publicCode, avatarKey),
   };
 }
 
