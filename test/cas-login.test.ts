@@ -335,10 +335,8 @@ describe("jxufe cas helpers", () => {
   });
 });
 
-describe("jxufe cas login", () => {
-  // First SELF.fetch in this file pays worker pool startup; CI has hit the
-  // default 5s ceiling here while later origin checks finish in ~2–3s.
-  it("lets the Vite preview origin pass when wrangler rewrites Host and URL over HTTP", { timeout: 15_000 }, async () => {
+describe("jxufe cas login", { timeout: 15_000 }, () => {
+  it("lets the Vite preview origin pass when wrangler rewrites Host and URL over HTTP", async () => {
     const response = await SELF.fetch("http://courses.sein.moe/api/auth/cas", {
       method: "POST",
       headers: {
