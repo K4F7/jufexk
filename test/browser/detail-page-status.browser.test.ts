@@ -135,3 +135,53 @@ test("empty review stream still uses the frozen empty copy", async ({ page }) =>
   await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("course teacher card opens the teacher page", async ({ page }) => {
+  await page.route("**/api/courses/8", (route) =>
+    route.fulfill({
+      json: { course: COURSE, reviewCount: 0 },
+    }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/courses/8/reviews",
+    (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
+  );
+  await page.route("**/api/teachers/9", (route) =>
+    route.fulfill({
+      json: {
+        teacher: {
+          id: 9,
+          name: "测试教师",
+          department: "人文学院",
+          title: "讲师",
+          bio: "",
+          course_count: 1,
+        },
+        courses: [
+          {
+            id: 8,
+            code: "GEN0108",
+            name: "中国传统文化导论",
+            category: "general",
+            department: "人文学院",
+            rating: 4.2,
+            review_count: 3,
+          },
+        ],
+        reviews: [],
+        reviewCount: 3,
+        nextReviewCursor: null,
+      },
+    }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/teachers/9/reviews",
+    (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
+  );
+  await page.goto("/courses/8?teacher=9");
+  await page.getByRole("link", { name: "测试教师的教师主页" }).click();
+  await expect(page).toHaveURL(/\/teachers\/9$/);
+  await expect(page.getByRole("heading", { name: "测试教师" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "课程（共 1 门）" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /中国传统文化导论/ })).toBeVisible();
+});

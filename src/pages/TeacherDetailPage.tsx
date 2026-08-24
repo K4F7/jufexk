@@ -1,30 +1,25 @@
 /**
- * Teacher detail — single-page vertical IA (frozen, module 11).
+ * Teacher detail — icourse two-column IA.
  *
- * 1. 摘要 B: left identity (name / dept / course count / bio) · right review-count Surface
- * 2. 任课课程 — TeacherCourseTable (course-domain dense fold, per-relation rating)
- * 3. 评价 — PublicReviews unified text stream (counterpart=course)
+ * Left: 课程（共 N 门） stacked list + 评价文字流.
+ * Right: identity Card (avatar / name / department / course & review counts).
  *
- * DEV-only: ?module=teaching-reviews-feed replaces section 3 with #71 prototype.
+ * DEV-only: ?module=teaching-reviews-feed replaces the review section with #71 prototype.
  *
  * Back restores teacher-catalog URL state (drops prototype params if any).
- * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
+ * Issue #482 · docs/ui/foundations.md §详情体验.
  */
-import { Typography } from "@heroui/react";
+import { Card, Typography } from "@heroui/react";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import {
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
+import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import {
   DetailErrorAlert,
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
-import { DetailSummary } from "../components/DetailSummary";
 import { EmptyBox } from "../components/EmptyBox";
 import { PublicReviews } from "../components/PublicReviews";
+import { RouterAriaLink } from "../components/RouterAriaLink";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
@@ -61,54 +56,56 @@ type Detail = {
   nextReviewCursor: string | null;
 };
 
-function TeacherSummary({
+function TeacherIdentityCard({
   teacher,
   courseCount,
   reviewCount,
-  onBack,
 }: {
   teacher: Teacher;
   courseCount: number;
   reviewCount: number;
-  onBack: () => void;
 }) {
   return (
-    <DetailSummary
-      backLabel="返回教师目录"
-      onBack={onBack}
-      reviewCount={reviewCount}
-      ariaLabel="教师摘要"
-    >
-      <Typography
-        className="mb-2 mt-0 text-[calc(26/15*1rem)] font-bold leading-tight tracking-tight"
-        type="h1"
-      >
-        {teacher.name}
-      </Typography>
-      <dl className="m-0 grid gap-1.5 text-sm">
-        <div className="flex flex-wrap gap-x-2">
-          <dt className="shrink-0 text-muted">院系</dt>
-          <dd className="m-0 text-foreground">
-            {teacher.department || "院系未标注"}
-          </dd>
-        </div>
-        <div className="flex flex-wrap gap-x-2">
-          <dt className="shrink-0 text-muted">任课课程</dt>
-          <dd className="m-0 tabular text-foreground">{courseCount} 门</dd>
-        </div>
-      </dl>
-      {teacher.bio ? (
-        <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
-          {teacher.bio}
-        </p>
-      ) : null}
-    </DetailSummary>
+    <Card aria-label="教师资料">
+      <Card.Header className="items-center text-center">
+        <AnonymousAvatar
+          seed={teacher.id}
+          size="lg"
+          fallback={teacher.name.slice(0, 1)}
+        />
+        <Typography
+          className="m-0 text-[calc(18/15*1rem)] font-bold leading-tight"
+          type="h1"
+        >
+          {teacher.name}
+        </Typography>
+        <Card.Description>
+          {teacher.department || "院系未标注"}
+        </Card.Description>
+      </Card.Header>
+      <Card.Content>
+        <dl className="m-0 grid gap-1.5 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">任课课程</dt>
+            <dd className="m-0 tabular">{courseCount} 门</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">公开评价</dt>
+            <dd className="m-0 tabular">{reviewCount} 条</dd>
+          </div>
+        </dl>
+        {teacher.bio ? (
+          <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
+            {teacher.bio}
+          </p>
+        ) : null}
+      </Card.Content>
+    </Card>
   );
 }
 
 export function TeacherDetailPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const location = useLocation();
   const teachingFeedVariant = useTeachingReviewsFeedPrototypeVariant();
   const [data, setData] = useState<Detail | null>(null);
@@ -138,14 +135,14 @@ export function TeacherDetailPage() {
 
   if (error) {
     return (
-      <section className="mx-auto w-full max-w-[880px]">
+      <section className="mx-auto w-full max-w-[1360px]">
         <DetailErrorAlert title="教师资料加载失败" message={error} />
       </section>
     );
   }
   if (!data) {
     return (
-      <section className="mx-auto w-full max-w-[880px]">
+      <section className="mx-auto w-full max-w-[1360px]">
         <DetailPageSkeleton label="教师资料加载中…" kind="teacher" />
       </section>
     );
@@ -157,68 +154,80 @@ export function TeacherDetailPage() {
   const courseCount = t.course_count ?? courses.length;
 
   /** Restore catalog filters; drop prototype module/variant if present. */
-  const goBack = () => {
+  const catalogHref = (() => {
     const sp = new URLSearchParams(location.search);
     sp.delete("module");
     sp.delete("variant");
     const q = sp.toString();
-    navigate(q ? `/teachers?${q}` : "/teachers");
-  };
+    return q ? `/teachers?${q}` : "/teachers";
+  })();
 
   const comparingTeachingFeed =
     Boolean(teachingFeedVariant) && Boolean(TeachingReviewsFeedPrototypeLazy);
 
   return (
-    <section className="mx-auto w-full max-w-[880px]">
-      <TeacherSummary
-        teacher={t}
-        courseCount={courseCount}
-        reviewCount={data.reviewCount}
-        onBack={goBack}
-      />
+    <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="min-w-0">
+        <nav aria-label="面包屑" className="text-[calc(12/15*1rem)] text-muted">
+          <RouterAriaLink className="text-muted" to={catalogHref}>
+            教师目录
+          </RouterAriaLink>
+          <span className="mx-1.5">/</span>
+          {t.name}
+        </nav>
 
-      <section className="mb-6" aria-labelledby="teacher-courses-heading">
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <section className="mt-3 mb-6" aria-labelledby="teacher-courses-heading">
           <Typography
-            className="m-0 text-[calc(17/15*1rem)] font-bold leading-snug"
+            className="m-0 text-[calc(18/15*1rem)] font-bold leading-snug"
             id="teacher-courses-heading"
             type="h2"
           >
-            任课课程
+            课程（共 {courseCount} 门）
           </Typography>
-          {courses.length ? (
-            <span className="text-[calc(13/15*1rem)] text-muted">{courses.length} 门</span>
-          ) : null}
-        </div>
-        <TeacherCourseTable items={courses} />
-      </section>
+          <TeacherCourseTable items={courses} teacherId={t.id} />
+        </section>
 
-      {comparingTeachingFeed &&
-      teachingFeedVariant &&
-      TeachingReviewsFeedPrototypeLazy ? (
-        <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
-          <TeachingReviewsFeedPrototypeLazy
-            key={teachingFeedVariant}
-            variant={teachingFeedVariant}
-            model={{
-              counterpartMode: "course",
-              hostLabel: t.name,
-              liveReviews: reviews as unknown as Review[],
-              liveRatingCount: reviews.length,
-            }}
+        {comparingTeachingFeed &&
+        teachingFeedVariant &&
+        TeachingReviewsFeedPrototypeLazy ? (
+          <Suspense fallback={<EmptyBox role="status">加载任课评价原型…</EmptyBox>}>
+            <TeachingReviewsFeedPrototypeLazy
+              key={teachingFeedVariant}
+              variant={teachingFeedVariant}
+              model={{
+                counterpartMode: "course",
+                hostLabel: t.name,
+                liveReviews: reviews as unknown as Review[],
+                liveRatingCount: reviews.length,
+              }}
+            />
+          </Suspense>
+        ) : (
+          <PublicReviews
+            rows={reviews}
+            counterpart="course"
+            total={data.reviewCount}
+            hasMore={Boolean(reviewFeed.nextCursor)}
+            isLoadingMore={reviewFeed.isLoadingMore}
+            loadMoreError={reviewFeed.loadMoreError}
+            onLoadMore={reviewFeed.loadMore}
           />
-        </Suspense>
-      ) : (
-        <PublicReviews
-          rows={reviews}
-          counterpart="course"
-          total={data.reviewCount}
-          hasMore={Boolean(reviewFeed.nextCursor)}
-          isLoadingMore={reviewFeed.isLoadingMore}
-          loadMoreError={reviewFeed.loadMoreError}
-          onLoadMore={reviewFeed.loadMore}
+        )}
+      </div>
+
+      <aside className="space-y-3 self-start">
+        <TeacherIdentityCard
+          teacher={t}
+          courseCount={courseCount}
+          reviewCount={data.reviewCount}
         />
-      )}
-    </section>
+        <RouterAriaLink
+          className="block text-center text-[calc(12/15*1rem)] text-muted no-underline"
+          to={catalogHref}
+        >
+          ← 返回教师目录
+        </RouterAriaLink>
+      </aside>
+    </div>
   );
 }

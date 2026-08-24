@@ -570,17 +570,25 @@ export function CourseDetailPage() {
       <aside className="space-y-3 self-start">
         {selectedTeacher ? (
           <Card aria-label="任课教师">
-            <Card.Header className="items-center text-center">
-              <AnonymousAvatar
-                seed={selectedTeacher.id}
-                size="lg"
-                fallback={selectedTeacher.name.slice(0, 1)}
-              />
-              <Card.Title>{selectedTeacher.name}</Card.Title>
-              {selectedTeacher.department ? (
-                <Card.Description>{selectedTeacher.department}</Card.Description>
-              ) : null}
-            </Card.Header>
+            <RouterAriaLink
+              aria-label={`${selectedTeacher.name}的教师主页`}
+              className="block! w-full! rounded-none! no-underline hover:bg-transparent hover:no-underline!"
+              to={`/teachers/${selectedTeacher.id}`}
+            >
+              <Card.Header className="items-center text-center">
+                <AnonymousAvatar
+                  seed={selectedTeacher.id}
+                  size="lg"
+                  fallback={selectedTeacher.name.slice(0, 1)}
+                />
+                <Card.Title className="text-accent">
+                  {selectedTeacher.name}
+                </Card.Title>
+                {selectedTeacher.department ? (
+                  <Card.Description>{selectedTeacher.department}</Card.Description>
+                ) : null}
+              </Card.Header>
+            </RouterAriaLink>
           </Card>
         ) : null}
 

@@ -1,111 +1,82 @@
 /**
- * Courses taught by a teacher — dense fold aligned with CourseResultTable B.
- * Course-domain columns (not teacher-catalog isomorphic):
- *   课程 (name + category Chip · code) · 院系
- * Whole row + course name → course detail; real links (keyboard / new-tab safe).
- * Issue #62 · module 11 · docs/ui/foundations.md §详情体验.
+ * Courses taught by a teacher — icourse-style stacked list.
+ * Course name + code + stars / count; whole row → course×teacher detail.
+ * Issue #482 · docs/ui/foundations.md §详情体验.
  */
-import { Chip, Table } from "@heroui/react";
-import type { ReactNode } from "react";
-import { categoryLabel } from "../lib/labels";
+import { Separator } from "@heroui/react";
 import type { Course } from "../lib/types";
-import { RatingCell } from "./RatingCell";
 import { RouterAriaLink } from "./RouterAriaLink";
+import { Stars } from "./Stars";
 
 export type TeacherCourseTableProps = {
   items: Course[];
+  /** Selected teacher, so course links open the matching 课程×教师 page. */
+  teacherId?: number;
   /** Preserved query string when linking to course detail, e.g. location.search */
   search?: string;
   className?: string;
 };
 
-function CourseNameLink({
-  course,
-  search = "",
-  children,
-  className,
-}: {
-  course: Course;
-  search?: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <RouterAriaLink to={`/courses/${course.id}${search}`} className={className}>
-      {children}
-    </RouterAriaLink>
+function courseHref(courseId: number, teacherId?: number, search = "") {
+  const sp = new URLSearchParams(
+    search.startsWith("?") ? search.slice(1) : search,
   );
+  if (teacherId != null) sp.set("teacher", String(teacherId));
+  const q = sp.toString();
+  return `/courses/${courseId}${q ? `?${q}` : ""}`;
 }
 
 export function TeacherCourseTable({
   items,
+  teacherId,
   search = "",
   className,
 }: TeacherCourseTableProps) {
+  if (!items.length) {
+    return (
+      <div className="py-8 text-center text-muted" role="status">
+        暂无任课课程
+      </div>
+    );
+  }
+
   return (
-    <Table className={className ? `dense-table ${className}` : "dense-table"}>
-      <Table.ScrollContainer>
-        <Table.Content aria-label="任课课程" className="min-w-[440px]">
-          <Table.Header>
-            <Table.Column isRowHeader>课程</Table.Column>
-            <Table.Column>院系</Table.Column>
-            <Table.Column>评分 / 投稿</Table.Column>
-          </Table.Header>
-          <Table.Body
-            items={items}
-            /* Row hrefs embed the catalog query; dependencies keep them fresh
-             * under client-side row navigation. */
-            dependencies={[search]}
-            renderEmptyState={() => (
-              <div className="py-8 text-center text-muted" role="status">
-                暂无任课课程
-              </div>
-            )}
-          >
-            {(course) => (
-              <Table.Row
-                id={String(course.id)}
-                key={course.id}
-                href={`/courses/${course.id}${search}`}
-                className="cursor-pointer"
-              >
-                <Table.Cell>
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <CourseNameLink
-                        course={course}
-                        search={search}
-                        className="font-semibold no-underline"
-                      >
-                        {course.name}
-                      </CourseNameLink>
-                      <Chip size="sm" variant="soft" className="w-fit shrink-0">
-                        <Chip.Label>
-                          {categoryLabel(course.category)}
-                        </Chip.Label>
-                      </Chip>
-                    </div>
-                    <span className="tabular text-[calc(12/15*1rem)] text-muted">
-                      {course.code || "课号未标注"}
-                    </span>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  <span className="text-[calc(13/15*1rem)] text-muted">
-                    {course.department || "—"}
+    <div aria-label="任课课程" className={className} role="list">
+      {items.map((course, index) => {
+        const rating = course.rating ?? null;
+        const reviewCount = course.review_count ?? 0;
+        return (
+          <div key={course.id} role="listitem">
+            {index > 0 ? <Separator /> : null}
+            <RouterAriaLink
+              className="block! w-full! rounded-none! py-3 no-underline hover:bg-transparent hover:no-underline!"
+              to={courseHref(course.id, teacherId, search)}
+            >
+              <span className="block text-[1rem] font-medium text-accent">
+                {course.name}
+              </span>
+              <span className="mt-1 block text-[calc(13/15*1rem)] text-muted">
+                课程号：{course.code || "未标注"}
+              </span>
+              <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                <Stars rating={rating} className="text-[1rem]" />
+                {rating != null ? (
+                  <span className="tabular text-[1rem] font-semibold text-accent">
+                    {rating.toFixed(1)}
                   </span>
-                </Table.Cell>
-                <Table.Cell>
-                  <RatingCell
-                    rating={course.rating}
-                    reviewCount={course.review_count}
-                  />
-                </Table.Cell>
-              </Table.Row>
-            )}
-          </Table.Body>
-        </Table.Content>
-      </Table.ScrollContainer>
-    </Table>
+                ) : null}
+                <span className="text-[calc(12/15*1rem)] text-muted">
+                  {reviewCount > 0
+                    ? rating != null
+                      ? `（${reviewCount} 人评价）`
+                      : `${reviewCount} 条评价`
+                    : "暂无评价"}
+                </span>
+              </span>
+            </RouterAriaLink>
+          </div>
+        );
+      })}
+    </div>
   );
 }
