@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   encodeJwxtImportPayload,
   JWXT_IMPORT_HASH_PREFIX,
+  JWXT_PENDING_IMPORT_KEY,
 } from "../../src/lib/jwxt-schedule-text";
 import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
 
@@ -30,7 +31,11 @@ const relations = [
   },
 ];
 
-async function mockScheduleApi(page: Page, authenticated = true) {
+async function mockScheduleApi(
+  page: Page,
+  authenticated = true,
+  holdCourses?: Promise<void>,
+) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
@@ -65,6 +70,7 @@ async function mockScheduleApi(page: Page, authenticated = true) {
       });
     }
     if (url.pathname === "/api/courses") {
+      if (holdCourses) await holdCourses;
       return route.fulfill({
         json: {
           items: url.searchParams.get("q") ? relations : [],
@@ -246,4 +252,73 @@ test("guest hash import waits for login and does not write the plan", async ({
   await expect(page.getByText("已从本科教务导入")).toHaveCount(0);
   await expect(page.getByLabel("已选课程")).toHaveCount(0);
   await expect(page).not.toHaveURL(/jwxt-import/);
+});
+
+test("partial hash import still discloses course names are sent to the catalog", async ({
+  page,
+}) => {
+  await mockScheduleApi(page);
+  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
+    v: 1,
+    rows: [
+      {
+        courseName: "高等数学",
+        courseCode: "",
+        teacherName: "张三",
+        weekText: "",
+        timeText: "星期二 第3-4节",
+      },
+      {
+        courseName: "线性代数",
+        courseCode: "",
+        teacherName: "李四",
+        weekText: "",
+        timeText: "",
+      },
+    ],
+  })}`;
+  await page.goto(`/schedule#${hash}`);
+  const status = page.getByRole("status");
+  await expect(status).toContainText("另有 1 行没有可识别的上课时间");
+  await expect(status).toContainText("课程名会发到选课志用来匹配目录");
+  await expect(page.getByLabel("已选课程").getByRole("link", { name: "高等数学（张三）" })).toBeVisible();
+});
+
+test("hash import persists the plan if the user leaves during catalog lookup", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const holdCourses = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await mockScheduleApi(page, true, holdCourses);
+  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
+    v: 1,
+    rows: [
+      {
+        courseName: "高等数学",
+        courseCode: "",
+        teacherName: "张三",
+        weekText: "",
+        timeText: "星期二 第3-4节",
+      },
+    ],
+  })}`;
+  const coursesRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/courses" && Boolean(url.searchParams.get("q"));
+  });
+  await page.goto(`/schedule#${hash}`);
+  await coursesRequest;
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "课程" }).click();
+  await expect(page).toHaveURL(/\/courses/);
+  release();
+  await page.waitForFunction(
+    ([planKey, pendingKey]) => {
+      const plan = localStorage.getItem(planKey) ?? "";
+      const pending = sessionStorage.getItem(pendingKey);
+      return plan.includes("高等数学") && !pending;
+    },
+    [SCHEDULE_PLAN_STORAGE_KEY, JWXT_PENDING_IMPORT_KEY],
+  );
 });

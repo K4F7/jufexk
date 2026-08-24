@@ -27,6 +27,7 @@ import {
   type RelationSignalCounts,
   type RelationSignalViewer,
 } from "./relation-signals";
+import { extraMergedIndexes, mergedNameRealWindow } from "./lib/catalog-merge-page";
 import { publicCourseCanonicalJoin } from "./public-list-precompute";
 import { publicReviewBindingSql } from "./review-summary";
 
@@ -338,14 +339,103 @@ export async function listCourseRelations(
         )
       : [];
   const mergeName = virtualItems.length > 0 && sort === "name";
-  const paged = !mergeName;
+  const displayNameSql = `COALESCE(${publicBrowseFamilySql("c")}, c.name)`;
+  const mergeNameOrder = `${displayNameSql},c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)`;
+  const queryOrderBy = mergeName ? mergeNameOrder : orderBy;
+  const start = (page - 1) * size;
+  let extrasAll = virtualItems;
+  let pageExtras: RelationRow[] = [];
+  let realOffset = start;
+  let realLimit = size;
 
-  const { results } = await c.env.DB.prepare(
-    `SELECT c.id course_id,c.code,c.name,c.category,c.department,
+  const relationFrom = `FROM courses c
+      ${publicCourseCanonicalJoin}
+      LEFT JOIN course_teachers ct ON ct.course_id=c.id
+      LEFT JOIN teachers t ON t.id=ct.teacher_id`;
+
+  if (mergeName) {
+    if (virtualItems.length) {
+      const pairSql = virtualItems
+        .map(() => "(c.id=? AND t.id=?)")
+        .join(" OR ");
+      const found = await c.env.DB.prepare(
+        `SELECT c.id course_id, t.id teacher_id
+         ${relationFrom}
+         WHERE ${where} AND (${pairSql})`,
+      )
+        .bind(
+          ...args,
+          ...virtualItems.flatMap((item) => [item.course_id, item.teacher_id]),
+        )
+        .all();
+      const existing = new Set(
+        (
+          (found.results ?? []) as Array<{
+            course_id: number;
+            teacher_id: number | null;
+          }>
+        ).map((row) => `${row.course_id}:${row.teacher_id}`),
+      );
+      extrasAll = virtualItems.filter(
+        (item) => !existing.has(`${item.course_id}:${item.teacher_id}`),
+      );
+    }
+    extrasAll = [...extrasAll].sort(byNameCodeTeacher);
+    const realBefore: number[] = [];
+    for (const extra of extrasAll) {
+      const teacher = extra.teacher_name ?? "";
+      const teacherId = extra.teacher_id ?? 0;
+      const row = await c.env.DB.prepare(
+        `SELECT COUNT(*) n
+         ${relationFrom}
+         WHERE ${where}
+           AND (
+             ${displayNameSql} < ?
+             OR (${displayNameSql} = ? AND c.code < ?)
+             OR (${displayNameSql} = ? AND c.code = ? AND c.id < ?)
+             OR (${displayNameSql} = ? AND c.code = ? AND c.id = ? AND COALESCE(t.name,'') < ?)
+             OR (${displayNameSql} = ? AND c.code = ? AND c.id = ? AND COALESCE(t.name,'') = ? AND COALESCE(t.id,0) < ?)
+           )`,
+      )
+        .bind(
+          ...args,
+          extra.name,
+          extra.name,
+          extra.code,
+          extra.name,
+          extra.code,
+          extra.course_id,
+          extra.name,
+          extra.code,
+          extra.course_id,
+          teacher,
+          extra.name,
+          extra.code,
+          extra.course_id,
+          teacher,
+          teacherId,
+        )
+        .first();
+      realBefore.push(Number((row as { n?: number } | null)?.n) || 0);
+    }
+    const extraIndexes = extraMergedIndexes(realBefore);
+    const window = mergedNameRealWindow(start, size, extraIndexes);
+    realOffset = window.offset;
+    realLimit = window.limit;
+    pageExtras = extrasAll.filter((_, index) =>
+      window.extraIndexesOnPage.includes(extraIndexes[index]),
+    );
+  }
+
+  const { results } =
+    realLimit === 0
+      ? { results: [] }
+      : await c.env.DB.prepare(
+          `SELECT c.id course_id,c.code,c.name,c.category,c.department,
        t.id teacher_id,t.name teacher_name,
        rel_rating.rating,
        COALESCE(rel_counts.review_count,0) review_count
-       ${paged ? ", COUNT(*) OVER() window_total" : ""}
+       , COUNT(*) OVER() window_total
       FROM courses c
       ${publicCourseCanonicalJoin}
       LEFT JOIN course_teachers ct ON ct.course_id=c.id
@@ -359,40 +449,39 @@ export async function listCourseRelations(
         GROUP BY r.course_id,r.teacher_id
       ) rel_rating ON rel_rating.course_id=c.id AND rel_rating.teacher_id=t.id
      WHERE ${where}
-     ORDER BY ${orderBy}
-     ${paged ? "LIMIT ? OFFSET ?" : ""}`,
-  )
-    .bind(
-      ...args,
-      ...(sort === "name" || sort === "rating" ? [] : searchRankArgs),
-      ...(paged ? [size, (page - 1) * size] : []),
-    )
-    .all();
+     ORDER BY ${queryOrderBy}
+     LIMIT ? OFFSET ?`,
+        )
+          .bind(
+            ...args,
+            ...(sort === "name" || sort === "rating" ? [] : searchRankArgs),
+            realLimit,
+            realOffset,
+          )
+          .all();
 
   const rows = results as Array<RelationRow & WindowedRow>;
   const listed = rows.map((row) => withPublicNames(stripWindowTotal(row)));
-  const extras = virtualItems.filter(
-    (item) =>
-      !listed.some(
-        (row) =>
-          row.course_id === item.course_id && row.teacher_id === item.teacher_id,
-      ),
-  );
-  const realTotal = mergeName
-    ? listed.length
-    : rows.length
-      ? Number(rows[0].window_total) || 0
-      : page > 1
-        ? await relationCount()
-        : 0;
-  const totalCount = realTotal + extras.length;
+  const extras = mergeName
+    ? pageExtras
+    : virtualItems.filter(
+        (item) =>
+          !listed.some(
+            (row) =>
+              row.course_id === item.course_id && row.teacher_id === item.teacher_id,
+          ),
+      );
+  const extrasTotal = mergeName ? extrasAll.length : extras.length;
+  const realTotal = rows.length
+    ? Number(rows[0].window_total) || 0
+    : page > 1 || mergeName
+      ? await relationCount()
+      : 0;
+  const totalCount = realTotal + extrasTotal;
   const pages = Math.max(1, Math.ceil(totalCount / size) || 1);
-  const start = (page - 1) * size;
   let items: RelationRow[];
   if (mergeName) {
-    items = [...listed, ...extras]
-      .sort(byNameCodeTeacher)
-      .slice(start, start + size);
+    items = [...listed, ...pageExtras].sort(byNameCodeTeacher);
   } else if (extras.length) {
     items =
       start >= realTotal
