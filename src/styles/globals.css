@@ -135,63 +135,31 @@ a:focus-visible {
 }
 
 /*
- * 补充说明富文本（issue #400）：编辑器外框沿用 field 变量，
- * 内容与展示侧共用同一份白名单排版（.review-note-html）。
+ * 补充说明展示（历史 comment_format=html 行）：白名单标签排版。
+ * 投稿页已改回纯文本 TextArea，不再带编辑器皮肤。
  */
-.review-note-editor {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--field-radius);
-  background: var(--field-background);
-  box-shadow: var(--field-shadow);
-}
-
-.review-note-editor:focus-within {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-
-.review-note-editor[data-invalid] {
-  border-color: var(--danger);
-}
-
-.review-note-editable {
-  padding: 0.55rem 0.7rem;
-  min-height: 8rem;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  outline: none;
-}
-
-.review-note-editable p,
 .review-note-html p {
   margin: 0 0 0.5em;
 }
 
-.review-note-editable ul,
-.review-note-editable ol,
 .review-note-html ul,
 .review-note-html ol {
   margin: 0 0 0.5em;
   padding-left: 1.4em;
 }
 
-.review-note-editable ul,
 .review-note-html ul {
   list-style: disc;
 }
 
-.review-note-editable ol,
 .review-note-html ol {
   list-style: decimal;
 }
 
-.review-note-editable li > p,
 .review-note-html li > p {
   margin: 0;
 }
 
-.review-note-editable blockquote,
 .review-note-html blockquote {
   margin: 0 0 0.5em;
   padding-left: 0.8em;
@@ -199,14 +167,12 @@ a:focus-visible {
   color: var(--muted);
 }
 
-.review-note-editable a,
 .review-note-html a {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.review-note-editable > :last-child,
 .review-note-html > :last-child {
   margin-bottom: 0;
 }

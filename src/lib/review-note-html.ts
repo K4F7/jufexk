@@ -6,7 +6,7 @@
  * 白名单外的标签或属性。
  */
 
-/** 允许保留的标签（Tiptap 最小子集的默认输出）。 */
+/** 允许保留的标签（历史富文本行与投稿转义后的段落子集）。 */
 export const REVIEW_NOTE_ALLOWED_TAGS = [
   "p",
   "br",
@@ -79,6 +79,20 @@ export function decodeEntities(value: string): string {
 const escapeText = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const escapeAttr = (value: string) => escapeText(value).replace(/"/g, "&quot;");
+
+/**
+ * 投稿页只收纯文本。接口与公开展示仍走既有白名单 HTML 消毒路径，
+ * 因此把换行收成段落、把尖括号转义后再提交。
+ */
+export function plainTextToReviewNoteHtml(text: string): string {
+  if (!text.trim()) return "";
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => `<p>${escapeText(line)}</p>`)
+    .join("");
+}
 
 /** a[href] 只允许 http/https/mailto 与相对地址，其余协议丢弃该属性。 */
 function safeHref(raw: string): string | null {
