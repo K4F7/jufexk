@@ -3,9 +3,9 @@ import { TIER3_QUESTIONS, V3_QUESTIONS } from "../review-score-fixtures";
 
 /**
  * 写评价（Issue #402 + #400 + #447 + #371）：入口只从课程页「写点评」；表单对齐 icourse ——
- * 学期 Select（必填）、v3 五道三档（四维 + 考勤松紧，中文档位文案）、1–5 本次推荐度、必填一句话总结
- * （headline）、Tiptap 详细评价（三行提示占位）、选填成绩（grade）、匿名发布。
- * mooc 课藏考勤题；发布成功回到该 课程×教师 的详情页，详情页展示 headline 与成绩。
+ * 学期 Select（必填，默认最近学期）、v3 五道三档（四维 + 考勤松紧，中文档位文案）、
+ * 1–5 星级本次推荐度、Tiptap 详细评价（无工具栏/占位/说明）、选填成绩（grade）、实名提交。
+ * mooc 课藏考勤题；发布成功回到该 课程×教师 的详情页。一句话总结字段已下线。
  *
  * 三档题面与必填详细评价的行为断言承接 #374；编辑器覆盖承接 #400。
  */
@@ -205,8 +205,11 @@ async function pickTerm(page: Page) {
   await page.getByRole("option").first().click();
 }
 
-async function fillHeadline(page: Page, text: string) {
-  await page.getByRole("textbox", { name: "一句话总结本课" }).fill(text);
+async function pickOverall(page: Page, value: string) {
+  await page
+    .getByRole("radiogroup", { name: "本次推荐度" })
+    .getByRole("radio", { name: `${value} 星` })
+    .click();
 }
 
 async function answerTier3AndOverall(
@@ -218,7 +221,7 @@ async function answerTier3AndOverall(
   await pickScore(page, "给分好坏", "一般");
   await pickScore(page, "收获多少", "没有");
   await pickScore(page, "考勤松紧", "一般");
-  await pickScore(page, "本次推荐度", overall);
+  await pickOverall(page, overall);
 }
 
 /** 所有课都应看到的公共核四道三档题（中文档位，#374）。 */
@@ -253,6 +256,11 @@ async function expectTier3Questions(page: Page) {
 
   await expect(page.getByRole("radiogroup", { name: "本次推荐度" })).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "点名频率" })).toHaveCount(0);
+  await expect(page.getByText("简单 / 中等 / 困难")).toHaveCount(0);
+  await expect(page.getByText("不多 / 中等 / 超多")).toHaveCount(0);
+  await expect(page.getByText("超好 / 一般 / 杀手")).toHaveCount(0);
+  await expect(page.getByText("很多 / 一般 / 没有")).toHaveCount(0);
+  await expect(page.getByText("1 到 5，分数越高表示越推荐")).toHaveCount(0);
 }
 
 /** v3 线下课的第五道三档题：考勤松紧（宽松 / 一般 / 严苛，#371 锁定文案）。 */
@@ -268,6 +276,7 @@ async function expectAttendanceQuestion(page: Page) {
   await expect(
     attendance.getByRole("radio", { name: "严苛", exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("宽松 / 一般 / 严苛")).toHaveCount(0);
 }
 
 /** 线下课（含未选课时的公共核预览）：五道三档题，无「仅线下适用」提示。 */
@@ -320,7 +329,9 @@ test("gate comes first and the icourse-aligned form appears after entry", async 
   const start = page.getByRole("button", { name: "开始填写" });
   await expect(start).toBeVisible();
   await expect(start).toBeEnabled();
-  await expect(page.getByText(/评价必须绑定已有任课关系/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "写评价" })).toBeVisible();
+  await expect(page.getByText(/评价必须绑定已有任课关系/)).toHaveCount(0);
+  await expect(page.getByText("人机验证已完成。")).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "课程" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "发布" })).toHaveCount(0);
 
@@ -331,26 +342,34 @@ test("gate comes first and the icourse-aligned form appears after entry", async 
   const teacherSelect = page.getByRole("button", { name: /任课教师/ });
   await expect(teacherSelect).toBeVisible();
   await expect(teacherSelect).toBeDisabled();
-  // 学期 Select 在教师之后，必填并带占位文案。
+  await expect(teacherSelect).toContainText("请选择");
+  await expect(page.getByText("Select an item")).toHaveCount(0);
+  // 学期 Select 在教师之后，默认最近学期。
   const termSelect = page.getByRole("button", { name: /学期/ });
   await expect(termSelect).toBeVisible();
-  await expect(termSelect).toContainText("请选择学期");
+  await expect(termSelect).toContainText(/\d{4}[春秋]/);
+  await expect(
+    page.getByText("如果不记得了，可以随便选一个 :)"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("可以搜索课名，老师，课号，选择对应的课"),
+  ).toBeVisible();
+  await expect(page.getByText("选择对应的老师")).toBeVisible();
   // v3 五道三档（中文档位）+ 本次推荐度。
   await expectOfflineQuestions(page);
-  // 一句话总结（必填）在推荐度之后、详细评价之前。
   await expect(
     page.getByRole("textbox", { name: "一句话总结本课" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(noteEditor(page)).toBeVisible();
-  // 详细评价空态展示三行提示占位（仅装饰，不提交）。
-  await expect(
-    noteEditor(page).locator("p.is-editor-empty").first(),
-  ).toHaveAttribute("data-placeholder", "课程听感:\n作业/任务量:\n关于考试:");
-  await expect(page.getByRole("button", { name: "加粗" })).toBeVisible();
+  await expect(noteEditor(page).locator("[data-placeholder]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "加粗" })).toHaveCount(0);
+  await expect(page.getByText("已通过人机验证")).toHaveCount(0);
   // 选填成绩在详细评价之后。
   await expect(page.getByRole("textbox", { name: "你的成绩" })).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: "匿名发布" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "实名提交" })).not.toBeChecked();
+  await expect(page.getByText("对外展示为实名")).toBeVisible();
   await expect(page.getByRole("button", { name: "发布" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "取消" })).toHaveCount(0);
 
   await chooseCourse(page, "文化", "中国传统文化导论");
   await expect(teacherSelect).toBeEnabled();
@@ -390,7 +409,7 @@ test("three-tier options show Chinese labels and submit the full payload", async
   await pickScore(page, "课程难度", "简单");
   await pickScore(page, "作业多少", "中等");
   await pickScore(page, "给分好坏", "超好");
-  await pickScore(page, "本次推荐度", "5");
+  await pickOverall(page, "5");
   await fillComment(page, LONG_COMMENT);
   await page.getByRole("button", { name: "发布" }).click();
   await expect(page.getByText("请选择收获多少")).toBeVisible();
@@ -403,17 +422,8 @@ test("three-tier options show Chinese labels and submit the full payload", async
   await expect(page.getByText("请选择考勤松紧")).toBeVisible();
   expect(posted).toHaveLength(0);
 
-  // 答完五题但缺一句话总结：被拦在 headline（#447，后端必填）。
   await pickScore(page, "考勤松紧", "宽松");
   await expect(page.getByText("请选择考勤松紧")).toHaveCount(0);
-  await page.getByRole("button", { name: "发布" }).click();
-  await expect(page.getByText("请填写一句话总结本课")).toBeVisible();
-  expect(posted).toHaveLength(0);
-
-  await fillHeadline(page, "条理清楚，跟着走基本稳");
-  // 原生校验在失焦时重验：填好后错误提示消失。
-  await page.getByRole("textbox", { name: "一句话总结本课" }).blur();
-  await expect(page.getByText("请填写一句话总结本课")).toHaveCount(0);
   await page.getByRole("button", { name: "发布" }).click();
 
   // 发布成功：回到该 课程×教师 的详情页并展示提交成功条。
@@ -425,8 +435,9 @@ test("three-tier options show Chinese labels and submit the full payload", async
     teacherId: 9,
     overall: 5,
     scores: { difficulty: 1, homework: 2, grading: 1, gain: 1, attendance: 1 },
-    headline: "条理清楚，跟着走基本稳",
     comment: `<p>${LONG_COMMENT}</p>`,
+    headline: LONG_COMMENT,
+    anonymous: true,
   });
   // 成绩选填：未填时提交空串，服务端存 NULL。
   expect(posted[0].grade).toBe("");
@@ -436,11 +447,7 @@ test("three-tier options show Chinese labels and submit the full payload", async
   expect(posted[0].scores).not.toHaveProperty("teaching");
   expect(posted[0].scores).not.toHaveProperty("workload");
 
-  // 详情页：headline 加粗行在正文上方；未填成绩不展示成绩行。
   const item = page.getByRole("list", { name: "评价列表" }).getByRole("listitem").first();
-  await expect(
-    item.locator("p.font-semibold", { hasText: "条理清楚，跟着走基本稳" }),
-  ).toBeVisible();
   await expect(item.getByText(LONG_COMMENT)).toBeVisible();
   await expect(item.getByText(/成绩/)).toHaveCount(0);
 });
@@ -457,11 +464,10 @@ test("short comment is blocked before submit", async ({ page }) => {
   await pickScore(page, "给分好坏", "超好");
   await pickScore(page, "收获多少", "很多");
   await pickScore(page, "考勤松紧", "严苛");
-  await pickScore(page, "本次推荐度", "4");
-  await fillHeadline(page, "短评拦截用例");
+  await pickOverall(page, "4");
   await fillComment(page, "太短");
   await page.getByRole("button", { name: "发布" }).click();
-  await expect(page.getByText("请填写至少 10 字详细评价")).toBeVisible();
+  await expect(page.getByText("字数不够")).toBeVisible();
   expect(posted).toHaveLength(0);
 });
 
@@ -477,11 +483,10 @@ test("a note shorter than 10 chars after trim blocks submit", async ({
   await pickTerm(page);
 
   await answerTier3AndOverall(page, "3");
-  await fillHeadline(page, "去空白后不足十字用例");
   // 去掉首尾空白后只有 9 字，达不到必填下限。
   await fillComment(page, "  123456789  ");
   await page.getByRole("button", { name: "发布" }).click();
-  await expect(page.getByText("请填写至少 10 字详细评价")).toBeVisible();
+  await expect(page.getByText("字数不够")).toBeVisible();
   expect(posted).toHaveLength(0);
 
   await fillComment(page, VALID_NOTE);
@@ -514,8 +519,7 @@ test("mooc course hides attendance behind the offline-only hint", async ({
   await pickScore(page, "作业多少", "超多");
   await pickScore(page, "给分好坏", "一般");
   await pickScore(page, "收获多少", "一般");
-  await pickScore(page, "本次推荐度", "4");
-  await fillHeadline(page, "网课省心，自己安排节奏");
+  await pickOverall(page, "4");
   await fillComment(page, LONG_COMMENT);
   await page.getByRole("button", { name: "发布" }).click();
   await expect(page).toHaveURL(/\/courses\/21\?teacher=22/);
@@ -525,7 +529,7 @@ test("mooc course hides attendance behind the offline-only hint", async ({
     teacherId: 22,
     overall: 4,
     scores: { difficulty: 2, homework: 3, grading: 2, gain: 2 },
-    headline: "网课省心，自己安排节奏",
+    headline: LONG_COMMENT,
   });
   expect(posted[0].scores).not.toHaveProperty("attendance");
 });
@@ -545,7 +549,7 @@ test("pe course shows the same five three-tier questions as major", async ({
   expect(posted).toHaveLength(0);
 });
 
-test("toolbar writes bold and bullet list into the submitted note", async ({
+test("typed note is submitted without a formatting toolbar", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
@@ -555,31 +559,18 @@ test("toolbar writes bold and bullet list into the submitted note", async ({
   await pickTeacher(page, "测试教师");
   await pickTerm(page);
   await answerTier3AndOverall(page, "5");
-  await fillHeadline(page, "给分宽松，值得推荐");
 
   const editor = noteEditor(page);
   await editor.click();
   await editor.fill("这门课给分宽松，值得推荐");
-  // 输入后空态占位消失。
-  await expect(editor.locator("p.is-editor-empty")).toHaveCount(0);
-  await page.keyboard.press("Control+A");
-  await page.getByRole("button", { name: "加粗" }).click();
-  await expect(page.getByRole("button", { name: "加粗" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await page.getByRole("button", { name: "无序列表" }).click();
-  await expect(editor.locator("ul li strong")).toHaveText(
-    "这门课给分宽松，值得推荐",
-  );
+  await expect(page.getByRole("button", { name: "加粗" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "无序列表" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "发布" }).click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   expect(posted).toHaveLength(1);
-  // Tiptap 默认输出在列表后带一个尾随空段（trailingNode）；占位提示不进提交内容。
-  expect(posted[0].comment).toBe(
-    "<ul><li><p><strong>这门课给分宽松，值得推荐</strong></p></li></ul><p></p>",
-  );
+  expect(posted[0].comment).toBe("<p>这门课给分宽松，值得推荐</p>");
+  expect(posted[0].headline).toBe("这门课给分宽松，值得推荐");
 });
 
 // #447：选填成绩随提交进入载荷，并在课程详情条目元信息行展示。
@@ -593,7 +584,6 @@ test("optional grade is submitted and shown on the course detail", async ({
   await pickTeacher(page, "测试教师");
   await pickTerm(page);
   await answerTier3AndOverall(page, "4");
-  await fillHeadline(page, "平时分给足，期末不难");
   await fillComment(page, VALID_NOTE);
   await page.getByRole("textbox", { name: "你的成绩" }).fill("A-");
   await page.getByRole("button", { name: "发布" }).click();
@@ -601,16 +591,14 @@ test("optional grade is submitted and shown on the course detail", async ({
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   expect(posted).toHaveLength(1);
   expect(posted[0]).toMatchObject({
-    headline: "平时分给足，期末不难",
     grade: "A-",
+    headline: VALID_NOTE,
   });
 
   const item = page
     .getByRole("list", { name: "评价列表" })
     .getByRole("listitem")
     .first();
-  await expect(
-    item.locator("p.font-semibold", { hasText: "平时分给足，期末不难" }),
-  ).toBeVisible();
+  await expect(item.getByText(VALID_NOTE)).toBeVisible();
   await expect(item.getByText("成绩 A-", { exact: true })).toBeVisible();
 });

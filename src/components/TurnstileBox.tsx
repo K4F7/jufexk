@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { loadTurnstileScript } from "../lib/turnstile";
 
 export function TurnstileBox({
@@ -8,17 +8,15 @@ export function TurnstileBox({
   collapsed = false,
 }: {
   siteKey: string;
-  onReadyChange: (ready: boolean, message: string) => void;
+  onReadyChange: (ready: boolean) => void;
   widgetRef: React.MutableRefObject<string | number | null>;
   /**
    * Hide the widget iframe but keep it mounted so `refresh-expired: auto`
-   * keeps renewing the token; only the status line stays visible.
+   * keeps renewing the token.
    */
   collapsed?: boolean;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState("人机验证加载中，请稍候…");
-  const [solved, setSolved] = useState(false);
 
   useEffect(() => {
     if (!siteKey || !elRef.current) return;
@@ -37,27 +35,19 @@ export function TurnstileBox({
           action: "turnstile-spin-v2",
           "refresh-expired": "auto",
           callback: () => {
-            setSolved(true);
-            setStatus("人机验证已完成。");
-            onReadyChange(true, "人机验证已完成。");
+            onReadyChange(true);
           },
           "expired-callback": () => {
-            setSolved(false);
-            setStatus("验证已过期，正在自动刷新…");
-            onReadyChange(false, "验证已过期，正在自动刷新…");
+            onReadyChange(false);
           },
           "error-callback": () => {
-            setSolved(false);
-            setStatus("人机验证失败，请检查网络后重试。");
-            onReadyChange(false, "人机验证失败，请检查网络后重试。");
+            onReadyChange(false);
             return true;
           },
         });
-        setStatus("请完成人机验证。");
-        onReadyChange(false, "请完成人机验证。");
+        onReadyChange(false);
       } catch {
-        setStatus("人机验证加载失败，请刷新页面重试。");
-        onReadyChange(false, "人机验证加载失败，请刷新页面重试。");
+        onReadyChange(false);
       }
     })();
     return () => {
@@ -70,11 +60,8 @@ export function TurnstileBox({
   }, [siteKey, onReadyChange, widgetRef]);
 
   return (
-    <div className="space-y-1">
+    <div>
       <div ref={elRef} className={collapsed ? "hidden" : undefined} />
-      <p className="m-0 text-[calc(13/15*1rem)] text-muted">
-        {collapsed ? (solved ? "已通过人机验证" : "人机验证处理中…") : status}
-      </p>
     </div>
   );
 }
