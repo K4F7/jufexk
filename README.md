@@ -1,4 +1,4 @@
-# 选课志（jufexk）
+# 江财非官方课评（jufexk）
 
 <p align="center">
   <img src="public/icon-512.png" width="128" height="128" alt="非官方课评@JUFE">
