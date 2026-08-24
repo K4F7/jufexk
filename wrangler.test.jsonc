@@ -16,17 +16,6 @@
     "producers": [
       { "binding": "AI_SUMMARY_QUEUE", "queue": "jufexk-ai-summary-test" },
     ],
-    "consumers": [
-      {
-        "queue": "jufexk-ai-summary-test",
-        "max_batch_size": 1,
-        "max_batch_timeout": 1,
-        "max_retries": 3,
-        "retry_delay": 30,
-        "dead_letter_queue": "jufexk-ai-summary-test-dlq",
-        "max_concurrency": 2,
-      },
-    ],
   },
   "vars": {
     "SITE_NAME": "非官方课评@JUFE",
