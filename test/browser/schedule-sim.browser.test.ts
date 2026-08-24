@@ -199,10 +199,10 @@ test("guest can see courses but must log in to add or import", async ({
   );
   await page.goto("/schedule");
 
-  await expect(page.getByRole("link", { name: "去登录" })).toHaveAttribute(
-    "href",
-    "/login?from=%2Fschedule",
-  );
+  await expect(page.getByText("提前处理掉早八刺客")).toBeVisible();
+  await expect(page.getByText("查看课表不用登录")).toHaveCount(0);
+  await expect(page.getByText("输入课程或教师名后回车，从公开目录加入。")).toHaveCount(0);
+  await expect(page.getByText("常用作息，仅供模拟")).toHaveCount(0);
   await expect(
     page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
   ).toBeVisible();
@@ -213,11 +213,14 @@ test("guest can see courses but must log in to add or import", async ({
   const results = page.getByRole("list", { name: "搜索结果" });
   await expect(results.getByText("线性代数")).toBeVisible();
   await results.getByRole("button", { name: "加入课表" }).click();
-  await expect(page.getByText("加入、排上或导入需要先登录。")).toBeVisible();
   await expect(page.getByLabel("已选课程").getByText("线性代数")).toHaveCount(0);
 
   await page.getByRole("button", { name: "从本科教务导入" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const loginDialog = page.getByRole("dialog");
+  await expect(loginDialog).toContainText("导入需要先登录");
+  await expect(page.getByRole("link", { name: "打开本科教务" })).toHaveCount(0);
+  await loginDialog.getByRole("button", { name: "去登录" }).click();
+  await expect(page).toHaveURL(/\/login\?from=%2Fschedule/);
 });
 
 test("guest hash import waits for login and does not write the plan", async ({
@@ -237,7 +240,7 @@ test("guest hash import waits for login and does not write the plan", async ({
     ],
   })}`;
   await page.goto(`/schedule#${hash}`);
-  await expect(page.getByRole("link", { name: "去登录" })).toBeVisible();
+  await expect(page.getByText("查看课表不用登录")).toHaveCount(0);
   await expect(page.getByText("已从本科教务导入")).toHaveCount(0);
   await expect(page.getByLabel("已选课程")).toHaveCount(0);
   await expect(page).not.toHaveURL(/jwxt-import/);

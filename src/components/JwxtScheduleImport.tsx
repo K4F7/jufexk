@@ -1,5 +1,6 @@
-import { Button, Label, Modal, TextArea, TextField, buttonVariants } from "@heroui/react";
+import { AlertDialog, Button, Label, Modal, TextArea, TextField, buttonVariants } from "@heroui/react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { jwxtImportBookmarkletHref } from "../lib/jwxt-import-bookmarklet";
 import {
   EHALL_URL,
@@ -10,13 +11,14 @@ import {
 
 export function JwxtScheduleImport({
   canEdit,
-  onNeedLogin,
+  loginHref,
   onImport,
 }: {
   canEdit: boolean;
-  onNeedLogin: () => void;
+  loginHref: string;
   onImport: (rows: JwxtImportRow[]) => void;
 }) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [paste, setPaste] = useState("");
   const [pasteError, setPasteError] = useState("");
@@ -24,6 +26,37 @@ export function JwxtScheduleImport({
     () => jwxtImportBookmarkletHref(window.location.origin),
     [],
   );
+
+  if (!canEdit) {
+    return (
+      <AlertDialog>
+        <Button size="sm" variant="secondary">
+          从本科教务导入
+        </Button>
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container>
+            <AlertDialog.Dialog className="sm:max-w-[400px]">
+              <AlertDialog.CloseTrigger />
+              <AlertDialog.Header>
+                <AlertDialog.Heading>导入需要先登录</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                <p>从本科教务导入课表前，请先登录选课志。</p>
+              </AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button slot="close" variant="tertiary">
+                  取消
+                </Button>
+                <Button variant="primary" onPress={() => navigate(loginHref)}>
+                  去登录
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
+    );
+  }
 
   function importPasted() {
     const rows = extractJwxtImportRowsFromText(paste);
@@ -38,17 +71,7 @@ export function JwxtScheduleImport({
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="secondary"
-        onPress={() => {
-          if (!canEdit) {
-            onNeedLogin();
-            return;
-          }
-          setOpen(true);
-        }}
-      >
+      <Button size="sm" variant="secondary" onPress={() => setOpen(true)}>
         从本科教务导入
       </Button>
       <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>

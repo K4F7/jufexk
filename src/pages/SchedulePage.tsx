@@ -94,14 +94,12 @@ function PeriodSelect({
 function StagedCourseCard({
   course,
   canEdit,
-  onNeedLogin,
   onAddSlot,
   onRemoveSlot,
   onRemove,
 }: {
   course: StagedCourse;
   canEdit: boolean;
-  onNeedLogin: () => void;
   onAddSlot: (weekday: number, startPeriod: number, endPeriod: number) => void;
   onRemoveSlot: (slotId: string) => void;
   onRemove: () => void;
@@ -177,10 +175,7 @@ function StagedCourseCard({
             size="sm"
             variant="secondary"
             onPress={() => {
-              if (!canEdit) {
-                onNeedLogin();
-                return;
-              }
+              if (!canEdit) return;
               onAddSlot(Number(weekday), Number(startPeriod), Number(endPeriod));
             }}
           >
@@ -196,10 +191,7 @@ function StagedCourseCard({
                   size="sm"
                   variant="ghost"
                   onPress={() => {
-                    if (!canEdit) {
-                      onNeedLogin();
-                      return;
-                    }
+                    if (!canEdit) return;
                     onRemoveSlot(slot.id);
                   }}
                 >
@@ -219,10 +211,7 @@ function StagedCourseCard({
           size="sm"
           variant="danger"
           onPress={() => {
-            if (!canEdit) {
-              onNeedLogin();
-              return;
-            }
+            if (!canEdit) return;
             onRemove();
           }}
         >
@@ -236,7 +225,6 @@ function StagedCourseCard({
 export function SchedulePage() {
   const { viewer, ready } = useViewer();
   const canEdit = viewer.authenticated;
-  const loginTarget = `${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`;
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [results, setResults] = useState<CourseRelation[]>([]);
@@ -244,7 +232,6 @@ export function SchedulePage() {
   const [error, setError] = useState("");
   const [courses, setCourses] = useState<StagedCourse[]>(() => loadSchedulePlan());
   const [importNotice, setImportNotice] = useState("");
-  const [loginPrompted, setLoginPrompted] = useState(false);
 
   useEffect(() => {
     saveSchedulePlan(courses);
@@ -289,7 +276,6 @@ export function SchedulePage() {
     if (!pending) return;
     if (!viewer.authenticated) {
       stashPendingJwxtImport(pending);
-      setLoginPrompted(true);
       return;
     }
     void applyJwxtImport(pending.rows);
@@ -396,33 +382,16 @@ export function SchedulePage() {
               排课模拟
             </Typography>
             <p className="mb-0 mt-1 text-sm text-muted">
-              未登录也可以查看课程和已有课表。加入、排上、导入需要登录。计划只存在这台设备上，不是教务开课班镜像。
+              提前处理掉早八刺客
             </p>
           </div>
           <JwxtScheduleImport
             canEdit={canEdit}
-            onNeedLogin={() => setLoginPrompted(true)}
+            loginHref={`${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`}
             onImport={(rows) => void applyJwxtImport(rows)}
           />
         </div>
       </header>
-
-      {ready && !canEdit ? (
-        <Alert className="mb-4" status="accent">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>查看课表不用登录</Alert.Title>
-            <Alert.Description>
-              {loginPrompted
-                ? "加入、排上或导入需要先登录。"
-                : "可以搜索、点进课程和查看已有课表。要改课表请先登录。"}
-            </Alert.Description>
-          </Alert.Content>
-          <RouterAriaLink className="text-accent" to={loginTarget}>
-            去登录
-          </RouterAriaLink>
-        </Alert>
-      ) : null}
 
       {importNotice ? (
         <Alert className="mb-4" role="status">
@@ -520,10 +489,7 @@ export function SchedulePage() {
                         variant="secondary"
                         isDisabled={added}
                         onPress={() => {
-                          if (!canEdit) {
-                            setLoginPrompted(true);
-                            return;
-                          }
+                          if (!canEdit) return;
                           addCourse(relation);
                         }}
                       >
@@ -534,11 +500,7 @@ export function SchedulePage() {
                 );
               })}
             </ul>
-          ) : (
-            <p className="mb-6 text-sm text-muted">
-              输入课程或教师名后回车，从公开目录加入。
-            </p>
-          )}
+          ) : null}
 
           <Typography
             className="mb-2 text-sm font-semibold"
@@ -557,7 +519,6 @@ export function SchedulePage() {
                   key={course.id}
                   course={course}
                   canEdit={canEdit}
-                  onNeedLogin={() => setLoginPrompted(true)}
                   onAddSlot={(weekday, startPeriod, endPeriod) =>
                     addSlot(course.id, weekday, startPeriod, endPeriod)
                   }
