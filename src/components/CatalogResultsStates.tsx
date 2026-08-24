@@ -329,6 +329,7 @@ function PaginationFooter({
   onPageChange: (page: number) => void;
 }) {
   const pages = Math.max(totalPages, 1);
+  const selectedPage = Math.min(Math.max(currentPage, 1), pages);
   return (
     <Pagination className="mt-3 w-full" size="sm">
       <Pagination.Summary>
@@ -337,14 +338,14 @@ function PaginationFooter({
       <Pagination.Content>
         <Pagination.Item>
           <Pagination.Previous
-            isDisabled={disabled || currentPage <= 1}
-            onPress={() => onPageChange(currentPage - 1)}
+            isDisabled={disabled || selectedPage <= 1}
+            onPress={() => onPageChange(Math.max(1, selectedPage - 1))}
           >
             <Pagination.PreviousIcon />
             <span>上一页</span>
           </Pagination.Previous>
         </Pagination.Item>
-        {catalogPageNumbers(currentPage, pages).map((page, index) =>
+        {catalogPageNumbers(selectedPage, pages).map((page, index) =>
           page === "ellipsis" ? (
             <Pagination.Item key={`ellipsis-${index}`}>
               <Pagination.Ellipsis />
@@ -352,7 +353,7 @@ function PaginationFooter({
           ) : (
             <Pagination.Item key={page}>
               <Pagination.Link
-                isActive={page === currentPage}
+                isActive={page === selectedPage}
                 isDisabled={disabled}
                 onPress={() => onPageChange(page)}
               >
@@ -363,8 +364,8 @@ function PaginationFooter({
         )}
         <Pagination.Item>
           <Pagination.Next
-            isDisabled={disabled || currentPage >= pages}
-            onPress={() => onPageChange(currentPage + 1)}
+            isDisabled={disabled || selectedPage >= pages}
+            onPress={() => onPageChange(Math.min(pages, selectedPage + 1))}
           >
             <span>下一页</span>
             <Pagination.NextIcon />

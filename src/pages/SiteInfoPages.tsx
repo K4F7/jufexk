@@ -87,22 +87,10 @@ export function ContactPage() {
         <ExternalLink href={GITHUB_ISSUES_URL}>前往 GitHub Issues</ExternalLink>
       </p>
       <p>
-        <Link
-          href={`mailto:${CONTACT_EMAIL}`}
-          render={(domProps) => (
-            <a
-              {...(domProps as object)}
-              className={
-                typeof domProps.className === "string"
-                  ? domProps.className
-                  : undefined
-              }
-              href={`mailto:${CONTACT_EMAIL}`}
-            />
-          )}
-        >
+        {/* 原生 mailto：HeroUI Link 会走 RouterProvider，把协议当成站内路径。 */}
+        <a className="link" href={`mailto:${CONTACT_EMAIL}`}>
           {CONTACT_EMAIL}
-        </Link>
+        </a>
       </p>
     </SiteInfoPage>
   );
