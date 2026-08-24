@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeEntities,
   REVIEW_NOTE_HTML_MAX_LENGTH,
+  plainTextToReviewNoteHtml,
   reviewNotePlainText,
   sanitizeReviewNoteHtml,
   sanitizeReviewNoteValue,
@@ -84,6 +85,22 @@ describe("sanitizeReviewNoteHtml whitelist", () => {
   it("keeps nested lists", () => {
     const input = "<ul><li>一</li><li><ul><li>二</li></ul></li></ul>";
     expect(sanitizeReviewNoteHtml(input)).toBe(input);
+  });
+});
+
+describe("plainTextToReviewNoteHtml", () => {
+  it("wraps plain lines as escaped paragraphs", () => {
+    expect(plainTextToReviewNoteHtml("")).toBe("");
+    expect(plainTextToReviewNoteHtml("   ")).toBe("");
+    expect(plainTextToReviewNoteHtml("老师讲课很清楚，收获很大，推荐给学弟学妹。")).toBe(
+      "<p>老师讲课很清楚，收获很大，推荐给学弟学妹。</p>",
+    );
+    expect(plainTextToReviewNoteHtml("第一段\n第二段")).toBe(
+      "<p>第一段</p><p>第二段</p>",
+    );
+    expect(plainTextToReviewNoteHtml("数学 < 语文 & 英语")).toBe(
+      "<p>数学 &lt; 语文 &amp; 英语</p>",
+    );
   });
 });
 

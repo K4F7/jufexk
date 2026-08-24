@@ -12,21 +12,18 @@ import {
   Radio,
   RadioGroup,
   Select,
+  TextArea,
   TextField,
   Typography,
   type Key,
 } from "@heroui/react";
-import type { Editor } from "@tiptap/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import {
-  ReviewNoteEditor,
-  type ReviewNoteValue,
-} from "../components/ReviewNoteEditor";
 import { TurnstileBox } from "../components/TurnstileBox";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
+import { plainTextToReviewNoteHtml } from "../lib/review-note-html";
 import {
   COMMON_CORE_QUESTIONS,
   REVIEW_NOTE_MAX_LENGTH,
@@ -187,21 +184,20 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [overall, setOverall] = useState("");
   const [grade, setGrade] = useState("");
   const [realName, setRealName] = useState(false);
-  const [note, setNote] = useState<ReviewNoteValue>({ html: "", text: "" });
+  const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState("");
   const [msg, setMsg] = useState("");
   const [ready, setReady] = useState(!config?.turnstileSiteKey);
   const [revealWidget, setRevealWidget] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const widgetRef = useRef<string | number | null>(null);
-  const noteEditorRef = useRef<Editor | null>(null);
   const onReadyChange = useCallback((nextReady: boolean) => {
     setReady(nextReady);
   }, []);
 
-  /** 字数门槛按去标签后的纯文本计算，与服务端 validateReviewNote 一致。 */
-  const validateNote = useCallback((value: ReviewNoteValue) => {
-    const length = value.text.trim().length;
+  /** 字数门槛按纯文本计算，与服务端 validateReviewNote 去标签后的口径一致。 */
+  const validateNote = useCallback((value: string) => {
+    const length = value.trim().length;
     if (length < REVIEW_NOTE_MIN_LENGTH) return "字数不够";
     if (length > REVIEW_NOTE_MAX_LENGTH)
       return `详细评价不能超过 ${REVIEW_NOTE_MAX_LENGTH} 字`;
@@ -209,7 +205,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }, []);
 
   const onNoteChange = useCallback(
-    (value: ReviewNoteValue) => {
+    (value: string) => {
       setNote(value);
       setNoteError((current) => (current ? validateNote(value) : current));
     },
@@ -375,9 +371,9 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           teacherId: Number(teacherId),
           overall: Number(overall),
           scores: payloadScores,
-          headline: headlineFromNote(note.text),
+          headline: headlineFromNote(note),
           grade: grade.trim(),
-          comment: note.html,
+          comment: plainTextToReviewNoteHtml(note),
           anonymous: !realName,
           term,
           website: "",
@@ -574,14 +570,15 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           />
         ))}
         <OverallStarRating value={overall} onChange={setOverall} />
-        <TextField isInvalid={!!noteError} isRequired name="comment">
+        <TextField
+          isInvalid={!!noteError}
+          isRequired
+          name="comment"
+          value={note}
+          onChange={onNoteChange}
+        >
           <Label>详细评价</Label>
-          <ReviewNoteEditor
-            ariaLabel="详细评价"
-            editorRef={noteEditorRef}
-            isInvalid={!!noteError}
-            onChange={onNoteChange}
-          />
+          <TextArea className="w-full" rows={6} />
           {noteError ? <FieldError>{noteError}</FieldError> : null}
         </TextField>
         <TextField name="grade" value={grade} onChange={setGrade}>

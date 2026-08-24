@@ -4,7 +4,7 @@ import { TIER3_QUESTIONS, V3_QUESTIONS } from "../review-score-fixtures";
 /**
  * 写评价（Issue #402 + #400 + #447 + #371）：入口只从课程页「写点评」；表单对齐 icourse ——
  * 学期 Select（必填，默认最近学期）、v3 五道三档（四维 + 考勤松紧，中文档位文案）、
- * 1–5 星级本次推荐度、Tiptap 详细评价（无工具栏/占位/说明）、选填成绩（grade）、实名提交。
+ * 1–5 星级本次推荐度、纯文本详细评价（HeroUI TextArea，无工具栏/占位/说明）、选填成绩（grade）、实名提交。
  * mooc 课藏考勤题；发布成功回到该 课程×教师 的详情页。一句话总结字段已下线。
  *
  * 三档题面与必填详细评价的行为断言承接 #374；编辑器覆盖承接 #400。
@@ -190,7 +190,7 @@ async function pickTeacher(page: Page, name: string) {
   await page.getByRole("option", { name }).click();
 }
 
-/** 详细评价是 Tiptap 富文本编辑器（contenteditable textbox）。 */
+/** 详细评价是 HeroUI TextArea（原生 multiline textbox）。 */
 function noteEditor(page: Page) {
   return page.getByRole("textbox", { name: "详细评价" });
 }
