@@ -12,10 +12,6 @@ import { RouterAriaLink } from "./RouterAriaLink";
 export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
   const occupied = buildOccupied(courses);
   return (
-    <div>
-      <p className="mb-2 text-[calc(13/15*1rem)] text-muted">
-        周课表 · 第 1–11 节（常用作息，仅供模拟）
-      </p>
     <Table>
       <Table.ScrollContainer>
         <Table.Content aria-label="周课表" className="min-w-[40rem]">
@@ -78,6 +74,5 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
         </Table.Content>
       </Table.ScrollContainer>
     </Table>
-    </div>
   );
 }

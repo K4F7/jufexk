@@ -1,5 +1,6 @@
 import { Button, Label, Modal, TextArea, TextField, buttonVariants } from "@heroui/react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { jwxtImportBookmarkletHref } from "../lib/jwxt-import-bookmarklet";
 import {
   EHALL_URL,
@@ -10,14 +11,16 @@ import {
 
 export function JwxtScheduleImport({
   canEdit,
-  onNeedLogin,
+  loginHref,
   onImport,
 }: {
   canEdit: boolean;
-  onNeedLogin: () => void;
+  loginHref: string;
   onImport: (rows: JwxtImportRow[]) => void;
 }) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [paste, setPaste] = useState("");
   const [pasteError, setPasteError] = useState("");
   const bookmarklet = useMemo(
@@ -43,7 +46,7 @@ export function JwxtScheduleImport({
         variant="secondary"
         onPress={() => {
           if (!canEdit) {
-            onNeedLogin();
+            setLoginOpen(true);
             return;
           }
           setOpen(true);
@@ -51,6 +54,27 @@ export function JwxtScheduleImport({
       >
         从本科教务导入
       </Button>
+      <Modal.Backdrop isOpen={loginOpen} onOpenChange={setLoginOpen}>
+        <Modal.Container>
+          <Modal.Dialog className="sm:max-w-[400px]">
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Heading>导入需要先登录</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <p>从本科教务导入课表前，请先登录选课志。</p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button slot="close" variant="tertiary">
+                取消
+              </Button>
+              <Button variant="primary" onPress={() => navigate(loginHref)}>
+                去登录
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
       <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>
         <Modal.Container>
           <Modal.Dialog className="sm:max-w-lg">
