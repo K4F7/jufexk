@@ -2,6 +2,7 @@
  * 排课模拟 /schedule：从公开任课关系检索课程×教师，本机编排周课表并标冲突。
  * 不做开课班目录或教务课表镜像（Issue #486）。
  * 本科教务导入只在学生浏览器读表，Cookie 不进本站（Issue #488）。
+ * 访客可看课表；加入、排上、导入需登录（Issue #494）。
  */
 import {
   Alert,
@@ -20,6 +21,7 @@ import { JwxtScheduleImport } from "../components/JwxtScheduleImport";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { Stars } from "../components/Stars";
+import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import {
   mergeImportedCourses,
@@ -27,6 +29,8 @@ import {
 } from "../lib/jwxt-schedule-import";
 import {
   readJwxtImportHash,
+  stashPendingJwxtImport,
+  takePendingJwxtImport,
   type JwxtImportRow,
 } from "../lib/jwxt-schedule-text";
 import {
@@ -89,11 +93,15 @@ function PeriodSelect({
 
 function StagedCourseCard({
   course,
+  canEdit,
+  onNeedLogin,
   onAddSlot,
   onRemoveSlot,
   onRemove,
 }: {
   course: StagedCourse;
+  canEdit: boolean;
+  onNeedLogin: () => void;
   onAddSlot: (weekday: number, startPeriod: number, endPeriod: number) => void;
   onRemoveSlot: (slotId: string) => void;
   onRemove: () => void;
@@ -168,9 +176,13 @@ function StagedCourseCard({
           <Button
             size="sm"
             variant="secondary"
-            onPress={() =>
-              onAddSlot(Number(weekday), Number(startPeriod), Number(endPeriod))
-            }
+            onPress={() => {
+              if (!canEdit) {
+                onNeedLogin();
+                return;
+              }
+              onAddSlot(Number(weekday), Number(startPeriod), Number(endPeriod));
+            }}
           >
             排上
           </Button>
@@ -183,7 +195,13 @@ function StagedCourseCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  onPress={() => onRemoveSlot(slot.id)}
+                  onPress={() => {
+                    if (!canEdit) {
+                      onNeedLogin();
+                      return;
+                    }
+                    onRemoveSlot(slot.id);
+                  }}
                 >
                   移除时段
                 </Button>
@@ -197,7 +215,17 @@ function StagedCourseCard({
         )}
       </Card.Content>
       <Card.Footer>
-        <Button size="sm" variant="danger" onPress={onRemove}>
+        <Button
+          size="sm"
+          variant="danger"
+          onPress={() => {
+            if (!canEdit) {
+              onNeedLogin();
+              return;
+            }
+            onRemove();
+          }}
+        >
           移出课表
         </Button>
       </Card.Footer>
@@ -206,6 +234,9 @@ function StagedCourseCard({
 }
 
 export function SchedulePage() {
+  const { viewer, ready } = useViewer();
+  const canEdit = viewer.authenticated;
+  const loginTarget = `${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`;
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [results, setResults] = useState<CourseRelation[]>([]);
@@ -213,6 +244,7 @@ export function SchedulePage() {
   const [error, setError] = useState("");
   const [courses, setCourses] = useState<StagedCourse[]>(() => loadSchedulePlan());
   const [importNotice, setImportNotice] = useState("");
+  const [loginPrompted, setLoginPrompted] = useState(false);
 
   useEffect(() => {
     saveSchedulePlan(courses);
@@ -248,8 +280,20 @@ export function SchedulePage() {
     const payload = readJwxtImportHash(window.location.hash);
     if (!payload) return;
     history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    void applyJwxtImport(payload.rows);
+    stashPendingJwxtImport(payload);
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const pending = takePendingJwxtImport();
+    if (!pending) return;
+    if (!viewer.authenticated) {
+      stashPendingJwxtImport(pending);
+      setLoginPrompted(true);
+      return;
+    }
+    void applyJwxtImport(pending.rows);
+  }, [ready, viewer.authenticated]);
 
   useEffect(() => {
     const q = submitted.trim();
@@ -352,12 +396,33 @@ export function SchedulePage() {
               排课模拟
             </Typography>
             <p className="mb-0 mt-1 text-sm text-muted">
-              从本站课程×教师目录加入，或从本科教务导入上课时间。计划只存在这台设备上，不是教务开课班镜像。
+              未登录也可以查看课程和已有课表。加入、排上、导入需要登录。计划只存在这台设备上，不是教务开课班镜像。
             </p>
           </div>
-          <JwxtScheduleImport onImport={(rows) => void applyJwxtImport(rows)} />
+          <JwxtScheduleImport
+            canEdit={canEdit}
+            onNeedLogin={() => setLoginPrompted(true)}
+            onImport={(rows) => void applyJwxtImport(rows)}
+          />
         </div>
       </header>
+
+      {ready && !canEdit ? (
+        <Alert className="mb-4" status="accent">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>查看课表不用登录</Alert.Title>
+            <Alert.Description>
+              {loginPrompted
+                ? "加入、排上或导入需要先登录。"
+                : "可以搜索、点进课程和查看已有课表。要改课表请先登录。"}
+            </Alert.Description>
+          </Alert.Content>
+          <RouterAriaLink className="text-accent" to={loginTarget}>
+            去登录
+          </RouterAriaLink>
+        </Alert>
+      ) : null}
 
       {importNotice ? (
         <Alert className="mb-4" role="status">
@@ -454,7 +519,13 @@ export function SchedulePage() {
                         size="sm"
                         variant="secondary"
                         isDisabled={added}
-                        onPress={() => addCourse(relation)}
+                        onPress={() => {
+                          if (!canEdit) {
+                            setLoginPrompted(true);
+                            return;
+                          }
+                          addCourse(relation);
+                        }}
                       >
                         {added ? "已加入" : "加入课表"}
                       </Button>
@@ -485,6 +556,8 @@ export function SchedulePage() {
                 <StagedCourseCard
                   key={course.id}
                   course={course}
+                  canEdit={canEdit}
+                  onNeedLogin={() => setLoginPrompted(true)}
                   onAddSlot={(weekday, startPeriod, endPeriod) =>
                     addSlot(course.id, weekday, startPeriod, endPeriod)
                   }

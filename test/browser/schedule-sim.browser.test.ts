@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { encodeJwxtImportPayload, JWXT_IMPORT_HASH_PREFIX } from "../../src/lib/jwxt-schedule-text";
+import {
+  encodeJwxtImportPayload,
+  JWXT_IMPORT_HASH_PREFIX,
+} from "../../src/lib/jwxt-schedule-text";
+import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
 
 const relations = [
   {
@@ -26,7 +30,7 @@ const relations = [
   },
 ];
 
-async function mockScheduleApi(page: Page) {
+async function mockScheduleApi(page: Page, authenticated = true) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
@@ -42,7 +46,8 @@ async function mockScheduleApi(page: Page) {
     if (url.pathname === "/api/user/session") {
       return route.fulfill({
         json: {
-          authenticated: false,
+          authenticated,
+          csrfToken: authenticated ? "csrf-user" : undefined,
           loginPath: "/login",
           logoutPath: "/logout",
         },
@@ -153,5 +158,87 @@ test("imports class times from the jwxt-import hash without sending cookies", as
   await expect(
     page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
   ).toBeVisible();
+  await expect(page).not.toHaveURL(/jwxt-import/);
+});
+
+test("guest can see courses but must log in to add or import", async ({
+  page,
+}) => {
+  await mockScheduleApi(page, false);
+  await page.addInitScript(
+    ([key, value]) => {
+      localStorage.setItem(key, value);
+    },
+    [
+      SCHEDULE_PLAN_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        courses: [
+          {
+            id: "8:9",
+            courseId: 8,
+            courseCode: "MA101",
+            courseName: "高等数学",
+            teacherId: 9,
+            teacherName: "张三",
+            rating: 4.2,
+            reviewCount: 6,
+            slots: [
+              {
+                id: "8:9:1:1:2",
+                weekday: 1,
+                startPeriod: 1,
+                endPeriod: 2,
+                weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+  );
+  await page.goto("/schedule");
+
+  await expect(page.getByRole("link", { name: "去登录" })).toHaveAttribute(
+    "href",
+    "/login?from=%2Fschedule",
+  );
+  await expect(
+    page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
+  ).toBeVisible();
+
+  const search = page.getByRole("searchbox", { name: "搜索要排的课程" });
+  await search.fill("高等数学");
+  await search.press("Enter");
+  const results = page.getByRole("list", { name: "搜索结果" });
+  await expect(results.getByText("线性代数")).toBeVisible();
+  await results.getByRole("button", { name: "加入课表" }).click();
+  await expect(page.getByText("加入、排上或导入需要先登录。")).toBeVisible();
+  await expect(page.getByLabel("已选课程").getByText("线性代数")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "从本科教务导入" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("guest hash import waits for login and does not write the plan", async ({
+  page,
+}) => {
+  await mockScheduleApi(page, false);
+  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
+    v: 1,
+    rows: [
+      {
+        courseName: "高等数学",
+        courseCode: "",
+        teacherName: "张三",
+        weekText: "",
+        timeText: "星期二 第3-4节",
+      },
+    ],
+  })}`;
+  await page.goto(`/schedule#${hash}`);
+  await expect(page.getByRole("link", { name: "去登录" })).toBeVisible();
+  await expect(page.getByText("已从本科教务导入")).toHaveCount(0);
+  await expect(page.getByLabel("已选课程")).toHaveCount(0);
   await expect(page).not.toHaveURL(/jwxt-import/);
 });
