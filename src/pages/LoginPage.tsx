@@ -394,7 +394,7 @@ export function LoginPage() {
           <Card.Content>
             <LoginProgressAlert
               title="正在完成登录"
-              description="请稍候。"
+              description="马上就好。"
             />
           </Card.Content>
         ) : challenge ? (
@@ -409,7 +409,7 @@ export function LoginPage() {
                 {busy ? (
                   <LoginProgressAlert
                     title="正在确认验证码"
-                    description="请稍候。"
+                    description="马上就好。"
                   />
                 ) : (
                   <Alert status="accent">
@@ -496,7 +496,7 @@ export function LoginPage() {
                     {busy ? (
                       <LoginProgressAlert
                         title="正在登录"
-                        description="请稍候，通常需要几秒。"
+                        description="通常只要几秒。"
                       />
                     ) : null}
                     <TextField
@@ -545,7 +545,7 @@ export function LoginPage() {
                       <Skeleton className="mx-auto h-48 w-48 rounded-lg" />
                       <LoginProgressAlert
                         title="正在获取二维码"
-                        description="请稍候。"
+                        description="马上就好。"
                       />
                     </>
                   ) : null}
