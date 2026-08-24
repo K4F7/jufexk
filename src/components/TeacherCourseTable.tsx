@@ -58,18 +58,18 @@ export function TeacherCourseTable({
               <span className="mt-1 block text-[calc(13/15*1rem)] text-muted">
                 课程号：{course.code || "未标注"}
               </span>
-              <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
+              <span className="mt-1 flex flex-wrap items-center gap-x-2">
                 <Stars rating={rating} className="text-[1rem]" />
                 {rating != null ? (
-                  <span className="tabular text-[1rem] font-semibold text-accent">
+                  <span className="tabular text-[1rem] font-semibold leading-none text-accent">
                     {rating.toFixed(1)}
                   </span>
                 ) : null}
-                <span className="text-[calc(12/15*1rem)] text-muted">
+                <span className="text-[calc(12/15*1rem)] leading-none text-muted">
                   {reviewCount > 0
                     ? rating != null
                       ? `（${reviewCount} 人评价）`
-                      : `${reviewCount} 条评价`
+                      : `（${reviewCount} 条评价）`
                     : "暂无评价"}
                 </span>
               </span>

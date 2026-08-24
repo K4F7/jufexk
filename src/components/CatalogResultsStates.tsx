@@ -115,7 +115,7 @@ function CourseRelationSkeletonRows({ rowCount }: { rowCount: number }) {
           className="block border-b border-separator py-3 last:border-b-0"
         >
           <Skeleton className="h-4 w-56 max-w-[70%] rounded" />
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2">
             <Skeleton className="h-4 w-24 rounded" />
             <Skeleton className="h-3 w-16 rounded" />
           </div>

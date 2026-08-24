@@ -6,7 +6,7 @@
  * 关系级评分/点评数、四维档位与「排序方式：课程评分」走
  * GET /api/courses?view=relations。
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const RELATIONS = [
   {
@@ -62,6 +62,18 @@ const RELATIONS = [
     rating: null,
     dimensionLabels: null,
   },
+  {
+    course_id: 16,
+    code: "SEM016",
+    name: "未评分研讨课",
+    category: "general",
+    department: "人文学院",
+    teacher_id: 17,
+    teacher_name: "研讨教师",
+    review_count: 13,
+    rating: null,
+    dimensionLabels: null,
+  },
 ];
 
 type MockOptions = {
@@ -70,6 +82,21 @@ type MockOptions = {
    *  out-of-range page; the real API does not clamp page). */
   emptyBeyondFirstPage?: boolean;
 };
+
+async function expectStarsAlignedWithCount(row: Locator, countText: string) {
+  const meta = row.locator("span.mt-1.flex");
+  const stars = meta.locator("[aria-hidden='true']").first();
+  const count = meta.getByText(countText);
+  const starsBox = await stars.boundingBox();
+  const countBox = await count.boundingBox();
+  expect(starsBox).toBeTruthy();
+  expect(countBox).toBeTruthy();
+  expect(
+    Math.abs(
+      starsBox!.y + starsBox!.height / 2 - (countBox!.y + countBox!.height / 2),
+    ),
+  ).toBeLessThan(3);
+}
 
 async function mockCatalogApi(page: Page, options: MockOptions = {}) {
   await page.route("**/api/**", async (route) => {
@@ -219,6 +246,12 @@ test("relation rows show rating, review count, and four-dim labels @mobile-smoke
   await expect(first).toContainText("中国传统文化导论（测试教师）");
   await expect(first).toContainText("4.6");
   await expect(first).toContainText("（23 人评价）");
+  await expectStarsAlignedWithCount(first, "（23 人评价）");
+
+  // 无评分但有评价样本：全角括号包「N 条评价」。
+  const unrated = page.getByRole("link", { name: /未评分研讨课/ });
+  await expect(unrated).toContainText("（13 条评价）");
+  await expectStarsAlignedWithCount(unrated, "（13 条评价）");
   await expect(first).toContainText("课程难度：中等");
   await expect(first).toContainText("作业多少：不多");
   await expect(first).toContainText("给分好坏：一般");
@@ -312,9 +345,9 @@ test("first load shows skeleton rows and keeps the header height stable @mobile-
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }).first(),
   ).toBeVisible();
-  await expect(header.getByText("共 4 条", { exact: true })).toBeVisible();
+  await expect(header.getByText("共 5 条", { exact: true })).toBeVisible();
   await expect(
-    page.getByLabel("pagination").getByText("共 4 条", { exact: true }),
+    page.getByLabel("pagination").getByText("共 5 条", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("status", { name: "加载中…" })).toHaveCount(0);
 
