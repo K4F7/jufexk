@@ -91,6 +91,12 @@ export const adminAnnouncementSchema = z
   })
   .passthrough();
 
+export const adminUserBlockSchema = z
+  .object({
+    days: z.coerce.number().int().min(1).max(3650),
+  })
+  .passthrough();
+
 export const moderationSchema = z
   .object({
     status: cleanedField(20),

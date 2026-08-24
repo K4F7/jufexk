@@ -53,7 +53,7 @@ import { handleLatestPublicReviews } from "../public-reviews-latest";
 import { decoratePublicReviews } from "../review-endorsements";
 import { loadRelationSignalPayloads } from "../relation-signals";
 import {
-  canOrdinaryUserWrite,
+  isOrdinaryUserAuthenticated,
   resolveOrdinaryUser,
 } from "../ordinary-user-session";
 import {
@@ -409,7 +409,7 @@ const getPublicReviewPage = async (
 };
 const publicReviewViewerId = async (c: AppContext) => {
   const viewer = await resolveOrdinaryUser(c);
-  return viewer && canOrdinaryUserWrite(viewer) ? viewer.id : null;
+  return viewer && isOrdinaryUserAuthenticated(viewer) ? viewer.id : null;
 };
 const getPublicReviewPageFor = async (
   c: AppContext,

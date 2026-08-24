@@ -1,0 +1,197 @@
+import { SELF, env } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import {
+  ordinaryWriteHeaders,
+  ordinaryWriteSession,
+  setOrdinaryUserStatus,
+} from "./ordinary-write-session";
+import {
+  CURRENT_SCORES,
+  REQUIRED_HEADLINE,
+  REQUIRED_NOTE,
+} from "./review-score-fixtures";
+
+const origin = "https://example.com";
+let loginSequence = 180;
+
+async function login() {
+  const response = await SELF.fetch(`${origin}/api/admin/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
+    },
+    body: JSON.stringify({ password: "test-password" }),
+  });
+  const body = await response.json<{ csrfToken: string }>();
+  const cookies = (
+    response.headers as Headers & { getSetCookie(): string[] }
+  ).getSetCookie();
+  return {
+    cookie: cookies.map((value) => value.split(";", 1)[0]).join("; "),
+    csrf: body.csrfToken,
+  };
+}
+
+function adminHeaders(auth: { cookie: string; csrf: string }) {
+  return {
+    "Content-Type": "application/json",
+    Cookie: auth.cookie,
+    Origin: origin,
+    "X-CSRF-Token": auth.csrf,
+  };
+}
+
+describe("ordinary-user blocking", () => {
+  it("validates admin authentication, duration, user existence, and account status", async () => {
+    const unauthenticated = await SELF.fetch(
+      `${origin}/api/admin/users/missing/block`,
+      { method: "POST", body: JSON.stringify({ days: 1 }) },
+    );
+    expect(unauthenticated.status).toBe(401);
+
+    const auth = await login();
+    const invalid = await SELF.fetch(`${origin}/api/admin/users/missing/block`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ days: 0 }),
+    });
+    expect(invalid.status).toBe(400);
+
+    const missing = await SELF.fetch(`${origin}/api/admin/users/missing/block`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ days: 1 }),
+    });
+    expect(missing.status).toBe(404);
+
+    const session = await ordinaryWriteSession("block-inactive-user");
+    const stableId = await setOrdinaryUserStatus("block-inactive-user", "banned");
+    const inactive = await SELF.fetch(
+      `${origin}/api/admin/users/${stableId}/block`,
+      {
+        method: "POST",
+        headers: adminHeaders(auth),
+        body: JSON.stringify({ days: 1 }),
+      },
+    );
+    expect(session.authenticated).toBe(true);
+    expect(inactive.status).toBe(409);
+  });
+
+  it("blocks writes, keeps the session authenticated, unblocks immediately, and expires automatically", async () => {
+    const userKey = "temporarily-muted-writer";
+    const session = await ordinaryWriteSession(userKey);
+    const stableId = await setOrdinaryUserStatus(userKey, "active");
+    const auth = await login();
+
+    const blocked = await SELF.fetch(`${origin}/api/admin/users/${stableId}/block`, {
+      method: "POST",
+      headers: adminHeaders(auth),
+      body: JSON.stringify({ days: 2 }),
+    });
+    expect(blocked.status).toBe(200);
+    expect(await blocked.json()).toEqual({
+      ok: true,
+      blockedUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    });
+
+    const viewer = await SELF.fetch(`${origin}/api/user/session`, {
+      headers: session.auth,
+    });
+    expect(await viewer.json()).toMatchObject({ authenticated: true });
+
+    const visibleReview = await env.DB.prepare(
+      `INSERT INTO reviews(course_id,teacher_id,category,overall,status,comment)
+       VALUES(1,1,'general',5,'approved','禁言用户认可读取测试')`,
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO review_endorsements(user_id,review_id) VALUES(?,?)",
+    )
+      .bind(stableId, Number(visibleReview.meta.last_row_id))
+      .run();
+    const publicReviews = await SELF.fetch(
+      `${origin}/api/courses/1/reviews?teacherId=1`,
+      { headers: session.auth },
+    );
+    expect(
+      (await publicReviews.json<{ items: Array<{ viewer_endorsed?: boolean }> }>())
+        .items,
+    ).toContainEqual(expect.objectContaining({ viewer_endorsed: true }));
+
+    for (const [path, method, body, error] of [
+      [
+        "/api/reviews",
+        "POST",
+        {
+          courseId: 1,
+          teacherId: 1,
+          overall: 5,
+          scores: CURRENT_SCORES,
+          comment: REQUIRED_NOTE,
+          headline: REQUIRED_HEADLINE,
+        },
+        "当前账号无法投稿",
+      ],
+      [
+        "/api/catalog-requests",
+        "POST",
+        {
+          kind: "teacher",
+          teacherSourceLabel: "禁言测试教师",
+          department: "测试学院",
+        },
+        "当前账号无法申请补充",
+      ],
+      [
+        "/api/reviews/1/endorsement",
+        "PUT",
+        undefined,
+        "当前账号无法认可评价",
+      ],
+    ] as const) {
+      const response = await SELF.fetch(`${origin}${path}`, {
+        method,
+        headers: ordinaryWriteHeaders(session),
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error });
+    }
+
+    const unblocked = await SELF.fetch(
+      `${origin}/api/admin/users/${stableId}/unblock`,
+      { method: "POST", headers: adminHeaders(auth), body: "{}" },
+    );
+    expect(unblocked.status).toBe(200);
+    expect(await unblocked.json()).toEqual({ ok: true, blockedUntil: null });
+    expect(
+      await env.DB.prepare("SELECT muted_until FROM users WHERE id=?")
+        .bind(stableId)
+        .first(),
+    ).toEqual({ muted_until: null });
+
+    await env.DB.prepare("UPDATE users SET muted_until=unixepoch()-1 WHERE id=?")
+      .bind(stableId)
+      .run();
+    const expiredSession = await ordinaryWriteSession(userKey);
+    expect(expiredSession.authenticated).toBe(true);
+    expect(
+      await env.DB.prepare("SELECT muted_until FROM users WHERE id=?")
+        .bind(stableId)
+        .first(),
+    ).toEqual({ muted_until: null });
+
+    const request = await SELF.fetch(`${origin}/api/catalog-requests`, {
+      method: "POST",
+      headers: ordinaryWriteHeaders(expiredSession),
+      body: JSON.stringify({
+        kind: "teacher",
+        teacherSourceLabel: "到期自动解除教师",
+        department: "测试学院",
+      }),
+    });
+    expect(request.status).toBe(200);
+  });
+});

@@ -47,6 +47,7 @@ import {
   adminLoginSchema,
   adminOfferingSchema,
   adminTeacherSchema,
+  adminUserBlockSchema,
   moderationSchema,
   siteBannerSchema,
   teacherIdsSchema,
@@ -208,6 +209,39 @@ adminRoutes.post("/api/admin/sessions/revoke-others", async (c) => {
     .bind(c.get("adminSessionId"))
     .run();
   return c.json({ ok: true, count: result.meta.changes || 0 });
+});
+adminRoutes.post("/api/admin/users/:id/block", async (c) => {
+  const id = clean(c.req.param("id"), 128);
+  const parsedBody = adminUserBlockSchema.safeParse(await c.req.json<unknown>());
+  if (!id || !parsedBody.success)
+    return fail(c, "禁言天数必须是 1 到 3650 的整数");
+  const user = await c.env.DB.prepare("SELECT status FROM users WHERE id=?")
+    .bind(id)
+    .first<{ status: string }>();
+  if (!user) return fail(c, "用户不存在", 404);
+  if (user.status !== "active") return fail(c, "当前账号状态不能禁言", 409);
+  const mutedUntil = Math.floor(Date.now() / 1000) + parsedBody.data.days * 86400;
+  const result = await c.env.DB.prepare(
+    "UPDATE users SET muted_until=? WHERE id=? AND status='active'",
+  )
+    .bind(mutedUntil, id)
+    .run();
+  if (!(result.meta.changes || 0)) return fail(c, "当前账号状态不能禁言", 409);
+  return c.json({
+    ok: true,
+    blockedUntil: new Date(mutedUntil * 1000).toISOString(),
+  });
+});
+adminRoutes.post("/api/admin/users/:id/unblock", async (c) => {
+  const id = clean(c.req.param("id"), 128);
+  if (!id) return fail(c, "用户 ID 无效");
+  const result = await c.env.DB.prepare(
+    "UPDATE users SET muted_until=NULL WHERE id=?",
+  )
+    .bind(id)
+    .run();
+  if (!(result.meta.changes || 0)) return fail(c, "用户不存在", 404);
+  return c.json({ ok: true, blockedUntil: null });
 });
 adminRoutes.get("/api/admin/reviews", async (c) => {
   const { page, size } = pageArgs(c),
