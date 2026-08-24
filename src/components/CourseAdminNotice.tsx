@@ -11,11 +11,13 @@ import { api } from "../lib/api";
 export function CourseAdminNotice({
   courseId,
   notice,
+  updatedAt,
   onSaved,
 }: {
   courseId: number;
   /** 当前已公开的管理员公告；未设置为空串。 */
   notice: string;
+  updatedAt?: string | null;
   /** 保存成功后触发课程详情重拉。 */
   onSaved: () => void;
 }) {
@@ -53,14 +55,15 @@ export function CourseAdminNotice({
   return (
     <>
       {notice ? (
-        <Card className="mt-4">
+        <Card className="mt-6">
           <Card.Header>
             <Card.Title>管理员公告</Card.Title>
+            {updatedAt ? (
+              <Card.Description>更新于 {updatedAt}</Card.Description>
+            ) : null}
           </Card.Header>
-          <Card.Content>
-            <p className="m-0 whitespace-pre-wrap break-words text-[13px] leading-relaxed">
-              {notice}
-            </p>
+          <Card.Content className="whitespace-pre-wrap text-sm">
+            {notice}
           </Card.Content>
         </Card>
       ) : null}

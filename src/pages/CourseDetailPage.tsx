@@ -502,25 +502,10 @@ export function CourseDetailPage() {
           <CourseAdminNotice
             courseId={course.id}
             notice={course.admin_notice ?? ""}
+            updatedAt={course.admin_notice_updated_at}
             onSaved={reloadCourse}
           />
         </header>
-
-        {course.admin_notice ? (
-          <Card className="mt-6">
-            <Card.Header>
-              <Card.Title>管理员公告</Card.Title>
-              {course.admin_notice_updated_at ? (
-                <Card.Description>
-                  更新于 {course.admin_notice_updated_at}
-                </Card.Description>
-              ) : null}
-            </Card.Header>
-            <Card.Content className="whitespace-pre-wrap text-sm">
-              {course.admin_notice}
-            </Card.Content>
-          </Card>
-        ) : null}
 
         {relationSummary?.html ? (
           <div className="mt-10">
