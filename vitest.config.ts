@@ -37,6 +37,7 @@ export default defineConfig(async () => {
             MAIL_DELIVERY_URL: "https://mail.example.test/emails",
             MAIL_FROM: "\"非官方课评@JUFE\" <noreply@sein.moe>",
             MAIL_DELIVERY_TOKEN: "test-mail-token",
+            REVIEW_AUTHOR_LOOKUP_TO: "admin@example.test",
             CAS_CHALLENGE_SECRET: "test-cas-challenge",
           },
         },

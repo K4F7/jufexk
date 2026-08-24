@@ -26,6 +26,8 @@
     "V5_IMPORT_ARTIFACT_SHA256": "4bfcf6008c2539494d4f3b4346d4c6e958144a3f0d83a06c4095ce472a1974dd",
     "V5_IMPORT_MANIFEST_SHA256": "a0889ee7ebba559af4179ff4331de5c3324ae7da89ab1d17b6c735afe0576266",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
+    "MAIL_DELIVERY_URL": "https://api.resend.com/emails",
+    "MAIL_FROM": "\"非官方课评@JUFE\" <noreply@sein.moe>",
   },
   "secrets_store_secrets": [
     {
@@ -42,6 +44,16 @@
       "binding": "CAMPUS_IDENTITY_SECRET",
       "store_id": "323163a091874b07aacdf5500bff903e",
       "secret_name": "CAMPUS_IDENTITY_SECRET",
+    },
+    {
+      "binding": "MAIL_DELIVERY_TOKEN",
+      "store_id": "323163a091874b07aacdf5500bff903e",
+      "secret_name": "MAIL_DELIVERY_TOKEN",
+    },
+    {
+      "binding": "REVIEW_AUTHOR_LOOKUP_TO",
+      "store_id": "323163a091874b07aacdf5500bff903e",
+      "secret_name": "REVIEW_AUTHOR_LOOKUP_TO",
     },
     {
       "binding": "CAS_CHALLENGE_SECRET",

@@ -11,6 +11,8 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 | `IP_HASH_SECRET` | Secrets Store | Worker 绑定 | 必须与 Turnstile Secret 不同 |
 | `TURNSTILE_SECRET` | Secrets Store | Worker 绑定 | 与公开 `TURNSTILE_SITE_KEY` 成对 |
 | `CAMPUS_IDENTITY_SECRET` | Secrets Store | Worker 绑定 | 学号/`sub`/校学生邮箱 HMAC 摘要密钥，明文永不落库 |
+| `MAIL_DELIVERY_TOKEN` | Secrets Store | Worker 绑定 | Resend API 投递 token；只放密钥清单，不进仓库。点评作者查询（#463）需要它 |
+| `REVIEW_AUTHOR_LOOKUP_TO` | Secrets Store | Worker 绑定 | 点评作者资料查询的管理员收件邮箱；不得进入公开配置、响应或日志 |
 | `CAS_CHALLENGE_SECRET` | Secrets Store | Worker 绑定 | CAS 代登 MFA 中间态 AES-GCM 密钥；未绑定时回退到 `CAMPUS_IDENTITY_SECRET` |
 | `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA deploy / migrate | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。deploy 需 Workers Scripts Edit、Account Settings Read；migrate 需 D1 Edit、Account Settings Read |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
@@ -18,7 +20,8 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 不要写入 Secrets Store：
 
 - `SITE_NAME`、`UNIVERSITY_NAME`、`TURNSTILE_SITE_KEY`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置。
-- 已淘汰、不要再绑定：`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_JWT_ENABLED`、`MAIL_DELIVERY_URL`、`MAIL_FROM`、`MAIL_DELIVERY_TOKEN`。远程 store 里若还留着旧密钥，可之后人工删除，不要重新绑到 Worker。
+- 已淘汰、不要再绑定：`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_JWT_ENABLED`。远程 store 里若还留着旧密钥，可之后人工删除，不要重新绑到 Worker。
+- `MAIL_DELIVERY_URL`、`MAIL_FROM` 是 Worker 公开 vars，配合 `MAIL_DELIVERY_TOKEN` 投递点评作者查询邮件。
 - Vitest 夹具字符串（Secrets Store 绑定的测试替代值）：仅测试
 - `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`、`JUFEXK_ADMIN_COOKIE`、`JUFEXK_ADMIN_CSRF`：运维参数。管理员不再使用共享口令，先绑定学号再复制会话 Cookie。
 

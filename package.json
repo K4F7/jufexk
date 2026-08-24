@@ -13,7 +13,7 @@
     "dev": "wrangler dev",
     "prototype": "vite",
     "build": "vite build",
-    "test": "vitest run && vitest run --config vitest.node.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
+    "test": "vitest run --no-file-parallelism && vitest run --config vitest.node.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
     "test:catalog-baseline": "vitest run --config vitest.catalog-baseline.config.ts",
     "test:browser": "playwright test",
     "build:catalog-userscript": "node scripts/catalog-baseline/build-userscript.mjs",
