@@ -44,7 +44,7 @@ function ExternalLink({
       rel="noreferrer"
       render={(domProps) => (
         <a
-          {...domProps}
+          {...(domProps as object)}
           className={
             typeof domProps.className === "string"
               ? domProps.className
@@ -91,7 +91,7 @@ export function ContactPage() {
           href={`mailto:${CONTACT_EMAIL}`}
           render={(domProps) => (
             <a
-              {...domProps}
+              {...(domProps as object)}
               className={
                 typeof domProps.className === "string"
                   ? domProps.className
