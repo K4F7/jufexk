@@ -124,6 +124,9 @@ function DefaultShell({
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const siteName = config?.siteName || "非官方课评@JUFE";
   const universityName = config?.universityName || "江西财经大学";
+  const brandTo = import.meta.env.DEV
+    ? withGlobalSearchParams("/courses", params)
+    : "/courses";
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);
 
@@ -140,16 +143,26 @@ function DefaultShell({
         <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-5 xl:grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] xl:px-4">
           {/* contents 让品牌与导航在窄屏直接成为 grid 项;xl+ 还原为左簇 flex 容器。 */}
           <div className="contents xl:flex xl:items-center xl:gap-2">
-            <NavLink
-              to={
-                import.meta.env.DEV
-                  ? withGlobalSearchParams("/courses", params)
-                  : "/courses"
-              }
-              className="col-start-1 row-start-1 truncate text-sm font-semibold tracking-tight text-foreground no-underline"
+            <Link
+              className={`${buttonVariants({
+                size: "sm",
+                variant: "ghost",
+              })} col-start-1 row-start-1 min-w-0 truncate no-underline`}
+              href={brandTo}
+              render={(domProps) => (
+                <NavLink
+                  {...(domProps as object)}
+                  className={
+                    typeof domProps.className === "string"
+                      ? domProps.className
+                      : undefined
+                  }
+                  to={brandTo}
+                />
+              )}
             >
-              {siteName}
-            </NavLink>
+              <span className="min-w-0 truncate">{siteName}</span>
+            </Link>
 
             <nav
               aria-label="主导航"

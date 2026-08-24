@@ -137,7 +137,7 @@ test("desktop header stays one row for the production site name", async ({
 
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto("/courses");
-  const brand = page.getByRole("link", { name: "非官方课评@JUFE" });
+  const brand = page.getByRole("banner").getByRole("link", { name: "非官方课评@JUFE" });
   const nav = page.getByRole("navigation", { name: "主导航" });
   const search = page.getByRole("searchbox", { name: "搜索课程" });
   const stacked = await Promise.all([
@@ -174,6 +174,23 @@ test("desktop header stays one row for the production site name", async ({
   for (const box of linkBoxes) {
     expect(Math.abs(box.y - linkTop)).toBeLessThan(2);
   }
+});
+
+test("brand link uses the site name and goes to /courses", async ({ page }) => {
+  await mockShellApi(page);
+  await page.goto("/latest");
+
+  const brand = page.getByRole("banner").getByRole("link", { name: "选课志" });
+  await expect(brand).toBeVisible();
+  await expect(brand).toHaveAttribute("href", "/courses");
+  const brandLabel = brand.locator("span");
+  await expect(brandLabel).toHaveCSS("min-width", "0px");
+  await expect(brandLabel).toHaveCSS("text-overflow", "ellipsis");
+  await brand.click();
+  await expect(page).toHaveURL(/\/courses$/);
+  await expect(
+    page.getByRole("searchbox", { name: "搜索课程" }),
+  ).toBeVisible();
 });
 
 test("guests get a real login link outside the nav", async ({ page }) => {
