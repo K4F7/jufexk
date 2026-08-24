@@ -1,37 +1,8 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 
 const origin = "https://example.com";
-let loginSequence = 180;
-
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const cookie = (
-    response.headers as Headers & { getSetCookie(): string[] }
-  )
-    .getSetCookie()
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  return {
-    cookie,
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookie,
-      Origin: origin,
-      "X-CSRF-Token": body.csrfToken,
-    },
-  };
-}
 
 describe("course administrator notice", () => {
   it("requires an administrator session", async () => {
@@ -47,7 +18,7 @@ describe("course administrator notice", () => {
     const auth = await login();
     const updated = await SELF.fetch(`${origin}/api/admin/courses/1/notice`, {
       method: "PUT",
-      headers: auth.headers,
+      headers: adminHeaders(auth),
       body: JSON.stringify({ content: "  本周课程改为线上进行。  " }),
     });
     expect(updated.status).toBe(200);
@@ -67,7 +38,7 @@ describe("course administrator notice", () => {
 
     const cleared = await SELF.fetch(`${origin}/api/admin/courses/1/notice`, {
       method: "PUT",
-      headers: auth.headers,
+      headers: adminHeaders(auth),
       body: JSON.stringify({ content: "   " }),
     });
     expect(cleared.status).toBe(200);
@@ -78,7 +49,7 @@ describe("course administrator notice", () => {
     const auth = await login();
     const invalid = await SELF.fetch(`${origin}/api/admin/courses/1/notice`, {
       method: "PUT",
-      headers: auth.headers,
+      headers: adminHeaders(auth),
       body: JSON.stringify({ content: "x".repeat(2001) }),
     });
     expect(invalid.status).toBe(400);
@@ -87,7 +58,7 @@ describe("course administrator notice", () => {
       `${origin}/api/admin/courses/999999/notice`,
       {
         method: "PUT",
-        headers: auth.headers,
+        headers: adminHeaders(auth),
         body: JSON.stringify({ content: "不存在" }),
       },
     );

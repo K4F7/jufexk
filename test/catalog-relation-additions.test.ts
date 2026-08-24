@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { adminAuth, adminHeaders as sessionHeaders } from "./admin-session";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -8,27 +9,7 @@ import {
 const origin = "https://example.com";
 
 async function adminHeaders() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.18.61.${Math.floor(Math.random() * 200) + 1}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const cookie = (response.headers as Headers & { getSetCookie(): string[] })
-    .getSetCookie()
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  return {
-    "Content-Type": "application/json",
-    Cookie: cookie,
-    Origin: origin,
-    "X-CSRF-Token": body.csrfToken,
-  };
+  return sessionHeaders(await adminAuth(), origin);
 }
 
 async function digest(value: string) {

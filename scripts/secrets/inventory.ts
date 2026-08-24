@@ -1,7 +1,6 @@
 export const SECRETS_STORE_ID = "323163a091874b07aacdf5500bff903e";
 
 export const WORKER_SECRETS = [
-  "ADMIN_PASSWORD",
   "IP_HASH_SECRET",
   "TURNSTILE_SECRET",
   "CAMPUS_JWT_SECRET",
@@ -18,10 +17,18 @@ export const GITHUB_DEPLOY_SECRETS = [
 
 export type WorkerSecretName = (typeof WORKER_SECRETS)[number];
 
-export function resolveAdminPassword(env: NodeJS.Dict<string>): string {
-  const password = env.JUFEXK_ADMIN_PASSWORD || env.ADMIN_PASSWORD;
-  if (!password) throw new Error("缺少 ADMIN_PASSWORD 或 JUFEXK_ADMIN_PASSWORD");
-  return password;
+export function resolveAdminSession(env: NodeJS.Dict<string>): {
+  cookie: string;
+  csrf: string;
+} {
+  const cookie = env.JUFEXK_ADMIN_COOKIE;
+  const csrf = env.JUFEXK_ADMIN_CSRF;
+  if (!cookie || !csrf) {
+    throw new Error(
+      "缺少 JUFEXK_ADMIN_COOKIE 与 JUFEXK_ADMIN_CSRF（用已绑定学号登录 /admin 后复制）",
+    );
+  }
+  return { cookie, csrf };
 }
 
 export function parseDotenv(text: string): Record<string, string> {

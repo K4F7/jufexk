@@ -26,7 +26,6 @@ export default defineConfig(async () => {
             "COURSE_EXCLUSION_CONFLICT_DB",
           ],
           bindings: {
-            ADMIN_PASSWORD: "test-password",
             ISSUE111_RELATION_MANIFEST_SHA256: "manifest",
             V5_IMPORT_ARTIFACT_SHA256: "manifest",
             V5_IMPORT_MANIFEST_SHA256: "manifest",

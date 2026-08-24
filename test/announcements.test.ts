@@ -1,38 +1,9 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 
 const origin = "https://example.com";
-let loginSequence = 150;
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const cookie = (
-    response.headers as Headers & { getSetCookie(): string[] }
-  )
-    .getSetCookie()
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  return { cookie, csrf: body.csrfToken };
-}
-
-function adminHeaders(auth: { cookie: string; csrf: string }) {
-  return {
-    "Content-Type": "application/json",
-    Cookie: auth.cookie,
-    Origin: origin,
-    "X-CSRF-Token": auth.csrf,
-  };
-}
 
 describe("announcement API", () => {
   beforeEach(async () => {

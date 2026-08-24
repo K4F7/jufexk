@@ -1,6 +1,5 @@
 type RuntimeSecret = string | { get(): Promise<string> };
 type TestableSecretBinding =
-  | "ADMIN_PASSWORD"
   | "IP_HASH_SECRET"
   | "TURNSTILE_SECRET"
   | "CAMPUS_JWT_SECRET"
@@ -12,7 +11,6 @@ type TestableSecretBinding =
 // Production bindings come from `wrangler types`; the overrides allow Miniflare
 // tests to inject plain strings in place of Secrets Store bindings.
 export type Bindings = Omit<Cloudflare.Env, TestableSecretBinding> & {
-  ADMIN_PASSWORD?: string | { get(): Promise<string> };
   IP_HASH_SECRET: RuntimeSecret;
   TURNSTILE_SECRET?: RuntimeSecret;
   ORDINARY_USER_TEST_AUTH_SECRET?: string;
@@ -30,6 +28,7 @@ export type Vars = {
   adminSession?: string;
   adminSessionId?: string;
   adminCsrf?: string;
+  adminSource?: "student";
   publicCatalogCacheChanged?: boolean;
 };
 

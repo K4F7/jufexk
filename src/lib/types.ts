@@ -276,6 +276,15 @@ export type AdminUserBlockStatus = {
   blocked_until?: string | null;
 };
 
+/**
+ * 管理员学号绑定行（`GET /api/admin/student-bindings`）。
+ * 只返回绑定 id 与时间，不含学号明文或哈希。
+ */
+export type AdminStudentBinding = {
+  id: number;
+  created_at: string;
+};
+
 export type Paginated<T> = {
   items: T[];
   total: number;

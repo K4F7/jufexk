@@ -34,11 +34,6 @@
   },
   "secrets_store_secrets": [
     {
-      "binding": "ADMIN_PASSWORD",
-      "store_id": "323163a091874b07aacdf5500bff903e",
-      "secret_name": "ADMIN_PASSWORD",
-    },
-    {
       "binding": "IP_HASH_SECRET",
       "store_id": "323163a091874b07aacdf5500bff903e",
       "secret_name": "IP_HASH_SECRET",

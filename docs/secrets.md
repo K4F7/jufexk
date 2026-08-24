@@ -8,8 +8,7 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 
 | Key | 位置 | 去向 | 说明 |
 | --- | --- | --- | --- |
-| `ADMIN_PASSWORD` | Secrets Store | Worker 绑定 | 运维脚本仍可读环境变量 `ADMIN_PASSWORD` 或 `JUFEXK_ADMIN_PASSWORD` |
-| `IP_HASH_SECRET` | Secrets Store | Worker 绑定 | 必须与管理员口令、Turnstile Secret 不同 |
+| `IP_HASH_SECRET` | Secrets Store | Worker 绑定 | 必须与 Turnstile Secret 不同 |
 | `TURNSTILE_SECRET` | Secrets Store | Worker 绑定 | 与公开 `TURNSTILE_SITE_KEY` 成对 |
 | `CAMPUS_JWT_SECRET` | Secrets Store | Worker 绑定 | 已废弃 AuthBridge 占位 HS256 密钥；callback 不能再打开 |
 | `CAMPUS_JWT_AES_KEY` | Secrets Store | Worker 绑定 | 已废弃 AuthBridge 占位 AES-GCM 密钥 |
@@ -22,8 +21,8 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 不要写入 Secrets Store：
 
 - `SITE_NAME`、`UNIVERSITY_NAME`、`TURNSTILE_SITE_KEY`、`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL`、`MAIL_DELIVERY_URL`、`MAIL_FROM`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置。`CAMPUS_JWT_ENABLED` 不得写入仓库，也不能再打开 AuthBridge callback。
-- Vitest 夹具口令：仅测试
-- `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`：运维参数
+- Vitest 夹具字符串（Secrets Store 绑定的测试替代值）：仅测试
+- `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`、`JUFEXK_ADMIN_COOKIE`、`JUFEXK_ADMIN_CSRF`：运维参数。管理员不再使用共享口令，先绑定学号再复制会话 Cookie。
 
 ## 本机
 

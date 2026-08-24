@@ -65,7 +65,7 @@ pnpm exec wrangler d1 migrations apply jufexk --local
 pnpm run dev
 ```
 
-管理员本地口令放在不提交的 `.dev.vars`，再用 `pnpm run secrets:sync-local` 写入本地 Secrets Store。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置。
+本机密钥放在不提交的 `.dev.vars`，再用 `pnpm run secrets:sync-local` 写入本地 Secrets Store。首位管理员用 `pnpm exec tsx scripts/admin/bind-student-ids.ts` 写入学号 HMAC。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置。
 
 ### 常用命令
 
@@ -94,7 +94,7 @@ pnpm run dev
 
 ### 密钥（Cloudflare Secrets Store）
 
-`ADMIN_PASSWORD`、`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_IDENTITY_SECRET`、`MAIL_DELIVERY_TOKEN`、`CAS_CHALLENGE_SECRET`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与管理员口令、Turnstile Secret 不同的随机值。
+`IP_HASH_SECRET`、`TURNSTILE_SECRET`、`CAMPUS_IDENTITY_SECRET`、`MAIL_DELIVERY_TOKEN`、`CAS_CHALLENGE_SECRET`。不要把口令、API Token 或 `.dev.vars` 提交到仓库；`IP_HASH_SECRET` 必须使用与 Turnstile Secret 不同的随机值。管理员按校园学号绑定，不再使用共享 `ADMIN_PASSWORD`。
 
 `CAMPUS_JWT_SECRET` 与 `CAMPUS_JWT_AES_KEY` 是已废弃 AuthBridge 占位密钥。完整清单与轮换见 `docs/secrets.md`。
 

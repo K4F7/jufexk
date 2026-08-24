@@ -7,6 +7,7 @@ import {
   hmacHex,
   ordinaryUserTestHeaders,
 } from "../src/ordinary-user-session";
+import { adminAuth } from "./admin-session";
 
 const origin = "https://example.com";
 const testAuthSecret = "test-ordinary-user-auth";
@@ -168,19 +169,8 @@ describe("review endorsement API", () => {
     );
     expect(anonymous.status).toBe(401);
 
-    const login = await SELF.fetch(`${origin}/api/admin/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Origin: origin },
-      body: JSON.stringify({ password: "test-password" }),
-    });
-    expect(login.status).toBe(200);
-    const adminBody = await login.json<{ csrfToken: string }>();
-    const adminCookie = (
-      login.headers as Headers & { getSetCookie(): string[] }
-    )
-      .getSetCookie()
-      .map((value) => value.split(";", 1)[0])
-      .join("; ");
+    const admin = await adminAuth();
+    const adminCookie = admin.cookie;
     const adminWrite = await SELF.fetch(
       `${origin}/api/reviews/${reviewId}/endorsement`,
       {
@@ -188,7 +178,7 @@ describe("review endorsement API", () => {
         headers: {
           Cookie: adminCookie,
           Origin: origin,
-          "X-CSRF-Token": adminBody.csrfToken,
+          "X-CSRF-Token": admin.csrf,
           "Idempotency-Key": crypto.randomUUID(),
         },
       },

@@ -6,7 +6,7 @@ import {
   isSecretAlreadyExistsError,
   parseDotenv,
   parseSecretStoreList,
-  resolveAdminPassword,
+  resolveAdminSession,
   secretStoreListHasName,
   selectWorkerDevVars,
 } from "./inventory";
@@ -15,7 +15,6 @@ describe("secret inventory", () => {
   it("keeps worker secrets in Secrets Store and deploy keys on GitHub", () => {
     expect(SECRETS_STORE_ID).toMatch(/^[0-9a-f]{32}$/);
     expect([...WORKER_SECRETS]).toEqual([
-      "ADMIN_PASSWORD",
       "IP_HASH_SECRET",
       "TURNSTILE_SECRET",
       "CAMPUS_JWT_SECRET",
@@ -30,23 +29,24 @@ describe("secret inventory", () => {
     ]);
   });
 
-  it("accepts ADMIN_PASSWORD as the ops password alias", () => {
-    expect(resolveAdminPassword({ ADMIN_PASSWORD: "from-store" })).toBe(
-      "from-store",
-    );
-    expect(() => resolveAdminPassword({})).toThrow(
-      /ADMIN_PASSWORD 或 JUFEXK_ADMIN_PASSWORD/,
-    );
+  it("requires an administrator cookie pair for ops scripts", () => {
+    expect(
+      resolveAdminSession({
+        JUFEXK_ADMIN_COOKIE: "jufexk_admin=raw",
+        JUFEXK_ADMIN_CSRF: "csrf",
+      }),
+    ).toEqual({ cookie: "jufexk_admin=raw", csrf: "csrf" });
+    expect(() => resolveAdminSession({})).toThrow(/JUFEXK_ADMIN_COOKIE/);
   });
 
   it("reads worker secret ids from a wrangler store table", () => {
     const ids = parseSecretStoreList(`
 | Name | ID | Updated |
-| ADMIN_PASSWORD | 11111111111111111111111111111111 | yesterday |
+| IP_HASH_SECRET | 11111111111111111111111111111111 | yesterday |
 | CAS_CHALLENGE_SECRET | aaaabbbbccccddddeeeeffff00001111 | now |
 | IGNORE_ME | 22222222222222222222222222222222 | now |
 `);
-    expect(ids.get("ADMIN_PASSWORD")).toBe("11111111111111111111111111111111");
+    expect(ids.get("IP_HASH_SECRET")).toBe("11111111111111111111111111111111");
     expect(ids.get("CAS_CHALLENGE_SECRET")).toBe(
       "aaaabbbbccccddddeeeeffff00001111",
     );
@@ -59,12 +59,12 @@ describe("secret inventory", () => {
 ┌────────────────────────┬──────────────────────────────────────┬─────────┐
 │ Name                   │ ID                                   │ Updated │
 ├────────────────────────┼──────────────────────────────────────┼─────────┤
-│ ADMIN_PASSWORD         │ 11111111-1111-4111-8111-111111111111 │ now     │
+│ IP_HASH_SECRET         │ 11111111-1111-4111-8111-111111111111 │ now     │
 │ CAS_CHALLENGE_SECRET   │ aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee │ now     │
 │ IGNORE_ME              │ 22222222-2222-4222-8222-222222222222 │ now     │
 └────────────────────────┴──────────────────────────────────────┴─────────┘
 `);
-    expect(ids.get("ADMIN_PASSWORD")).toBe(
+    expect(ids.get("IP_HASH_SECRET")).toBe(
       "11111111-1111-4111-8111-111111111111",
     );
     expect(ids.get("CAS_CHALLENGE_SECRET")).toBe(
@@ -115,12 +115,11 @@ describe("secret inventory", () => {
   it("selects only worker keys from a dotenv file", () => {
     const selected = selectWorkerDevVars(
       parseDotenv(
-        "ADMIN_PASSWORD=admin\nIP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCAMPUS_JWT_SECRET=jwt\nCAMPUS_JWT_AES_KEY=aes\nCAMPUS_IDENTITY_SECRET=id\nMAIL_DELIVERY_TOKEN=mail\nCAS_CHALLENGE_SECRET=cas\nCLOUDFLARE_API_TOKEN=no\n",
+        "IP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCAMPUS_JWT_SECRET=jwt\nCAMPUS_JWT_AES_KEY=aes\nCAMPUS_IDENTITY_SECRET=id\nMAIL_DELIVERY_TOKEN=mail\nCAS_CHALLENGE_SECRET=cas\nCLOUDFLARE_API_TOKEN=no\n",
       ),
     );
     expect(selected.missing).toEqual([]);
     expect(Object.keys(selected.vars)).toEqual([
-      "ADMIN_PASSWORD",
       "IP_HASH_SECRET",
       "TURNSTILE_SECRET",
       "CAMPUS_JWT_SECRET",
@@ -129,6 +128,6 @@ describe("secret inventory", () => {
       "MAIL_DELIVERY_TOKEN",
       "CAS_CHALLENGE_SECRET",
     ]);
-    expect(selected.vars.ADMIN_PASSWORD).toBe("admin");
+    expect(selected.vars.IP_HASH_SECRET).toBe("ip");
   });
 });

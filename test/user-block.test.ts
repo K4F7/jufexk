@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -12,36 +13,7 @@ import {
 } from "./review-score-fixtures";
 
 const origin = "https://example.com";
-let loginSequence = 180;
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  const body = await response.json<{ csrfToken: string }>();
-  const cookies = (
-    response.headers as Headers & { getSetCookie(): string[] }
-  ).getSetCookie();
-  return {
-    cookie: cookies.map((value) => value.split(";", 1)[0]).join("; "),
-    csrf: body.csrfToken,
-  };
-}
-
-function adminHeaders(auth: { cookie: string; csrf: string }) {
-  return {
-    "Content-Type": "application/json",
-    Cookie: auth.cookie,
-    Origin: origin,
-    "X-CSRF-Token": auth.csrf,
-  };
-}
 
 describe("ordinary-user blocking", () => {
   it("validates admin authentication, duration, user existence, and account status", async () => {
