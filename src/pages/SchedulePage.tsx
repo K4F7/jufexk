@@ -262,14 +262,12 @@ export function SchedulePage() {
       setImportNotice("没有解析到可排的上课时间。");
       return false;
     }
-    setCourses((current) => {
-      const next = mergeImportedCourses(current, incoming);
-      saveSchedulePlan(next);
-      return next;
-    });
+    const next = mergeImportedCourses(loadSchedulePlan(), incoming);
+    saveSchedulePlan(next);
+    setCourses(next);
     setImportNotice(
       skipped
-        ? `已导入 ${incoming.length} 门课，另有 ${skipped} 行没有可识别的上课时间。`
+        ? `已导入 ${incoming.length} 门课，另有 ${skipped} 行没有可识别的上课时间。${JWXT_IMPORT_NOTICE}`
         : `已从本科教务导入 ${incoming.length} 门课。${JWXT_IMPORT_NOTICE}`,
     );
     return true;
