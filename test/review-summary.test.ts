@@ -1,9 +1,10 @@
 import { SELF, env } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import app from "../src/index";
 import {
   buildSummaryPrompt,
   collectRelationReviewTexts,
+  consumeAiSummaryMessage,
   expectedSummaryLength,
   hasInjectionMarker,
   isSummaryRecomputeDue,
@@ -12,8 +13,10 @@ import {
   renderSummaryHtml,
   reviewHtmlToText,
   SUMMARY_GATEWAY_TIMEOUT_MS,
+  SUMMARY_LEASE_RETRY_DELAY_SECONDS,
   SUMMARY_PROMPT_MAX_CHARS,
   type SummaryGatewayEnv,
+  type AiSummaryQueueMessage,
 } from "../src/review-summary";
 import {
   ordinaryWriteHeaders,
@@ -96,10 +99,48 @@ async function seedApprovedReviews(courseId: number, count: number, prefix = "�
 
 async function relationSummaryRow(courseId: number, teacherId = 1) {
   return env.DB.prepare(
-    "SELECT ai_summary,ai_summary_updated_at FROM course_teachers WHERE course_id=? AND teacher_id=?",
+    "SELECT ai_summary,ai_summary_source_hash,ai_summary_updated_at FROM course_teachers WHERE course_id=? AND teacher_id=?",
   )
     .bind(courseId, teacherId)
-    .first<{ ai_summary: string; ai_summary_updated_at: string | null }>();
+    .first<{
+      ai_summary: string;
+      ai_summary_source_hash: string;
+      ai_summary_updated_at: string | null;
+    }>();
+}
+
+function queueMessage(body: AiSummaryQueueMessage, attempts = 1) {
+  const state: {
+    acked: boolean;
+    retried: boolean;
+    retryOptions?: QueueRetryOptions;
+  } = { acked: false, retried: false };
+  const message: Message<AiSummaryQueueMessage> = {
+    id: crypto.randomUUID(),
+    timestamp: new Date(),
+    body,
+    attempts,
+    ack() {
+      state.acked = true;
+    },
+    retry(options) {
+      state.retried = true;
+      state.retryOptions = options;
+    },
+  };
+  return { message, state };
+}
+
+function queueEnv(sent: AiSummaryQueueMessage[] = []) {
+  return {
+    ...gatewayEnv,
+    DB: env.DB,
+    AI_SUMMARY_QUEUE: {
+      async send(message: AiSummaryQueueMessage) {
+        sent.push(message);
+      },
+    },
+  };
 }
 
 describe("reviewHtmlToText", () => {
@@ -288,6 +329,7 @@ describe("recomputeRelationSummary", () => {
     expect(JSON.stringify(calls[0].body.messages)).toContain("200 字左右");
     const row = await relationSummaryRow(courseId);
     expect(row?.ai_summary).toBe("## 考试\n客观总结正文");
+    expect(row?.ai_summary_source_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(row?.ai_summary_updated_at).not.toBeNull();
   });
 
@@ -329,12 +371,14 @@ describe("recomputeRelationSummary", () => {
     expect(row?.ai_summary_updated_at).not.toBeNull();
   });
 
-  it("leaves an empty relation untouched below threshold", async () => {
+  it("records the source hash below threshold so duplicate delivery is free", async () => {
     const courseId = await createBoundCourse("EMP");
     await seedReview(courseId, "一条短评");
     const result = await recomputeRelationSummary(gatewayEnv, env.DB, courseId, 1);
     expect(result.outcome).toBe("unchanged");
-    expect((await relationSummaryRow(courseId))?.ai_summary_updated_at).toBeNull();
+    const row = await relationSummaryRow(courseId);
+    expect(row?.ai_summary_source_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row?.ai_summary_updated_at).not.toBeNull();
   });
 });
 
@@ -358,48 +402,195 @@ describe("isSummaryRecomputeDue", () => {
   });
 });
 
-describe("summary recompute single-flight", () => {
-  it("runs overlapping schedules one requestSummary at a time, then drains the queue", async () => {
-    await env.DB.prepare(
-      `UPDATE summary_recompute_lock
-       SET course_id=NULL, teacher_id=NULL, immediate=0, locked_at=NULL, lease_until=NULL
-       WHERE id=1`,
-    ).run();
-    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
-    const firstCourse = await createBoundCourse("SF1");
-    const secondCourse = await createBoundCourse("SF2");
-    await seedApprovedReviews(firstCourse, 5, "串行甲");
-    await seedApprovedReviews(secondCourse, 5, "串行乙");
-
+describe("AI summary queue consumer", () => {
+  it("runs two different relations concurrently", async () => {
+    const firstCourse = await createBoundCourse("QPA");
+    const secondCourse = await createBoundCourse("QPB");
+    await seedApprovedReviews(firstCourse, 5, "并发甲");
+    await seedApprovedReviews(secondCourse, 5, "并发乙");
     let concurrent = 0;
     let maxConcurrent = 0;
-    const started: number[] = [];
-    const delayed = (async (input: any, init: any) => {
-      const request = new Request(input, init);
-      const body = await request.json();
-      const prompt = String(body.messages?.[1]?.content || "");
-      started.push(prompt.includes("串行甲") ? firstCourse : secondCourse);
+    const delayed = (async () => {
       concurrent += 1;
       maxConcurrent = Math.max(maxConcurrent, concurrent);
       await new Promise((resolve) => setTimeout(resolve, 80));
       concurrent -= 1;
       return new Response(
-        JSON.stringify({ choices: [{ message: { content: "## 考试\n串行总结" } }] }),
+        JSON.stringify({ choices: [{ message: { content: "## 考试\n并发总结" } }] }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as typeof fetch;
+    const first = queueMessage({ courseId: firstCourse, teacherId: 1, immediate: true });
+    const second = queueMessage({ courseId: secondCourse, teacherId: 1, immediate: true });
 
-    const ctx = { env: { ...env, ...gatewayEnv } };
     await Promise.all([
-      scheduleRelationSummaryRecompute(ctx, firstCourse, 1, { fetchImpl: delayed }),
-      scheduleRelationSummaryRecompute(ctx, secondCourse, 1, { fetchImpl: delayed }),
+      consumeAiSummaryMessage(first.message, queueEnv(), delayed),
+      consumeAiSummaryMessage(second.message, queueEnv(), delayed),
     ]);
 
-    expect(maxConcurrent).toBe(1);
-    expect(started).toHaveLength(2);
-    expect(new Set(started)).toEqual(new Set([firstCourse, secondCourse]));
-    expect((await relationSummaryRow(firstCourse))?.ai_summary).toBe("## 考试\n串行总结");
-    expect((await relationSummaryRow(secondCourse))?.ai_summary).toBe("## 考试\n串行总结");
+    expect(maxConcurrent).toBe(2);
+    expect(first.state.acked).toBe(true);
+    expect(second.state.acked).toBe(true);
+  });
+
+  it("serializes duplicate messages for one relation with a delayed retry", async () => {
+    const courseId = await createBoundCourse("QSR");
+    await seedApprovedReviews(courseId, 5, "同关系");
+    let calls = 0;
+    const delayed = (async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "同关系总结" } }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const first = queueMessage({ courseId, teacherId: 1, immediate: true });
+    const duplicate = queueMessage({ courseId, teacherId: 1, immediate: true });
+
+    await Promise.all([
+      consumeAiSummaryMessage(first.message, queueEnv(), delayed),
+      consumeAiSummaryMessage(duplicate.message, queueEnv(), delayed),
+    ]);
+
+    expect(calls).toBe(1);
+    expect([first.state.retried, duplicate.state.retried]).toContain(true);
+    const retried = first.state.retried ? first.state : duplicate.state;
+    expect(retried.retryOptions?.delaySeconds).toBe(SUMMARY_LEASE_RETRY_DELAY_SECONDS);
+  });
+
+  it("deduplicates repeated immediate delivery by public-source hash", async () => {
+    const courseId = await createBoundCourse("QDD");
+    await seedApprovedReviews(courseId, 5, "去重");
+    const calls: FetchCall[] = [];
+    const first = queueMessage({ courseId, teacherId: 1, immediate: true });
+    const duplicate = queueMessage({ courseId, teacherId: 1, immediate: true });
+    await consumeAiSummaryMessage(first.message, queueEnv(), okGatewayFetch(calls));
+    await consumeAiSummaryMessage(duplicate.message, queueEnv(), okGatewayFetch(calls));
+
+    expect(calls).toHaveLength(1);
+    expect(duplicate.state.acked).toBe(true);
+    expect(duplicate.state.retried).toBe(false);
+  });
+
+  it("checks debounce first, while immediate still honors source deduplication", async () => {
+    const courseId = await createBoundCourse("QDB");
+    await seedApprovedReviews(courseId, 5, "去抖");
+    const calls: FetchCall[] = [];
+    await consumeAiSummaryMessage(
+      queueMessage({ courseId, teacherId: 1, immediate: true }).message,
+      queueEnv(),
+      okGatewayFetch(calls, "第一版"),
+    );
+    await seedReview(courseId, "24 小时内新增的公开评价");
+
+    const debounced = queueMessage({ courseId, teacherId: 1, immediate: false });
+    await consumeAiSummaryMessage(debounced.message, queueEnv(), okGatewayFetch(calls));
+    expect(calls).toHaveLength(1);
+    expect(debounced.state.acked).toBe(true);
+
+    const immediate = queueMessage({ courseId, teacherId: 1, immediate: true });
+    await consumeAiSummaryMessage(
+      immediate.message,
+      queueEnv(),
+      okGatewayFetch(calls, "第二版"),
+    );
+    const duplicate = queueMessage({ courseId, teacherId: 1, immediate: true });
+    await consumeAiSummaryMessage(duplicate.message, queueEnv(), okGatewayFetch(calls));
+
+    expect(calls).toHaveLength(2);
+    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("第二版");
+  });
+
+  it("queues and generates the newest source when reviews change during generation", async () => {
+    const courseId = await createBoundCourse("QCH");
+    await seedApprovedReviews(courseId, 5, "初始");
+    const sent: AiSummaryQueueMessage[] = [];
+    let calls = 0;
+    const changing = (async () => {
+      calls += 1;
+      if (calls === 1) await seedReview(courseId, "生成期间新增的公开评价");
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: `第${calls}版总结` } }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const initial = queueMessage({ courseId, teacherId: 1, immediate: true });
+    await consumeAiSummaryMessage(initial.message, queueEnv(sent), changing);
+    expect(sent).toEqual([{ courseId, teacherId: 1, immediate: true }]);
+    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("");
+
+    const newest = queueMessage(sent[0]);
+    await consumeAiSummaryMessage(newest.message, queueEnv(sent), changing);
+
+    expect(calls).toBe(2);
+    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("第2版总结");
+    expect(sent).toHaveLength(1);
+  });
+
+  it("retries temporary failures and acknowledges permanent gateway errors", async () => {
+    const courseId = await createBoundCourse("QER");
+    await seedApprovedReviews(courseId, 5, "错误");
+    const temporary = queueMessage({ courseId, teacherId: 1, immediate: true }, 4);
+    await consumeAiSummaryMessage(
+      temporary.message,
+      queueEnv(),
+      stubGatewayFetch([], () => ({ status: 503, content: "" })),
+    );
+    expect(temporary.state.retried).toBe(true);
+    expect(temporary.state.acked).toBe(false);
+
+    const permanent = queueMessage({ courseId, teacherId: 1, immediate: true });
+    await consumeAiSummaryMessage(
+      permanent.message,
+      queueEnv(),
+      stubGatewayFetch([], () => ({ status: 400, content: "" })),
+    );
+    expect(permanent.state.acked).toBe(true);
+    expect(permanent.state.retried).toBe(false);
+  });
+
+  it("retries a gateway timeout so the platform can route exhausted attempts to DLQ", async () => {
+    const courseId = await createBoundCourse("QTO");
+    await seedApprovedReviews(courseId, 5, "超时");
+    const item = queueMessage({ courseId, teacherId: 1, immediate: true });
+    const timeout = (async () => {
+      throw new DOMException("timed out", "TimeoutError");
+    }) as typeof fetch;
+
+    await consumeAiSummaryMessage(item.message, queueEnv(), timeout);
+
+    expect(item.state.retried).toBe(true);
+    expect(item.state.acked).toBe(false);
+  });
+
+  it("recovers an expired relation lease", async () => {
+    const courseId = await createBoundCourse("QLX");
+    await seedApprovedReviews(courseId, 5, "过期租约");
+    await env.DB.prepare(
+      `INSERT INTO summary_recompute_leases(course_id,teacher_id,lease_token,lease_until)
+       VALUES(?,1,'crashed-worker',unixepoch()-1)`,
+    )
+      .bind(courseId)
+      .run();
+    const item = queueMessage({ courseId, teacherId: 1, immediate: true });
+    const calls: FetchCall[] = [];
+    await consumeAiSummaryMessage(item.message, queueEnv(), okGatewayFetch(calls));
+
+    expect(calls).toHaveLength(1);
+    expect(item.state.acked).toBe(true);
+  });
+
+  it("enqueues only relation identifiers and the immediate flag", async () => {
+    const sent: AiSummaryQueueMessage[] = [];
+    await scheduleRelationSummaryRecompute(
+      { env: { ...queueEnv(sent) } },
+      12,
+      34,
+      { immediate: true },
+    );
+    expect(sent).toEqual([{ courseId: 12, teacherId: 34, immediate: true }]);
+    expect(Object.keys(sent[0]).sort()).toEqual(["courseId", "immediate", "teacherId"]);
   });
 
   it("recomputes again if the same relation is enqueued while already running", async () => {
@@ -531,37 +722,15 @@ describe("course detail payload", () => {
 });
 
 describe("summary recompute triggers", () => {
-  const originalFetch = globalThis.fetch;
-  let gatewayCalls: FetchCall[] = [];
-
-  function installGatewayMock() {
-    gatewayCalls = [];
-    globalThis.fetch = (async (input: any, init: any) => {
-      const request = new Request(input, init);
-      if (new URL(request.url).origin === "https://openai.example.test") {
-        gatewayCalls.push({
-          url: request.url,
-          authorization: request.headers.get("authorization") || "",
-          body: await request.json(),
-        });
-        return new Response(
-          JSON.stringify({ choices: [{ message: { content: "## 教学\n接线测试总结" } }] }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      return originalFetch(input, init);
-    }) as typeof fetch;
+  function envWithGateway(sent: AiSummaryQueueMessage[]) {
+    return { ...env, ...queueEnv(sent) };
   }
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  function envWithGateway() {
-    return { ...env, ...gatewayEnv };
-  }
-
-  async function submitReview(courseId: number, comment: string) {
+  async function submitReview(
+    courseId: number,
+    comment: string,
+    sent: AiSummaryQueueMessage[],
+  ) {
     writeSession ??= await ordinaryWriteSession("summary-trigger-writer");
     return app.fetch(
       new Request(`${origin}/api/reviews`, {
@@ -579,30 +748,36 @@ describe("summary recompute triggers", () => {
           headline: "一句话总结",
         }),
       }),
-      envWithGateway(),
+      envWithGateway(sent),
     );
   }
 
-  it("recomputes in the background after a public review is created, debounced for 24h", async () => {
-    installGatewayMock();
+  it("publishes quickly and only enqueues work even if the model could take 120s", async () => {
     const courseId = await createBoundCourse("TRG");
     await seedApprovedReviews(courseId, 4, "已有");
+    const sent: AiSummaryQueueMessage[] = [];
 
-    const fifth = await submitReview(courseId, "第五条公开评价，触发首次总结生成");
+    const startedAt = Date.now();
+    const fifth = await submitReview(
+      courseId,
+      "第五条公开评价，触发首次总结生成",
+      sent,
+    );
     expect(fifth.status).toBe(200);
-    expect(gatewayCalls).toHaveLength(1);
-    const row = await relationSummaryRow(courseId);
-    expect(row?.ai_summary).toBe("## 教学\n接线测试总结");
-    expect(row?.ai_summary_updated_at).not.toBeNull();
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(sent).toEqual([{ courseId, teacherId: 1, immediate: false }]);
+    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("");
 
-    const sixth = await submitReview(courseId, "第六条公开评价，24h 内不应重算");
+    const sixth = await submitReview(
+      courseId,
+      "第六条公开评价，仍只负责入队",
+      sent,
+    );
     expect(sixth.status).toBe(200);
-    expect(gatewayCalls).toHaveLength(1);
-    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("## 教学\n接线测试总结");
+    expect(sent).toHaveLength(2);
   });
 
-  it("rejects recompute immediately, bypassing the 24h debounce", async () => {
-    installGatewayMock();
+  it("marks rejection-triggered work immediate so the consumer bypasses debounce", async () => {
     const courseId = await createBoundCourse("REJ");
     await seedApprovedReviews(courseId, 5, "驳回前");
     const first = await recomputeRelationSummary(gatewayEnv, env.DB, courseId, 1, okGatewayFetch([]));
@@ -610,6 +785,7 @@ describe("summary recompute triggers", () => {
 
     const pendingId = await seedReview(courseId, "一条待审评价", "pending");
     const auth = await adminAuth();
+    const sent: AiSummaryQueueMessage[] = [];
 
     const response = await app.fetch(
       new Request(`${origin}/api/admin/reviews/${pendingId}`, {
@@ -622,11 +798,11 @@ describe("summary recompute triggers", () => {
         },
         body: JSON.stringify({ status: "rejected", note: "测试驳回" }),
       }),
-      envWithGateway(),
+      envWithGateway(sent),
     );
     expect(response.status).toBe(200);
-    expect(gatewayCalls).toHaveLength(1);
-    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("## 教学\n接线测试总结");
+    expect(sent).toEqual([{ courseId, teacherId: 1, immediate: true }]);
+    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("## 考试\n客观总结正文");
   });
 });
 
@@ -674,4 +850,3 @@ describe("admin summary backfill", () => {
     expect((await relationSummaryRow(courseId))?.ai_summary).toBe("");
   });
 });
-
