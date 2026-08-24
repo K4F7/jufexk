@@ -9,6 +9,10 @@ import {
   type JwxtImportRow,
 } from "../lib/jwxt-schedule-text";
 
+/** 导入说明与成功提示共用：课表本机处理，课程名会发到选课志匹配目录。 */
+export const JWXT_IMPORT_NOTICE =
+  "课表只在你自己的浏览器里处理；回传的是课程名、教师和上课时间，课程名会发到选课志用来匹配目录。";
+
 export function JwxtScheduleImport({
   canEdit,
   loginHref,
@@ -84,7 +88,7 @@ export function JwxtScheduleImport({
             </Modal.Header>
             <Modal.Body className="space-y-3 text-sm">
               <p className="m-0">
-                在你自己的浏览器打开本科教务。课表只在你自己的浏览器里处理，回传的只有课程名、教师和上课时间。
+                在你自己的浏览器打开本科教务。{JWXT_IMPORT_NOTICE}
               </p>
               <div className="flex flex-wrap gap-2">
                 <a
