@@ -170,6 +170,25 @@ test("sort controls expose an orientation matching the responsive layout", async
   await expect(sortGroup).toHaveAttribute("aria-orientation", "horizontal");
 });
 
+test("search results keep the relevance sort label", async ({ page }) => {
+  await page.goto("/courses?q=传统");
+  const sortGroup = page.getByRole("radiogroup", { name: "排序方式" });
+  await expect(sortGroup.getByRole("radio", { name: "相关度" })).toBeVisible();
+  await expect(sortGroup.getByRole("radio", { name: "课评数" })).toHaveCount(0);
+});
+
+test("empty catalog keeps the public-facing cleanup copy", async ({ page }) => {
+  await page.route("**/api/courses**", (route) =>
+    route.fulfill({
+      json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
+    }),
+  );
+  await page.goto("/courses");
+
+  await expect(page.getByText("目录还在整理，请稍后再来看看。")).toBeVisible();
+  await expect(page.getByText(/联系维护者导入公开目录/)).toHaveCount(0);
+});
+
 test("category row exposes 通识课 instead of 专业课/公共课 and filters by scheme", async ({
   page,
 }) => {
