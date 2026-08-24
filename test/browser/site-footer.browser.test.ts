@@ -75,12 +75,16 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "使用条款" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "公告" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
-  await expect(footerNav.getByRole("separator")).toHaveCount(7);
+  const separators = footerNav.locator('[data-slot="separator"]');
+  await expect(separators).toHaveCount(7);
+  for (const separator of await separators.all()) {
+    await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
+  }
 
   for (const link of await footerNav.getByRole("link").all()) {
     if ((await link.getAttribute("aria-label")) === "GitHub 仓库") continue;
     const pair = link.locator("..");
-    await expect(pair.getByRole("separator")).toHaveCount(1);
+    await expect(pair.locator('[data-slot="separator"]')).toHaveCount(1);
     await expect(pair).toHaveCSS("white-space", "nowrap");
   }
 });

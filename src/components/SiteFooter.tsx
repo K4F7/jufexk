@@ -43,7 +43,9 @@ export function SiteFooter({
             <LogoGithub />
           </a>
           <span className="inline-flex items-center gap-4 whitespace-nowrap">
-            <Separator className="h-4" orientation="vertical" />
+            <span aria-hidden>
+              <Separator className="h-4" orientation="vertical" />
+            </span>
             <a
               className="link text-muted"
               href={GITHUB_ISSUES_URL}
@@ -58,7 +60,9 @@ export function SiteFooter({
               key={link.to}
               className="inline-flex items-center gap-4 whitespace-nowrap"
             >
-              <Separator className="h-4" orientation="vertical" />
+              <span aria-hidden>
+                <Separator className="h-4" orientation="vertical" />
+              </span>
               <RouterAriaLink className="text-muted" to={link.to}>
                 {link.label}
               </RouterAriaLink>
