@@ -7,10 +7,12 @@ import {
   Input,
   InputOTP,
   Label,
+  Skeleton,
   Spinner,
+  Tabs,
   TextField,
 } from "@heroui/react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type Key } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../components/DetailFeedback";
 import { useViewer } from "../hooks/useViewer";
@@ -48,6 +50,19 @@ type CasStart =
       challenge: string;
       maskedPhone?: string;
     };
+
+type QrPhase = "idle" | "loading" | "pending" | "scanned" | "expired" | "cancelled" | "error";
+type QrStart = { challenge: string; image: string };
+type QrStatus =
+  | { status: "pending" | "scanned" | "cancelled" | "expired"; authenticated?: false }
+  | { authenticated: true; csrfToken?: string; status?: undefined };
+
+const QR_POLL_MS = 2000;
+const QR_IMAGE_PREFIX = "data:image/png;base64,";
+
+function isQrDataImage(image: string) {
+  return image.startsWith(QR_IMAGE_PREFIX) && image.length > QR_IMAGE_PREFIX.length;
+}
 
 const RETURN_TO_CREDENTIALS_RE = /请重新登录|学号或密码|用户名或密码/;
 const LOCKED_ACCOUNT_RE = /锁定|冻结|禁用/;
@@ -98,7 +113,12 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [redeeming, setRedeeming] = useState(Boolean(magicToken));
   const [error, setError] = useState("");
+  const [loginTab, setLoginTab] = useState("password");
+  const [qrPhase, setQrPhase] = useState<QrPhase>("idle");
+  const [qrChallenge, setQrChallenge] = useState("");
+  const [qrImage, setQrImage] = useState("");
   const loginRequestId = useRef(0);
+  const qrRequestId = useRef(0);
 
   useEffect(() => {
     if (!magicToken || viewer.authenticated) {
@@ -129,9 +149,108 @@ export function LoginPage() {
     };
   }, [magicToken, viewer.authenticated, refresh, applySession, navigate, backTarget]);
 
+  useEffect(() => {
+    const stop =
+      loginTab !== "qr" ||
+      !qrChallenge ||
+      qrPhase === "expired" ||
+      qrPhase === "cancelled" ||
+      qrPhase === "error" ||
+      qrPhase === "loading" ||
+      qrPhase === "idle";
+    if (stop) return;
+    let cancelled = false;
+    let inFlight = false;
+    const requestId = qrRequestId.current;
+    const poll = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const body = await api<QrStatus>("/api/auth/cas/qr/status", {
+          method: "POST",
+          body: JSON.stringify({ challenge: qrChallenge }),
+        });
+        if (cancelled || requestId !== qrRequestId.current) return;
+        if (body.authenticated) {
+          qrRequestId.current += 1;
+          setQrChallenge("");
+          finishLogin(body);
+          return;
+        }
+        if (body.status === "pending") setQrPhase("pending");
+        else if (body.status === "scanned") setQrPhase("scanned");
+        else if (body.status === "expired") setQrPhase("expired");
+        else if (body.status === "cancelled") setQrPhase("cancelled");
+      } catch (err: unknown) {
+        if (cancelled || requestId !== qrRequestId.current) return;
+        const message = err instanceof ApiError ? err.message : "登录失败，请稍后重试";
+        if (err instanceof ApiError && (err.status === 401 || /过期|失效/.test(message))) {
+          setQrPhase("expired");
+          return;
+        }
+        setQrPhase("error");
+        setError(message);
+      } finally {
+        inFlight = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, QR_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loginTab, qrChallenge, qrPhase]);
+
   function finishLogin(session?: Partial<CasStart> & { authenticated?: boolean }) {
     if (session?.authenticated) applySession(session);
     navigate(backTarget, { replace: true });
+  }
+
+  function resetQr(nextPhase: QrPhase = "idle") {
+    qrRequestId.current += 1;
+    setQrChallenge("");
+    setQrImage("");
+    setQrPhase(nextPhase);
+  }
+
+  async function startQr() {
+    const requestId = ++qrRequestId.current;
+    setError("");
+    setQrChallenge("");
+    setQrImage("");
+    setQrPhase("loading");
+    try {
+      const body = await api<QrStart>("/api/auth/cas/qr", {
+        method: "POST",
+        body: "{}",
+      });
+      if (requestId !== qrRequestId.current) return;
+      if (!body.challenge || !isQrDataImage(body.image)) {
+        setQrPhase("error");
+        setError("登录失败，请稍后重试");
+        return;
+      }
+      setQrChallenge(body.challenge);
+      setQrImage(body.image);
+      setQrPhase("pending");
+    } catch (err: unknown) {
+      if (requestId !== qrRequestId.current) return;
+      setQrPhase("error");
+      setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
+    }
+  }
+
+  function selectLoginTab(key: Key) {
+    const next = String(key);
+    setLoginTab(next);
+    if (next !== "qr") {
+      resetQr();
+      return;
+    }
+    void startQr();
   }
 
   /** Local testing only — Vite DEV UI; Worker still rejects non-loopback hosts. */
@@ -337,61 +456,139 @@ export function LoginPage() {
             </Card.Footer>
           </Form>
         ) : (
-          <Form
-            aria-busy={busy}
-            aria-labelledby="login-heading"
-            onSubmit={submitCas}
-          >
-            <Card.Content>
-              <div className="flex flex-col gap-4">
-                {errorAlert}
-                {busy ? (
-                  <LoginProgressAlert
-                    title="正在登录"
-                    description="请稍候，通常需要几秒。"
-                  />
-                ) : null}
-                <TextField
-                  fullWidth
-                  isDisabled={busy}
-                  isRequired
-                  name="username"
-                  autoComplete="username"
-                  value={username}
-                  onChange={setUsername}
+          <Card.Content>
+            <Tabs
+              selectedKey={loginTab}
+              onSelectionChange={selectLoginTab}
+            >
+              <Tabs.ListContainer>
+                <Tabs.List aria-label="登录方式">
+                  <Tabs.Tab id="password">
+                    账号密码
+                    <Tabs.Indicator />
+                  </Tabs.Tab>
+                  <Tabs.Tab id="qr">
+                    <Tabs.Separator />
+                    扫码登录
+                    <Tabs.Indicator />
+                  </Tabs.Tab>
+                </Tabs.List>
+              </Tabs.ListContainer>
+              <Tabs.Panel className="pt-4" id="password">
+                <Form
+                  aria-busy={busy}
+                  aria-labelledby="login-heading"
+                  onSubmit={submitCas}
                 >
-                  <Label>学号</Label>
-                  <Input placeholder="江财统一身份学号" variant="primary" />
-                  <FieldError />
-                </TextField>
-                <TextField
-                  fullWidth
-                  isDisabled={busy}
-                  isRequired
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={setPassword}
-                >
-                  <Label>校园密码</Label>
-                  <Input placeholder="统一身份认证密码" variant="primary" />
-                  <FieldError />
-                </TextField>
-              </div>
-            </Card.Content>
-            <Card.Footer className="mt-6 flex flex-col gap-2">
-              <Button fullWidth isPending={busy} type="submit">
-                {({ isPending }) => (
-                  <>
-                    {isPending ? <Spinner color="current" size="sm" /> : null}
-                    {isPending ? "正在登录…" : "登录"}
-                  </>
-                )}
-              </Button>
-              {devLoginButton}
-            </Card.Footer>
-          </Form>
+                  <div className="flex flex-col gap-4">
+                    {loginTab === "password" ? errorAlert : null}
+                    {busy ? (
+                      <LoginProgressAlert
+                        title="正在登录"
+                        description="请稍候，通常需要几秒。"
+                      />
+                    ) : null}
+                    <TextField
+                      fullWidth
+                      isDisabled={busy}
+                      isRequired
+                      name="username"
+                      autoComplete="username"
+                      value={username}
+                      onChange={setUsername}
+                    >
+                      <Label>学号</Label>
+                      <Input placeholder="江财统一身份学号" variant="primary" />
+                      <FieldError />
+                    </TextField>
+                    <TextField
+                      fullWidth
+                      isDisabled={busy}
+                      isRequired
+                      name="password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={setPassword}
+                    >
+                      <Label>校园密码</Label>
+                      <Input placeholder="统一身份认证密码" variant="primary" />
+                      <FieldError />
+                    </TextField>
+                    <Button fullWidth isPending={busy} type="submit">
+                      {({ isPending }) => (
+                        <>
+                          {isPending ? <Spinner color="current" size="sm" /> : null}
+                          {isPending ? "正在登录…" : "登录"}
+                        </>
+                      )}
+                    </Button>
+                    {devLoginButton}
+                  </div>
+                </Form>
+              </Tabs.Panel>
+              <Tabs.Panel className="pt-4" id="qr">
+                <div className="flex flex-col gap-4">
+                  {qrPhase === "loading" || qrPhase === "idle" ? (
+                    <>
+                      <Skeleton className="mx-auto h-48 w-48 rounded-lg" />
+                      <LoginProgressAlert
+                        title="正在获取二维码"
+                        description="请稍候。"
+                      />
+                    </>
+                  ) : null}
+                  {qrImage && (qrPhase === "pending" || qrPhase === "scanned") ? (
+                    <>
+                      <img
+                        alt="微信或企业微信登录二维码"
+                        className="mx-auto size-48"
+                        src={qrImage}
+                        onError={() => {
+                          setQrImage("");
+                          setQrPhase("expired");
+                        }}
+                      />
+                      <Alert status="accent">
+                        <Alert.Indicator />
+                        <Alert.Content>
+                          <Alert.Title>
+                            {qrPhase === "scanned" ? "扫码成功，请在手机上确认" : "使用微信或企业微信扫一扫登录"}
+                          </Alert.Title>
+                        </Alert.Content>
+                      </Alert>
+                    </>
+                  ) : null}
+                  {qrPhase === "error" ? errorAlert : null}
+                  {qrPhase === "expired" || qrPhase === "cancelled" ? (
+                    <Alert status="warning">
+                      <Alert.Indicator />
+                      <Alert.Content>
+                        <Alert.Title>
+                          {qrPhase === "cancelled" ? "扫码已取消" : "二维码已失效"}
+                        </Alert.Title>
+                        <Alert.Description>
+                          请刷新二维码后重新扫码。
+                        </Alert.Description>
+                      </Alert.Content>
+                    </Alert>
+                  ) : null}
+                  {qrPhase === "expired" ||
+                  qrPhase === "cancelled" ||
+                  qrPhase === "error" ? (
+                    <Button
+                      fullWidth
+                      onPress={() => {
+                        void startQr();
+                      }}
+                    >
+                      刷新二维码
+                    </Button>
+                  ) : null}
+                </div>
+              </Tabs.Panel>
+            </Tabs>
+          </Card.Content>
         )}
       </Card>
     </section>

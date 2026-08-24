@@ -1,5 +1,7 @@
 # 生产普通用户主登录只用江财 CAS 代登
 
+_2026-08-24：#508 把微信/企业微信扫码加为同一套 CAS 探针，不改身份哈希、出站白名单或 TGT 约束。_
+
 _2026-08-24：#500 再次解绑 #478 为作者查询重新加入的 `MAIL_*` / `REVIEW_AUTHOR_LOOKUP_TO`。生产部署不得依赖这些 Secrets Store 条目。_
 
 _2026-08-24：#483 从 Worker 配置淘汰 AuthBridge / 校园 JWT / 邮件投递变量（`AUTHBRIDGE_BASE_URL`、`CAMPUS_APP_ID`、`CAMPUS_JWT_AUD`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`MAIL_*`）。登录页只保留 CAS 代登；邮箱验证代码仍可用测试夹具，生产不再绑定投递端点。_
@@ -17,6 +19,7 @@ _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到�
 - 口令、`CASTGC`、`JSESSIONID`、MFA `gid` 不得进日志、公开响应或长期表。MFA 两步中间态只存 AES-GCM 密文，TTL 约 5 分钟。
 - 出站只允许 `ssl.jxufe.edu.cn` 以及 host 以 `.jxufe.edu.cn` 结尾的 attest。
 - 成功后认证身份为 `provider=cas`，`issuer=ssl.jxufe.edu.cn`，`subject=HMAC(规范化学号)`。学号不当业务主键。不与 email / 已废弃的 authbridge 自动合并。
+- 扫码登录是同一套 CAS 探针：`GET /cas/qr/qrcode` 取图，`POST /cas/qr/comet` 轮询；`code=1` 必须作为独立 `expired` 状态返回供刷新。授权后 `POST /cas/login`（`qrCodeKey`、`currentMenu=3`、无 `execution`）。学号优先解析 comet `accounts`，否则用同域 `GET /cas/p3/serviceValidate` 取 `cas:user`；取不到规范化学号则失败关闭。不要走 `federatedRedirect` / `openweixin`。中间态仍复用 `cas_login_challenges` AES-GCM，TTL 约 5 分钟；Cookie / `qrCodeKey` / `stateKey` / `CASTGC` 不得进日志或公开响应。
 - 图形验证码失败关闭。本版不做 OCR。
 - 学校 CAS 对失败口令可能回 200 登录页而不是 401；客户端把「仍停在登录页」当作口令失败。
 - MFA 核销后先用已有 `execution` / `mfaState` POST；成功则不再 `detect`、不再下载 169KB 登录页。成功会话直接用登录接口返回值，不再额外打 `/api/user/session`。Worker 使用 Smart Placement，出站贴近学校 CAS。

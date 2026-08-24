@@ -20,6 +20,30 @@ export type CasMfaHold = {
   maskedPhone: string;
 };
 
+export type CasQrHold = {
+  kind: "qr";
+  cookies: CasCookieJar;
+  fpVisitorId: string;
+};
+
+export type CasQrStartOk = {
+  ok: true;
+  hold: CasQrHold;
+  imagePng: Uint8Array;
+};
+export type CasQrStartResult = CasQrStartOk | CasLoginFail;
+
+export type CasQrPollWaiting = {
+  ok: true;
+  status: "pending" | "scanned" | "cancelled" | "expired";
+};
+export type CasQrPollAuthorized = {
+  ok: true;
+  status: "authorized";
+  username: string;
+};
+export type CasQrPollResult = CasQrPollWaiting | CasQrPollAuthorized | CasLoginFail;
+
 export type CasLoginOk = { ok: true };
 export type CasLoginMfa = { ok: false; needsMfa: true; hold: CasMfaHold };
 export type CasLoginFail = {
@@ -37,6 +61,11 @@ const LOGIN_URL = `${CAS_BASE_URL}login?service=${encodeURIComponent(CAS_SERVICE
 const PUBLIC_KEY_URL = `${CAS_BASE_URL}jwt/publicKey`;
 const MFA_DETECT_URL = `${CAS_BASE_URL}mfa/detect`;
 const MFA_INIT_URL = `${CAS_BASE_URL}mfa/initByType/securephone`;
+const QR_IMAGE_URL = `${CAS_BASE_URL}qr/qrcode`;
+const QR_COMET_URL = `${CAS_BASE_URL}qr/comet`;
+const SERVICE_VALIDATE_URL = `${CAS_BASE_URL}p3/serviceValidate`;
+const QR_IMAGE_MIN_BYTES = 32;
+const QR_IMAGE_MAX_BYTES = 80_000;
 
 export function normalizeCasUsername(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -198,6 +227,7 @@ async function casFetch(
     method?: string;
     body?: string;
     contentType?: string;
+    accept?: string;
     followRedirects?: boolean;
     hops?: number;
   } = {},
@@ -205,11 +235,12 @@ async function casFetch(
   if (!isAllowedCasUrl(url)) throw new Error("cas_host_blocked");
   const headers = new Headers({
     "user-agent": CAS_USER_AGENT,
-    accept: "text/html,application/json;q=0.9,*/*;q=0.8",
+    accept: init.accept || "text/html,application/json;q=0.9,*/*;q=0.8",
   });
   const cookie = cookieHeader(jar);
   if (cookie) headers.set("cookie", cookie);
-  if (init.body) {
+  if (init.method === "POST") headers.set("referer", LOGIN_URL);
+  if (init.body !== undefined) {
     headers.set("content-type", init.contentType || "application/x-www-form-urlencoded");
     headers.set("referer", LOGIN_URL);
   }
@@ -506,6 +537,214 @@ export async function completeCasPasswordLogin(
       return fail(CAS_MFA_CONSUMED_LOGIN_FAILED, result.status);
     }
     return result;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    if (reason === "cas_captcha_required") {
+      return fail("登录页要求验证码，请稍后重试", 503);
+    }
+    if (reason === "cas_host_blocked") {
+      return fail("登录失败，请稍后重试", 503);
+    }
+    return fail("登录失败，请稍后重试");
+  }
+}
+
+export function parseQrCometAccounts(raw: unknown): string | null {
+  if (typeof raw === "string") return normalizeCasUsername(raw);
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const username = parseQrCometAccounts(item);
+      if (username) return username;
+    }
+    return null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  for (const key of ["username", "account", "userId"]) {
+    const username = normalizeCasUsername(record[key]);
+    if (username) return username;
+  }
+  return null;
+}
+
+export function parseCasServiceValidateUser(xml: string): string | null {
+  const match =
+    xml.match(/<cas:user>\s*([^<]+)\s*<\/cas:user>/i) ||
+    xml.match(/<(?:[\w-]+:)?user>\s*([^<]+)\s*<\/(?:[\w-]+:)?user>/i);
+  return normalizeCasUsername(match?.[1]?.trim());
+}
+
+export function extractCasServiceTicket(location: string): string | null {
+  if (!location) return null;
+  let ticket = "";
+  try {
+    ticket = new URL(location, CAS_BASE_URL).searchParams.get("ticket") || "";
+  } catch {
+    ticket = location.match(/[?&]ticket=([^&]+)/i)?.[1] || "";
+    try {
+      ticket = decodeURIComponent(ticket);
+    } catch {
+      return null;
+    }
+  }
+  if (!/^ST-[A-Za-z0-9._-]{1,200}$/.test(ticket)) return null;
+  return ticket;
+}
+
+function cometDataRecord(body: Record<string, unknown> | null) {
+  if (!body?.data || typeof body.data !== "object" || Array.isArray(body.data)) {
+    return null;
+  }
+  return body.data as Record<string, unknown>;
+}
+
+function cometQrCodeRecord(data: Record<string, unknown> | null) {
+  if (!data?.qrCode || typeof data.qrCode !== "object" || Array.isArray(data.qrCode)) {
+    return null;
+  }
+  return data.qrCode as Record<string, unknown>;
+}
+
+function usernameFromCometData(data: Record<string, unknown> | null) {
+  if (!data) return null;
+  return (
+    parseQrCometAccounts(data.accounts) ||
+    parseQrCometAccounts(cometQrCodeRecord(data)?.accounts)
+  );
+}
+
+function qrWaitStatus(raw: unknown): CasQrPollWaiting["status"] | "authorized" | null {
+  const value = String(raw ?? "");
+  if (value === "1") return "pending";
+  if (value === "2") return "scanned";
+  if (value === "3") return "authorized";
+  if (value === "4") return "cancelled";
+  return null;
+}
+
+function isPngImage(bytes: Uint8Array) {
+  return (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  );
+}
+
+async function fetchQrImage(jar: CasCookieJar) {
+  const response = await casFetch(`${QR_IMAGE_URL}?r=${Date.now()}`, jar, {
+    followRedirects: false,
+    accept: "image/png,image/*;q=0.8,*/*;q=0.5",
+  });
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok || !/image\/png/i.test(contentType)) {
+    throw new Error("cas_qr_image");
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (
+    bytes.length < QR_IMAGE_MIN_BYTES ||
+    bytes.length > QR_IMAGE_MAX_BYTES ||
+    !isPngImage(bytes)
+  ) {
+    throw new Error("cas_qr_image");
+  }
+  return bytes;
+}
+
+async function submitQrLogin(
+  jar: CasCookieJar,
+  qrCodeKey: string,
+  fpVisitorId: string,
+): Promise<{ ok: true; ticket: string | null } | CasLoginFail> {
+  const response = await casFetch(LOGIN_URL, jar, {
+    method: "POST",
+    body: new URLSearchParams({
+      qrCodeKey,
+      currentMenu: "3",
+      geolocation: "",
+      fpVisitorId,
+      trustAgent: "",
+      _eventId_success: "Submit",
+    }).toString(),
+    followRedirects: false,
+  });
+  const location = response.headers.get("location") || "";
+  if (
+    isRedirectStatus(response.status) &&
+    isSuccessfulCasRedirect(location, { acceptReauthCheck: true })
+  ) {
+    return { ok: true, ticket: extractCasServiceTicket(location) };
+  }
+  return fail("登录失败，请稍后重试", 400);
+}
+
+async function usernameFromServiceTicket(jar: CasCookieJar, ticket: string) {
+  const url = `${SERVICE_VALIDATE_URL}?service=${encodeURIComponent(CAS_SERVICE_URL)}&ticket=${encodeURIComponent(ticket)}`;
+  const response = await casFetch(url, jar, { followRedirects: false });
+  if (!response.ok) return null;
+  return parseCasServiceValidateUser(await readText(response));
+}
+
+export async function startCasQrLogin(): Promise<CasQrStartResult> {
+  const jar: CasCookieJar = {};
+  try {
+    const loaded = await fetchLoginPage(jar);
+    if (loaded.ok) return fail("登录失败，请稍后重试");
+    const imagePng = await fetchQrImage(jar);
+    return {
+      ok: true,
+      hold: {
+        kind: "qr",
+        cookies: jar,
+        fpVisitorId: randomFingerprint(),
+      },
+      imagePng,
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    if (reason === "cas_captcha_required") {
+      return fail("登录页要求验证码，请稍后重试", 503);
+    }
+    if (reason === "cas_host_blocked") {
+      return fail("登录失败，请稍后重试", 503);
+    }
+    return fail("登录失败，请稍后重试");
+  }
+}
+
+export async function pollCasQrLogin(hold: CasQrHold): Promise<CasQrPollResult> {
+  const jar = { ...hold.cookies };
+  try {
+    const comet = await casFetch(QR_COMET_URL, jar, {
+      method: "POST",
+      body: "",
+      followRedirects: false,
+      accept: "application/json,text/plain;q=0.8,*/*;q=0.5",
+    });
+    const body = await readJson(comet);
+    if (!body) return fail("登录失败，请稍后重试");
+    if (Number(body.code) === 1) return { ok: true, status: "expired" };
+    if (Number(body.code) !== 0) {
+      return fail(parseCasJsonError(body) || "登录失败，请稍后重试");
+    }
+    const data = cometDataRecord(body);
+    const status = qrWaitStatus(cometQrCodeRecord(data)?.status);
+    if (!status) return fail("登录失败，请稍后重试");
+    if (status !== "authorized") return { ok: true, status };
+    const qrRecord = cometQrCodeRecord(data);
+    const qrCodeKey =
+      (typeof data?.stateKey === "string" && data.stateKey) ||
+      (typeof qrRecord?.stateKey === "string" && qrRecord.stateKey) ||
+      "";
+    if (!qrCodeKey) return fail("登录失败，请稍后重试");
+    const submitted = await submitQrLogin(jar, qrCodeKey, hold.fpVisitorId);
+    if (!submitted.ok) return submitted;
+    const username =
+      usernameFromCometData(data) ||
+      (submitted.ticket ? await usernameFromServiceTicket(jar, submitted.ticket) : null);
+    if (!username) return fail("登录失败，请稍后重试", 401);
+    return { ok: true, status: "authorized", username };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "";
     if (reason === "cas_captcha_required") {

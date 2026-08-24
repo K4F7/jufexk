@@ -16,13 +16,18 @@ import {
   completeCasPasswordLogin,
   normalizeCasPassword,
   normalizeCasUsername,
+  pollCasQrLogin,
   startCasPasswordLogin,
+  startCasQrLogin,
   type CasMfaHold,
+  type CasQrHold,
 } from "./lib/jxufe-cas";
 import { readSecret } from "./secrets";
 
 export const CAS_LOGIN_PATH = "/api/auth/cas";
 export const CAS_MFA_PATH = "/api/auth/cas/mfa";
+export const CAS_QR_PATH = "/api/auth/cas/qr";
+export const CAS_QR_STATUS_PATH = "/api/auth/cas/qr/status";
 /** Local testing only — never reachable on a production Worker hostname. */
 export const DEV_LOGIN_PATH = "/api/auth/dev";
 export const DEV_LOGIN_USERNAME = "local-dev";
@@ -32,6 +37,9 @@ const REQUEST_RATE_SECONDS = 900;
 const REQUEST_RATE_LIMIT = 5;
 const MFA_RATE_SECONDS = 900;
 const MFA_RATE_LIMIT = 20;
+const QR_STATUS_RATE_LIMIT = 200;
+
+type CasChallengeHold = CasMfaHold | CasQrHold;
 
 type CasEnv = {
   DB: D1Database;
@@ -113,7 +121,7 @@ function hexToBytes(hex: string) {
   return bytes;
 }
 
-async function encryptHold(secret: string, hold: CasMfaHold) {
+async function encryptHold(secret: string, hold: CasChallengeHold) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await importChallengeKey(secret);
   const cipher = new Uint8Array(
@@ -126,7 +134,28 @@ async function encryptHold(secret: string, hold: CasMfaHold) {
   return `${bytesToHex(iv)}.${bytesToHex(cipher)}`;
 }
 
-async function decryptHold(secret: string, blob: string): Promise<CasMfaHold | null> {
+function isQrHold(parsed: unknown): parsed is CasQrHold {
+  if (!parsed || typeof parsed !== "object") return false;
+  const hold = parsed as Record<string, unknown>;
+  return (
+    hold.kind === "qr" &&
+    hold.cookies != null &&
+    typeof hold.cookies === "object" &&
+    !Array.isArray(hold.cookies) &&
+    typeof hold.fpVisitorId === "string" &&
+    hold.fpVisitorId.length >= 8 &&
+    hold.fpVisitorId.length <= 64
+  );
+}
+
+function isMfaHold(parsed: unknown): parsed is CasMfaHold {
+  if (!parsed || typeof parsed !== "object") return false;
+  const hold = parsed as Record<string, unknown>;
+  if (hold.kind === "qr") return false;
+  return Boolean(hold.username && hold.password && hold.gid);
+}
+
+async function decryptHold(secret: string, blob: string): Promise<CasChallengeHold | null> {
   const [ivHex, cipherHex] = blob.split(".");
   if (!ivHex || !cipherHex || ivHex.length !== 24) return null;
   try {
@@ -136,12 +165,48 @@ async function decryptHold(secret: string, blob: string): Promise<CasMfaHold | n
       key,
       hexToBytes(cipherHex),
     );
-    const parsed = JSON.parse(new TextDecoder().decode(plain)) as CasMfaHold;
-    if (!parsed?.username || !parsed.password || !parsed.gid) return null;
-    return parsed;
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(plain));
+    if (isQrHold(parsed)) return parsed;
+    if (isMfaHold(parsed)) return parsed;
+    return null;
   } catch {
     return null;
   }
+}
+
+function newChallengeId() {
+  return [...crypto.getRandomValues(new Uint8Array(16))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
+async function loadChallengeRow(
+  db: D1Database,
+  challenge: string,
+) {
+  return db
+    .prepare(`SELECT id,blob,expires_at,consumed_at FROM cas_login_challenges WHERE id=?`)
+    .bind(challenge)
+    .first<{
+      id: string;
+      blob: string;
+      expires_at: number;
+      consumed_at: number | null;
+    }>();
+}
+
+function challengeIdFromBody(body: Record<string, unknown> | null) {
+  const challenge = typeof body?.challenge === "string" ? body.challenge.trim() : "";
+  return /^[0-9a-f]{32}$/.test(challenge) ? challenge : "";
 }
 
 async function purgeExpiredChallenges(db: D1Database) {
@@ -201,9 +266,7 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
   }
   if (result.needsMfa) {
     if (!secret) return fail(c, "登录失败，请稍后重试", 503);
-    const id = [...crypto.getRandomValues(new Uint8Array(16))]
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+    const id = newChallengeId();
     await c.env.DB.prepare(
       `INSERT INTO cas_login_challenges(id,blob,expires_at) VALUES(?,?,unixepoch()+?)`,
     )
@@ -245,21 +308,12 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
     return fail(c, "验证码不正确", 401);
   }
 
-  const row = await c.env.DB.prepare(
-    `SELECT id,blob,expires_at,consumed_at FROM cas_login_challenges WHERE id=?`,
-  )
-    .bind(challenge)
-    .first<{
-      id: string;
-      blob: string;
-      expires_at: number;
-      consumed_at: number | null;
-    }>();
+  const row = await loadChallengeRow(c.env.DB, challenge);
   if (!row || row.consumed_at != null || row.expires_at <= Math.floor(Date.now() / 1000)) {
     return fail(c, "验证已过期，请重新登录", 401);
   }
   const hold = await decryptHold(secret, row.blob);
-  if (!hold) return fail(c, "验证已过期，请重新登录", 401);
+  if (!isMfaHold(hold)) return fail(c, "验证已过期，请重新登录", 401);
 
   const result = await completeCasPasswordLogin(hold, code);
   if (!result.ok) {
@@ -273,6 +327,84 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
     .bind(challenge)
     .run();
   return issueOrdinarySession(c, hold.username, identitySecret);
+}
+
+export async function handleCasQrStart(c: Context<{ Bindings: CasEnv }>) {
+  if (!originOk(c)) return fail(c, "来源校验失败", 403);
+  c.executionCtx.waitUntil(purgeExpiredChallenges(c.env.DB).catch(() => {}));
+  const [identitySecret, secret, ipHash] = await Promise.all([
+    readSecret(c.env.CAMPUS_IDENTITY_SECRET),
+    challengeSecret(c.env),
+    clientIpHash(c),
+  ]);
+  if (
+    ipHash &&
+    !(await takeRateLimit(
+      c.env.DB,
+      `cas-qr:${ipHash}`,
+      REQUEST_RATE_SECONDS,
+      REQUEST_RATE_LIMIT,
+    ))
+  ) {
+    return fail(c, "请求过于频繁，请稍后再试", 429);
+  }
+  if (!identitySecret || !secret) return fail(c, "登录失败，请稍后重试", 503);
+
+  const result = await startCasQrLogin();
+  if (!result.ok) return fail(c, result.error, result.status);
+
+  const id = newChallengeId();
+  await c.env.DB.prepare(
+    `INSERT INTO cas_login_challenges(id,blob,expires_at) VALUES(?,?,unixepoch()+?)`,
+  )
+    .bind(id, await encryptHold(secret, result.hold), CHALLENGE_TTL_SECONDS)
+    .run();
+  return c.json({
+    challenge: id,
+    image: `data:image/png;base64,${bytesToBase64(result.imagePng)}`,
+  });
+}
+
+export async function handleCasQrStatus(c: Context<{ Bindings: CasEnv }>) {
+  if (!originOk(c)) return fail(c, "来源校验失败", 403);
+  c.executionCtx.waitUntil(purgeExpiredChallenges(c.env.DB).catch(() => {}));
+  const [body, identitySecret, secret, ipHash] = await Promise.all([
+    readJsonBody(c),
+    readSecret(c.env.CAMPUS_IDENTITY_SECRET),
+    challengeSecret(c.env),
+    clientIpHash(c),
+  ]);
+  if (
+    ipHash &&
+    !(await takeRateLimit(
+      c.env.DB,
+      `cas-qr-status:${ipHash}`,
+      REQUEST_RATE_SECONDS,
+      QR_STATUS_RATE_LIMIT,
+    ))
+  ) {
+    return fail(c, "请求过于频繁，请稍后再试", 429);
+  }
+
+  if (!identitySecret || !secret) return fail(c, "登录失败，请稍后重试", 503);
+  const challenge = challengeIdFromBody(body);
+  if (!challenge) return c.json({ status: "expired" });
+
+  const row = await loadChallengeRow(c.env.DB, challenge);
+  if (!row || row.consumed_at != null || row.expires_at <= Math.floor(Date.now() / 1000)) {
+    return c.json({ status: "expired" });
+  }
+  const hold = await decryptHold(secret, row.blob);
+  if (!isQrHold(hold)) return c.json({ status: "expired" });
+
+  const result = await pollCasQrLogin(hold);
+  if (!result.ok) return fail(c, result.error, result.status);
+  if (result.status !== "authorized") return c.json({ status: result.status });
+
+  await c.env.DB.prepare(`DELETE FROM cas_login_challenges WHERE id=?`)
+    .bind(challenge)
+    .run();
+  return issueOrdinarySession(c, result.username, identitySecret);
 }
 
 /**

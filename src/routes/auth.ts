@@ -5,6 +5,8 @@ import {
   DEV_LOGIN_PATH,
   handleCasLogin,
   handleCasMfa,
+  handleCasQrStart,
+  handleCasQrStatus,
   handleDevLogin,
 } from "../cas-login";
 import {
@@ -43,6 +45,8 @@ authRoutes.post("/api/auth/email", handleEmailLoginRequest);
 authRoutes.post("/api/auth/verify", handleEmailLoginVerify);
 authRoutes.post("/api/auth/cas", handleCasLogin);
 authRoutes.post("/api/auth/cas/mfa", handleCasMfa);
+authRoutes.post("/api/auth/cas/qr", handleCasQrStart);
+authRoutes.post("/api/auth/cas/qr/status", handleCasQrStatus);
 authRoutes.post(DEV_LOGIN_PATH, handleDevLogin);
 
 export default authRoutes;
