@@ -3,8 +3,6 @@ type TestableSecretBinding =
   | "IP_HASH_SECRET"
   | "TURNSTILE_SECRET"
   | "CAMPUS_IDENTITY_SECRET"
-  | "MAIL_DELIVERY_TOKEN"
-  | "REVIEW_AUTHOR_LOOKUP_TO"
   | "CAS_CHALLENGE_SECRET";
 
 // Production bindings come from `wrangler types`; the overrides allow Miniflare
@@ -14,6 +12,8 @@ export type Bindings = Omit<Cloudflare.Env, TestableSecretBinding> & {
   TURNSTILE_SECRET?: RuntimeSecret;
   ORDINARY_USER_TEST_AUTH_SECRET?: string;
   CAMPUS_IDENTITY_SECRET?: RuntimeSecret;
+  MAIL_DELIVERY_URL?: string;
+  MAIL_FROM?: string;
   MAIL_DELIVERY_TOKEN?: RuntimeSecret;
   REVIEW_AUTHOR_LOOKUP_TO?: RuntimeSecret;
   CAS_CHALLENGE_SECRET?: RuntimeSecret;

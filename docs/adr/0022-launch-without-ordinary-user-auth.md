@@ -1,5 +1,7 @@
 # 生产普通用户主登录只用江财 CAS 代登
 
+_2026-08-24：#500 再次解绑 #478 为作者查询重新加入的 `MAIL_*` / `REVIEW_AUTHOR_LOOKUP_TO`。生产部署不得依赖这些 Secrets Store 条目。_
+
 _2026-08-24：#483 从 Worker 配置淘汰 AuthBridge / 校园 JWT / 邮件投递变量（`AUTHBRIDGE_BASE_URL`、`CAMPUS_APP_ID`、`CAMPUS_JWT_AUD`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`MAIL_*`）。登录页只保留 CAS 代登；邮箱验证代码仍可用测试夹具，生产不再绑定投递端点。_
 
 _2026-08-22：[#389](https://github.com/K4F7/jufexk/issues/389) 把生产校园登录定为 [SeRazon/jufe_cas](https://github.com/SeRazon/jufe_cas) 协议代登。标准 CAS 跳转与 AuthBridge 校园 JWT 全部废弃，不再作为可开通路径。校学生邮箱验证仍是非 CAS 次要入口。_
