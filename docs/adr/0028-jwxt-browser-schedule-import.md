@@ -1,5 +1,7 @@
 # 排课模拟从本科教务导入时，Cookie 只留在学生浏览器
 
+_2026-08-25：[#540](https://github.com/K4F7/jufexk/issues/540) 起主路径改为版本化教务快照，见 [ADR-0029](./0029-jwxt-driven-schedule-import.md)。_
+
 _2026-08-24：[#488](https://github.com/K4F7/jufexk/issues/488) 走通智慧江财「本科教务」→ KINGOSOFT 上课时间 → `/schedule`。与 [ADR-0022](./0022-launch-without-ordinary-user-auth.md) 并存：站内 CAS 代登仍禁止 Worker 跟随 ehall ticket 或持久化 TGT。_
 
 学生在自己的浏览器打开官方通道2（`https://jwxt.jxufe.edu.cn/jxcjcaslogin`）或 ehall「本科教务」。教务 `CASTGC` / `JSESSIONID` 只存在于教务站点。选课志只接受书签或粘贴回传的课程名、教师名、周次与上课时间，写入本机排课计划，不把开课班写入公开目录，也不在 Worker 上代持或落库教务 Cookie。

@@ -1,125 +1,49 @@
 /**
- * 排课模拟 /schedule：从公开任课关系检索课程×教师，本机编排周课表并标冲突。
- * 不做开课班目录或教务课表镜像（Issue #486）。
- * 本科教务导入只在学生浏览器读表，Cookie 不进本站（Issue #488）。
- * 访客可看课表；加入、排上、导入需登录（Issue #494）。
+ * 排课模拟 /schedule：教务驱动选课流程。
+ * 协议闸门失败：只导入/导出版本化 DTO，页面加载不访问教务（Issue #540）。
  */
-import {
-  Alert,
-  Button,
-  Card,
-  Label,
-  ListBox,
-  SearchField,
-  Select,
-  Typography,
-} from "@heroui/react";
+import { Alert, Button, Card, Typography } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { relationDetailHref } from "../components/CourseRelationRow";
-import { DetailErrorAlert } from "../components/DetailFeedback";
-import {
-  JwxtScheduleImport,
-  JWXT_IMPORT_NOTICE,
-} from "../components/JwxtScheduleImport";
+import { JwxtCourseBrowser } from "../components/JwxtCourseBrowser";
+import { JwxtSnapshotPanel } from "../components/JwxtSnapshotPanel";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
-import { Stars } from "../components/Stars";
 import { useViewer } from "../hooks/useViewer";
-import { api } from "../lib/api";
 import {
-  mergeImportedCourses,
-  stagedCoursesFromJwxtImport,
-} from "../lib/jwxt-schedule-import";
+  loadSnapshotCache,
+  saveSnapshotCache,
+} from "../lib/jwxt-cache";
+import type { JwxtOffering } from "../lib/jwxt-offering";
 import {
-  clearPendingJwxtImport,
-  peekPendingJwxtImport,
-  readJwxtImportHash,
-  stashPendingJwxtImport,
-  type JwxtImportRow,
-} from "../lib/jwxt-schedule-text";
-import {
-  conflictMessage,
-  defaultWeeks,
-  formatSlotLabel,
-  JUFE_PERIODS,
-  listConflicts,
-  loadSchedulePlan,
-  normalizeSlot,
-  saveSchedulePlan,
-  slotIdFor,
-  stagedCourseId,
-  stagedCourseName,
-  WEEKDAYS,
-  type StagedCourse,
-} from "../lib/schedule-plan";
-import type { CourseRelation, Paginated } from "../lib/types";
+  includedItems,
+  itemToStaged,
+  itemsOf,
+  joinOffering,
+  loadPlan,
+  mergeEnrolledRefresh,
+  removeItem,
+  savePlan,
+  setIncluded,
+  type PlannedItem,
+  type SchedulePlanV2,
+} from "../lib/jwxt-plan";
+import type { JwxtSnapshotV1 } from "../lib/jwxt-snapshot";
+import { conflictMessage, listConflicts } from "../lib/schedule-plan";
 
-function PeriodSelect({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Select
-      className="min-w-28"
-      variant="secondary"
-      value={value}
-      onChange={(next) => {
-        if (typeof next === "string") onChange(next);
-      }}
-    >
-      <Label>{label}</Label>
-      <Select.Trigger>
-        <Select.Value />
-        <Select.Indicator />
-      </Select.Trigger>
-      <Select.Popover>
-        <ListBox>
-          {JUFE_PERIODS.map((period) => (
-            <ListBox.Item
-              key={period.period}
-              id={String(period.period)}
-              textValue={`第${period.period}节`}
-            >
-              第{period.period}节
-              <ListBox.ItemIndicator />
-            </ListBox.Item>
-          ))}
-        </ListBox>
-      </Select.Popover>
-    </Select>
-  );
-}
-
-function StagedCourseCard({
-  course,
+function PlanCard({
+  item,
   canEdit,
-  onAddSlot,
-  onRemoveSlot,
+  onExclude,
   onRemove,
 }: {
-  course: StagedCourse;
+  item: PlannedItem;
   canEdit: boolean;
-  onAddSlot: (weekday: number, startPeriod: number, endPeriod: number) => void;
-  onRemoveSlot: (slotId: string) => void;
+  onExclude: () => void;
   onRemove: () => void;
 }) {
-  const [weekday, setWeekday] = useState("1");
-  const [startPeriod, setStartPeriod] = useState("1");
-  const [endPeriod, setEndPeriod] = useState("2");
-  const title = stagedCourseName(course);
-  const href =
-    course.courseId > 0
-      ? relationDetailHref({
-          course_id: course.courseId,
-          teacher_id: course.teacherId,
-        })
-      : "";
-
+  const title = item.teacherName ? `${item.courseName}（${item.teacherName}）` : item.courseName;
+  const href = item.courseId > 0 ? relationDetailHref({ course_id: item.courseId, teacher_id: item.teacherId }) : "";
   return (
     <Card className="mb-3">
       <Card.Header>
@@ -133,259 +57,80 @@ function StagedCourseCard({
           )}
         </Card.Title>
         <Card.Description>
-          {course.courseCode}
-          {course.reviewCount > 0
-            ? ` · ${course.reviewCount} 条评价`
-            : " · 暂无评价"}
+          {item.courseCode || "无课号"}
+          {item.section ? ` · 班${item.section}` : ""}
+          {item.origin === "enrolled" ? " · 已选" : item.origin === "public" ? " · 公选" : item.origin === "legacy" ? " · 旧计划" : " · 计划内"}
+          {item.included ? "" : " · 已排除"}
         </Card.Description>
       </Card.Header>
-      <Card.Content className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <Select
-            className="min-w-24"
-            variant="secondary"
-            value={weekday}
-            onChange={(next) => {
-              if (typeof next === "string") setWeekday(next);
-            }}
-          >
-            <Label>星期</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {WEEKDAYS.map((day) => (
-                  <ListBox.Item key={day.day} id={String(day.day)} textValue={day.label}>
-                    {day.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-          <PeriodSelect
-            label="开始节次"
-            value={startPeriod}
-            onChange={setStartPeriod}
-          />
-          <PeriodSelect
-            label="结束节次"
-            value={endPeriod}
-            onChange={setEndPeriod}
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            onPress={() => {
-              if (!canEdit) return;
-              onAddSlot(Number(weekday), Number(startPeriod), Number(endPeriod));
-            }}
-          >
-            排上
+      <Card.Footer className="flex flex-wrap gap-2">
+        {item.origin === "enrolled" ? (
+          <Button size="sm" variant="ghost" onPress={() => canEdit && onExclude()}>
+            {item.included ? "排除" : "恢复"}
           </Button>
-        </div>
-        {course.slots.length > 0 ? (
-          <ul className="m-0 list-none space-y-1 p-0 text-sm">
-            {course.slots.map((slot) => (
-              <li key={slot.id} className="flex items-center justify-between gap-2">
-                <span>{formatSlotLabel(slot)}</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onPress={() => {
-                    if (!canEdit) return;
-                    onRemoveSlot(slot.id);
-                  }}
-                >
-                  移除时段
-                </Button>
-              </li>
-            ))}
-          </ul>
         ) : (
-          <p className="m-0 text-sm text-muted">
-            选择星期和节次后点「排上」。未改时是周一第1–2节。
-          </p>
+          <Button size="sm" variant="danger" onPress={() => canEdit && onRemove()}>
+            移出课表
+          </Button>
         )}
-      </Card.Content>
-      <Card.Footer>
-        <Button
-          size="sm"
-          variant="danger"
-          onPress={() => {
-            if (!canEdit) return;
-            onRemove();
-          }}
-        >
-          移出课表
-        </Button>
       </Card.Footer>
     </Card>
   );
 }
 
-/** Survives Strict Mode remount; a useRef would reset and double-apply. */
-let pendingJwxtImportTask: Promise<void> | null = null;
-
 export function SchedulePage() {
-  const { viewer, ready } = useViewer();
+  const { viewer } = useViewer();
   const canEdit = viewer.authenticated;
-  const [query, setQuery] = useState("");
-  const [submitted, setSubmitted] = useState("");
-  const [results, setResults] = useState<CourseRelation[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [courses, setCourses] = useState<StagedCourse[]>(() => loadSchedulePlan());
-  const [importNotice, setImportNotice] = useState("");
+  const [plan, setPlan] = useState<SchedulePlanV2>(() => loadPlan());
+  const [snapshot, setSnapshot] = useState<JwxtSnapshotV1 | null>(null);
+  const [notice, setNotice] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [cacheReady, setCacheReady] = useState(false);
 
   useEffect(() => {
-    saveSchedulePlan(courses);
-  }, [courses]);
-
-  async function applyJwxtImport(rows: JwxtImportRow[]) {
-    const names = [...new Set(rows.map((row) => row.courseName).filter(Boolean))];
-    const relations: CourseRelation[] = [];
-    for (const name of names) {
-      try {
-        const page = await api<Paginated<CourseRelation>>(
-          `/api/courses?view=relations&q=${encodeURIComponent(name)}&page=1&pageSize=20`,
-        );
-        relations.push(...page.items);
-      } catch {
-        // 对不上公开目录时仍写入本机条目。
-      }
-    }
-    const { courses: incoming, skipped } = stagedCoursesFromJwxtImport(rows, relations);
-    if (incoming.length === 0) {
-      setImportNotice("没有解析到可排的上课时间。");
-      return false;
-    }
-    const next = mergeImportedCourses(loadSchedulePlan(), incoming);
-    saveSchedulePlan(next);
-    setCourses(next);
-    setImportNotice(
-      skipped
-        ? `已导入 ${incoming.length} 门课，另有 ${skipped} 行没有可识别的上课时间。${JWXT_IMPORT_NOTICE}`
-        : `已从本科教务导入 ${incoming.length} 门课。${JWXT_IMPORT_NOTICE}`,
-    );
-    return true;
-  }
+    savePlan(plan);
+  }, [plan]);
 
   useEffect(() => {
-    const payload = readJwxtImportHash(window.location.hash);
-    if (!payload) return;
-    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    stashPendingJwxtImport(payload);
-  }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    const pending = peekPendingJwxtImport();
-    if (!pending) return;
-    if (!viewer.authenticated) {
-      stashPendingJwxtImport(pending);
-      return;
-    }
-    if (pendingJwxtImportTask) return;
-    pendingJwxtImportTask = applyJwxtImport(pending.rows)
-      .then((applied) => {
-        if (applied) clearPendingJwxtImport();
-      })
-      .catch(() => {})
-      .finally(() => {
-        pendingJwxtImportTask = null;
-      });
-  }, [ready, viewer.authenticated]);
-
-  useEffect(() => {
-    const q = submitted.trim();
-    if (!q) {
-      setResults([]);
-      setError("");
-      setLoading(false);
-      return;
-    }
-    const controller = new AbortController();
     let cancelled = false;
-    setLoading(true);
-    setError("");
-    const params = new URLSearchParams({
-      view: "relations",
-      q,
-      page: "1",
-      pageSize: "20",
-    });
-    api<Paginated<CourseRelation>>(`/api/courses?${params}`, {
-      signal: controller.signal,
-    })
-      .then((page) => {
-        if (!cancelled) setResults(page.items);
-      })
-      .catch((reason) => {
-        if (!cancelled) {
-          setError((reason as Error).message || "课程搜索失败");
-          setResults([]);
-        }
+    void loadSnapshotCache()
+      .then((cached) => {
+        if (!cancelled && cached) setSnapshot(cached);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setCacheReady(true);
       });
     return () => {
       cancelled = true;
-      controller.abort();
     };
-  }, [submitted]);
+  }, []);
 
-  const conflicts = useMemo(() => listConflicts(courses), [courses]);
+  const termItems = itemsOf(plan, snapshot?.term.id || plan.activeTermId);
+  const staged = useMemo(
+    () => includedItems(plan, snapshot?.term.id || plan.activeTermId).map(itemToStaged),
+    [plan, snapshot],
+  );
+  const conflicts = useMemo(() => listConflicts(staged), [staged]);
 
-  function addCourse(relation: CourseRelation) {
-    const id = stagedCourseId(relation.course_id, relation.teacher_id);
-    setCourses((current) => {
-      if (current.some((item) => item.id === id)) return current;
-      return [
-        ...current,
-        {
-          id,
-          courseId: relation.course_id,
-          courseCode: relation.code,
-          courseName: relation.name,
-          teacherId: relation.teacher_id,
-          teacherName: relation.teacher_name,
-          rating: relation.rating,
-          reviewCount: relation.review_count,
-          slots: [],
-        },
-      ];
-    });
+  function applySnapshot(next: JwxtSnapshotV1) {
+    setSnapshot(next);
+    setSessionExpired(false);
+    setPlan((current) => mergeEnrolledRefresh(current, next));
+    void saveSnapshotCache(next);
+    setNotice("已导入教务快照。已选班次已更新，本地排除保持不变。");
   }
 
-  function addSlot(
-    courseId: string,
-    weekday: number,
-    startPeriod: number,
-    endPeriod: number,
-  ) {
-    setCourses((current) =>
-      current.map((course) => {
-        if (course.id !== courseId) return course;
-        const slot = normalizeSlot({
-          id: slotIdFor(course.id, {
-            weekday,
-            startPeriod,
-            endPeriod,
-            weeks: defaultWeeks(),
-          }),
-          weekday,
-          startPeriod,
-          endPeriod,
-          weeks: defaultWeeks(),
-        });
-        if (course.slots.some((item) => item.id === slot.id)) return course;
-        return { ...course, slots: [...course.slots, slot] };
-      }),
-    );
+  function handleJoin(offering: JwxtOffering, origin: "planned" | "public") {
+    if (!canEdit || !snapshot) return;
+    const result = joinOffering({ ...plan, activeTermId: snapshot.term.id }, offering, origin, snapshot.term.id);
+    if (!result.ok) {
+      setJoinError(`${offering.courseName}与${result.collideName}时间冲突，未加入。`);
+      return;
+    }
+    setJoinError("");
+    setPlan(result.plan);
+    setNotice(result.swapped ? `已将${offering.courseName}换到班${offering.section || "新班次"}。` : `已加入${offering.courseName}。`);
   }
 
   return (
@@ -399,24 +144,35 @@ export function SchedulePage() {
             >
               排课模拟
             </Typography>
-            <p className="mb-0 mt-1 text-sm text-muted">
-              提前处理掉早八刺客
-            </p>
+            <p className="mb-0 mt-1 text-sm text-muted">提前处理掉早八刺客</p>
           </div>
-          <JwxtScheduleImport
+          <JwxtSnapshotPanel
             canEdit={canEdit}
             loginHref={`${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`}
-            onImport={(rows) => void applyJwxtImport(rows)}
+            snapshot={snapshot}
+            sessionExpired={sessionExpired}
+            onImport={applySnapshot}
+            onExpired={() => setSessionExpired(true)}
           />
         </div>
       </header>
 
-      {importNotice ? (
+      {notice ? (
         <Alert className="mb-4" role="status">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>本科教务导入</Alert.Title>
-            <Alert.Description>{importNotice}</Alert.Description>
+            <Alert.Title>教务快照</Alert.Title>
+            <Alert.Description>{notice}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
+
+      {joinError ? (
+        <Alert className="mb-4" role="alert" status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>无法加入</Alert.Title>
+            <Alert.Description>{joinError}</Alert.Description>
           </Alert.Content>
         </Alert>
       ) : null}
@@ -433,138 +189,52 @@ export function SchedulePage() {
         </Alert>
       ) : null}
 
-      {/* 窄屏显式 grid-cols-1：隐式 auto 轨道会被课表 min-content 撑出横向溢出。 */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <SearchField
-            aria-label="搜索要排的课程"
-            className="mb-3 w-full"
-            name="schedule-course-search"
-            value={query}
-            variant="secondary"
-            onChange={(value) => {
-              setQuery(value);
-              if (!value.trim()) setSubmitted("");
-            }}
-            onSubmit={(value) => setSubmitted(value.trim())}
-          >
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder="搜索课程、老师" />
-              <SearchField.ClearButton aria-label="清空排课搜索" />
-            </SearchField.Group>
-          </SearchField>
-
-          {error ? (
-            <DetailErrorAlert title="课程搜索失败" message={error} />
-          ) : loading ? (
+          {cacheReady && !snapshot ? (
             <p className="text-sm text-muted" role="status">
-              正在搜索…
+              还没有教务数据。点「刷新教务数据」导入快照后，再按年级、专业浏览已选、计划内和公共选修。
             </p>
-          ) : submitted && results.length === 0 ? (
+          ) : snapshot ? (
+            <JwxtCourseBrowser
+              snapshot={snapshot}
+              planItems={termItems}
+              canEdit={canEdit}
+              onFilters={(patch) => setSnapshot({ ...snapshot, ...patch })}
+              onJoin={handleJoin}
+              onToggle={(item, included) =>
+                setPlan(setIncluded(plan, item.key, included, item.termId))
+              }
+            />
+          ) : (
             <p className="text-sm text-muted" role="status">
-              没有找到匹配「{submitted}」的任课关系。
+              正在读取本机缓存…
             </p>
-          ) : results.length > 0 ? (
-            <ul
-              aria-label="搜索结果"
-              className="mb-6 list-none space-y-3 p-0"
-            >
-              {results.map((relation) => {
-                const id = stagedCourseId(relation.course_id, relation.teacher_id);
-                const added = courses.some((item) => item.id === id);
-                return (
-                  <li
-                    key={id}
-                    className="border-b border-separator pb-3 last:border-b-0"
-                  >
-                    <div className="font-medium">
-                      <RouterAriaLink
-                        className="text-accent"
-                        to={relationDetailHref(relation)}
-                      >
-                        {relation.name}
-                        {relation.teacher_name ? (
-                          <span className="font-normal">
-                            （{relation.teacher_name}）
-                          </span>
-                        ) : (
-                          <span className="text-sm font-normal text-muted">
-                            {" "}
-                            教师待补充
-                          </span>
-                        )}
-                      </RouterAriaLink>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <Stars rating={relation.rating} />
-                      <span className="text-[calc(12/15*1rem)] text-muted">
-                        {relation.review_count > 0
-                          ? `${relation.review_count} 条评价`
-                          : "暂无评价"}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        isDisabled={added}
-                        onPress={() => {
-                          if (!canEdit) return;
-                          addCourse(relation);
-                        }}
-                      >
-                        {added ? "已加入" : "加入课表"}
-                      </Button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
+          )}
 
-          <Typography
-            className="mb-2 text-sm font-semibold"
-            type="h2"
-          >
-            已选课程
+          <Typography className="mb-2 mt-6 text-sm font-semibold" type="h2">
+            本学期计划
           </Typography>
-          {courses.length === 0 ? (
+          {termItems.length === 0 ? (
             <p className="text-sm text-muted" role="status">
-              还没有课程。先搜索再加入。
+              计划还是空的。从已选或候选里加入开课班。
             </p>
           ) : (
-            <div aria-label="已选课程" role="region">
-              {courses.map((course) => (
-                <StagedCourseCard
-                  key={course.id}
-                  course={course}
+            <div aria-label="本学期计划" role="region">
+              {termItems.map((item) => (
+                <PlanCard
+                  key={item.key}
+                  item={item}
                   canEdit={canEdit}
-                  onAddSlot={(weekday, startPeriod, endPeriod) =>
-                    addSlot(course.id, weekday, startPeriod, endPeriod)
-                  }
-                  onRemoveSlot={(slotId) =>
-                    setCourses((current) =>
-                      current.map((item) =>
-                        item.id === course.id
-                          ? {
-                              ...item,
-                              slots: item.slots.filter((slot) => slot.id !== slotId),
-                            }
-                          : item,
-                      ),
-                    )
-                  }
-                  onRemove={() =>
-                    setCourses((current) =>
-                      current.filter((item) => item.id !== course.id),
-                    )
-                  }
+                  onExclude={() => setPlan(setIncluded(plan, item.key, !item.included, item.termId))}
+                  onRemove={() => setPlan(removeItem(plan, item.key, item.termId))}
                 />
               ))}
             </div>
           )}
         </div>
 
-        <ScheduleTimetable courses={courses} />
+        <ScheduleTimetable courses={staged} />
       </div>
     </section>
   );
