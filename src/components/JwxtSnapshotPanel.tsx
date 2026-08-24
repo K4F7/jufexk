@@ -1,5 +1,6 @@
-import { Button, Label, Modal, TextArea, TextField, buttonVariants } from "@heroui/react";
+import { Button, Label, Link, Modal, TextArea, TextField } from "@heroui/react";
 import { useMemo, useRef, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { jwxtSnapshotBookmarkletHref } from "../lib/jwxt-import-bookmarklet";
 import {
   EHALL_URL,
@@ -11,10 +12,9 @@ import {
   serializeSnapshot,
   type JwxtSnapshotV1,
 } from "../lib/jwxt-snapshot";
-import { RouterAriaLink } from "./RouterAriaLink";
 
 export const JWXT_REFRESH_NOTICE =
-  "协议闸门未打通 Worker 代查教务。刷新只导入本机 JSON / 教务页表格，不上传 Cookie、学号或姓名。";
+  "协议闸门未打通 Worker 代查教务。刷新只导入本机 JSON / 教务页表格；快照包含来源教师名，不包含 Cookie、学生学号或学生姓名。";
 
 export function JwxtSnapshotPanel({
   canEdit,
@@ -28,20 +28,21 @@ export function JwxtSnapshotPanel({
   loginHref: string;
   snapshot: JwxtSnapshotV1 | null;
   sessionExpired?: boolean;
-  onImport: (snapshot: JwxtSnapshotV1) => void;
+  onImport: (snapshot: JwxtSnapshotV1) => void | Promise<void>;
   onExpired?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [paste, setPaste] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bookmarklet = useMemo(
     () => jwxtSnapshotBookmarkletHref(window.location.origin),
     [],
   );
 
-  function applyText(text: string) {
+  async function applyText(text: string) {
     const result = importSnapshotText(text, undefined, snapshot ?? emptySnapshot());
     if (!result.ok) {
       if (result.kind === "login-expired") {
@@ -53,8 +54,13 @@ export function JwxtSnapshotPanel({
       return;
     }
     setError("");
-    onImport(result.snapshot);
-    setOpen(false);
+    setBusy(true);
+    try {
+      await onImport(result.snapshot);
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -110,12 +116,18 @@ export function JwxtSnapshotPanel({
               <Button slot="close" variant="tertiary">
                 取消
               </Button>
-              <RouterAriaLink
-                className={`${buttonVariants({ variant: "primary" })} no-underline`}
-                to={loginHref}
+              <Button
+                variant="primary"
+                render={(domProps) => (
+                  <RouterLink
+                    {...(domProps as object)}
+                    className={typeof domProps.className === "string" ? domProps.className : undefined}
+                    to={loginHref}
+                  />
+                )}
               >
                 去登录
-              </RouterAriaLink>
+              </Button>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
@@ -130,22 +142,20 @@ export function JwxtSnapshotPanel({
             <Modal.Body className="space-y-3 text-sm">
               <p className="m-0">{JWXT_REFRESH_NOTICE}</p>
               <div className="flex flex-wrap gap-2">
-                <a
-                  className={`${buttonVariants({ size: "sm", variant: "primary" })} no-underline`}
+                <Link
                   href={JWXT_CHANNEL2_URL}
                   rel="noreferrer"
                   target="_blank"
                 >
                   打开本科教务
-                </a>
-                <a
-                  className={`${buttonVariants({ size: "sm", variant: "tertiary" })} no-underline`}
+                </Link>
+                <Link
                   href={EHALL_URL}
                   rel="noreferrer"
                   target="_blank"
                 >
                   打开智慧江财
-                </a>
+                </Link>
               </div>
               <p className="m-0 text-muted">
                 在已打开的教务页用书签导出 JSON，再回到本页导入。页面加载不会访问教务。
@@ -162,7 +172,7 @@ export function JwxtSnapshotPanel({
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
-                  void file.text().then(applyText);
+                  void file.text().then((text) => applyText(text));
                 }}
               />
               <TextField
@@ -192,8 +202,8 @@ export function JwxtSnapshotPanel({
               <Button slot="close" variant="secondary">
                 取消
               </Button>
-              <Button variant="primary" onPress={() => applyText(paste)}>
-                导入快照
+              <Button isDisabled={busy} variant="primary" onPress={() => void applyText(paste)}>
+                {busy ? "正在导入…" : "导入快照"}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

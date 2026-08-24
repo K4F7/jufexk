@@ -1,6 +1,6 @@
 /**
  * 教务开课班统一形状。Worker 代理与浏览器 JSON 导入/导出共用同一版本化 DTO。
- * 不含 Cookie、学号、姓名。
+ * 不含 Cookie、学生学号、学生姓名；来源教师名属于开课班字段。
  */
 import {
   parseJwxtTimeText,
@@ -37,6 +37,8 @@ export type JwxtOffering = {
   meetings: JwxtMeeting[];
   catalogCourseId: number | null;
   catalogTeacherId: number | null;
+  catalogRating?: number | null;
+  catalogReviewCount?: number;
 };
 
 export type JwxtFilterOption = {
@@ -57,8 +59,11 @@ export function looksLikeForbidden(text: string): boolean {
   return SECRET_RE.test(text) || PERSONAL_RE.test(text);
 }
 
-export function offeringKey(termId: string, courseCode: string, section: string): string {
-  return `${termId}+${courseCode}+${section}`;
+export function offeringKey(termId: string, courseCode: string, section: string, courseName = ""): string {
+  const identity = courseCode.trim() || `name:${courseName.trim()}`;
+  return [termId, identity, section]
+    .map((part) => encodeURIComponent(part.trim()))
+    .join("|");
 }
 
 export function parseCredits(raw: string): number | null {
@@ -132,6 +137,8 @@ export function normalizeOffering(partial: Partial<JwxtOffering> & Pick<JwxtOffe
     meetings,
     catalogCourseId: partial.catalogCourseId ?? null,
     catalogTeacherId: partial.catalogTeacherId ?? null,
+    catalogRating: partial.catalogRating ?? null,
+    catalogReviewCount: partial.catalogReviewCount ?? 0,
   };
 }
 

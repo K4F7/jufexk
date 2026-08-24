@@ -81,7 +81,7 @@ export function offeringToItem(
   origin: PlanOrigin,
   included = true,
 ): PlannedItem {
-  const key = offeringKey(termId, offering.courseCode, offering.section);
+  const key = offeringKey(termId, offering.courseCode, offering.section, offering.courseName);
   const courseId = offering.catalogCourseId ?? localImportCourseId(offering.courseName, offering.teacherName);
   const teacherId =
     offering.catalogTeacherId ?? (offering.teacherName ? courseId : null);
@@ -101,8 +101,8 @@ export function offeringToItem(
     place: offering.place,
     courseId,
     teacherId,
-    rating: null,
-    reviewCount: 0,
+    rating: offering.catalogRating ?? null,
+    reviewCount: offering.catalogReviewCount ?? 0,
   };
 }
 
@@ -186,18 +186,40 @@ export function removeItem(plan: SchedulePlanV2, key: string, termId = plan.acti
 export function mergeEnrolledRefresh(plan: SchedulePlanV2, snapshot: JwxtSnapshotV1): SchedulePlanV2 {
   const termId = snapshot.term.id;
   if (snapshot.enrolled.length === 0) {
+    if (snapshot.captured?.includes("enrolled")) {
+      return replaceTerm(
+        { ...plan, activeTermId: termId || plan.activeTermId },
+        termId,
+        itemsOf(plan, termId).filter((item) => item.origin !== "enrolled"),
+      );
+    }
     return { ...plan, activeTermId: termId || plan.activeTermId };
   }
   const current = itemsOf(plan, termId);
-  const previousEnrolled = new Map(
-    current.filter((item) => item.origin === "enrolled").map((item) => [item.courseCode, item]),
-  );
-  const kept = current.filter((item) => item.origin !== "enrolled");
+  const previousItems = current.filter((item) => item.origin === "enrolled");
+  const previousByKey = new Map(previousItems.map((item) => [item.key, item]));
+  const previousByCourse = new Map<string, PlannedItem[]>();
+  for (const item of previousItems) {
+    const matches = previousByCourse.get(item.courseCode) ?? [];
+    matches.push(item);
+    previousByCourse.set(item.courseCode, matches);
+  }
+  const incomingCourseCounts = new Map<string, number>();
+  for (const offering of snapshot.enrolled) {
+    incomingCourseCounts.set(offering.courseCode, (incomingCourseCounts.get(offering.courseCode) ?? 0) + 1);
+  }
   const nextEnrolled = snapshot.enrolled.map((offering) => {
     const item = offeringToItem(offering, termId, "enrolled", true);
-    const previous = previousEnrolled.get(item.courseCode);
+    const sameCourse = previousByCourse.get(item.courseCode) ?? [];
+    const previous = previousByKey.get(item.key) ?? (
+      sameCourse.length === 1 && incomingCourseCounts.get(item.courseCode) === 1
+        ? sameCourse[0]
+        : undefined
+    );
     return { ...item, included: previous?.included ?? true };
   });
+  const enrolledKeys = new Set(nextEnrolled.map((item) => item.key));
+  const kept = current.filter((item) => item.origin !== "enrolled" && !enrolledKeys.has(item.key));
   return replaceTerm({ ...plan, activeTermId: termId || plan.activeTermId }, termId, [...nextEnrolled, ...kept]);
 }
 
@@ -270,7 +292,10 @@ export function parsePlan(raw: string | null): SchedulePlanV2 {
     const terms: Record<string, PlannedItem[]> = {};
     for (const [termId, items] of Object.entries(parsed.terms as Record<string, unknown>)) {
       if (!Array.isArray(items)) continue;
-      terms[termId] = items.filter(isPlannedItem);
+      terms[termId] = items.filter(isPlannedItem).map((item) => ({
+        ...item,
+        key: offeringKey(termId, item.courseCode, item.section, item.courseName),
+      }));
     }
     return {
       version: SCHEDULE_PLAN_V2,

@@ -1,4 +1,7 @@
 import { Button, Label, ListBox, Select, Table, Tabs } from "@heroui/react";
+import { useEffect, useMemo, useState } from "react";
+import { relationDetailHref } from "./CourseRelationRow";
+import { RouterAriaLink } from "./RouterAriaLink";
 import type { JwxtFilterOption, JwxtOffering } from "../lib/jwxt-offering";
 import { offeringKey } from "../lib/jwxt-offering";
 import { findSameCourse, type PlannedItem } from "../lib/jwxt-plan";
@@ -63,8 +66,31 @@ function OfferingTable({
   onJoin: (offering: JwxtOffering) => void;
   onToggle: (item: PlannedItem, included: boolean) => void;
 }) {
+  const [sourceCategory, setSourceCategory] = useState("");
+  const sourceOptions = useMemo(() => (
+    [...new Set(offerings.map((offering) => offering.categoryPath.trim()).filter(Boolean))]
+      .map((path) => ({ id: path, label: path }))
+  ), [offerings]);
+  useEffect(() => {
+    if (sourceCategory && !sourceOptions.some((option) => option.id === sourceCategory)) {
+      setSourceCategory("");
+    }
+  }, [sourceCategory, sourceOptions]);
+  const visibleOfferings = sourceCategory
+    ? offerings.filter((offering) => offering.categoryPath === sourceCategory)
+    : offerings;
   return (
     <div>
+      {sourceOptions.length > 0 ? (
+        <div className="mb-3 max-w-sm">
+          <FilterSelect
+            label="来源类别"
+            value={sourceCategory || "__all__"}
+            options={[{ id: "__all__", label: "全部来源类别" }, ...sourceOptions]}
+            onChange={(value) => setSourceCategory(value === "__all__" ? "" : value)}
+          />
+        </div>
+      ) : null}
       {offerings.length === 0 ? (
         <p className="mb-2 text-sm text-muted" role="status">
           这一类还没有课程。
@@ -72,25 +98,27 @@ function OfferingTable({
       ) : null}
     <Table>
       <Table.ScrollContainer>
-        <Table.Content aria-label={label} className="w-full min-w-0">
+        <Table.Content aria-label={label} className="w-full min-w-[68rem]">
           <Table.Header>
             <Table.Column isRowHeader>课程</Table.Column>
-            <Table.Column>教师 / 班号</Table.Column>
+            <Table.Column>教师</Table.Column>
+            <Table.Column>班号</Table.Column>
+            <Table.Column>周次</Table.Column>
             <Table.Column>时间</Table.Column>
+            <Table.Column>地点 / 校区</Table.Column>
+            <Table.Column>容量</Table.Column>
+            <Table.Column>本站评价</Table.Column>
             <Table.Column>操作</Table.Column>
           </Table.Header>
           <Table.Body>
-            {offerings.map((offering, index) => {
-                const key = offeringKey(termId, offering.courseCode, offering.section);
+            {visibleOfferings.map((offering, index) => {
+                const key = offeringKey(termId, offering.courseCode, offering.section, offering.courseName);
                 const existing = planItems.find((item) => item.key === key);
                 const sameCourse = findSameCourse(planItems, offering.courseCode);
-                const title = offering.teacherName
-                  ? `${offering.courseName}（${offering.teacherName}）`
-                  : offering.courseName;
                 return (
                   <Table.Row key={key || `${label}-${index}`} id={key || `${label}-${index}`}>
                     <Table.Cell>
-                      <div className="font-medium">{title}</div>
+                      <div className="font-medium">{offering.courseName}</div>
                       <div className="text-sm text-muted">
                         {offering.courseCode}
                         {offering.credits != null ? ` · ${offering.credits} 学分` : ""}
@@ -98,12 +126,35 @@ function OfferingTable({
                       </div>
                     </Table.Cell>
                     <Table.Cell>
-                      <div>{offering.section || "—"}</div>
-                      <div className="text-sm text-muted">{offering.campus || offering.place || "—"}</div>
+                      {offering.teacherName || "—"}
                     </Table.Cell>
+                    <Table.Cell>{offering.section || "—"}</Table.Cell>
+                    <Table.Cell>{offering.weekText || "—"}</Table.Cell>
                     <Table.Cell>
                       <div>{offering.timeText || "无固定时间"}</div>
-                      <div className="text-sm text-muted">{offering.weekText || "—"}</div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div>{offering.place || "—"}</div>
+                      <div className="text-sm text-muted">{offering.campus || "—"}</div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {offering.capacitySelected ?? "—"}/{offering.capacityLimit ?? "—"}
+                      {offering.capacityAvailable != null ? ` · 余 ${offering.capacityAvailable}` : ""}
+                    </Table.Cell>
+                    <Table.Cell>
+                      {offering.catalogCourseId ? (
+                        <RouterAriaLink
+                          className="text-accent"
+                          to={relationDetailHref({
+                            course_id: offering.catalogCourseId,
+                            teacher_id: offering.catalogTeacherId,
+                          })}
+                        >
+                          {offering.catalogRating != null
+                            ? `${offering.catalogRating.toFixed(1)} · ${offering.catalogReviewCount ?? 0} 条`
+                            : "查看课程"}
+                        </RouterAriaLink>
+                      ) : "未匹配"}
                     </Table.Cell>
                     <Table.Cell>
                       {mode === "enrolled" ? (
