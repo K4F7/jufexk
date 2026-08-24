@@ -23,6 +23,7 @@ import {
   addAdminStudentBindings,
   casSubjectHash,
   casSubjectIsAdminBound,
+  claimFirstAdminStudentBinding,
   deleteAdminStudentBinding,
   listAdminStudentBindings,
   loadUserCasSubject,
@@ -190,7 +191,9 @@ async function tryElevateStudentAdmin(c: AppContext) {
   const user = await resolveOrdinaryUser(c);
   if (!user || !isOrdinaryUserAuthenticated(user)) return false;
   const subject = await loadUserCasSubject(c.env.DB, user.id);
-  if (!subject || !(await casSubjectIsAdminBound(c.env.DB, subject))) {
+  if (!subject) return false;
+  const bound = await casSubjectIsAdminBound(c.env.DB, subject);
+  if (!bound && !(await claimFirstAdminStudentBinding(c.env.DB, subject))) {
     return false;
   }
   await issueAdminSession(c, await clientIpHash(c));

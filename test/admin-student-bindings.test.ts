@@ -56,6 +56,31 @@ describe("parseBindingUsernames", () => {
 });
 
 describe("administrator student-ID bindings", () => {
+  it("lets the first CAS login claim admin when the allowlist is empty", async () => {
+    await env.DB.prepare("DELETE FROM admin_student_bindings").run();
+    const first = await attachCasIdentity("first-admin-cas", "2021555001");
+    const claimed = await SELF.fetch(`${origin}/api/admin/session`, {
+      headers: ordinaryWriteHeaders(first.session),
+    });
+    expect(claimed.status).toBe(200);
+    expect(await claimed.json()).toMatchObject({
+      kind: "admin",
+      source: "student",
+    });
+    const stored = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM admin_student_bindings WHERE subject_hash=?`,
+    )
+      .bind(first.subject)
+      .first<{ n: number }>();
+    expect(stored?.n).toBe(1);
+
+    const later = await attachCasIdentity("later-cas", "2021555099");
+    const denied = await SELF.fetch(`${origin}/api/admin/session`, {
+      headers: ordinaryWriteHeaders(later.session),
+    });
+    expect(denied.status).toBe(401);
+  });
+
   it("lets a passwordless admin bind multiple IDs and rejects invalid ones", async () => {
     const auth = await adminAuth();
     const created = await SELF.fetch(`${origin}/api/admin/student-bindings`, {

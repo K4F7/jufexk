@@ -31,7 +31,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
         <p className="mb-4 mt-2 text-[13px] text-muted">
           {viewer.authenticated
             ? "当前校园登录未绑定为管理员。请让已有管理员在「管理员学号」中加入你的学号，然后刷新本页。"
-            : "管理分区只接受已绑定的校园统一身份学号。请先用该学号登录，再打开本页。"}
+            : "请先用校园统一身份学号登录，再打开本页。若还没有管理员，第一个校园登录打开本页的人会成为首位管理员。"}
         </p>
         {viewer.authenticated ? null : (
           <RouterAriaLink

@@ -18,7 +18,11 @@ const apply = flags.has("--apply");
 
 function identitySecretFrom(env: NodeJS.Dict<string>) {
   const secret = env.CAMPUS_IDENTITY_SECRET;
-  if (!secret) throw new Error("缺少 CAMPUS_IDENTITY_SECRET");
+  if (!secret) {
+    throw new Error(
+      "缺少 CAMPUS_IDENTITY_SECRET。写入 .dev.vars，或 PowerShell: $env:CAMPUS_IDENTITY_SECRET='...'。Cloudflare Secrets Store 不能回读该值。允许名单为空时不必跑本脚本：用目标学号校园登录后打开 /admin 即可自绑。",
+    );
+  }
   return secret;
 }
 

@@ -124,3 +124,23 @@ export async function casSubjectIsAdminBound(db: D1Database, subject: string) {
     .first<{ ok: number }>();
   return !!row;
 }
+
+export async function countAdminStudentBindings(db: D1Database) {
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS n FROM admin_student_bindings`)
+    .first<{ n: number }>();
+  return Number(row?.n || 0);
+}
+
+/**
+ * When the allowlist is empty, the first authenticated CAS identity claims
+ * admin. Later campus users still need an explicit bind.
+ */
+export async function claimFirstAdminStudentBinding(
+  db: D1Database,
+  subject: string,
+) {
+  if (await countAdminStudentBindings(db)) return false;
+  const result = await addAdminStudentBindings(db, [subject]);
+  return result.added === 1;
+}
