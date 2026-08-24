@@ -53,6 +53,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(repo).toHaveAttribute("rel", /noreferrer/);
 
   const feedback = footerNav.getByRole("link", { name: "反馈问题" });
+  await expect(feedback).toBeVisible();
   await expect(feedback).toHaveAttribute("href", GITHUB_ISSUES_URL);
   await expect(feedback).toHaveAttribute("target", "_blank");
   await expect(feedback).toHaveAttribute("rel", /noreferrer/);
