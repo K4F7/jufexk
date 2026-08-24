@@ -50,17 +50,22 @@ export function SiteFooter({
           >
             <LogoGithub />
           </a>
-          <Dot />
-          <a
-            className="link text-muted"
-            href={GITHUB_ISSUES_URL}
-            rel="noreferrer"
-            target="_blank"
-          >
-            反馈问题
-          </a>
+          <span className="inline-flex items-center whitespace-nowrap">
+            <Dot />
+            <a
+              className="link text-muted"
+              href={GITHUB_ISSUES_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              反馈问题
+            </a>
+          </span>
           {INTERNAL_LINKS.map((link) => (
-            <span key={link.to}>
+            <span
+              key={link.to}
+              className="inline-flex items-center whitespace-nowrap"
+            >
               <Dot />
               <RouterAriaLink className="text-muted" to={link.to}>
                 {link.label}
