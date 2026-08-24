@@ -287,11 +287,12 @@ export function CoursesPage() {
       role="search"
       variant="secondary"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
         <Label className="shrink-0">课程类别：</Label>
+        {/* 窄屏 3+3 整齐双排(整行宽 grid);sm+ 恢复内联单行。 */}
         <ToggleButtonGroup
           aria-label="课程类别"
-          className="flex-wrap"
+          className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto"
           isDetached
           selectedKeys={[categoryToggleKey(category)]}
           selectionMode="single"
@@ -313,10 +314,12 @@ export function CoursesPage() {
         </ToggleButtonGroup>
       </div>
       <Separator />
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
         <Label className="shrink-0">排序方式：</Label>
+        {/* 窄屏两个选项纵向双排;sm+ 恢复内联单行。 */}
         <ToggleButtonGroup
           aria-label="排序方式"
+          className="flex flex-col items-start sm:inline-flex sm:flex-row sm:items-center"
           disallowEmptySelection
           isDetached
           selectedKeys={[sort || DEFAULT_SORT_KEY]}
