@@ -146,7 +146,7 @@ async function mockApi(page: Page, mock: MockState) {
   });
 }
 
-test("guest nav shows a login link into the CAS form", async ({
+test("guest nav shows a login link into the CAS form @mobile-smoke", async ({
   page,
 }) => {
   await mockApi(page, state());

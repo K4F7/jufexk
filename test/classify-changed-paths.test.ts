@@ -46,28 +46,29 @@ describe("classifyChangedPaths", () => {
     expect(packageScripts["test:static"]).toBe(
       "vitest run --config vitest.node.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
     );
-    expect(ciWorkflow).toContain('shard: ["1/3", "2/3", "3/3"]');
+    expect(ciWorkflow.match(/shard: \["1\/2", "2\/2"\]/g)).toHaveLength(2);
     expect(ciWorkflow).toContain(
       "pnpm exec vitest run --no-file-parallelism --shard=${{ matrix.shard }}",
     );
     expect(ciWorkflow.match(/fail-fast: true/g)).toHaveLength(2);
 
-    for (const project of ["chromium", "mobile-chromium"]) {
-      for (const shard of ["1/2", "2/2"]) {
-        expect(ciWorkflow).toContain(`- project: ${project}\n            shard: "${shard}"`);
-      }
-    }
     expect(ciWorkflow).toContain(
-      "pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}",
+      "pnpm exec playwright test --project=chromium --shard=${{ matrix.shard }}",
     );
+    expect(ciWorkflow).toContain(
+      "pnpm exec playwright test --project=mobile-chromium --grep @mobile-smoke --shard=${{ matrix.shard }}",
+    );
+    expect(ciWorkflow).not.toContain("matrix.project");
   });
 
   it("requires every selected CI matrix to complete successfully", () => {
     expect(ciWorkflow).toContain("needs: [changes, web_static, vitest_workers, browser]");
     expect(ciWorkflow).toContain("if: always()");
-    expect(ciWorkflow).toContain('expected="skipped"');
     expect(ciWorkflow).toContain('if [[ "$web_required" == "true" ]]');
     expect(ciWorkflow).toContain('expected="success"');
+    expect(ciWorkflow).toContain('elif [[ "$web_required" == "false" ]]');
+    expect(ciWorkflow).toContain('expected="skipped"');
+    expect(ciWorkflow).toMatch(/elif \[\[ "\$web_required" == "false" \]\][\s\S]*else\s+exit 1/);
     expect(ciWorkflow).toContain('if [[ "$result" != "$expected" ]]');
   });
 

@@ -16,9 +16,9 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 2. **同步源码**：在主工作区确认没有覆盖用户改动的风险，然后执行 `git fetch origin`，并将本地 `main` 快进到最新的 `origin/main`。每个 issue 都必须从最新主干开始。
 3. **创建 worktree**：从最新 `origin/main` 创建 `codex/<issue-number>-<slug>` 分支，并在仓库根目录的 `.worktree/<issue-number>-<slug>/` 创建独立 worktree。后续代码修改、依赖安装、测试和 Git 操作都在该 worktree 中完成。
 4. **安装依赖**：进入新 worktree 后，先执行 `pnpm install --frozen-lockfile`，再开始修改。不得复用主工作区的依赖目录来跳过安装。
-5. **实现、本地验证与 review**：完成修改并运行与改动范围匹配的格式检查、类型检查、测试和构建；不得绕过失败的检查。检查通过后执行本地 `$code-review`，修复其中的阻塞性问题并重新验证。
+5. **实现、本地验证与 review**：完成修改并运行与改动范围匹配的格式检查、类型检查、测试和构建；不得绕过失败的检查。任何 CI 改动须先遵循 `docs/agents/ci.md` 的准入规则。检查通过后执行本地 `$code-review`，修复其中的阻塞性问题并重新验证。
 6. **提交、推送并创建 PR**：本地检查与 `$code-review` 通过后，提交 issue 范围内的改动并将分支推送到远端，然后使用 `gh pr create` 创建目标分支为 `main` 的 PR；PR 正文应关联对应 issue。
-7. **CI 通过后合入**：PR 创建后立即执行 `gh pr merge <number> --auto --merge` 排队自动合并。只处理必需 CI、分支保护和合并冲突，不等待 CodeRabbit 等非必需 review。必需 CI 通过且仓库规则允许后直接合入 `main`；检查失败或出现冲突时修复并重新推送。除非用户明确要求，否则不得在 PR 尚未合入时把任务视为完成或提前清理。
+7. **CI 通过后合入**：PR 创建后立即执行 `gh pr merge <number> --auto --merge` 排队自动合并。`CI / check` 是唯一 required gate，具体聚合与扩展规则见 `docs/agents/ci.md`。只处理必需 CI、分支保护和合并冲突，不等待 CodeRabbit 等非必需 review。必需 CI 通过且仓库规则允许后直接合入 `main`；检查失败或出现冲突时修复并重新推送。除非用户明确要求，否则不得在 PR 尚未合入时把任务视为完成或提前清理。
 8. **清理 worktree**：确认 PR 已合入且远端 `main` 已包含该提交后，回到主工作区同步最新 `main`，再用 `git worktree remove .worktree/<issue-number>-<slug>` 清理 worktree，并删除已合入的本地分支；远端分支按仓库 PR 合并设置或明确要求处理。
 
 如果同步、安装依赖、本地检查、本地 `$code-review`、必需 CI、分支保护或合并权限造成阻塞，应保留 worktree 和分支并报告当前状态；只有 PR 合入后才能执行清理步骤。

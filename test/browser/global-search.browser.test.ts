@@ -116,7 +116,7 @@ test("variant A keeps search on the catalog page and documents the empty-state r
   await expect(page.getByRole("searchbox", { name: "搜索课程" })).toBeVisible();
 });
 
-test("variant B mounts a grouped Autocomplete in the shell", async ({
+test("variant B mounts a grouped Autocomplete in the shell @mobile-smoke", async ({
   page,
 }, testInfo) => {
   await page.goto("/courses?module=global-search&variant=B");
@@ -143,7 +143,7 @@ test("variant B mounts a grouped Autocomplete in the shell", async ({
   }
 });
 
-test("variant C jumps to the current catalog and shows the opposite-catalog link", async ({
+test("variant C jumps to the current catalog and shows the opposite-catalog link @mobile-smoke", async ({
   page,
 }, testInfo) => {
   await page.goto("/courses?q=%E5%BC%A0&module=global-search&variant=C");

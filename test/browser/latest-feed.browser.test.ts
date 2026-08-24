@@ -185,7 +185,7 @@ test("latest feed falls back to comment text when headline is empty", async ({
   await expect(page.getByText("课堂气氛好，考试不难。")).toBeVisible();
 });
 
-test("latest feed column aligns with the course catalog", async ({ page }) => {
+test("latest feed column aligns with the course catalog @mobile-smoke", async ({ page }) => {
   await mockShellApi(page);
   await page.goto("/latest");
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
