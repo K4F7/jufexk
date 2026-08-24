@@ -1,0 +1,294 @@
+{
+  "version": 1,
+  "source": "browser-export",
+  "term": {
+    "id": "2025-2026-2",
+    "label": "2025-2026学年第二学期"
+  },
+  "educationLevel": {
+    "id": "1",
+    "label": "本科"
+  },
+  "grade": {
+    "id": "2024",
+    "label": "2024"
+  },
+  "major": {
+    "id": "MA",
+    "label": "数学与应用数学"
+  },
+  "terms": [
+    {
+      "id": "2025-2026-2",
+      "label": "2025-2026学年第二学期"
+    },
+    {
+      "id": "2025-2026-1",
+      "label": "2025-2026学年第一学期"
+    }
+  ],
+  "educationLevels": [
+    {
+      "id": "1",
+      "label": "本科"
+    }
+  ],
+  "grades": [
+    {
+      "id": "2024",
+      "label": "2024"
+    },
+    {
+      "id": "2023",
+      "label": "2023"
+    }
+  ],
+  "majors": [
+    {
+      "id": "MA",
+      "label": "数学与应用数学"
+    },
+    {
+      "id": "CS",
+      "label": "计算机科学与技术"
+    }
+  ],
+  "categories": [
+    {
+      "id": "plan",
+      "label": "专业计划内",
+      "kind": "planned"
+    },
+    {
+      "id": "public",
+      "label": "公共选修",
+      "kind": "public"
+    }
+  ],
+  "enrolled": [
+    {
+      "credits": 4,
+      "categoryPath": "公共必修/高等数学",
+      "teacherName": "教师甲",
+      "campus": "校区甲",
+      "weekText": "1-16",
+      "timeText": "星期一 第1-2节",
+      "place": "教学楼A101",
+      "capacityLimit": null,
+      "capacitySelected": null,
+      "capacityAvailable": null,
+      "enrollStatus": "已选",
+      "meetings": [
+        {
+          "weekday": 1,
+          "startPeriod": 1,
+          "endPeriod": 2,
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "place": "教学楼A101"
+        }
+      ],
+      "catalogCourseId": null,
+      "catalogTeacherId": null,
+      "courseCode": "10100001",
+      "courseName": "高等数学",
+      "section": "01"
+    }
+  ],
+  "planned": [
+    {
+      "credits": 4,
+      "categoryPath": "",
+      "teacherName": "教师卯",
+      "campus": "校区甲",
+      "weekText": "1-16",
+      "timeText": "星期二 第1-2节",
+      "place": "",
+      "capacityLimit": null,
+      "capacitySelected": null,
+      "capacityAvailable": null,
+      "enrollStatus": "",
+      "meetings": [
+        {
+          "weekday": 2,
+          "startPeriod": 1,
+          "endPeriod": 2,
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "place": ""
+        }
+      ],
+      "catalogCourseId": null,
+      "catalogTeacherId": null,
+      "courseCode": "10100001",
+      "courseName": "高等数学",
+      "section": "03"
+    },
+    {
+      "credits": 3,
+      "categoryPath": "",
+      "teacherName": "教师辰",
+      "campus": "校区甲",
+      "weekText": "1-16",
+      "timeText": "星期四 第6-7节",
+      "place": "",
+      "capacityLimit": null,
+      "capacitySelected": null,
+      "capacityAvailable": null,
+      "enrollStatus": "",
+      "meetings": [
+        {
+          "weekday": 4,
+          "startPeriod": 6,
+          "endPeriod": 7,
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "place": ""
+        }
+      ],
+      "catalogCourseId": null,
+      "catalogTeacherId": null,
+      "courseCode": "10200001",
+      "courseName": "微观经济学",
+      "section": "01"
+    },
+    {
+      "credits": 3,
+      "categoryPath": "",
+      "teacherName": "教师午",
+      "campus": "校区甲",
+      "weekText": "1-16",
+      "timeText": "星期一 第1-2节",
+      "place": "",
+      "capacityLimit": null,
+      "capacitySelected": null,
+      "capacityAvailable": null,
+      "enrollStatus": "",
+      "meetings": [
+        {
+          "weekday": 1,
+          "startPeriod": 1,
+          "endPeriod": 2,
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "place": ""
+        }
+      ],
+      "catalogCourseId": null,
+      "catalogTeacherId": null,
+      "courseCode": "10900001",
+      "courseName": "冲突课",
+      "section": "01"
+    }
+  ],
+  "publicElectives": [
+    {
+      "credits": 2,
+      "categoryPath": "公共选修/艺术",
+      "teacherName": "教师巳",
+      "campus": "校区甲",
+      "weekText": "1-16",
+      "timeText": "星期五 第8-9节",
+      "place": "",
+      "capacityLimit": null,
+      "capacitySelected": null,
+      "capacityAvailable": null,
+      "enrollStatus": "",
+      "meetings": [
+        {
+          "weekday": 5,
+          "startPeriod": 8,
+          "endPeriod": 9,
+          "weeks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "place": ""
+        }
+      ],
+      "catalogCourseId": null,
+      "catalogTeacherId": null,
+      "courseCode": "30100001",
+      "courseName": "书法鉴赏",
+      "section": "01"
+    }
+  ]
+}

@@ -67,23 +67,29 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
                         <span className="text-muted">—</span>
                       ) : (
                         <ul className="m-0 list-none space-y-1 p-0">
-                          {cell.map((item) => (
-                            <li key={`${item.courseKey}-${period.period}-${day.day}`}>
-                              <RouterAriaLink
-                                className={
-                                  conflict
-                                    ? `${COMPACT_LINK} text-danger`
-                                    : `${COMPACT_LINK} text-accent sm:text-foreground`
-                                }
-                                to={relationDetailHref({
-                                  course_id: item.courseId,
-                                  teacher_id: item.teacherId,
-                                })}
-                              >
-                                {item.courseName}
-                              </RouterAriaLink>
-                            </li>
-                          ))}
+                          {cell.map((item) => {
+                              const className = conflict
+                                ? `${COMPACT_LINK} text-danger`
+                                : `${COMPACT_LINK} text-accent sm:text-foreground`;
+                              const label = item.courseName;
+                              return (
+                                <li key={`${item.courseKey}-${period.period}-${day.day}`}>
+                                  {item.courseId > 0 ? (
+                                    <RouterAriaLink
+                                      className={className}
+                                      to={relationDetailHref({
+                                        course_id: item.courseId,
+                                        teacher_id: item.teacherId,
+                                      })}
+                                    >
+                                      {label}
+                                    </RouterAriaLink>
+                                  ) : (
+                                    <span className={className}>{label}</span>
+                                  )}
+                                </li>
+                              );
+                            })}
                         </ul>
                       )}
                       {conflict ? (

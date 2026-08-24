@@ -15,7 +15,7 @@ _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到�
 ## CAS 代登的约束
 
 - 协议对照 [SeRazon/jufe_cas](https://github.com/SeRazon/jufe_cas)：Worker 代打 `https://ssl.jxufe.edu.cn/cas/login`，`service` 只用已注册的 `http://ehall.jxufe.edu.cn` 作为口令探针。
-- 禁止跟随 302 去 ehall，禁止用 ST / `CASTGC` 拉教务或持久化 TGT。MFA 核销后同域 `reAuthCheck` 302 视为口令探针成功，不跟进。未完成 MFA 时 `reAuthCheck` 不得签发本站会话。排课模拟从本科教务取上课时间见 [ADR-0028](./0028-jwxt-browser-schedule-import.md)：Cookie 只留在学生浏览器。
+- 禁止跟随 302 去 ehall，禁止用 ST / `CASTGC` 拉教务或持久化 TGT。MFA 核销后同域 `reAuthCheck` 302 视为口令探针成功，不跟进。未完成 MFA 时 `reAuthCheck` 不得签发本站会话。排课模拟的教务数据路径见 [ADR-0029](./0029-jwxt-driven-schedule-import.md)：协议闸门失败前不代持教务 Cookie，只接受浏览器同源 JSON 快照。
 - 口令、`CASTGC`、`JSESSIONID`、MFA `gid` 不得进日志、公开响应或长期表。MFA 两步中间态只存 AES-GCM 密文，TTL 约 5 分钟。
 - 出站只允许 `ssl.jxufe.edu.cn` 以及 host 以 `.jxufe.edu.cn` 结尾的 attest。
 - 成功后认证身份为 `provider=cas`，`issuer=ssl.jxufe.edu.cn`，`subject=HMAC(规范化学号)`。学号不当业务主键。不与 email / 已废弃的 authbridge 自动合并。

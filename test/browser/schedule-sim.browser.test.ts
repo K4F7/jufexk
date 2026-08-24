@@ -1,41 +1,19 @@
 import { expect, test, type Page } from "@playwright/test";
-import {
-  encodeJwxtImportPayload,
-  JWXT_IMPORT_HASH_PREFIX,
-  JWXT_PENDING_IMPORT_KEY,
-} from "../../src/lib/jwxt-schedule-text";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
 
-const relations = [
-  {
-    course_id: 8,
-    code: "MA101",
-    name: "高等数学",
-    category: "general",
-    department: "数学",
-    teacher_id: 9,
-    teacher_name: "张三",
-    rating: 4.2,
-    review_count: 6,
-  },
-  {
-    course_id: 10,
-    code: "MA102",
-    name: "线性代数",
-    category: "general",
-    department: "数学",
-    teacher_id: 11,
-    teacher_name: "李四",
-    rating: 3.8,
-    review_count: 4,
-  },
-];
+const snapshotJson = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/snapshot.v1.json"),
+  "utf8",
+);
+const loginExpiredHtml = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/login-expired.html"),
+  "utf8",
+);
 
-async function mockScheduleApi(
-  page: Page,
-  authenticated = true,
-  holdCourses?: Promise<void>,
-) {
+async function mockScheduleApi(page: Page, authenticated = true) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
@@ -69,142 +47,91 @@ async function mockScheduleApi(
         },
       });
     }
-    if (url.pathname === "/api/courses") {
-      if (holdCourses) await holdCourses;
-      return route.fulfill({
-        json: {
-          items: url.searchParams.get("q") ? relations : [],
-          page: 1,
-          pageSize: 20,
-          total: url.searchParams.get("q") ? relations.length : 0,
-          pages: 1,
-        },
-      });
+    if (url.pathname.startsWith("/api/jwxt")) {
+      return route.fulfill({ status: 404, json: { error: "jwxt proxy disabled" } });
     }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
 
-test("search, stage, place two courses on the same slot, and keep the plan @mobile-smoke", async ({
+async function importSnapshot(page: Page, text: string) {
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "刷新教务数据" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "刷新教务数据" })).toBeVisible();
+  await dialog.getByPlaceholder(/browser-export/).fill(text);
+  await dialog.getByRole("button", { name: "导入快照" }).click();
+}
+
+test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mobile-smoke", async ({
   page,
 }) => {
   await mockScheduleApi(page);
   await page.goto("/schedule");
+  await expect(page.getByText("还没有教务数据")).toBeVisible();
 
-  const search = page.getByRole("searchbox", { name: "搜索要排的课程" });
-  await search.fill("高等数学");
-  await search.press("Enter");
+  await importSnapshot(page, snapshotJson);
+  await expect(page.getByText("已导入教务快照")).toBeVisible();
+  await expect(page.getByText("年级", { exact: true })).toBeVisible();
+  await expect(page.getByText("专业", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "已选" })).toBeVisible();
+  await expect(page.getByLabel("已选课程")).toContainText("高等数学");
 
-  const results = page.getByRole("list", { name: "搜索结果" });
-  await expect(results.getByText("高等数学")).toBeVisible();
-  await expect(results.getByText("线性代数")).toBeVisible();
+  await page.getByRole("tab", { name: "计划内" }).click();
+  const planned = page.getByLabel("计划内课程");
+  await expect(planned).toContainText("微观经济学");
+  await planned.getByRole("button", { name: "加入课表" }).first().click();
+  await expect(page.getByLabel("本学期计划")).toContainText("微观经济学");
 
-  await results.getByRole("button", { name: "加入课表" }).nth(0).click();
-  await results.getByRole("button", { name: "加入课表" }).nth(0).click();
+  await page.getByRole("tab", { name: "公共选修" }).click();
+  await page.getByLabel("公共选修").getByRole("button", { name: "加入课表" }).click();
+  await expect(page.getByLabel("本学期计划")).toContainText("书法鉴赏");
 
-  const staged = page.getByLabel("已选课程");
-  await expect(staged.getByRole("link", { name: "高等数学（张三）" })).toBeVisible();
-  await expect(staged.getByRole("link", { name: "线性代数（李四）" })).toBeVisible();
-
-  await staged.getByRole("button", { name: "排上" }).nth(0).click();
-  await staged.getByRole("button", { name: "排上" }).nth(1).click();
-
-  await expect(page.getByRole("alert")).toContainText(
-    "高等数学（张三）与线性代数（李四）在周一第1–2节冲突",
-  );
   const timetable = page.getByRole("grid", { name: "周课表" });
-  const conflictBadge = timetable.locator('[data-slot="chip"]').first();
-  await expect(conflictBadge).toHaveAccessibleName("冲突");
-  const timetableLink = timetable.getByRole("link", { name: "高等数学（张三）" }).first();
+  await expect(timetable.getByText("高等数学（教师甲）").first()).toBeVisible();
+  await expect(timetable.getByText("微观经济学（教师辰）").first()).toBeVisible();
+  await expect(timetable.getByText("书法鉴赏（教师巳）").first()).toBeVisible();
 
-  await page.setViewportSize({ width: 800, height: 720 });
-  await expect(timetableLink).toHaveCSS(
-    "overflow-wrap",
-    "normal",
-  );
-  const desktopLayout = await timetable.evaluate((element) => {
-    const scrollContainer = element.closest<HTMLElement>(
-      '[data-slot="table-scroll-container"]',
-    );
-    return {
-      containerWidth: scrollContainer?.clientWidth ?? 0,
-      tableWidth: element.getBoundingClientRect().width,
-    };
-  });
-  expect(desktopLayout.tableWidth / desktopLayout.containerWidth).toBeGreaterThan(0.99);
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await page.getByLabel("计划内课程").getByRole("button", { name: "加入课表" }).click();
+  await expect(page.getByRole("alert")).toContainText("冲突课");
+  await expect(page.getByRole("alert")).toContainText("未加入");
 
-  await page.setViewportSize({ width: 320, height: 720 });
-  await expect(timetableLink).toHaveCSS("overflow-wrap", "anywhere");
-  const conflictCell = timetable.locator('[data-conflict="true"]').first();
-  const badgeBox = await conflictBadge.boundingBox();
-  const cellBox = await conflictCell.boundingBox();
-  expect(badgeBox).toBeTruthy();
-  expect(cellBox).toBeTruthy();
-  expect(badgeBox?.width ?? 0).toBeLessThanOrEqual(cellBox?.width ?? 0);
-  const scrollContainer = timetable.locator('xpath=ancestor::*[@data-slot="table-scroll-container"]');
-  const scrollSize = await scrollContainer.evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
-  }));
-  expect(scrollSize.scrollWidth).toBeLessThanOrEqual(scrollSize.clientWidth);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "导出快照" }).click(),
+  ]);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const exported = readFileSync(downloadPath!, "utf8");
+  expect(exported).toContain('"source": "browser-export"');
+  expect(exported).not.toMatch(/CASTGC|JSESSIONID|cookie|学号|姓名/i);
 
   await page.reload();
-  await expect(timetable.getByText("高等数学（张三）").first()).toBeVisible();
-  await expect(timetable.getByText("线性代数（李四）").first()).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("冲突");
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
+  await expect(page.getByLabel("本学期计划")).toContainText("微观经济学");
+  await expect(page.getByLabel("本学期计划")).toContainText("书法鉴赏");
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
+  const layout = await page.locator("section").evaluate((section) => {
+    const grid = section.querySelector(".grid");
+    return grid ? getComputedStyle(grid).gridTemplateColumns : "";
+  });
+  expect(layout.split(" ").length).toBe(1);
 });
 
-test("opens the official jwxt door and imports pasted class times locally", async ({
+test("login-expired fixture surfaces session expiry without writing a snapshot", async ({
   page,
 }) => {
   await mockScheduleApi(page);
   await page.goto("/schedule");
-  await page.getByRole("button", { name: "从本科教务导入" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("link", { name: "打开本科教务" })).toHaveAttribute(
-    "href",
-    "https://jwxt.jxufe.edu.cn/jxcjcaslogin",
-  );
-  await expect(dialog).toContainText("课程名会发到选课志用来匹配目录");
-  await dialog.getByPlaceholder("高等数学 张三 星期一 第1-2节").fill(
-    "高等数学 张三 星期一 第1-2节",
-  );
-  await dialog.getByRole("button", { name: "导入粘贴内容" }).click();
-  await expect(page.getByRole("status")).toContainText("已从本科教务导入");
-  await expect(page.getByRole("status")).toContainText("课程名会发到选课志用来匹配目录");
-  await expect(page.getByLabel("已选课程").getByRole("link", { name: "高等数学（张三）" })).toBeVisible();
-  await expect(
-    page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
-  ).toBeVisible();
+  await importSnapshot(page, loginExpiredHtml);
+  await expect(page.getByText("教务登录已失效", { exact: true })).toBeVisible();
+  await expect(page.getByText("还没有教务数据")).toBeVisible();
 });
 
-test("imports class times from the jwxt-import hash without sending cookies", async ({
-  page,
-}) => {
-  await mockScheduleApi(page);
-  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
-    v: 1,
-    rows: [
-      {
-        courseName: "高等数学",
-        courseCode: "",
-        teacherName: "张三",
-        weekText: "",
-        timeText: "星期二 第3-4节",
-      },
-    ],
-  })}`;
-  await page.goto(`/schedule#${hash}`);
-  await expect(page.getByRole("status")).toContainText("已从本科教务导入");
-  await expect(
-    page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
-  ).toBeVisible();
-  await expect(page).not.toHaveURL(/jwxt-import/);
-});
-
-test("guest can see courses but must log in to add or import", async ({
-  page,
-}) => {
+test("guest can see a cached plan but must log in to refresh", async ({ page }) => {
   await mockScheduleApi(page, false);
   await page.addInitScript(
     ([key, value]) => {
@@ -213,160 +140,62 @@ test("guest can see courses but must log in to add or import", async ({
     [
       SCHEDULE_PLAN_STORAGE_KEY,
       JSON.stringify({
-        version: 1,
-        courses: [
-          {
-            id: "8:9",
-            courseId: 8,
-            courseCode: "MA101",
-            courseName: "高等数学",
-            teacherId: 9,
-            teacherName: "张三",
-            rating: 4.2,
-            reviewCount: 6,
-            slots: [
-              {
-                id: "8:9:1:1:2",
-                weekday: 1,
-                startPeriod: 1,
-                endPeriod: 2,
-                weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-              },
-            ],
-          },
-        ],
+        version: 2,
+        activeTermId: "2025-2026-2",
+        terms: {
+          "2025-2026-2": [
+            {
+              key: "2025-2026-2+10100001+01",
+              termId: "2025-2026-2",
+              courseCode: "10100001",
+              courseName: "高等数学",
+              section: "01",
+              teacherName: "教师甲",
+              origin: "enrolled",
+              included: true,
+              slots: [
+                {
+                  id: "s",
+                  weekday: 1,
+                  startPeriod: 1,
+                  endPeriod: 2,
+                  weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+                },
+              ],
+              credits: 4,
+              categoryPath: "",
+              campus: "",
+              place: "",
+              courseId: -1,
+              teacherId: -1,
+              rating: null,
+              reviewCount: 0,
+            },
+          ],
+        },
       }),
     ],
   );
   await page.goto("/schedule");
-
-  await page.setViewportSize({ width: 800, height: 720 });
-  const ordinaryTimetableLink = page
-    .getByRole("grid", { name: "周课表" })
-    .getByRole("link", { name: "高等数学（张三）" })
-    .first();
-  const expectedLinkColor = await ordinaryTimetableLink.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.color = "var(--link)";
-    document.body.append(probe);
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  });
-  await expect(ordinaryTimetableLink).toHaveCSS("color", expectedLinkColor);
-
-  await expect(page.getByText("提前处理掉早八刺客")).toBeVisible();
-  await expect(page.getByText("查看课表不用登录")).toHaveCount(0);
-  await expect(page.getByText("输入课程或教师名后回车，从公开目录加入。")).toHaveCount(0);
-  await expect(page.getByText("常用作息，仅供模拟")).toHaveCount(0);
-  await expect(
-    page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
-  ).toBeVisible();
-
-  const search = page.getByRole("searchbox", { name: "搜索要排的课程" });
-  await search.fill("高等数学");
-  await search.press("Enter");
-  const results = page.getByRole("list", { name: "搜索结果" });
-  await expect(results.getByText("线性代数")).toBeVisible();
-  await results.getByRole("button", { name: "加入课表" }).click();
-  await expect(page.getByLabel("已选课程").getByText("线性代数")).toHaveCount(0);
-
-  await page.getByRole("button", { name: "从本科教务导入" }).click();
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
+  await page.getByRole("button", { name: "刷新教务数据" }).click();
   const loginDialog = page.getByRole("dialog");
-  await expect(loginDialog).toContainText("导入需要先登录");
-  await expect(page.getByRole("link", { name: "打开本科教务" })).toHaveCount(0);
+  await expect(loginDialog).toContainText("刷新需要先登录");
   await loginDialog.getByRole("link", { name: "去登录" }).click();
   await expect(page).toHaveURL(/\/login\?from=%2Fschedule/);
 });
 
-test("guest hash import waits for login and does not write the plan", async ({
-  page,
-}) => {
-  await mockScheduleApi(page, false);
-  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
-    v: 1,
-    rows: [
-      {
-        courseName: "高等数学",
-        courseCode: "",
-        teacherName: "张三",
-        weekText: "",
-        timeText: "星期二 第3-4节",
-      },
-    ],
-  })}`;
-  await page.goto(`/schedule#${hash}`);
-  await expect(page.getByText("查看课表不用登录")).toHaveCount(0);
-  await expect(page.getByText("已从本科教务导入")).toHaveCount(0);
-  await expect(page.getByLabel("已选课程")).toHaveCount(0);
-  await expect(page).not.toHaveURL(/jwxt-import/);
-});
-
-test("partial hash import still discloses course names are sent to the catalog", async ({
-  page,
-}) => {
+test("same-course swap is atomic and exclude survives a second import", async ({ page }) => {
   await mockScheduleApi(page);
-  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
-    v: 1,
-    rows: [
-      {
-        courseName: "高等数学",
-        courseCode: "",
-        teacherName: "张三",
-        weekText: "",
-        timeText: "星期二 第3-4节",
-      },
-      {
-        courseName: "线性代数",
-        courseCode: "",
-        teacherName: "李四",
-        weekText: "",
-        timeText: "",
-      },
-    ],
-  })}`;
-  await page.goto(`/schedule#${hash}`);
-  const status = page.getByRole("status");
-  await expect(status).toContainText("另有 1 行没有可识别的上课时间");
-  await expect(status).toContainText("课程名会发到选课志用来匹配目录");
-  await expect(page.getByLabel("已选课程").getByRole("link", { name: "高等数学（张三）" })).toBeVisible();
-});
-
-test("hash import persists the plan if the user leaves during catalog lookup", async ({
-  page,
-}) => {
-  let release!: () => void;
-  const holdCourses = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await mockScheduleApi(page, true, holdCourses);
-  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
-    v: 1,
-    rows: [
-      {
-        courseName: "高等数学",
-        courseCode: "",
-        teacherName: "张三",
-        weekText: "",
-        timeText: "星期二 第3-4节",
-      },
-    ],
-  })}`;
-  const coursesRequest = page.waitForRequest((request) => {
-    const url = new URL(request.url());
-    return url.pathname === "/api/courses" && Boolean(url.searchParams.get("q"));
-  });
-  await page.goto(`/schedule#${hash}`);
-  await coursesRequest;
-  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "课程" }).click();
-  await expect(page).toHaveURL(/\/courses/);
-  release();
-  await page.waitForFunction(
-    ([planKey, pendingKey]) => {
-      const plan = localStorage.getItem(planKey) ?? "";
-      const pending = sessionStorage.getItem(pendingKey);
-      return plan.includes("高等数学") && !pending;
-    },
-    [SCHEDULE_PLAN_STORAGE_KEY, JWXT_PENDING_IMPORT_KEY],
-  );
+  await page.goto("/schedule");
+  await importSnapshot(page, snapshotJson);
+  await page.getByRole("tab", { name: "已选" }).click();
+  await page.getByLabel("已选课程").getByRole("button", { name: "排除" }).click();
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
+  await importSnapshot(page, snapshotJson);
+  await expect(page.getByLabel("本学期计划")).toContainText("已排除");
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await page.getByLabel("计划内课程").getByRole("button", { name: "换班" }).click();
+  await expect(page.getByLabel("本学期计划")).toContainText("班03");
+  await expect(page.getByLabel("本学期计划")).not.toContainText("班01");
 });
