@@ -1,12 +1,9 @@
--- Review ownership, visibility controls, and audited admin actions (issue #463).
-ALTER TABLE reviews ADD COLUMN author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL;
+-- Review visibility controls and audited admin actions (issue #463).
+-- author_user_id already exists from 0034_user_notifications.sql.
 ALTER TABLE reviews ADD COLUMN blocked_at TEXT;
 ALTER TABLE reviews ADD COLUMN deleted_at TEXT;
-CREATE INDEX idx_reviews_author_user ON reviews(author_user_id);
 
--- A catalog request can create its attached review later, so retain the same
--- ordinary-user ownership across the moderation boundary.
-ALTER TABLE catalog_requests ADD COLUMN author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL;
+-- Index ordinary-user ownership already stored by 0034_user_notifications.sql.
 CREATE INDEX idx_catalog_requests_author_user ON catalog_requests(author_user_id);
 
 -- Keep review-local history while adding the acting admin session and the new
