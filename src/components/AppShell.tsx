@@ -162,7 +162,7 @@ function DefaultShell({
                 />
               )}
             >
-              {siteName}
+              <span className="min-w-0 truncate">{siteName}</span>
             </Link>
 
             <nav

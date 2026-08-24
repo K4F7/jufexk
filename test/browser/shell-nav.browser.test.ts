@@ -133,6 +133,9 @@ test("brand link uses the site name and goes to /courses", async ({ page }) => {
   const brand = page.getByRole("banner").getByRole("link", { name: "选课志" });
   await expect(brand).toBeVisible();
   await expect(brand).toHaveAttribute("href", "/courses");
+  const brandLabel = brand.locator("span");
+  await expect(brandLabel).toHaveCSS("min-width", "0px");
+  await expect(brandLabel).toHaveCSS("text-overflow", "ellipsis");
   await brand.click();
   await expect(page).toHaveURL(/\/courses$/);
   await expect(
