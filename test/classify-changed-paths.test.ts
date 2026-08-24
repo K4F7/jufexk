@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyChangedPaths } from "../scripts/ci/classify-changed-paths.mjs";
+import bindAdminWorkflow from "../.github/workflows/bind-admin-students.yml?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
 import migrateWorkflow from "../.github/workflows/migrate.yml?raw";
 
@@ -67,5 +68,16 @@ describe("classifyChangedPaths", () => {
     expect(migrateWorkflow).toContain("production-d1-migrate");
     expect(migrateWorkflow).toContain("wrangler d1 migrations list jufexk --remote");
     expect(migrateWorkflow).toContain("wrangler d1 migrations apply jufexk --remote");
+  });
+
+  it("binds admin student IDs only from an on-demand workflow using the identity secret", () => {
+    expect(bindAdminWorkflow).toContain("workflow_dispatch");
+    expect(bindAdminWorkflow).not.toContain("push:");
+    expect(bindAdminWorkflow).toContain("production-admin-student-bind");
+    expect(bindAdminWorkflow).toContain("secrets.CAMPUS_IDENTITY_SECRET");
+    expect(bindAdminWorkflow).toContain("JUFEXK_ADMIN_STUDENT_IDS");
+    expect(bindAdminWorkflow).toContain(
+      "scripts/admin/bind-student-ids.ts --remote --apply",
+    );
   });
 });

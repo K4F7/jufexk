@@ -65,7 +65,7 @@ pnpm exec wrangler d1 migrations apply jufexk --local
 pnpm run dev
 ```
 
-本机密钥放在不提交的 `.dev.vars`，再用 `pnpm run secrets:sync-local` 写入本地 Secrets Store。允许名单为空时，用校园学号登录后打开 `/admin` 即成为首位管理员。也可用 `pnpm exec tsx scripts/admin/bind-student-ids.ts` 预写 HMAC（需本地 `CAMPUS_IDENTITY_SECRET`，Secrets Store 不能回读）。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置。
+本机密钥放在不提交的 `.dev.vars`，再用 `pnpm run secrets:sync-local` 写入本地 Secrets Store。允许名单为空时，用校园学号登录后打开 `/admin` 即成为首位管理员。也可把与生产相同的 `CAMPUS_IDENTITY_SECRET` 放到 GitHub Environment `production`，再跑 Actions「Bind admin student IDs」。本机脚本 `pnpm exec tsx scripts/admin/bind-student-ids.ts` 同样需要该密钥（Secrets Store 不能回读）。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置。
 
 ### 常用命令
 

@@ -12,8 +12,9 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 | `TURNSTILE_SECRET` | Secrets Store | Worker 绑定 | 与公开 `TURNSTILE_SITE_KEY` 成对 |
 | `CAMPUS_IDENTITY_SECRET` | Secrets Store | Worker 绑定 | 学号/`sub`/校学生邮箱 HMAC 摘要密钥，明文永不落库 |
 | `CAS_CHALLENGE_SECRET` | Secrets Store | Worker 绑定 | CAS 代登 MFA 中间态 AES-GCM 密钥；未绑定时回退到 `CAMPUS_IDENTITY_SECRET` |
-| `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA deploy / migrate | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。deploy 需 Workers Scripts Edit、Account Settings Read；migrate 需 D1 Edit、Account Settings Read |
+| `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA deploy / migrate / bind-admin | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。deploy 需 Workers Scripts Edit、Account Settings Read；migrate / bind-admin 需 D1 Edit、Account Settings Read |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
+| `CAMPUS_IDENTITY_SECRET`（可选副本） | GitHub Environment `production` | GHA `Bind admin student IDs` | 必须与 Secrets Store 中的同名值一致。Secrets Store 不能回读，本机没有 `.dev.vars` 时用这条工作流写管理员学号 HMAC |
 
 不要写入 Secrets Store：
 
