@@ -167,9 +167,8 @@ function StudentBindingsEditor() {
         </Table>
       ) : (
         <p className="mt-8 text-[13px] text-muted">
-          还没有通过本页绑定的学号。首位管理员可用{" "}
-          <code>pnpm exec tsx scripts/admin/bind-student-ids.ts</code>{" "}
-          写入哈希后再校园登录。
+          还没有通过本页绑定的其他人。允许名单为空时，第一个校园登录打开
+          /admin 的人会成为首位管理员；之后可在这里继续添加。
         </p>
       )}
     </>

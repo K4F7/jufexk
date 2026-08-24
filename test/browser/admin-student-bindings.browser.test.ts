@@ -77,7 +77,7 @@ test("guest /admin has no password form and links to campus login", async ({
   });
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "管理后台" })).toBeVisible();
-  await expect(page.getByText("请先用该学号登录")).toBeVisible();
+  await expect(page.getByText("第一个校园登录打开本页的人会成为首位管理员")).toBeVisible();
   await expect(page.getByRole("link", { name: "去登录" })).toHaveAttribute(
     "href",
     "/login?from=/admin",
