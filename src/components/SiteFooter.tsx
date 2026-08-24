@@ -1,5 +1,6 @@
 import { LogoGithub } from "@gravity-ui/icons";
-import { buttonVariants } from "@heroui/react";
+import { buttonVariants, Separator } from "@heroui/react";
+import { Fragment } from "react";
 import { GITHUB_ISSUES_URL, GITHUB_REPO_URL } from "../lib/site-links";
 import { RouterAriaLink } from "./RouterAriaLink";
 
@@ -11,14 +12,6 @@ const INTERNAL_LINKS = [
   { to: "/announcements", label: "公告" },
   { to: "/admin", label: "管理" },
 ] as const;
-
-function Dot() {
-  return (
-    <span aria-hidden className="mx-2">
-      ·
-    </span>
-  );
-}
 
 export function SiteFooter({
   siteName,
@@ -35,7 +28,7 @@ export function SiteFooter({
         </p>
         <nav
           aria-label="页脚"
-          className="flex flex-wrap items-center justify-center"
+          className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2"
         >
           <a
             aria-label="GitHub 仓库"
@@ -50,27 +43,22 @@ export function SiteFooter({
           >
             <LogoGithub />
           </a>
-          <span className="inline-flex items-center whitespace-nowrap">
-            <Dot />
-            <a
-              className="link text-muted"
-              href={GITHUB_ISSUES_URL}
-              rel="noreferrer"
-              target="_blank"
-            >
-              反馈问题
-            </a>
-          </span>
+          <Separator className="h-4" orientation="vertical" />
+          <a
+            className="link text-muted"
+            href={GITHUB_ISSUES_URL}
+            rel="noreferrer"
+            target="_blank"
+          >
+            反馈问题
+          </a>
           {INTERNAL_LINKS.map((link) => (
-            <span
-              key={link.to}
-              className="inline-flex items-center whitespace-nowrap"
-            >
-              <Dot />
+            <Fragment key={link.to}>
+              <Separator className="h-4" orientation="vertical" />
               <RouterAriaLink className="text-muted" to={link.to}>
                 {link.label}
               </RouterAriaLink>
-            </span>
+            </Fragment>
           ))}
         </nav>
       </div>

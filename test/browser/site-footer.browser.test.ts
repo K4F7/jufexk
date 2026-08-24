@@ -75,6 +75,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "使用条款" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "公告" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
+  await expect(footerNav.getByRole("separator")).toHaveCount(7);
 });
 
 test("footer site-info links open their pages", async ({ page }) => {

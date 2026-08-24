@@ -126,6 +126,20 @@ test("main nav is 课程/课评/排课模拟/导师 with a center course search"
   expect(renderWarnings).toEqual([]);
 });
 
+test("brand link uses the site name and goes to /courses", async ({ page }) => {
+  await mockShellApi(page);
+  await page.goto("/latest");
+
+  const brand = page.getByRole("banner").getByRole("link", { name: "选课志" });
+  await expect(brand).toBeVisible();
+  await expect(brand).toHaveAttribute("href", "/courses");
+  await brand.click();
+  await expect(page).toHaveURL(/\/courses$/);
+  await expect(
+    page.getByRole("searchbox", { name: "搜索课程" }),
+  ).toBeVisible();
+});
+
 test("guests get a real login link outside the nav", async ({ page }) => {
   await mockShellApi(page);
   await page.goto("/courses");
