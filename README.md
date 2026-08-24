@@ -34,6 +34,7 @@
 - 📝 **目录补充申请**：找不到课程或教师时可提交申请，管理员审核通过后才创建目录对象
 - 🕰️ **历史评价**：已审核的历史文字作为匿名资料进入统一公开流，不参与评分统计
 - 🧠 **任课关系 AI 总结**：根据已公开点评异步生成参考摘要，不参与评分或排序
+- 📅 **排课模拟**：按课程×教师检索并编排本机周课表，标出时间冲突；可从本科教务浏览器导入上课时间，Cookie 不进本站
 - 🛡️ **反滥用**：Turnstile 人机验证、蜜罐、同源校验、IP HMAC 假名化限流与重复投稿控制
 - 🔐 **校园身份**：普通用户主登录走江财 CAS 代登，校学生邮箱验证为次要入口；身份不公开，只承载评价与认可的唯一性
 - 🎨 **现代 UI**：HeroUI v3 + Tailwind CSS v4，支持暗色 / 亮色主题
@@ -181,6 +182,7 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 
 - [评知校园](https://courses.pinzhixiaoyuan.com/)：课评表单的分段结构、对象绑定与填写节奏是本站投稿问卷的重要参考。
 - [USTC-iCourse / ustc-course](https://github.com/USTC-iCourse/ustc-course)：前端信息架构与公开浏览体验大量参考了贵仓库的设计。课程列表、详情分层、评价阅读节奏都从中受益；四道三档题的方向也对齐 iCourse 的四维标签。非常喜欢这份前端设计。
+- [XiaLing233 / tongji-course-scheduler](https://github.com/XiaLing233/tongji-course-scheduler)（[线上演示](https://xk.xialing.icu)）：排课模拟参考了贵仓库的选课模拟器。冲突检测采用 occupy 网格与周次相交（同一时段且周次相交则不能无冲突加入）；周课表编排与加入 / 移出课表的交互节奏也从中受益。对象仍是本站课程×教师任课关系，不是开课班目录。
 - [SeRazon / jufe_cas](https://github.com/SeRazon/jufe_cas)：江财 CAS 实现
 
 文案、品牌与数据模型均为本站自有；参考的是交互与协议，不是复制站点内容。
