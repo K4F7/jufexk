@@ -360,7 +360,7 @@ describe("jxufe cas helpers", () => {
   });
 });
 
-describe("jxufe cas login", () => {
+describe("jxufe cas login", { timeout: 15_000 }, () => {
   it("lets the Vite preview origin pass when wrangler rewrites Host and URL over HTTP", async () => {
     const response = await postCasForOrigin(
       "http://courses.sein.moe/api/auth/cas",

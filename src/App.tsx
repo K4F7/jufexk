@@ -31,6 +31,12 @@ import { NoticesPage } from "./pages/NoticesPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { PublicUserPage } from "./pages/PublicUserPage";
 import { SchedulePage } from "./pages/SchedulePage";
+import {
+  AboutPage,
+  ContactPage,
+  ResourcesPage,
+  TermsPage,
+} from "./pages/SiteInfoPages";
 import { SubmitPage } from "./pages/SubmitPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
@@ -171,6 +177,10 @@ export function App() {
               <Route path="/u/:code" element={<PublicUserPage />} />
               <Route path="/notices" element={<NoticesPage />} />
               <Route path="/submit" element={<SubmitPage config={config} />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/contact" element={<ContactPage />} />
+              <Route path="/resources" element={<ResourcesPage />} />
+              <Route path="/terms" element={<TermsPage />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />
               <Route path="/admin" element={<AdminHubPage />} />
               <Route path="/admin/admins" element={<AdminStudentBindingsPage />} />
