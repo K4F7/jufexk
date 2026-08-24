@@ -6,7 +6,9 @@ import {
 } from "./ordinary-user-identity";
 import {
   hmacHex,
+  isLoopbackWorkerRequest,
   issueEmailSessionCookie,
+  ordinaryUserIdentitySecret,
   originOk,
   sessionPayloadForUser,
 } from "./ordinary-user-session";
@@ -21,6 +23,9 @@ import { readSecret } from "./secrets";
 
 export const CAS_LOGIN_PATH = "/api/auth/cas";
 export const CAS_MFA_PATH = "/api/auth/cas/mfa";
+/** Local testing only — never reachable on a production Worker hostname. */
+export const DEV_LOGIN_PATH = "/api/auth/dev";
+export const DEV_LOGIN_USERNAME = "local-dev";
 
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 const REQUEST_RATE_SECONDS = 900;
@@ -35,8 +40,11 @@ type CasEnv = {
   CAS_CHALLENGE_SECRET?: string | { get(): Promise<string> };
 };
 
-const fail = (c: Context, error: string, status: 400 | 401 | 403 | 429 | 503 = 400) =>
-  c.json({ error }, status);
+const fail = (
+  c: Context,
+  error: string,
+  status: 400 | 401 | 403 | 404 | 429 | 503 = 400,
+) => c.json({ error }, status);
 
 const takeRateLimit = async (
   db: D1Database,
@@ -265,4 +273,16 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
     .bind(challenge)
     .run();
   return issueOrdinarySession(c, hold.username, identitySecret);
+}
+
+/**
+ * Local testing only: same ordinary-user session as CAS, no campus MFA.
+ * Allowed only when the Worker request itself is loopback.
+ */
+export async function handleDevLogin(c: Context<{ Bindings: CasEnv }>) {
+  if (!isLoopbackWorkerRequest(c)) return fail(c, "Not Found", 404);
+  if (!originOk(c)) return fail(c, "来源校验失败", 403);
+  const identitySecret = await ordinaryUserIdentitySecret(c);
+  if (!identitySecret) return fail(c, "登录失败，请稍后重试", 503);
+  return issueOrdinarySession(c, DEV_LOGIN_USERNAME, identitySecret);
 }

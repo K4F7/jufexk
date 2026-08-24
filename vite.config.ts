@@ -20,6 +20,8 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
+        // Preview Origin is :5173; wrangler URL is :8787. originOk allows
+        // this loopback pair so CAS login is not rejected as 来源校验失败.
         target: "http://localhost:8787",
         changeOrigin: true,
       },

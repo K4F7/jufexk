@@ -44,6 +44,7 @@ describe("domain route composition", () => {
       "GET /api/courses",
     );
     expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/cas");
+    expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/dev");
     expect(ordinaryUserRoutes.routes.map(routeKey)).toContain(
       "POST /api/reviews",
     );

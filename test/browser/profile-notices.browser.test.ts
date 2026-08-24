@@ -184,15 +184,13 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(page.getByText("待审核", { exact: true })).toBeVisible();
   await expect(page.getByText("等待审核的点评摘要。")).toBeVisible();
 
-  // 侧栏统计与账号管理入口；不出现邮箱、学号等标识。
+  // 侧栏统计；不出现邮箱、学号等标识，也不再导向账号删除。
   await expect(
     page.getByRole("heading", { name: "我的主页" }),
   ).toBeVisible();
   await expect(page.getByText("点评了 2 门课程")).toBeVisible();
   await expect(page.getByText("关注了 1 门课程")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "账号管理" }),
-  ).toHaveAttribute("href", "/account");
+  await expect(page.getByRole("link", { name: "账号管理" })).toHaveCount(0);
 });
 
 test("profile page degrades gracefully when the API is missing", async ({

@@ -5,6 +5,7 @@ import {
   FieldError,
   Form,
   Input,
+  InputOTP,
   Label,
   Spinner,
   TextField,
@@ -130,6 +131,51 @@ export function LoginPage() {
     navigate(backTarget, { replace: true });
   }
 
+  /** Local testing only — Vite DEV UI; Worker still rejects non-loopback hosts. */
+  async function submitDevLogin() {
+    const requestId = ++loginRequestId.current;
+    setError("");
+    setBusy(true);
+    try {
+      const session = await api<{ authenticated?: boolean; csrfToken?: string }>(
+        "/api/auth/dev",
+        {
+          method: "POST",
+          body: "{}",
+        },
+      );
+      if (requestId !== loginRequestId.current) return;
+      if (session.authenticated) applySession(session);
+      navigate(searchParams.get("from") ? backTarget : "/profile", {
+        replace: true,
+      });
+    } catch (err: unknown) {
+      if (requestId !== loginRequestId.current) return;
+      setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
+    } finally {
+      if (requestId === loginRequestId.current) setBusy(false);
+    }
+  }
+
+  const devLoginButton = import.meta.env.DEV ? (
+    <Button
+      fullWidth
+      isPending={busy}
+      type="button"
+      variant="secondary"
+      onPress={() => {
+        void submitDevLogin();
+      }}
+    >
+      {({ isPending }) => (
+        <>
+          {isPending ? <Spinner color="current" size="sm" /> : null}
+          {isPending ? "正在完成本地登录…" : "本地测试登录"}
+        </>
+      )}
+    </Button>
+  ) : null;
+
   async function submitCas(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const requestId = ++loginRequestId.current;
@@ -245,27 +291,37 @@ export function LoginPage() {
                     </Alert.Content>
                   </Alert>
                 )}
-                <TextField
-                  fullWidth
-                  isDisabled={busy}
-                  isRequired
-                  name="mfa"
-                  autoComplete="one-time-code"
-                  value={mfaCode}
-                  onChange={setMfaCode}
-                >
+                <div className="flex flex-col gap-2">
                   <Label>验证码</Label>
-                  <Input
+                  <InputOTP
+                    aria-label="验证码"
+                    autoComplete="one-time-code"
                     inputMode="numeric"
-                    placeholder="4–8 位验证码"
-                    variant="primary"
-                  />
-                  <FieldError />
-                </TextField>
+                    isDisabled={busy}
+                    maxLength={4}
+                    name="mfa"
+                    pattern="^[0-9]+$"
+                    value={mfaCode}
+                    variant="secondary"
+                    onChange={setMfaCode}
+                  >
+                    <InputOTP.Group>
+                      <InputOTP.Slot index={0} />
+                      <InputOTP.Slot index={1} />
+                      <InputOTP.Slot index={2} />
+                      <InputOTP.Slot index={3} />
+                    </InputOTP.Group>
+                  </InputOTP>
+                </div>
               </div>
             </Card.Content>
             <Card.Footer className="mt-6 flex flex-col gap-2">
-              <Button fullWidth isPending={busy} type="submit">
+              <Button
+                fullWidth
+                isDisabled={mfaCode.length !== 4}
+                isPending={busy}
+                type="submit"
+              >
                 {({ isPending }) => (
                   <>
                     {isPending ? <Spinner color="current" size="sm" /> : null}
@@ -273,6 +329,7 @@ export function LoginPage() {
                   </>
                 )}
               </Button>
+              {devLoginButton}
             </Card.Footer>
           </Form>
         ) : (
@@ -328,6 +385,7 @@ export function LoginPage() {
                   </>
                 )}
               </Button>
+              {devLoginButton}
             </Card.Footer>
           </Form>
         )}

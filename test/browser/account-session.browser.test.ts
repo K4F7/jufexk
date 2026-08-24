@@ -1,6 +1,6 @@
 /**
- * Browser coverage for ordinary-user session, logout and account deletion
- * (issue #139 / #325). `/api/user/session` is the only viewer-state source.
+ * Browser coverage for ordinary-user session, logout and account-to-profile
+ * routing (issue #139 / #325). `/api/user/session` is the only viewer-state source.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 
@@ -96,6 +96,8 @@ async function mockApi(page: Page, mock: MockState) {
         logoutPath: "/logout",
       });
     }
+    if (url.pathname === "/api/user/profile")
+      return fulfillJson(route, { reviews: [], follows: [], review_count: 0, follow_count: 0 });
     if (url.pathname === "/api/user/account" && request.method() === "DELETE") {
       mock.deleteCalls += 1;
       if (!mock.authenticated)
@@ -263,57 +265,13 @@ test("session outage degrades to guest browsing without blocking pages", async (
   ).toBeEnabled();
 });
 
-test("account deletion requires acknowledgement and reports pending_deletion", async ({
+test("signed-in account page goes to the personal homepage", async ({
   page,
 }) => {
-  const mock = state({ authenticated: true });
-  await mockApi(page, mock);
+  await mockApi(page, state({ authenticated: true }));
   await page.goto("/account");
-  await expect(
-    page.getByRole("heading", { name: "账号管理" }),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "删除账号" }).click();
-  const dialog = page.getByRole("alertdialog");
-  await expect(dialog).toBeVisible();
-  await expect(
-    dialog.getByText("已批准的任课评价匿名保留", { exact: false }),
-  ).toBeVisible();
-
-  const confirm = dialog.getByRole("button", { name: "确认删除账号" });
-  await expect(confirm).toBeDisabled();
-  // The native input is visually hidden; click its label text instead.
-  await dialog.getByText("我已了解以上后果").click();
-  await expect(
-    dialog.getByRole("checkbox", { name: "我已了解以上后果" }),
-  ).toBeChecked();
-  await expect(confirm).toBeEnabled();
-  await confirm.click();
-
-  await expect(page.getByText("账号已进入删除流程")).toBeVisible();
-  await expect(
-    page.getByText("30 天恢复期", { exact: false }).first(),
-  ).toBeVisible();
-  expect(mock.deleteCalls).toBe(1);
-  await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
-  await expect(page.getByText("登录未开放")).toHaveCount(0);
-});
-
-test("account deletion can be cancelled without any request", async ({
-  page,
-}) => {
-  const mock = state({ authenticated: true });
-  await mockApi(page, mock);
-  await page.goto("/account");
-  await page.getByRole("button", { name: "删除账号" }).click();
-  const dialog = page.getByRole("alertdialog");
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "取消" }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(mock.deleteCalls).toBe(0);
-  await expect(
-    page.getByRole("button", { name: "账号", exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByRole("button", { name: "删除账号" })).toHaveCount(0);
 });
 
 test("account page guides guests to login instead of showing account data", async ({
@@ -326,7 +284,7 @@ test("account page guides guests to login instead of showing account data", asyn
   await expect(page).toHaveURL(/\/login\?from=%2Faccount$/);
 });
 
-test("keyboard reaches the account menu, logout, and the deletion confirm", async ({
+test("keyboard reaches the account menu and logout confirm", async ({
   page,
 }) => {
   const mock = state({ authenticated: true });
@@ -349,21 +307,4 @@ test("keyboard reaches the account menu, logout, and the deletion confirm", asyn
   await confirmLogout.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText("已退出登录")).toBeVisible();
-
-  mock.authenticated = true;
-  await page.goto("/account");
-  await page.getByRole("button", { name: "删除账号" }).focus();
-  await page.keyboard.press("Enter");
-  const dialog = page.getByRole("alertdialog");
-  await expect(dialog).toBeVisible();
-  await dialog
-    .getByRole("checkbox", { name: "我已了解以上后果" })
-    .focus();
-  await page.keyboard.press("Space");
-  const confirm = dialog.getByRole("button", { name: "确认删除账号" });
-  await expect(confirm).toBeEnabled();
-  await confirm.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByText("账号已进入删除流程")).toBeVisible();
-  expect(mock.deleteCalls).toBe(1);
 });

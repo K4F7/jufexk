@@ -214,11 +214,6 @@ export function ProfilePage() {
               <span>关注了 {available && !loading ? followCount : "—"} 门课程</span>
             </div>
           </Card.Content>
-          <Card.Footer>
-            <RouterAriaLink to="/account" className="text-sm text-accent">
-              账号管理
-            </RouterAriaLink>
-          </Card.Footer>
         </Card>
       </aside>
     </div>
