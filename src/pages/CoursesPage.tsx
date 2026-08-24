@@ -291,6 +291,7 @@ export function CoursesPage() {
         <Label className="shrink-0">课程类别：</Label>
         <ToggleButtonGroup
           aria-label="课程类别"
+          className="flex-wrap"
           isDetached
           selectedKeys={[categoryToggleKey(category)]}
           selectionMode="single"

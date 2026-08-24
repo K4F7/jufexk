@@ -11,8 +11,9 @@ import { RouterAriaLink } from "./RouterAriaLink";
 
 export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
   const occupied = buildOccupied(courses);
+  /* min-w-0：作为 grid 项允许收缩到轨道宽，横向滚动由 ScrollContainer 承担。 */
   return (
-    <Table>
+    <Table className="min-w-0">
       <Table.ScrollContainer>
         <Table.Content aria-label="周课表" className="min-w-[40rem]">
           <Table.Header>
