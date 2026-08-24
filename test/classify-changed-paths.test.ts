@@ -60,12 +60,13 @@ describe("classifyChangedPaths", () => {
     expect(deployWorkflow).not.toContain("migrations apply");
   });
 
-  it("applies remote D1 migrations only from an on-demand workflow", () => {
+  it("applies remote D1 migrations from a separate workflow, not deploy", () => {
     expect(migrateWorkflow).toContain("workflow_dispatch");
-    expect(migrateWorkflow).not.toContain("push:");
-    expect(migrateWorkflow).not.toContain("migrations/**");
+    expect(migrateWorkflow).toContain("push:");
+    expect(migrateWorkflow).toContain("migrations/**");
     expect(migrateWorkflow).toContain("production-d1-migrate");
     expect(migrateWorkflow).toContain("wrangler d1 migrations list jufexk --remote");
     expect(migrateWorkflow).toContain("wrangler d1 migrations apply jufexk --remote");
+    expect(deployWorkflow).not.toContain("migrations apply");
   });
 });

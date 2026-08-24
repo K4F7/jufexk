@@ -116,7 +116,7 @@ pnpm run deploy
 
 ### GitHub Actions
 
-`.github/workflows/deploy.yml` 在 `main` 推送且变更进入站点 / Worker 时构建并部署 Worker；类型检查、测试和 Playwright 只在 PR / merge queue 的 `ci.yml` 里跑。D1 迁移由 `.github/workflows/migrate.yml` 单独处理：只接受 `workflow_dispatch` 按需触发，合入 `main` 或部署 Worker 都不会自动跑。工作流绑定 `production` Environment，建议配置必需审核人。该 Environment 只需：
+`.github/workflows/deploy.yml` 在 `main` 推送且变更进入站点 / Worker 时构建并部署 Worker；类型检查、测试和 Playwright 只在 PR / merge queue 的 `ci.yml` 里跑。D1 迁移由 `.github/workflows/migrate.yml` 单独处理：`main` 上 `migrations/**` 变更时自动 apply，也接受 `workflow_dispatch` 按需补跑；Deploy Worker 本身不会 apply D1。工作流绑定 `production` Environment，建议配置必需审核人。该 Environment 只需：
 
 - `CLOUDFLARE_API_TOKEN`：Workers Scripts Edit（deploy）、D1 Edit（migrate）、Account Settings Read
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID
