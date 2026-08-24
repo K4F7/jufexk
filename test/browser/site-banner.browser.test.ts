@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("shows the matching desktop or mobile site banner below the header", async ({
+test("shows the matching desktop or mobile site banner below the header @mobile-smoke", async ({
   page,
 }) => {
   await page.route("**/api/**", async (route) => {

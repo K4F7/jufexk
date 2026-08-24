@@ -463,7 +463,7 @@ test("dev-only local login goes to the personal homepage", async ({ page }) => {
 const QR_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-test("QR tab shows the official image and scan copy", async ({ page }) => {
+test("QR tab shows the official image and scan copy @mobile-smoke", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("tab", { name: "扫码登录" }).click();
   const hint = page.getByText("使用微信或企业微信扫一扫登录");

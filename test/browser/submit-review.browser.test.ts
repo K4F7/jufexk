@@ -320,7 +320,7 @@ test("logged-out /submit redirects to login with a sanitized from return", async
   expect(posted).toHaveLength(0);
 });
 
-test("gate comes first and the icourse-aligned form appears after entry", async ({
+test("gate comes first and the icourse-aligned form appears after entry @mobile-smoke", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
@@ -393,7 +393,7 @@ test("deep link prefills course and teacher after the gate", async ({
   ).toContainText("测试教师");
 });
 
-test("three-tier options show Chinese labels and submit the full payload", async ({
+test("three-tier options show Chinese labels and submit the full payload @mobile-smoke", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);

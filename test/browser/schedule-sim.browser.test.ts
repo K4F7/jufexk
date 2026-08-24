@@ -85,7 +85,7 @@ async function mockScheduleApi(
   });
 }
 
-test("search, stage, place two courses on the same slot, and keep the plan", async ({
+test("search, stage, place two courses on the same slot, and keep the plan @mobile-smoke", async ({
   page,
 }) => {
   await mockScheduleApi(page);

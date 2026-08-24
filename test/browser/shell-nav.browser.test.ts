@@ -59,7 +59,7 @@ async function mockShellApi(
   });
 }
 
-test("main nav is 课程/课评/排课模拟/导师 with a center course search", async ({
+test("main nav is 课程/课评/排课模拟/导师 with a center course search @mobile-smoke", async ({
   page,
 }) => {
   const renderWarnings: string[] = [];

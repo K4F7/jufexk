@@ -705,7 +705,7 @@ test("teacher catalog lists teachers and detail omits the review stream", async 
   ).toBeVisible();
 });
 
-test("empty and mobile states remain accessible without overflow", async ({
+test("empty and mobile states remain accessible without overflow @mobile-smoke", async ({
   page,
 }) => {
   await page.goto("/courses/10");

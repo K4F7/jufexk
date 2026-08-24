@@ -116,7 +116,7 @@ pnpm run deploy
 
 ### GitHub Actions
 
-`.github/workflows/deploy.yml` 在 `main` 推送且变更进入站点 / Worker 时构建并部署 Worker；类型检查、测试和 Playwright 只在 PR / merge queue 的 `ci.yml` 里跑。D1 迁移由 `.github/workflows/migrate.yml` 单独处理：`main` 上 `migrations/**` 变更时自动 apply，也接受 `workflow_dispatch` 按需补跑；Deploy Worker 本身不会 apply D1。工作流绑定 `production` Environment，建议配置必需审核人。该 Environment 只需：
+`.github/workflows/deploy.yml` 在 `main` 推送且变更进入站点 / Worker 时构建并部署 Worker；类型检查、测试和 Playwright 只在 PR / merge queue 的 `ci.yml` 里跑。主验证矩阵为 1 个 static、2 个 Workers 分片和 2 个组合 Browser 分片，并由唯一 required gate `CI / check` 严格聚合；准入与扩展规则见 [`docs/agents/ci.md`](./docs/agents/ci.md)。D1 迁移由 `.github/workflows/migrate.yml` 单独处理：`main` 上 `migrations/**` 变更时自动 apply，也接受 `workflow_dispatch` 按需补跑；Deploy Worker 本身不会 apply D1。工作流绑定 `production` Environment，建议配置必需审核人。该 Environment 只需：
 
 - `CLOUDFLARE_API_TOKEN`：Workers Scripts Edit（deploy）、D1 Edit（migrate）、Account Settings Read
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID
@@ -159,6 +159,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 - `docs/adr/`：架构决策记录（目录身份、审核分层、密钥来源、校园身份等）
 - `docs/catalog-baseline-acquisition.md`：目录基线采集与发布全流程
 - `docs/secrets.md`：密钥清单与轮换说明
+- `docs/agents/ci.md`：CI 拓扑、required gate 与防膨胀准入规范
 - `docs/agents/`：Issue 跟踪、triage 标签等协作约定
 
 ## 贡献指南

@@ -206,7 +206,7 @@ test("search query relabels the default sort as 相关度", async ({ page }) => 
   ).toHaveCount(0);
 });
 
-test("relation rows show rating, review count, and four-dim labels", async ({
+test("relation rows show rating, review count, and four-dim labels @mobile-smoke", async ({
   page,
 }) => {
   await mockCatalogApi(page);
@@ -289,7 +289,7 @@ test("filtered empty state names the active filters and clears them", async ({
   ).toBeVisible();
 });
 
-test("first load shows skeleton rows and keeps the header height stable", async ({
+test("first load shows skeleton rows and keeps the header height stable @mobile-smoke", async ({
   page,
 }) => {
   // 延迟要盖过并行跑时的页面启动开销，加载态才能被稳定观察到。
