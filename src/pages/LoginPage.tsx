@@ -80,17 +80,29 @@ function loginErrorTitle(message: string) {
   return "无法完成登录";
 }
 
-const ALREADY_LOGGED_IN_ALERT = (
-  <Alert status="success">
-    <Alert.Indicator />
-    <Alert.Content>
-      <Alert.Title>当前已登录</Alert.Title>
-      <Alert.Description>
-        你已完成普通用户登录，可以继续浏览；如需退出，请使用导航中的账号菜单。
-      </Alert.Description>
-    </Alert.Content>
-  </Alert>
-);
+const ALREADY_LOGGED_IN_REDIRECT_MS = 3000;
+
+function AlreadyLoggedInAlert() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      navigate("/courses", { replace: true });
+    }, ALREADY_LOGGED_IN_REDIRECT_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [navigate]);
+
+  return (
+    <Alert status="success">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Title>已登入</Alert.Title>
+      </Alert.Content>
+    </Alert>
+  );
+}
 
 const SESSION_LOADING_STATUS = (
   <DetailLoadingStatus label="正在读取登录状态…" />
@@ -376,7 +388,9 @@ export function LoginPage() {
           </Card.Title>
         </Card.Header>
         {ready && viewer.authenticated ? (
-          <Card.Content>{ALREADY_LOGGED_IN_ALERT}</Card.Content>
+          <Card.Content>
+            <AlreadyLoggedInAlert />
+          </Card.Content>
         ) : !ready && !redeeming ? (
           <Card.Content>{SESSION_LOADING_STATUS}</Card.Content>
         ) : redeeming ? (
@@ -540,6 +554,14 @@ export function LoginPage() {
                   ) : null}
                   {qrImage && (qrPhase === "pending" || qrPhase === "scanned") ? (
                     <>
+                      <Alert status="accent">
+                        <Alert.Indicator />
+                        <Alert.Content>
+                          <Alert.Title>
+                            {qrPhase === "scanned" ? "扫码成功，请在手机上确认" : "使用微信或企业微信扫一扫登录"}
+                          </Alert.Title>
+                        </Alert.Content>
+                      </Alert>
                       <img
                         alt="微信或企业微信登录二维码"
                         className="mx-auto size-48"
@@ -549,14 +571,6 @@ export function LoginPage() {
                           setQrPhase("expired");
                         }}
                       />
-                      <Alert status="accent">
-                        <Alert.Indicator />
-                        <Alert.Content>
-                          <Alert.Title>
-                            {qrPhase === "scanned" ? "扫码成功，请在手机上确认" : "使用微信或企业微信扫一扫登录"}
-                          </Alert.Title>
-                        </Alert.Content>
-                      </Alert>
                     </>
                   ) : null}
                   {qrPhase === "error" ? errorAlert : null}

@@ -173,8 +173,9 @@ test("signed-in viewer sees the account menu and the logged-in login page", asyn
   await expect(page.getByRole("link", { name: "登录" })).toHaveCount(0);
 
   await page.goto("/login");
-  await expect(page.getByText("当前已登录")).toBeVisible();
+  await expect(page.getByText("已登入")).toBeVisible();
   await expect(page.getByRole("button", { name: "发送验证信" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/courses$/, { timeout: 5000 });
 });
 
 test("logout from the account menu clears the session and reports the result", async ({
