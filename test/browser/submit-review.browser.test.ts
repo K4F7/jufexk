@@ -209,7 +209,7 @@ async function pickOverall(page: Page, value: string) {
   await page
     .getByRole("radiogroup", { name: "本次推荐度" })
     .getByRole("radio", { name: `${value} 星` })
-    .click();
+    .click({ force: true });
 }
 
 async function answerTier3AndOverall(

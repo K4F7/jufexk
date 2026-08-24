@@ -123,15 +123,17 @@ function OverallStarRating({
         return (
           <Radio key={score} value={score}>
             <Radio.Content>
+              <Radio.Control className="size-auto border-0 bg-transparent p-0 shadow-none">
+                <span
+                  aria-hidden
+                  className={`pointer-events-none [font-variant-emoji:text] text-xl leading-none ${
+                    filled ? "text-accent" : "text-border"
+                  }`}
+                >
+                  ★
+                </span>
+              </Radio.Control>
               <span className="sr-only">{score} 星</span>
-              <span
-                aria-hidden
-                className={`[font-variant-emoji:text] text-xl leading-none ${
-                  filled ? "text-accent" : "text-border"
-                }`}
-              >
-                ★
-              </span>
             </Radio.Content>
           </Radio>
         );
