@@ -106,6 +106,19 @@ export const digest = async (s: string) =>
   ]
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
+
+/** 有效管理员 cookie，不走 /api/admin/* CSRF。公开 GET 可据此下发已屏蔽条目。 */
+export async function hasValidAdminSession(c: AppContext) {
+  const raw = getCookie(c, "jufexk_admin");
+  if (!raw) return false;
+  const session = await c.env.DB.prepare(
+    `SELECT 1 ok FROM admin_sessions
+     WHERE token_hash=? AND revoked_at IS NULL AND expires_at>CURRENT_TIMESTAMP`,
+  )
+    .bind(await digest(raw))
+    .first();
+  return Boolean(session);
+}
 export const keyedDigest = async (s: string, secret: string) => {
   if (!secret) throw new Error("IP_HASH_SECRET is not configured");
   const encoder = new TextEncoder();

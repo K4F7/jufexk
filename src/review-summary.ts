@@ -7,9 +7,8 @@ import { readSecret, type SecretBinding } from "./secrets";
  * 不是评分，不参与推荐度。未配置 OpenAI 兼容接口时生成整体为 no-op。
  */
 
-/** 与公开文字流一致的任课评价可见性绑定：已批准且关系/开班绑定有效。 */
-export const publicReviewBindingSql = `
-       AND r.blocked_at IS NULL
+/** 未删除且任课/开班绑定有效。公开流另加 blocked_at IS NULL。 */
+export const reviewNotDeletedBindingSql = `
        AND r.deleted_at IS NULL
        AND EXISTS(
          SELECT 1 FROM course_teachers public_relation
@@ -27,6 +26,10 @@ export const publicReviewBindingSql = `
              AND public_offering.course_id=r.course_id
          )
        )`;
+
+/** 与公开文字流一致的任课评价可见性绑定：未屏蔽、未删除，且关系/开班绑定有效。 */
+export const publicReviewBindingSql = `
+       AND r.blocked_at IS NULL${reviewNotDeletedBindingSql}`;
 
 export const SUMMARY_MIN_REVIEWS = 5;
 export const SUMMARY_MIN_TOTAL_CHARS = 3000;
