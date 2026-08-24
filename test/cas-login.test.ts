@@ -12,12 +12,15 @@ import {
 } from "../src/ordinary-user-session";
 import {
   CAS_MFA_CONSUMED_LOGIN_FAILED,
+  extractCasServiceTicket,
   isAllowedCasUrl,
   isSuccessfulCasRedirect,
   normalizeCasUsername,
   parseCasJsonError,
+  parseCasServiceValidateUser,
   parseErrorTip,
   parseLoginPage,
+  parseQrCometAccounts,
 } from "../src/lib/jxufe-cas";
 
 const origin = "https://example.com";
@@ -50,10 +53,27 @@ let mode:
   | "blocked-attest"
   | "account-locked"
   | "mfa-send-msg"
-  | "encrypt" = "success";
+  | "encrypt"
+  | "qr-captcha" = "success";
 let mfaCodeAccepted = "654321";
 let loginGets = 0;
 let loginPosts = 0;
+let qrComet:
+  | "pending"
+  | "scanned"
+  | "authorized"
+  | "authorized-ticket"
+  | "cancelled"
+  | "expired"
+  | "error"
+  | "no-username" = "pending";
+
+const QR_PNG = Uint8Array.from(
+  atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  ),
+  (char) => char.charCodeAt(0),
+);
 
 function installCasMock() {
     calls = [];
@@ -86,6 +106,18 @@ function installCasMock() {
                 "https://ssl.jxufe.edu.cn/cas/login?service=http://ehall.jxufe.edu.cn&reAuthCheck=1",
             },
           });
+        }
+        if (mode === "qr-captcha") {
+          return new Response(
+            `<html><img id="captchaImg" src="/cas/captcha"><form><input name="execution" value="e1s1"></form></html>`,
+            {
+              status: 200,
+              headers: {
+                "content-type": "text/html",
+                "set-cookie": "JSESSIONID=abc; Path=/cas",
+              },
+            },
+          );
         }
         const mfaLike =
           mode === "mfa" ||
@@ -186,6 +218,55 @@ function installCasMock() {
       return Response.json({ code: 0 });
     }
 
+    if (url.hostname === "ssl.jxufe.edu.cn" && url.pathname === "/cas/qr/qrcode") {
+      return new Response(QR_PNG, {
+        status: 200,
+        headers: {
+          "content-type": "image/png",
+          "set-cookie": "JSESSIONID=abc; Path=/cas",
+        },
+      });
+    }
+
+    if (url.hostname === "ssl.jxufe.edu.cn" && url.pathname === "/cas/qr/comet") {
+      if (qrComet === "expired") return Response.json({ code: 1 });
+      if (qrComet === "error") {
+        return Response.json({ code: 2, msg: "扫码服务异常" });
+      }
+      const status =
+        qrComet === "scanned"
+          ? "2"
+          : qrComet === "cancelled"
+            ? "4"
+            : qrComet === "authorized" ||
+                qrComet === "authorized-ticket" ||
+                qrComet === "no-username"
+              ? "3"
+              : "1";
+      const data: Record<string, unknown> = { qrCode: { status } };
+      if (status === "3") {
+        data.stateKey = "qr-state-key-secret";
+        if (qrComet === "authorized") data.accounts = studentId;
+      }
+      return Response.json({ code: 0, data });
+    }
+
+    if (
+      url.hostname === "ssl.jxufe.edu.cn" &&
+      url.pathname === "/cas/p3/serviceValidate"
+    ) {
+      if (qrComet === "authorized-ticket") {
+        return new Response(
+          `<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationSuccess><cas:user>${studentId}</cas:user></cas:authenticationSuccess></cas:serviceResponse>`,
+          { status: 200, headers: { "content-type": "text/xml" } },
+        );
+      }
+      return new Response(
+        `<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationFailure code="INVALID_TICKET">bad</cas:authenticationFailure></cas:serviceResponse>`,
+        { status: 200, headers: { "content-type": "text/xml" } },
+      );
+    }
+
     if (url.hostname === "mfa.jxufe.edu.cn" && url.pathname.endsWith("/valid")) {
       const parsed = JSON.parse(body || "{}") as { code?: string };
       if (mode === "mfa-bad-code" || parsed.code !== mfaCodeAccepted) {
@@ -209,12 +290,14 @@ afterEach(() => {
   mfaCodeAccepted = "654321";
   loginGets = 0;
   loginPosts = 0;
+  qrComet = "pending";
 });
 
 function assertNoIdentityLeak(value: unknown) {
   const raw = JSON.stringify(value);
   expect(raw).not.toMatch(new RegExp(studentId));
   expect(raw).not.toMatch(/campus-pass-99|CASTGC|JSESSIONID=abc|gid-1/);
+  expect(raw).not.toMatch(/qr-state-key-secret|qrCodeKey|stateKey/);
   expect(raw).not.toMatch(/"id":"[0-9a-f]{32}"/);
 }
 
@@ -270,6 +353,30 @@ async function startCas(body: Record<string, unknown>, ip = nextIp()) {
 
 async function finishMfa(body: Record<string, unknown>, ip = nextIp()) {
   return SELF.fetch(`${origin}/api/auth/cas/mfa`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+      "CF-Connecting-IP": ip,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function startQr(ip = nextIp()) {
+  return SELF.fetch(`${origin}/api/auth/cas/qr`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+      "CF-Connecting-IP": ip,
+    },
+    body: "{}",
+  });
+}
+
+async function pollQr(body: Record<string, unknown>, ip = nextIp()) {
+  return SELF.fetch(`${origin}/api/auth/cas/qr/status`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -357,6 +464,21 @@ describe("jxufe cas helpers", () => {
         msg: "http://ssl.jxufe.edu.cn/cas/login?execution=e1",
       }),
     ).toBeNull();
+    expect(parseQrCometAccounts(studentId)).toBe(studentId);
+    expect(parseQrCometAccounts([studentId])).toBe(studentId);
+    expect(parseQrCometAccounts({ username: studentId })).toBe(studentId);
+    expect(parseQrCometAccounts({ account: studentId })).toBe(studentId);
+    expect(parseQrCometAccounts({ userId: studentId })).toBe(studentId);
+    expect(parseQrCometAccounts("not an id")).toBeNull();
+    expect(
+      parseCasServiceValidateUser(
+        `<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationSuccess><cas:user>${studentId}</cas:user></cas:authenticationSuccess></cas:serviceResponse>`,
+      ),
+    ).toBe(studentId);
+    expect(extractCasServiceTicket("http://ehall.jxufe.edu.cn/?ticket=ST-test-1")).toBe(
+      "ST-test-1",
+    );
+    expect(extractCasServiceTicket("/cas/login?reAuthCheck=1")).toBeNull();
   });
 });
 
@@ -814,5 +936,204 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
       endorsementCount: 1,
       viewerEndorsed: true,
     });
+  });
+});
+
+describe("jxufe cas qr login", () => {
+  it("starts a QR challenge with a PNG data URL and no secret leak", async () => {
+    installCasMock();
+    const response = await startQr();
+    expect(response.status).toBe(200);
+    const body = await response.json<{ challenge?: string; image?: string }>();
+    expect(body.challenge).toMatch(/^[0-9a-f]{32}$/);
+    expect(body.image?.startsWith("data:image/png;base64,")).toBe(true);
+    assertNoIdentityLeak(body);
+    expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+    expect(calls.some((call) => call.url.includes("/cas/qr/qrcode"))).toBe(true);
+    expect(
+      calls.some((call) => /federatedRedirect|openweixin/.test(call.url)),
+    ).toBe(false);
+  });
+
+  it("reports pending, scanned, cancelled, and expired without a session", async () => {
+    installCasMock();
+    const started = await startQr();
+    const first = await started.json<{ challenge?: string }>();
+
+    qrComet = "pending";
+    const pending = await pollQr({ challenge: first.challenge });
+    expect(pending.status).toBe(200);
+    expect(await pending.json()).toEqual({ status: "pending" });
+    expect(cookieHeader(pending)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+
+    qrComet = "scanned";
+    const scanned = await pollQr({ challenge: first.challenge });
+    expect(await scanned.json()).toEqual({ status: "scanned" });
+
+    qrComet = "cancelled";
+    const cancelled = await pollQr({ challenge: first.challenge });
+    expect(await cancelled.json()).toEqual({ status: "cancelled" });
+
+    qrComet = "expired";
+    const expired = await pollQr({ challenge: first.challenge });
+    expect(expired.status).toBe(200);
+    const expiredBody = await expired.json();
+    expect(expiredBody).toEqual({ status: "expired" });
+    assertNoIdentityLeak(expiredBody);
+  });
+
+  it("treats a missing or TTL-lapsed challenge as expired", async () => {
+    installCasMock();
+    const missing = await pollQr({ challenge: "ab".repeat(16) });
+    expect(missing.status).toBe(200);
+    expect(await missing.json()).toEqual({ status: "expired" });
+
+    const started = await startQr();
+    const first = await started.json<{ challenge?: string }>();
+    await env.DB.prepare(
+      "UPDATE cas_login_challenges SET expires_at=unixepoch()-10",
+    ).run();
+    const expired = await pollQr({ challenge: first.challenge });
+    expect(expired.status).toBe(200);
+    expect(await expired.json()).toEqual({ status: "expired" });
+  });
+
+  it("issues a session from comet accounts and does not follow ehall", async () => {
+    qrComet = "authorized";
+    installCasMock();
+    const started = await startQr();
+    const first = await started.json<{ challenge?: string }>();
+    const authorized = await pollQr({ challenge: first.challenge });
+    expect(authorized.status).toBe(200);
+    const session = await authorized.json<{
+      authenticated: boolean;
+      csrfToken?: string;
+    }>();
+    expect(session.authenticated).toBe(true);
+    expect(session.csrfToken).toBeTruthy();
+    assertNoIdentityLeak(session);
+    expect(cookieHeader(authorized)).toContain(`${EMAIL_LOGIN_COOKIE}=`);
+    const login = calls.find(
+      (call) => call.method === "POST" && call.url.includes("/cas/login"),
+    );
+    expect(login?.body).toContain("qrCodeKey=qr-state-key-secret");
+    expect(login?.body).toContain("currentMenu=3");
+    expect(login?.body).toContain("_eventId_success=Submit");
+    expect(login?.body).not.toContain("execution=");
+    expect(calls.some((call) => /ehall\.jxufe\.edu\.cn\/.+/.test(call.url))).toBe(
+      false,
+    );
+    expect(
+      calls.some((call) => /federatedRedirect|openweixin/.test(call.url)),
+    ).toBe(false);
+    const leftover = await env.DB.prepare(
+      "SELECT COUNT(*) n FROM cas_login_challenges WHERE id=?",
+    )
+      .bind(first.challenge)
+      .first<{ n: number }>();
+    expect(leftover?.n).toBe(0);
+
+    const identity = await env.DB.prepare(
+      "SELECT user_id FROM auth_identities WHERE provider=? AND issuer=?",
+    )
+      .bind(AUTH_PROVIDER_CAS, CAS_IDENTITY_ISSUER)
+      .first<{ user_id: string }>();
+    expect(identity?.user_id).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("falls back to serviceValidate when comet has no accounts", async () => {
+    qrComet = "authorized-ticket";
+    installCasMock();
+    const started = await startQr();
+    const first = await started.json<{ challenge?: string }>();
+    const authorized = await pollQr({ challenge: first.challenge });
+    expect(authorized.status).toBe(200);
+    expect(await authorized.json()).toMatchObject({ authenticated: true });
+    expect(
+      calls.some((call) => call.url.includes("/cas/p3/serviceValidate")),
+    ).toBe(true);
+    expect(calls.some((call) => /ehall\.jxufe\.edu\.cn\/.+/.test(call.url))).toBe(
+      false,
+    );
+  });
+
+  it("fails closed when authorized QR has no normalized student id", async () => {
+    qrComet = "no-username";
+    installCasMock();
+    const before = await env.DB.prepare(
+      "SELECT COUNT(*) n FROM auth_identities WHERE provider=?",
+    )
+      .bind(AUTH_PROVIDER_CAS)
+      .first<{ n: number }>();
+    const started = await startQr();
+    const first = await started.json<{ challenge?: string }>();
+    const failed = await pollQr({ challenge: first.challenge });
+    expect(failed.status).toBe(401);
+    const body = await failed.json();
+    expect(body).toMatchObject({ error: "登录失败，请稍后重试" });
+    assertNoIdentityLeak(body);
+    expect(cookieHeader(failed)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+    const after = await env.DB.prepare(
+      "SELECT COUNT(*) n FROM auth_identities WHERE provider=?",
+    )
+      .bind(AUTH_PROVIDER_CAS)
+      .first<{ n: number }>();
+    expect(after?.n).toBe(before?.n || 0);
+  });
+
+  it("forwards a comet error and keeps captcha fail-closed", async () => {
+    qrComet = "error";
+    installCasMock();
+    const started = await startQr();
+    const first = await started.json<{ challenge?: string }>();
+    const failed = await pollQr({ challenge: first.challenge });
+    expect(failed.status).toBe(400);
+    expect(await failed.json()).toMatchObject({ error: "扫码服务异常" });
+
+    mode = "qr-captcha";
+    const captcha = await startQr();
+    expect(captcha.status).toBe(503);
+    expect(await captcha.json()).toMatchObject({
+      error: "登录页要求验证码，请稍后重试",
+    });
+  });
+
+  it("keeps MFA and QR challenge blobs on their own decrypt paths", async () => {
+    mode = "mfa";
+    installCasMock();
+    const mfaStarted = await startCas({ username: studentId, password });
+    const mfaBody = await mfaStarted.json<{ challenge?: string }>();
+    const qrOnMfa = await pollQr({ challenge: mfaBody.challenge });
+    expect(await qrOnMfa.json()).toEqual({ status: "expired" });
+
+    mode = "success";
+    qrComet = "pending";
+    const qrStarted = await startQr();
+    const qrBody = await qrStarted.json<{ challenge?: string }>();
+    const stored = await env.DB.prepare(
+      "SELECT blob FROM cas_login_challenges WHERE id=?",
+    )
+      .bind(qrBody.challenge)
+      .first<{ blob: string }>();
+    expect(stored?.blob).toBeTruthy();
+    expect(stored?.blob).not.toContain(studentId);
+    expect(stored?.blob).not.toContain("CASTGC");
+    expect(stored?.blob).not.toContain("qr-state-key-secret");
+    const mfaOnQr = await finishMfa({
+      challenge: qrBody.challenge,
+      code: "1234",
+    });
+    expect(mfaOnQr.status).toBe(401);
+  });
+
+  it("rate-limits QR starts like CAS login", async () => {
+    installCasMock();
+    const ip = nextIp();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await startQr(ip);
+      expect(response.status).toBe(200);
+    }
+    const blocked = await startQr(ip);
+    expect(blocked.status).toBe(429);
   });
 });

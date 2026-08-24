@@ -68,6 +68,16 @@ async function mockApi(page: Page) {
           logoutPath: "/logout",
         },
       });
+    if (url.pathname === "/api/auth/cas/qr")
+      return route.fulfill({
+        json: {
+          challenge: "qr".repeat(16),
+          image:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        },
+      });
+    if (url.pathname === "/api/auth/cas/qr/status")
+      return route.fulfill({ json: { status: "pending" } });
     if (url.pathname === "/api/auth/email")
       return route.fulfill({ json: { ok: true } });
     if (url.pathname === "/api/auth/verify")
@@ -112,6 +122,8 @@ test("direct visit shows the CAS form without extra copy or a back link", async 
 }) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "账号密码" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "扫码登录" })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeVisible();
   await expect(page.getByLabel("校园密码")).toBeVisible();
   await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
@@ -178,6 +190,7 @@ test("MFA step drops a leftover password error and names 企业微信", async ({
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByText("学号或密码不正确")).toHaveCount(0);
   await expect(page.getByText("请输入验证码")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "扫码登录" })).toHaveCount(0);
   await expect(page.getByText(/企业微信/)).toBeVisible();
   await expect(page.getByText(/不是本站短信/)).toBeVisible();
   await expect(page.getByText("短信验证码")).toHaveCount(0);
@@ -445,6 +458,92 @@ test("dev-only local login goes to the personal homepage", async ({ page }) => {
   await page.getByRole("button", { name: "本地测试登录" }).click();
   await expect(page).toHaveURL(/\/profile$/);
   await expect(page.getByText("我的主页")).toBeVisible();
+});
+
+const QR_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+test("QR tab shows the official image and scan copy", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("tab", { name: "扫码登录" }).click();
+  await expect(page.getByRole("img", { name: "微信或企业微信登录二维码" })).toBeVisible();
+  await expect(page.getByText("使用微信或企业微信扫一扫登录")).toBeVisible();
+});
+
+test("expired QR shows official copy and refresh requests a new challenge", async ({
+  page,
+}) => {
+  let qrStarts = 0;
+  await page.route("**/api/auth/cas/qr", async (route) => {
+    qrStarts += 1;
+    return route.fulfill({
+      json: {
+        challenge: `c${qrStarts}`.padEnd(32, "0"),
+        image: QR_DATA_URL,
+      },
+    });
+  });
+  await page.route("**/api/auth/cas/qr/status", async (route) => {
+    return route.fulfill({ json: { status: "expired" } });
+  });
+
+  await page.goto("/login");
+  await page.getByRole("tab", { name: "扫码登录" }).click();
+  await expect(page.getByText("二维码已失效")).toBeVisible();
+  await expect(page.getByRole("img", { name: "微信或企业微信登录二维码" })).toHaveCount(
+    0,
+  );
+  const refresh = page.getByRole("button", { name: "刷新二维码" });
+  await expect(refresh).toBeVisible();
+  await refresh.click();
+  await expect.poll(() => qrStarts).toBe(2);
+  await expect(page.getByText("二维码已失效")).toBeVisible();
+});
+
+test("authorized QR login navigates away", async ({ page }) => {
+  let polls = 0;
+  await page.route("**/api/auth/cas/qr/status", async (route) => {
+    polls += 1;
+    if (polls < 4) return route.fulfill({ json: { status: "scanned" } });
+    return route.fulfill({
+      json: {
+        authenticated: true,
+        csrfToken: "csrf-user",
+        loginPath: "/login",
+        logoutPath: "/logout",
+      },
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByRole("tab", { name: "扫码登录" }).click();
+  await expect(page.getByRole("img", { name: "微信或企业微信登录二维码" })).toBeVisible();
+  await expect(page.getByText("扫码成功，请在手机上确认")).toBeVisible();
+  await expect(page).toHaveURL(/\/courses$/);
+});
+
+test("leaving the QR tab and coming back starts a new challenge", async ({
+  page,
+}) => {
+  let qrStarts = 0;
+  await page.route("**/api/auth/cas/qr", async (route) => {
+    qrStarts += 1;
+    return route.fulfill({
+      json: {
+        challenge: `d${qrStarts}`.padEnd(32, "0"),
+        image: QR_DATA_URL,
+      },
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByRole("tab", { name: "扫码登录" }).click();
+  await expect(page.getByRole("img", { name: "微信或企业微信登录二维码" })).toBeVisible();
+  await expect.poll(() => qrStarts).toBe(1);
+  await page.getByRole("tab", { name: "账号密码" }).click();
+  await expect(page.getByLabel("学号")).toBeVisible();
+  await page.getByRole("tab", { name: "扫码登录" }).click();
+  await expect.poll(() => qrStarts).toBe(2);
 });
 
 test("dev-only local login honors a safe from target", async ({ page }) => {
