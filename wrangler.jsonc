@@ -28,7 +28,11 @@
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
     "MAIL_DELIVERY_URL": "https://api.resend.com/emails",
     "MAIL_FROM": "\"非官方课评@JUFE\" <noreply@sein.moe>",
+    // OPENAI_MODEL is a dashboard-only var (live: grok-4.5). Do not commit it
+    // here — an empty or omitted value without keep_vars wipes the dashboard.
   },
+  // Keep dashboard vars such as OPENAI_MODEL across wrangler deploy.
+  "keep_vars": true,
   "secrets_store_secrets": [
     {
       "binding": "IP_HASH_SECRET",
@@ -60,6 +64,9 @@
       "store_id": "323163a091874b07aacdf5500bff903e",
       "secret_name": "CAS_CHALLENGE_SECRET",
     },
+    // OPENAI_BASE_URL / OPENAI_API_KEY are Worker secrets set in the dashboard.
+    // Do not bind them as Secrets Store entries — that replaces the Worker
+    // secrets on deploy and the store does not hold those values.
   ],
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "placement": { "mode": "smart" },

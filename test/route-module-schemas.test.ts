@@ -60,6 +60,12 @@ describe("domain route composition", () => {
     expect(adminRoutes.routes.map(routeKey)).toContain(
       "POST /api/admin/student-bindings",
     );
+    expect(adminRoutes.routes.map(routeKey)).toContain(
+      "GET /api/admin/summaries/qualifying",
+    );
+    expect(adminRoutes.routes.map(routeKey)).toContain(
+      "POST /api/admin/summaries/recompute",
+    );
     expect(importRoutes.routes.map(routeKey)).toContain(
       "POST /api/admin/catalog-baseline/uploads",
     );

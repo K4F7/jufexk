@@ -157,6 +157,13 @@ export const teacherIdsSchema = z
   .object({ teacherIds: positiveIntegerArray })
   .passthrough();
 
+export const summaryRecomputeSchema = z
+  .object({
+    courseId: integerField,
+    teacherId: integerField,
+  })
+  .passthrough();
+
 export const relationImportEnvelopeSchema = z
   .object({
     manifest: z.unknown().optional(),

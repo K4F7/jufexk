@@ -4,11 +4,14 @@ import app from "../src/index";
 import {
   buildSummaryPrompt,
   collectRelationReviewTexts,
+  expectedSummaryLength,
   hasInjectionMarker,
   isSummaryRecomputeDue,
   recomputeRelationSummary,
+  scheduleRelationSummaryRecompute,
   renderSummaryHtml,
   reviewHtmlToText,
+  SUMMARY_GATEWAY_TIMEOUT_MS,
   SUMMARY_PROMPT_MAX_CHARS,
   type SummaryGatewayEnv,
 } from "../src/review-summary";
@@ -17,7 +20,7 @@ import {
   ordinaryWriteSession,
   type OrdinaryWriteSession,
 } from "./ordinary-write-session";
-import { adminAuth } from "./admin-session";
+import { adminAuth, adminHeaders } from "./admin-session";
 import { V3_OFFLINE_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
@@ -118,6 +121,23 @@ describe("hasInjectionMarker", () => {
   });
 });
 
+describe("expectedSummaryLength", () => {
+  it("returns null when both review count and total chars are below the gate", () => {
+    expect(expectedSummaryLength(4, 2999)).toBeNull();
+  });
+
+  it("scales like USTC after the gate", () => {
+    expect(expectedSummaryLength(5, 100)).toBe(200);
+    expect(expectedSummaryLength(5, 1999)).toBe(200);
+    expect(expectedSummaryLength(5, 2000)).toBe(200);
+    expect(expectedSummaryLength(5, 2500)).toBe(250);
+    expect(expectedSummaryLength(2, 3500)).toBe(350);
+    expect(expectedSummaryLength(5, 4999)).toBe(500);
+    expect(expectedSummaryLength(5, 5000)).toBe(500);
+    expect(expectedSummaryLength(8, 12000)).toBe(500);
+  });
+});
+
 describe("buildSummaryPrompt", () => {
   it("returns null below the threshold (few reviews and few chars)", () => {
     const reviews = Array.from({ length: 4 }, (_, i) => `短评${i}，十个字十个字`);
@@ -129,15 +149,35 @@ describe("buildSummaryPrompt", () => {
   it("builds with five short reviews or with enough total chars", () => {
     const five = Array.from({ length: 5 }, (_, i) => `第五项${i}内容`);
     const prompt = buildSummaryPrompt({ courseName: "测试课", teacherName: "测试教师", reviews: five });
-    expect(prompt).toContain("测试课");
-    expect(prompt).toContain("测试教师");
+    expect(prompt).toContain("测试教师老师的《测试课》");
+    expect(prompt).toContain("200 字左右");
     expect(prompt).toContain("【评价 5】");
+    expect(prompt).not.toContain("五个方面");
+    expect(prompt).not.toContain("200 到 500");
+    expect(prompt).not.toContain("点评开始");
+    expect(prompt).not.toContain("=====");
     const long = buildSummaryPrompt({
       courseName: "课",
       teacherName: "师",
       reviews: ["长".repeat(2000), "评".repeat(1500)],
     });
-    expect(long).not.toBeNull();
+    expect(long).toContain("350 字左右");
+    expect(long).toContain("师老师的《课》");
+  });
+
+  it("omits the teacher prefix when the teacher name is empty", () => {
+    const reviews = Array.from({ length: 5 }, (_, i) => `第五项${i}内容`);
+    const prompt = buildSummaryPrompt({
+      courseName: "测试课",
+      teacherName: "  ",
+      reviews,
+    });
+    expect(prompt).toContain("总结《测试课》课程");
+    expect(prompt).not.toContain("老师的");
+  });
+
+  it("uses a 120s OpenAI-compatible gateway timeout", () => {
+    expect(SUMMARY_GATEWAY_TIMEOUT_MS).toBe(120_000);
   });
 
   it("truncates the prompt near the 32k budget, dropping tail reviews", () => {
@@ -239,7 +279,13 @@ describe("recomputeRelationSummary", () => {
     expect(calls[0].url).toBe("https://openai.example.test/v1/chat/completions");
     expect(calls[0].authorization).toBe("Bearer test-openai-key");
     expect(calls[0].body.model).toBe("test-model");
+    expect(calls[0].body.messages[0]).toEqual({
+      role: "system",
+      content:
+        "你是 JUFE 评课平台的一个课程总结助手，旨在为每门课程的点评生成简洁、客观、全面的总结。",
+    });
     expect(JSON.stringify(calls[0].body.messages)).toContain("生成第1条");
+    expect(JSON.stringify(calls[0].body.messages)).toContain("200 字左右");
     const row = await relationSummaryRow(courseId);
     expect(row?.ai_summary).toBe("## 考试\n客观总结正文");
     expect(row?.ai_summary_updated_at).not.toBeNull();
@@ -309,6 +355,51 @@ describe("isSummaryRecomputeDue", () => {
       .bind(courseId)
       .run();
     expect(await isSummaryRecomputeDue(env.DB, courseId, 1, false)).toBe(true);
+  });
+});
+
+describe("summary recompute single-flight", () => {
+  it("runs overlapping schedules one requestSummary at a time, then drains the queue", async () => {
+    await env.DB.prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id=NULL, teacher_id=NULL, immediate=0, locked_at=NULL, lease_until=NULL
+       WHERE id=1`,
+    ).run();
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+    const firstCourse = await createBoundCourse("SF1");
+    const secondCourse = await createBoundCourse("SF2");
+    await seedApprovedReviews(firstCourse, 5, "串行甲");
+    await seedApprovedReviews(secondCourse, 5, "串行乙");
+
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    const started: number[] = [];
+    const delayed = (async (input: any, init: any) => {
+      const request = new Request(input, init);
+      const body = await request.json();
+      const prompt = String(body.messages?.[1]?.content || "");
+      started.push(prompt.includes("串行甲") ? firstCourse : secondCourse);
+      concurrent += 1;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      concurrent -= 1;
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "## 考试\n串行总结" } }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const ctx = { env: { ...env, ...gatewayEnv } };
+    await Promise.all([
+      scheduleRelationSummaryRecompute(ctx, firstCourse, 1, { fetchImpl: delayed }),
+      scheduleRelationSummaryRecompute(ctx, secondCourse, 1, { fetchImpl: delayed }),
+    ]);
+
+    expect(maxConcurrent).toBe(1);
+    expect(started).toHaveLength(2);
+    expect(new Set(started)).toEqual(new Set([firstCourse, secondCourse]));
+    expect((await relationSummaryRow(firstCourse))?.ai_summary).toBe("## 考试\n串行总结");
+    expect((await relationSummaryRow(secondCourse))?.ai_summary).toBe("## 考试\n串行总结");
   });
 });
 
@@ -463,3 +554,49 @@ describe("summary recompute triggers", () => {
     expect((await relationSummaryRow(courseId))?.ai_summary).toBe("## 教学\n接线测试总结");
   });
 });
+
+describe("admin summary backfill", () => {
+  it("rejects unauthenticated access", async () => {
+    expect((await SELF.fetch(`${origin}/api/admin/summaries/qualifying`)).status).toBe(401);
+    expect(
+      (
+        await SELF.fetch(`${origin}/api/admin/summaries/recompute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ courseId: 1, teacherId: 1 }),
+        })
+      ).status,
+    ).toBe(401);
+  });
+
+  it("lists qualifying relations and queues a recompute without awaiting the LLM", async () => {
+    const courseId = await createBoundCourse("BFL");
+    await seedApprovedReviews(courseId, 5, "回填");
+    const headers = adminHeaders(await adminAuth());
+    const listed = await SELF.fetch(`${origin}/api/admin/summaries/qualifying`, {
+      headers,
+    });
+    expect(listed.status).toBe(200);
+    const body = await listed.json<{
+      total: number;
+      items: Array<{ courseId: number; teacherId: number }>;
+    }>();
+    expect(body.items.some((item) => item.courseId === courseId && item.teacherId === 1)).toBe(
+      true,
+    );
+    const recomputed = await SELF.fetch(`${origin}/api/admin/summaries/recompute`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ courseId, teacherId: 1 }),
+    });
+    expect(recomputed.status).toBe(202);
+    expect(await recomputed.json()).toMatchObject({
+      ok: true,
+      courseId,
+      teacherId: 1,
+      outcome: "queued",
+    });
+    expect((await relationSummaryRow(courseId))?.ai_summary).toBe("");
+  });
+});
+
