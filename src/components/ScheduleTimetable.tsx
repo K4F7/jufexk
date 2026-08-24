@@ -1,4 +1,4 @@
-import { Table } from "@heroui/react";
+import { Chip, Table } from "@heroui/react";
 import {
   buildOccupied,
   cellHasConflict,
@@ -26,9 +26,11 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
             {JUFE_PERIODS.map((period, row) => (
               <Table.Row key={period.period} id={`period-${period.period}`}>
                 <Table.Cell>
-                  <div>第{period.period}节</div>
-                  <div className="text-[calc(11/15*1rem)] text-muted">
-                    {period.start}–{period.end}
+                  <div className="flex flex-col">
+                    <span>第{period.period}节</span>
+                    <span className="text-xs text-muted">
+                      {period.start}–{period.end}
+                    </span>
                   </div>
                 </Table.Cell>
                 {WEEKDAYS.map((day, col) => {
@@ -47,9 +49,7 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
                           {cell.map((item) => (
                             <li key={`${item.courseKey}-${period.period}-${day.day}`}>
                               <RouterAriaLink
-                                className={
-                                  conflict ? "text-danger" : "text-accent"
-                                }
+                                className={conflict ? "text-danger" : undefined}
                                 to={relationDetailHref({
                                   course_id: item.courseId,
                                   teacher_id: item.teacherId,
@@ -62,9 +62,14 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
                         </ul>
                       )}
                       {conflict ? (
-                        <div className="mt-1 text-[calc(11/15*1rem)] text-danger">
-                          冲突
-                        </div>
+                        <Chip
+                          className="mt-1"
+                          color="danger"
+                          size="sm"
+                          variant="soft"
+                        >
+                          <Chip.Label>冲突</Chip.Label>
+                        </Chip>
                       ) : null}
                     </Table.Cell>
                   );

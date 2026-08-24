@@ -44,7 +44,7 @@ export function AccountNavControl() {
         </Button>
         {unreadLabel ? (
           <Badge color="danger" size="sm" aria-label={`${unread} 条未读消息`}>
-            {unreadLabel}
+            <Badge.Label>{unreadLabel}</Badge.Label>
           </Badge>
         ) : null}
       </Badge.Anchor>
@@ -68,7 +68,7 @@ export function AccountNavControl() {
             <Label>消息</Label>
             {unreadLabel ? (
               <Chip className="ms-auto" color="danger" size="sm" variant="soft">
-                {unreadLabel}
+                <Chip.Label>{unreadLabel}</Chip.Label>
               </Chip>
             ) : null}
           </Dropdown.Item>
