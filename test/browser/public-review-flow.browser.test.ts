@@ -518,7 +518,7 @@ test("rich-text notes render sanitized markup, plain notes stay plain", async ({
   await expect(rich.getByText("结尾")).toBeVisible();
   await expect(rich.locator("[onclick]")).toHaveCount(0);
   // javascript: 协议的 href 被剥掉，只留下没有地址的锚文本。
-  const badLink = rich.locator("a");
+  const badLink = rich.locator("a", { hasText: "坏链接" });
   await expect(badLink).toHaveCount(1);
   await expect(badLink).not.toHaveAttribute("href", /.*/);
 

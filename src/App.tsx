@@ -29,6 +29,7 @@ import { LogoutPage } from "./pages/LogoutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { NoticesPage } from "./pages/NoticesPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { PublicUserPage } from "./pages/PublicUserPage";
 import { SchedulePage } from "./pages/SchedulePage";
 import { SubmitPage } from "./pages/SubmitPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
@@ -167,6 +168,7 @@ export function App() {
               <Route path="/logout" element={<LogoutPage />} />
               <Route path="/account" element={<AccountPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/u/:code" element={<PublicUserPage />} />
               <Route path="/notices" element={<NoticesPage />} />
               <Route path="/submit" element={<SubmitPage config={config} />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />

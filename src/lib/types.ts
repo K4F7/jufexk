@@ -169,6 +169,10 @@ export type PublicReview = {
   dimensionLabels?: PublicReviewDimensionLabel[];
   /** 已屏蔽标记：仅管理员会话的公开流下发；普通访客收不到被屏蔽条目。 */
   blocked?: boolean;
+  /** 公开编号；无作者或历史/旧行为 0（匿名用户#000000）。 */
+  author_public_code?: number | null;
+  /** 官方头像 0–4；#000000 固定为 0。 */
+  author_avatar_key?: number | null;
 };
 
 export type LatestReview = {
@@ -185,6 +189,8 @@ export type LatestReview = {
   /** 选填成绩（#444）；仅在填写时下发。 */
   grade?: string | null;
   created_at: string | null;
+  author_public_code?: number | null;
+  author_avatar_key?: number | null;
 };
 
 export type RelationSignalState = {
@@ -318,15 +324,32 @@ export type UserProfileFollow = {
 };
 
 /**
- * GET /api/user/profile 聚合返回（#459）：仅当前登录普通用户自己的数据，
- * 不含 email、学号或 users.id。
+ * GET /api/user/profile 聚合返回（#459 / #493）：仅当前登录普通用户自己的数据，
+ * 不含 email、学号或 users.id。可含公开编号与官方头像。
  */
 export type UserProfile = {
+  public_code?: number;
+  handle?: string;
+  avatar_key?: number;
   reviews?: UserProfileReview[];
   follows?: UserProfileFollow[];
   review_count?: number;
   follow_count?: number;
   unread_notification_count?: number;
+};
+
+/** GET /api/u/:code 公开主页（#493）。 */
+export type PublicUserProfile = {
+  public_code: number;
+  handle: string;
+  avatar_key: number;
+  reserved: boolean;
+  followable: boolean;
+  viewer_followed: boolean;
+  viewer_is_self: boolean;
+  note: string | null;
+  review_count: number;
+  reviews: LatestReview[];
 };
 
 /** 站内消息条目（#460 契约）：文案 + 链接 + 时间 + 已读状态。 */

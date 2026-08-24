@@ -4,7 +4,7 @@
  */
 import { Button, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
-import { AnonymousAvatar } from "../components/AnonymousAvatar";
+import { ReviewAuthor } from "../components/ReviewAuthor";
 import { DetailErrorAlert } from "../components/DetailFeedback";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
@@ -130,12 +130,16 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
     <article className="flex gap-3 border-b border-separator py-4 last:border-b-0">
-      <AnonymousAvatar seed={review.id} className="mt-0.5" />
+      <span className="mt-0.5">
+        <ReviewAuthor
+          publicCode={review.author_public_code}
+          avatarKey={review.author_avatar_key}
+        />
+      </span>
       <div className="min-w-0 flex-1">
         <header className="flex items-baseline justify-between gap-3">
           <p className="m-0 min-w-0 text-[calc(13/15*1rem)] leading-6">
-            <span>匿名用户</span>
-            <span className="text-muted"> 点评了 </span>
+            <span className="text-muted">点评了 </span>
             <RouterAriaLink
               to={`/courses/${review.course_id}?teacher=${review.teacher_id}`}
               className="text-accent"

@@ -26,7 +26,7 @@ import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { PublicReview } from "../lib/types";
-import { AnonymousAvatar } from "./AnonymousAvatar";
+import { ReviewAuthor } from "./ReviewAuthor";
 import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
 import { ReviewAdminControls } from "./ReviewAdminControls";
 import { ReviewNoteContent } from "./ReviewNoteContent";
@@ -127,8 +127,10 @@ const CourseReviewItem = memo(function CourseReviewItem({
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <span className="flex flex-wrap items-center gap-x-2 text-[calc(13/15*1rem)] font-medium text-foreground">
-          <AnonymousAvatar seed={review.id} />
-          匿名用户
+          <ReviewAuthor
+            publicCode={review.author_public_code}
+            avatarKey={review.author_avatar_key}
+          />
           {review.overall != null ? (
             <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
           ) : null}
