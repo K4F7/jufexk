@@ -26,7 +26,7 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
       <Table.ScrollContainer>
         <Table.Content
           aria-label="周课表"
-          className="w-full min-w-0 table-fixed sm:w-auto sm:min-w-[40rem] sm:table-auto"
+          className="w-full min-w-0 table-fixed sm:min-w-[40rem] sm:table-auto"
         >
           <Table.Header>
             <Table.Column isRowHeader className={COMPACT_HEAD_CELL}>
@@ -73,7 +73,7 @@ export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
                                 className={
                                   conflict
                                     ? `${COMPACT_LINK} text-danger`
-                                    : `${COMPACT_LINK} text-accent`
+                                    : `${COMPACT_LINK} text-accent sm:text-foreground`
                                 }
                                 to={relationDetailHref({
                                   course_id: item.courseId,
