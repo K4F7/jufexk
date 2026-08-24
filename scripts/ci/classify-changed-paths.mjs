@@ -2,9 +2,7 @@ import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const OFFLINE_PREFIXES = [".grok/"];
-
-const SKIP_WEB_PREFIXES = ["docs/", ".agents/", ...OFFLINE_PREFIXES];
+const SKIP_WEB_PREFIXES = ["docs/", ".agents/"];
 
 function normalize(file) {
   return String(file).replaceAll("\\", "/");
@@ -15,11 +13,6 @@ function matchesPrefix(file, prefix) {
   return file === directory || file.startsWith(prefix);
 }
 
-export function isOfflinePath(file) {
-  const normalized = normalize(file);
-  return OFFLINE_PREFIXES.some((prefix) => matchesPrefix(normalized, prefix));
-}
-
 export function isSkipWebPath(file) {
   const normalized = normalize(file);
   if (normalized.endsWith(".md")) return true;
@@ -28,16 +21,14 @@ export function isSkipWebPath(file) {
 
 export function classifyChangedPaths(files) {
   if (files.length === 0) {
-    return { web: true, offline: false };
+    return { web: true };
   }
 
   let web = false;
-  let offline = false;
   for (const file of files) {
-    if (isOfflinePath(file)) offline = true;
     if (!isSkipWebPath(file)) web = true;
   }
-  return { web, offline };
+  return { web };
 }
 
 function readPathLines(text) {
@@ -53,7 +44,7 @@ async function main() {
   const stdinFiles = readPathLines(Buffer.concat(chunks).toString("utf8"));
   const argvFiles = process.argv.slice(2);
   const classification = classifyChangedPaths(argvFiles.length > 0 ? argvFiles : stdinFiles);
-  const lines = [`web=${classification.web}`, `offline=${classification.offline}`];
+  const lines = [`web=${classification.web}`];
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
   }
