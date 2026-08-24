@@ -66,9 +66,17 @@
 
 html {
   font-family: var(--sans);
-  /* 1.25x of the frozen 15px root; rem spacing / type / HeroUI tokens scale with it */
-  font-size: calc(15px * 1.25);
+  /* 窄屏(<sm)用冻结的 15px 根字号:自定义 calc(N/15*1rem) 字号在此
+     即为设计像素值;rem 间距 / HeroUI token 随根字号整体缩放。 */
+  font-size: 15px;
   line-height: 1.55;
+}
+
+/* sm+(≥640px,媒体查询 rem 取初始 16px)恢复 1.25x 桌面放大。 */
+@media (min-width: 40rem) {
+  html {
+    font-size: calc(15px * 1.25);
+  }
 }
 
 body {
