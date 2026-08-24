@@ -29,6 +29,7 @@ import { LogoutPage } from "./pages/LogoutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { NoticesPage } from "./pages/NoticesPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { SchedulePage } from "./pages/SchedulePage";
 import { SubmitPage } from "./pages/SubmitPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 import { TeachersPage } from "./pages/TeachersPage";
@@ -159,6 +160,7 @@ export function App() {
               <Route path="/courses" element={<CoursesPage />} />
               <Route path="/courses/:id" element={<CourseDetailPage />} />
               <Route path="/latest" element={<LatestPage />} />
+              <Route path="/schedule" element={<SchedulePage />} />
               <Route path="/teachers" element={<TeachersPage />} />
               <Route path="/teachers/:id" element={<TeacherDetailPage />} />
               <Route path="/login" element={<LoginPage />} />

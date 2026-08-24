@@ -41,6 +41,11 @@ async function mockShellApi(
             },
       });
     }
+    if (url.pathname === "/api/site/banner") {
+      return route.fulfill({
+        json: { desktopHtml: "", mobileHtml: "", updatedAt: null },
+      });
+    }
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers") {
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
@@ -50,7 +55,7 @@ async function mockShellApi(
   });
 }
 
-test("main nav is 课程/课评/导师 with a center course search", async ({
+test("main nav is 课程/课评/排课模拟/导师 with a center course search", async ({
   page,
 }) => {
   const renderWarnings: string[] = [];
@@ -66,15 +71,22 @@ test("main nav is 课程/课评/导师 with a center course search", async ({
   const nav = page.getByRole("navigation", { name: "主导航" });
   const courseLink = nav.getByRole("link", { name: "课程" });
   const latestLink = nav.getByRole("link", { name: "课评" });
+  const scheduleLink = nav.getByRole("link", { name: "排课模拟" });
   const mentorLink = nav.getByRole("link", { name: "导师" });
 
   await expect(courseLink).toBeVisible();
   await expect(latestLink).toBeVisible();
+  await expect(scheduleLink).toBeVisible();
   await expect(mentorLink).toBeVisible();
   // 教师 / 写评价 导航项已下线：写评价只从课程页「写点评」进入。
   await expect(nav.getByRole("link", { name: "教师" })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "写评价", exact: true })).toHaveCount(0);
-  await expect(nav.getByRole("link")).toHaveCount(3);
+  const navLinks = nav.getByRole("link");
+  await expect(navLinks).toHaveCount(4);
+  await expect(navLinks.nth(0)).toHaveText("课程");
+  await expect(navLinks.nth(1)).toHaveText("课评");
+  await expect(navLinks.nth(2)).toHaveText("排课模拟");
+  await expect(navLinks.nth(3)).toHaveText("导师");
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
 
@@ -105,6 +117,12 @@ test("main nav is 课程/课评/导师 with a center course search", async ({
   ).toBeVisible();
   await expect(latestLink).toHaveAttribute("aria-current", "page");
   await expect(courseLink).not.toHaveAttribute("aria-current", "page");
+
+  await scheduleLink.click();
+  await expect(page).toHaveURL(/\/schedule$/);
+  await expect(page.getByRole("heading", { name: "排课模拟" })).toBeVisible();
+  await expect(scheduleLink).toHaveAttribute("aria-current", "page");
+  await expect(latestLink).not.toHaveAttribute("aria-current", "page");
   expect(renderWarnings).toEqual([]);
 });
 
