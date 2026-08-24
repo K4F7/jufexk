@@ -181,7 +181,11 @@ test("course teacher card opens the teacher page", async ({ page }) => {
   await page.goto("/courses/8?teacher=9");
   await page.getByRole("link", { name: "测试教师的教师主页" }).click();
   await expect(page).toHaveURL(/\/teachers\/9$/);
-  await expect(page.getByRole("heading", { name: "测试教师" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "课程（共 1 门）" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "课程（共 1 门）" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "测试教师", exact: true, level: 1 }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: /中国传统文化导论/ })).toBeVisible();
 });
