@@ -7,6 +7,7 @@ import { Stars } from "./Stars";
 import { EmptyBox } from "./EmptyBox";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
+import { ReviewAuthor } from "./ReviewAuthor";
 import { RouterAriaLink } from "./RouterAriaLink";
 
 /**
@@ -77,6 +78,10 @@ export function PublicReviews({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="mb-1 flex flex-wrap items-center gap-x-2 text-[calc(12/15*1rem)] text-muted">
+                      <ReviewAuthor
+                        publicCode={review.author_public_code}
+                        avatarKey={review.author_avatar_key}
+                      />
                       {review.overall != null ? (
                         <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
                       ) : null}

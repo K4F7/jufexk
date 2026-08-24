@@ -1,5 +1,7 @@
 # 普通用户通过校学生邮箱验证接入，游客只读
 
+_2026-08-24：[#493](https://github.com/K4F7/jufexk/issues/493) 增加公开编号。每个普通用户在首次创建时顺序分配 `users.public_code`（从 1 起，展示为 `匿名用户#000001`），并可在五张官方 HeroUI 头像中选择 `avatar_key`。公开 API 与页面只下发公开编号，永不返回 `users.id`、邮箱或学号。整数 0 / `匿名用户#000000` 保留给 `author_user_id IS NULL` 的历史、旧评与上线前匿名任课评价，不回填作者，也不可关注。_
+
 _2026-08-24：#500 再次从 Worker 解绑 `MAIL_*` 与 `REVIEW_AUTHOR_LOOKUP_TO`。#478 曾为点评作者查询把这些变量绑回，但 Secrets Store 没有对应条目，阻塞 `main` 部署。_
 
 _2026-08-24：#483 从 Worker 配置淘汰 AuthBridge / 校园 JWT / 邮件投递变量。`POST /api/auth/callback` 仍固定 503；生产不再绑定 `MAIL_*`。_
@@ -37,7 +39,8 @@ Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC �
 
 ## 普通用户与身份绑定
 
-- `users.id` 是随机生成且永久稳定的站内标识。任课评价、认可、封禁和账号状态只引用该标识；公开 API 和页面永不返回它。
+- `users.id` 是随机生成且永久稳定的站内标识。任课评价、认可、封禁和账号状态只引用该标识；公开 API 和页面永不返回它。对外识别作者只使用公开编号（`users.public_code`，展示为 `匿名用户#xxxxxx`）。
+- 公开编号按首次登录顺序递增，从 1 起；`0` 永不写入 `users`。既有用户按 `created_at`、`id` 回填。头像只允许五张官方 HeroUI 占位图。
 - 认证身份以 `(provider, issuer, subject)` 唯一。生产 CAS 代登：`provider` 为 `cas`，`issuer` 为 `ssl.jxufe.edu.cn`，`subject` 是规范化学号的 HMAC（密钥为 `CAMPUS_IDENTITY_SECRET`），不是学号明文。邮箱登录：`provider` 为 `email`，`issuer` 为 `stu.jxufe.edu.cn`，`subject` 是规范化邮箱的 HMAC。已废弃的 AuthBridge 身份若仍出现在库里，不与 CAS / 邮箱自动合并。
 - 同一认证主体重复登录复用原普通用户。邮箱按规范化地址哈希；AuthBridge 每次加密会换 IV，因此必须解密后再哈希，不能把密文 `sub` 当主键。
 - 明文邮箱不当主键，不进公开响应或日志。多个认证主体默认是不同普通用户。

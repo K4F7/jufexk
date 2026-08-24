@@ -68,11 +68,20 @@ describe("ordinary-user profile", () => {
     const response = await profile(viewer);
     expect(response.status).toBe(200);
     const body = await response.json<{
+      public_code: number;
+      handle: string;
+      avatar_key: number;
       review_count: number;
       follow_count: number;
       reviews: Array<Record<string, unknown>>;
       follows: Array<Record<string, unknown>>;
     }>();
+    expect(body.public_code).toBeGreaterThanOrEqual(1);
+    expect(body.handle).toBe(
+      `匿名用户#${String(body.public_code).padStart(6, "0")}`,
+    );
+    expect(body.avatar_key).toBeGreaterThanOrEqual(0);
+    expect(body.avatar_key).toBeLessThan(5);
     expect(body).toMatchObject({ review_count: 1, follow_count: 1 });
     expect(body.reviews).toHaveLength(1);
     expect(body.reviews[0]).toMatchObject({

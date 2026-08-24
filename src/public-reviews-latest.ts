@@ -8,6 +8,12 @@ import {
   publicGrade,
   publicHeadline,
 } from "./lib/public-review-fields";
+import {
+  authoredReviewAuthorSql,
+  authoredReviewJoinSql,
+  publicAuthorFields,
+  reservedAuthorSql,
+} from "./public-handle";
 import { publicReviewBindingSql } from "./review-summary";
 
 const fail = (c: Context, error: string, status = 400) =>
@@ -41,7 +47,7 @@ const latestUnion = `
   SELECT 'historical:' || phr.id id, phr.course_id, phr.teacher_id, phr.comment,
     NULL comment_format, '' headline, NULL grade,
     c.name course_name, c.code course_code, t.name teacher_name,
-    phr.imported_at created_at
+    phr.imported_at created_at, ${reservedAuthorSql}
   FROM public_historical_reviews phr
   JOIN courses c ON c.id=phr.course_id
   JOIN teachers t ON t.id=phr.teacher_id
@@ -49,7 +55,7 @@ const latestUnion = `
   SELECT 'legacy:' || lr.id id, lr.course_id, lr.teacher_id, lr.comment,
     NULL comment_format, '' headline, NULL grade,
     c.name course_name, c.code course_code, t.name teacher_name,
-    lr.created_at
+    lr.created_at, ${reservedAuthorSql}
   FROM legacy_reviews lr
   JOIN courses c ON c.id=lr.course_id
   JOIN teachers t ON t.id=lr.teacher_id
@@ -58,10 +64,11 @@ const latestUnion = `
   SELECT 'review:' || r.id id, r.course_id, r.teacher_id, r.comment,
     r.comment_format, r.headline, r.grade,
     c.name course_name, c.code course_code, t.name teacher_name,
-    r.created_at
+    r.created_at, ${authoredReviewAuthorSql}
   FROM reviews r
   JOIN courses c ON c.id=r.course_id
   JOIN teachers t ON t.id=r.teacher_id
+  ${authoredReviewJoinSql}
   WHERE r.status='approved'
     AND trim(COALESCE(r.comment,''))<>''${publicReviewBindingSql}
 `;
@@ -75,7 +82,7 @@ export async function handleLatestPublicReviews(c: Context) {
     ? "WHERE created_at<? OR (created_at=? AND id<?)"
     : "";
   const raw = await c.env.DB.prepare(
-    `SELECT id,course_id,teacher_id,comment,comment_format,headline,grade,course_name,course_code,teacher_name,created_at
+    `SELECT id,course_id,teacher_id,comment,comment_format,headline,grade,course_name,course_code,teacher_name,created_at,author_public_code,author_avatar_key
      FROM (${latestUnion}) latest_reviews
      ${cursorFilter}
      ORDER BY created_at DESC, id DESC
@@ -98,6 +105,8 @@ export async function handleLatestPublicReviews(c: Context) {
     course_code: string;
     teacher_name: string;
     created_at: string;
+    author_public_code: number | null;
+    author_avatar_key: number | null;
   }>;
   const hasMore = results.length > size;
   const page = results.slice(0, size);
@@ -119,6 +128,7 @@ export async function handleLatestPublicReviews(c: Context) {
         teacher_name: row.teacher_name,
         category: publicCourseCategory(rawName, ""),
         created_at: publicCreatedAt(row.created_at),
+        ...publicAuthorFields(row),
       };
     }),
     nextCursor:

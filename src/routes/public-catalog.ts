@@ -57,6 +57,12 @@ import {
   resolveOrdinaryUser,
 } from "../ordinary-user-session";
 import {
+  authoredReviewAuthorSql,
+  authoredReviewJoinSql,
+  publicAuthorFields,
+  reservedAuthorSql,
+} from "../public-handle";
+import {
   getCourseRelationSummaries,
   publicReviewBindingSql,
 } from "../review-summary";
@@ -270,6 +276,7 @@ const getPublicReviewPage = async (
          headline,grade,
          course_name,course_code,teacher_name,endorsement_count,
          scheme_key,scheme_version,scores,overall,term,created_at,
+         author_public_code,author_avatar_key,
          COUNT(*) OVER() filtered_total
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
@@ -278,7 +285,8 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
-           NULL overall,NULL term,phr.imported_at created_at
+           NULL overall,NULL term,phr.imported_at created_at,
+           ${reservedAuthorSql}
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
          JOIN teachers t ON t.id=phr.teacher_id
@@ -290,7 +298,8 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
-           NULL overall,NULLIF(trim(COALESCE(lr.term,'')),'') term,lr.created_at
+           NULL overall,NULLIF(trim(COALESCE(lr.term,'')),'') term,lr.created_at,
+           ${reservedAuthorSql}
          FROM legacy_reviews lr
          JOIN courses c ON c.id=lr.course_id
          JOIN teachers t ON t.id=lr.teacher_id
@@ -303,10 +312,12 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
            r.scheme_key,r.scheme_version,r.scores,
-           r.overall,NULLIF(trim(COALESCE(r.term,'')),'') term,r.created_at
+           r.overall,NULLIF(trim(COALESCE(r.term,'')),'') term,r.created_at,
+           ${authoredReviewAuthorSql}
          FROM reviews r
          JOIN courses c ON c.id=r.course_id
          JOIN teachers t ON t.id=r.teacher_id
+         ${authoredReviewJoinSql}
          WHERE r.${subject}=? AND r.status='approved'
            AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}${teacherFilter("r")}
        ) public_reviews
@@ -374,6 +385,7 @@ const getPublicReviewPage = async (
             overall: publicOverall(review.overall),
             term: publicTerm(review.term),
             created_at: publicCreatedAt(review.created_at),
+            ...publicAuthorFields(review),
             ...(dimensionAverage == null ? {} : { dimensionAverage }),
             ...(dimensionLabels == null ? {} : { dimensionLabels }),
           };

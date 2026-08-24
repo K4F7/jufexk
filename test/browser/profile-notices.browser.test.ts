@@ -19,6 +19,9 @@ function state(overrides: Partial<MockState> = {}): MockState {
   return {
     authenticated: true,
     profile: {
+      public_code: 1,
+      handle: "匿名用户#000001",
+      avatar_key: 0,
       reviews: [
         {
           id: 101,
@@ -113,6 +116,19 @@ async function mockApi(page: Page, mock: MockState) {
       });
     if (url.pathname === "/api/user/profile")
       return fulfillJson(route, mock.profile, mock.profileStatus);
+    if (url.pathname === "/api/user/profile/avatar") {
+      const profile = mock.profile as {
+        avatar_key?: number;
+        public_code?: number;
+        handle?: string;
+      };
+      return fulfillJson(route, {
+        ok: true,
+        avatar_key: 2,
+        public_code: profile.public_code,
+        handle: profile.handle,
+      });
+    }
     if (url.pathname === "/api/user/notifications" && request.method() === "GET")
       return fulfillJson(route, mock.notifications, mock.notificationsStatus);
     if (
@@ -184,9 +200,12 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(page.getByText("待审核", { exact: true })).toBeVisible();
   await expect(page.getByText("等待审核的点评摘要。")).toBeVisible();
 
-  // 侧栏统计；不出现邮箱、学号等标识，也不再导向账号删除。
+  // 侧栏公开编号与官方头像；不出现邮箱、学号等标识，也不再导向账号删除。
   await expect(
-    page.getByRole("heading", { name: "我的主页" }),
+    page.getByRole("heading", { name: "匿名用户#000001" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "选择官方头像 1" }),
   ).toBeVisible();
   await expect(page.getByText("点评了 2 门课程")).toBeVisible();
   await expect(page.getByText("关注了 1 门课程")).toBeVisible();

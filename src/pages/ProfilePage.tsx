@@ -1,17 +1,20 @@
 /**
- * 个人主页 /profile（#459 前端）：只展示当前登录普通用户自己的点评与
- * 关注的任课关系；无公开他人主页，页面不出现邮箱、学号或用户标识。
- * 数据接口未上线（404 / 请求失败）时页面骨架照常渲染，
- * 内容区提示「数据接口尚未就绪」。
+ * 个人主页 /profile（#459 / #493）：展示当前登录普通用户的公开编号、
+ * 官方头像、自己的点评与关注的任课关系。页面不出现邮箱、学号或 users.id。
  */
-import { Alert, Card, Chip, Spinner, Typography } from "@heroui/react";
+import { Alert, Avatar, Button, Card, Chip, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
+import {
+  HEROUI_AVATAR_PLACEHOLDERS,
+  officialAvatarSrc,
+} from "../components/AnonymousAvatar";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { formatReviewDate } from "../lib/review-date";
 import type { UserProfile, UserProfileReview } from "../lib/types";
+import { formatPublicHandle } from "../public-handle";
 
 function relationHref(courseId: number, teacherId: number) {
   return `/courses/${courseId}?teacher=${teacherId}`;
@@ -75,6 +78,7 @@ export function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
+  const [savingAvatar, setSavingAvatar] = useState(false);
 
   useEffect(() => {
     if (!ready || !viewer.authenticated) return;
@@ -119,6 +123,39 @@ export function ProfilePage() {
   const follows = profile?.follows ?? [];
   const reviewCount = profile?.review_count ?? reviews.length;
   const followCount = profile?.follow_count ?? follows.length;
+  const handle =
+    profile?.handle ||
+    (profile?.public_code != null
+      ? formatPublicHandle(profile.public_code)
+      : null);
+  const avatarKey = profile?.avatar_key ?? 0;
+
+  const changeAvatar = async (nextKey: number) => {
+    if (savingAvatar || nextKey === avatarKey) return;
+    setSavingAvatar(true);
+    try {
+      const updated = await api<{
+        avatar_key: number;
+        public_code?: number;
+        handle?: string;
+      }>("/api/user/profile/avatar", {
+        method: "PATCH",
+        body: JSON.stringify({ avatar_key: nextKey }),
+      });
+      setProfile((current) =>
+        current
+          ? {
+              ...current,
+              avatar_key: updated.avatar_key,
+              public_code: updated.public_code ?? current.public_code,
+              handle: updated.handle ?? current.handle,
+            }
+          : current,
+      );
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
 
   return (
     <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_16rem]">
@@ -202,14 +239,39 @@ export function ProfilePage() {
 
       <aside className="min-w-0">
         <Card role="article" aria-labelledby="profile-card-heading">
-          <Card.Header>
-            <Card.Title id="profile-card-heading">我的主页</Card.Title>
+          <Card.Header className="items-center text-center">
+            <Avatar size="lg">
+              <Avatar.Image alt="" src={officialAvatarSrc(avatarKey)} />
+              <Avatar.Fallback>匿</Avatar.Fallback>
+            </Avatar>
+            <Card.Title id="profile-card-heading">
+              {handle || "我的主页"}
+            </Card.Title>
             <Card.Description>
-              这里只展示你自己的数据，其他用户看不到这一页。
+              公开编号只用于识别作者，不是学号或内部身份。
             </Card.Description>
           </Card.Header>
           <Card.Content>
-            <div className="flex flex-col gap-1 text-sm">
+            <div className="flex flex-col gap-3 text-sm">
+              <div role="group" aria-label="选择官方头像" className="flex flex-wrap justify-center gap-2">
+                {HEROUI_AVATAR_PLACEHOLDERS.map((src, key) => (
+                  <Button
+                    key={src}
+                    isIconOnly
+                    size="sm"
+                    variant={avatarKey === key ? "primary" : "outline"}
+                    aria-label={`选择官方头像 ${key + 1}`}
+                    aria-pressed={avatarKey === key}
+                    isPending={savingAvatar && avatarKey !== key}
+                    onPress={() => void changeAvatar(key)}
+                  >
+                    <Avatar size="sm">
+                      <Avatar.Image alt="" src={src} />
+                      <Avatar.Fallback>匿</Avatar.Fallback>
+                    </Avatar>
+                  </Button>
+                ))}
+              </div>
               <span>点评了 {available && !loading ? reviewCount : "—"} 门课程</span>
               <span>关注了 {available && !loading ? followCount : "—"} 门课程</span>
             </div>

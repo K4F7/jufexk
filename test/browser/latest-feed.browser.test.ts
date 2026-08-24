@@ -14,6 +14,8 @@ const LATEST = [
     comment: "这门课讲得很清楚，作业量适中。",
     headline: "讲得清楚，作业适中",
     created_at: "2026-08-20 12:00:00",
+    author_public_code: 0,
+    author_avatar_key: 0,
   },
   {
     id: "historical:abc",
@@ -108,7 +110,7 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   await page.goto("/latest");
 
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
-  await expect(page.getByText("匿名用户")).toBeVisible();
+  await expect(page.getByRole("link", { name: "匿名用户#000000" })).toBeVisible();
   await expect(
     page.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
   ).toHaveCount(1);

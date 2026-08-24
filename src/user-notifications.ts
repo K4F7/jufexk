@@ -7,7 +7,7 @@ import type { AppContext } from "./routes/types";
 
 type NotificationRow = {
   id: number;
-  type: "followed_relation_review" | "review_endorsed";
+  type: "followed_relation_review" | "review_endorsed" | "followed_user_review";
   message: string;
   link: string;
   createdAt: string;

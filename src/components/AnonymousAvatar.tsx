@@ -23,20 +23,34 @@ export function placeholderAvatarSrc(seed: string | number): string {
   ];
 }
 
+export function officialAvatarSrc(avatarKey: number): string {
+  const index =
+    ((avatarKey % HEROUI_AVATAR_PLACEHOLDERS.length) +
+      HEROUI_AVATAR_PLACEHOLDERS.length) %
+    HEROUI_AVATAR_PLACEHOLDERS.length;
+  return HEROUI_AVATAR_PLACEHOLDERS[index];
+}
+
 export function AnonymousAvatar({
   seed,
+  avatarKey,
   size = "sm",
   fallback = "匿",
   className,
 }: {
-  seed: string | number;
+  seed?: string | number;
+  avatarKey?: number;
   size?: "sm" | "md" | "lg";
   fallback?: string;
   className?: string;
 }) {
+  const src =
+    avatarKey != null
+      ? officialAvatarSrc(avatarKey)
+      : placeholderAvatarSrc(seed ?? 0);
   return (
     <Avatar size={size} className={className} aria-hidden>
-      <Avatar.Image alt="" src={placeholderAvatarSrc(seed)} />
+      <Avatar.Image alt="" src={src} />
       <Avatar.Fallback>{fallback}</Avatar.Fallback>
     </Avatar>
   );

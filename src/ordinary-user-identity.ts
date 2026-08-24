@@ -3,6 +3,7 @@ import {
   type CampusJwtClaims,
 } from "./campus-jwt";
 import type { OrdinaryUser } from "./ordinary-user-session";
+import { AVATAR_KEY_COUNT, ensureUserPublicHandle } from "./public-handle";
 
 const hex = (bytes: ArrayBuffer) =>
   [...new Uint8Array(bytes)]
@@ -63,7 +64,7 @@ function identityUserStatement(
 ) {
   return db
     .prepare(
-      `SELECT users.id, users.status,
+      `SELECT users.id, users.status, users.muted_until, users.public_code, users.avatar_key,
               COALESCE(users.pending_deletion_at, users.deletion_requested_at) AS pending_deletion_at
        FROM auth_identities
        JOIN users ON users.id = auth_identities.user_id
@@ -77,7 +78,10 @@ export async function resolveOrCreateIdentityUser(
   input: { provider: string; issuer: string; subject: string },
 ): Promise<OrdinaryUser | null> {
   const existing = await lookupIdentityUser(db, input);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.public_code != null && existing.public_code >= 1) return existing;
+    return ensureUserPublicHandle(db, existing);
+  }
 
   const userId = newUserId();
   // Occupy the identity slot first. A lost race must not insert an orphan
@@ -89,14 +93,21 @@ export async function resolveOrCreateIdentityUser(
          VALUES(?,?,?,?)`,
       )
       .bind(input.provider, input.issuer, input.subject, userId),
+    db.prepare(
+      `UPDATE user_public_code_seq SET next_code = next_code + 1 WHERE id = 1`,
+    ),
     db
       .prepare(
-        `INSERT OR IGNORE INTO users(id,status)
-         SELECT user_id, 'active' FROM auth_identities
+        `INSERT OR IGNORE INTO users(id,status,public_code,avatar_key)
+         SELECT user_id, 'active',
+           (SELECT next_code - 1 FROM user_public_code_seq WHERE id=1),
+           (SELECT (next_code - 1) % ${AVATAR_KEY_COUNT} FROM user_public_code_seq WHERE id=1)
+         FROM auth_identities
          WHERE provider=? AND issuer=? AND subject=?`,
       )
       .bind(input.provider, input.issuer, input.subject),
     identityUserStatement(db, input),
   ]);
-  return results[2]?.results[0] || null;
+  const created = results[3]?.results[0] || null;
+  return created ? ensureUserPublicHandle(db, created) : null;
 }

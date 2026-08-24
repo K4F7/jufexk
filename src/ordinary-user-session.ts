@@ -1,6 +1,10 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { CAMPUS_JWT_COOKIE } from "./campus-jwt";
+import {
+  ensureUserPublicHandle,
+  insertUserWithPublicHandle,
+} from "./public-handle";
 import { readSecret } from "./secrets";
 
 export const ORDINARY_USER_CSRF_COOKIE = "jufexk_user_csrf";
@@ -30,6 +34,8 @@ export type OrdinaryUser = {
   status: OrdinaryUserStatus;
   muted_until?: number | null;
   pending_deletion_at?: string | null;
+  public_code?: number | null;
+  avatar_key?: number | null;
 };
 
 export type OrdinaryUserSession = {
@@ -153,22 +159,24 @@ const randomToken = () =>
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 
+const USER_SELECT = `SELECT id,status,muted_until,public_code,avatar_key,
+       COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at
+     FROM users WHERE id=?`;
+
 async function loadOrCreateUser(
   db: D1Database,
   userId: string,
 ): Promise<OrdinaryUser | null> {
   const existing = await db
-    .prepare(
-      "SELECT id,status,muted_until,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
-    )
+    .prepare(USER_SELECT)
     .bind(userId)
     .first<OrdinaryUser>();
-  if (existing) return clearExpiredMute(db, existing);
-  await db
-    .prepare("INSERT INTO users(id,status) VALUES(?,?)")
-    .bind(userId, "active")
-    .run();
-  return { id: userId, status: "active" };
+  if (existing) {
+    const cleared = await clearExpiredMute(db, existing);
+    return ensureUserPublicHandle(db, cleared);
+  }
+  const handle = await insertUserWithPublicHandle(db, userId);
+  return { id: userId, status: "active", ...handle };
 }
 
 async function clearExpiredMute(db: D1Database, user: OrdinaryUser) {
@@ -243,12 +251,13 @@ async function resolveEmailSessionUser(c: Context): Promise<OrdinaryUser | null>
   if (!timingSafeEqualHex(expected, mac)) return null;
   const db = c.env.DB as D1Database;
   return db
-    .prepare(
-      "SELECT id,status,muted_until,COALESCE(pending_deletion_at,deletion_requested_at) AS pending_deletion_at FROM users WHERE id=?",
-    )
+    .prepare(USER_SELECT)
     .bind(userId)
     .first<OrdinaryUser>()
-    .then((user) => (user ? clearExpiredMute(db, user) : null));
+    .then(async (user) => {
+      if (!user) return null;
+      return ensureUserPublicHandle(db, await clearExpiredMute(db, user));
+    });
 }
 
 /**

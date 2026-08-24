@@ -48,6 +48,9 @@ export async function handleRequestOrdinaryUserDeletion(c: Context) {
       user.id,
     ),
     c.env.DB.prepare(
+      "DELETE FROM user_follows WHERE follower_user_id=? OR followed_user_id=?",
+    ).bind(user.id, user.id),
+    c.env.DB.prepare(
       "UPDATE users SET status='pending_deletion', pending_deletion_at=? WHERE id=? AND status='active'",
     ).bind(pendingDeletionAt, user.id),
   ]);

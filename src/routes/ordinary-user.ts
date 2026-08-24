@@ -18,6 +18,10 @@ import { isExcludedCourseName } from "../lib/course-catalog-policy";
 import { readSecret, turnstileMode } from "../secrets";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
 import {
+  handleFollowPublicUser,
+  handleUnfollowPublicUser,
+} from "../public-user-profile";
+import {
   handleListNotifications,
   handleMarkAllNotificationsRead,
   handleUnreadNotificationCount,
@@ -46,6 +50,8 @@ import {
 } from "./request-schemas";
 
 const ordinaryUserRoutes = new Hono<AppEnv>();
+ordinaryUserRoutes.put("/api/u/:code/follow", handleFollowPublicUser);
+ordinaryUserRoutes.delete("/api/u/:code/follow", handleUnfollowPublicUser);
 ordinaryUserRoutes.get("/api/user/notifications", handleListNotifications);
 ordinaryUserRoutes.get(
   "/api/user/notifications/unread-count",
