@@ -1,5 +1,7 @@
 # 普通用户通过校学生邮箱验证接入，游客只读
 
+_2026-08-24：#480 退役共享 `ADMIN_PASSWORD`。管理员改为手动绑定校园统一身份学号（HMAC 与 CAS `auth_identities.subject` 相同）；已绑定用户校园登录后签发独立 `admin_sessions`。明文学号不落库。口令登录、Cloudflare Secrets Store 中的 `ADMIN_PASSWORD` 不再授权管理分区。_
+
 _2026-08-24：#460 为“我的任课评价被认可”通知新增 `reviews.author_user_id` 内部作者关联；公开评价仍匿名，公开 API 永不返回该字段或认可者身份。进入 `pending_deletion` 不删除任课评价或作者关联；将来若实现最终删除，须在 finalize 前匿名化作者关联。_
 
 _2026-08-24：[#459](https://github.com/K4F7/jufexk/issues/459) 的私有个人主页复用 `author_user_id` 查询新任课评价，并让目录补充申请的随附评价继承提交者。只关联上线后的新写入；既有评价与申请保持 `author_user_id = NULL`，不按 `submitter_hash` 认领。个人主页仅返回当前 active 普通用户自己的数据，响应不下发 `users.id`。_
@@ -20,7 +22,7 @@ Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC �
 
 - 公开只读不要求登录，也不把未登录当作错误。
 - 普通用户会话只证明本次请求持有已验证的本站会话 cookie（CAS 代登或校学生邮箱；或测试 HMAC 头），并对应一个 `active` 的 `users.id`。
-- 管理员口令登录只签发 `admin_sessions`；`jufexk_admin` cookie、校园 JWT 和测试 HMAC 头不得互相授权。
+- 管理员不再使用共享口令。已绑定 CAS 学号的普通用户访问 `/api/admin/*` 时可获签发 `admin_sessions`；`jufexk_admin` cookie 仍不得调用普通用户删除或恢复，测试 HMAC 头不得单独成为管理员。
 
 ## JWT 验证边界
 

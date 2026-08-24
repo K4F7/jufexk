@@ -7,6 +7,7 @@ import {
   hmacHex,
   ordinaryUserTestHeaders,
 } from "../src/ordinary-user-session";
+import { adminAuth } from "./admin-session";
 
 const origin = "https://example.com";
 const jwtSecret = "test-campus-jwt-secret";
@@ -162,20 +163,8 @@ describe("ordinary user session boundary", () => {
     });
     expect(await banned.json()).toMatchObject({ authenticated: false });
 
-    const login = await SELF.fetch(`${origin}/api/admin/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Origin: origin },
-      body: JSON.stringify({ password: "test-password" }),
-    });
-    expect(login.status).toBe(200);
-    const adminBody = await login.json<{ kind: string; csrfToken: string }>();
-    expect(adminBody.kind).toBe("admin");
-    const adminCookie = (
-      login.headers as Headers & { getSetCookie(): string[] }
-    )
-      .getSetCookie()
-      .map((value) => value.split(";", 1)[0])
-      .join("; ");
+    const admin = await adminAuth();
+    const adminCookie = admin.cookie;
     const adminSession = await SELF.fetch(`${origin}/api/user/session`, {
       headers: { Cookie: adminCookie },
     });

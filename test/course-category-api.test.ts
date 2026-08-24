@@ -1,32 +1,11 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 import { categoryLabel } from "../src/lib/labels";
 import { normalizeReviewTemplateKind } from "../src/lib/review-template-kind";
 
 const origin = "https://example.com";
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": "198.18.30.1",
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  const body = await response.json<{ csrfToken: string }>();
-  const cookie = (response.headers as Headers & { getSetCookie(): string[] })
-    .getSetCookie()
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  return {
-    "Content-Type": "application/json",
-    Cookie: cookie,
-    Origin: origin,
-    "X-CSRF-Token": body.csrfToken,
-  };
-}
 
 describe("review template kind API contract", () => {
   it("offers general, sports, english, ideology, and math public filters", async () => {
@@ -210,7 +189,7 @@ describe("review template kind API contract", () => {
   });
 
   it("accepts all new values and rejects old or missing values on writes", async () => {
-    const headers = await login();
+    const headers = adminHeaders(await login());
     for (const [index, category] of ["general", "sports"].entries()) {
       const response = await SELF.fetch(`${origin}/api/admin/courses`, {
         method: "POST",
@@ -448,7 +427,7 @@ describe("review template kind API contract", () => {
     ]);
 
     const admin = await SELF.fetch(`${origin}/api/admin/courses`, {
-      headers: await login(),
+      headers: { Cookie: (await login()).cookie },
     });
     const adminBody = await admin.json<
       Array<{ id: number; name: string; category: string }>

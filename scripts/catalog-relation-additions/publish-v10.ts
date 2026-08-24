@@ -3,7 +3,7 @@ import { access, mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { resolveAdminPassword } from "../secrets/inventory";
+import { resolveAdminSession } from "../secrets/inventory";
 import { createProductionD1ExportCommand } from "../historical-import/production-wrangler";
 import { parseV10RelationArguments } from "./v10-arguments";
 
@@ -13,7 +13,7 @@ const baseUrl = (process.env.JUFEXK_BASE_URL || "https://courses.sein.moe").repl
   /\/$/,
   "",
 );
-const password = resolveAdminPassword(process.env);
+const adminSession = resolveAdminSession(process.env);
 const backupPath = resolve(
   process.env.JUFEXK_BACKUP_PATH ||
     `.local-data/issue365-relations-${new Date().toISOString().replace(/[:.]/g, "-")}.sql`,
@@ -95,11 +95,11 @@ async function api(path: string, init: RequestInit = {}) {
   return body;
 }
 
-const login = await api("/api/admin/login", {
-  method: "POST",
-  body: JSON.stringify({ password }),
-});
-csrf = login.csrfToken;
+for (const part of adminSession.cookie.split(";")) {
+  const match = /^([^=]+)=(.*)$/.exec(part.trim());
+  if (match) cookies.set(match[1], match[2]);
+}
+csrf = adminSession.csrf;
 const before = await api("/api/admin/historical-review-status");
 if (
   !before.marker ||

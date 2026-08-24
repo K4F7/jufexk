@@ -72,8 +72,11 @@ export const catalogRequestSchema = z
   })
   .passthrough();
 
-export const adminLoginSchema = z
-  .object({ password: cleanedField(200) })
+export const adminStudentBindingsSchema = z
+  .object({
+    usernames: z.array(z.unknown()).max(20).optional(),
+    text: z.string().max(2000).optional(),
+  })
   .passthrough();
 
 export const siteBannerSchema = z

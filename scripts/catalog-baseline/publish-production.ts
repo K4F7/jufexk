@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolveAdminPassword } from "../secrets/inventory";
+import { resolveAdminSession } from "../secrets/inventory";
 
 const approvedRoot = resolve(process.argv[2] || "scripts/catalog-baseline/captures/full-approved-v1");
 const shouldPublish = process.argv.includes("--publish");
 const origin = (process.env.JUFEXK_BASE_URL || "https://courses.sein.moe").replace(/\/$/, "");
-const password = resolveAdminPassword(process.env);
+const adminSession = resolveAdminSession(process.env);
 
 const manifest = JSON.parse(readFileSync(resolve(approvedRoot, "manifest.json"), "utf8"));
 const artifact = readFileSync(resolve(approvedRoot, manifest.artifact.path));
@@ -59,8 +59,11 @@ async function api(path: string, init: RequestInit = {}) {
 const batchId = `baseline-${String(manifest.contentSha256).slice(0, 24)}`;
 let loggedIn = false;
 try {
-  const login = await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password }) });
-  csrf = login.csrfToken;
+  for (const part of adminSession.cookie.split(";")) {
+    const match = /^([^=]+)=(.*)$/.exec(part.trim());
+    if (match) cookies.set(match[1], match[2]);
+  }
+  csrf = adminSession.csrf;
   loggedIn = true;
   const baseline = await api("/api/admin/catalog-baseline/status");
   if (baseline.published) throw new Error("生产目录基线已发布，入口已关闭");

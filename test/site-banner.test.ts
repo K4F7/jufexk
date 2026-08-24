@@ -1,35 +1,10 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 
 const origin = "https://example.com";
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": "198.51.100.161",
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const setCookies = (
-    response.headers as Headers & { getSetCookie(): string[] }
-  ).getSetCookie();
-  return {
-    cookie: setCookies.map((value) => value.split(";", 1)[0]).join("; "),
-    csrf: body.csrfToken,
-  };
-}
 
-const adminHeaders = (auth: { cookie: string; csrf: string }) => ({
-  "Content-Type": "application/json",
-  Cookie: auth.cookie,
-  Origin: origin,
-  "X-CSRF-Token": auth.csrf,
-});
 
 describe.sequential("site banner", () => {
   beforeEach(async () => {

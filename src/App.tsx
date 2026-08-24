@@ -18,6 +18,7 @@ import { AccountPage } from "./pages/AccountPage";
 import { AdminAnnouncementEditPage } from "./pages/admin/AdminAnnouncementEditPage";
 import { AdminBannerPage } from "./pages/admin/AdminBannerPage";
 import { AdminHubPage } from "./pages/admin/AdminHubPage";
+import { AdminStudentBindingsPage } from "./pages/admin/AdminStudentBindingsPage";
 import { AdminUserBlockPage } from "./pages/admin/AdminUserBlockPage";
 import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
@@ -168,6 +169,7 @@ export function App() {
               <Route path="/submit" element={<SubmitPage config={config} />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />
               <Route path="/admin" element={<AdminHubPage />} />
+              <Route path="/admin/admins" element={<AdminStudentBindingsPage />} />
               <Route path="/admin/banner" element={<AdminBannerPage />} />
               <Route
                 path="/admin/announcements/:id"

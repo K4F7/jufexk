@@ -6,6 +6,7 @@ import authRoutes from "../src/routes/auth";
 import importRoutes from "../src/routes/imports";
 import ordinaryUserRoutes from "../src/routes/ordinary-user";
 import publicCatalogRoutes from "../src/routes/public-catalog";
+import { adminAuth, adminHeaders as sessionHeaders } from "./admin-session";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -15,29 +16,8 @@ import {
 const routeKey = (route: { method: string; path: string }) =>
   `${route.method} ${route.path}`;
 
-let adminLoginSequence = 230;
 async function adminHeaders() {
-  const response = await SELF.fetch(`${WRITE_ORIGIN}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: WRITE_ORIGIN,
-      "CF-Connecting-IP": `198.51.100.${adminLoginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const cookie = (response.headers as Headers & { getSetCookie(): string[] })
-    .getSetCookie()
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  return {
-    "Content-Type": "application/json",
-    Cookie: cookie,
-    Origin: WRITE_ORIGIN,
-    "X-CSRF-Token": body.csrfToken,
-  };
+  return sessionHeaders(await adminAuth(), WRITE_ORIGIN);
 }
 
 describe("domain route composition", () => {
@@ -77,6 +57,9 @@ describe("domain route composition", () => {
     expect(adminRoutes.routes.map(routeKey)).toContain(
       "PATCH /api/admin/reviews/:id",
     );
+    expect(adminRoutes.routes.map(routeKey)).toContain(
+      "POST /api/admin/student-bindings",
+    );
     expect(importRoutes.routes.map(routeKey)).toContain(
       "POST /api/admin/catalog-baseline/uploads",
     );
@@ -88,7 +71,7 @@ describe("domain route composition", () => {
     );
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({
-      error: expect.stringContaining("管理员"),
+      error: expect.stringContaining("学号"),
     });
   });
 });

@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 import {
   CURRENT_SCORES,
   CURRENT_SCORES_JSON,
@@ -16,32 +17,8 @@ import {
 } from "./ordinary-write-session";
 
 const origin = "https://example.com";
-let loginSequence = 40;
 let ipSequence = 80;
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const setCookies = (
-    response.headers as Headers & { getSetCookie(): string[] }
-  ).getSetCookie();
-  const cookie = setCookies.map((value) => value.split(";", 1)[0]).join("; ");
-  return {
-    "Content-Type": "application/json",
-    Cookie: cookie,
-    Origin: origin,
-    "X-CSRF-Token": body.csrfToken,
-  };
-}
 
 let writeSession: OrdinaryWriteSession | undefined;
 
@@ -60,7 +37,7 @@ async function submit(body: Record<string, unknown>) {
 async function readCourse(id: number) {
   const auth = await login();
   const response = await SELF.fetch(`${origin}/api/admin/courses`, {
-    headers: { Cookie: auth.Cookie },
+    headers: { Cookie: auth.cookie },
   });
   expect(response.status).toBe(200);
   const courses = await response.json<
@@ -74,7 +51,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
     const auth = await login();
     const created = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         code: "ADM-SCHEME-1",
         name: "管理规则课",
@@ -91,7 +68,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
 
     const updated = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id,
         code: "ADM-SCHEME-1",
@@ -111,7 +88,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
     const auth = await login();
     const created = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         code: "ADM-MOOC-1",
         name: "管理网课",
@@ -129,7 +106,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
 
     const cleared = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id,
         code: "ADM-MOOC-1",
@@ -149,7 +126,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
     const auth = await login();
     const badScheme = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         code: "ADM-BAD-SCHEME",
         name: "非法规则",
@@ -162,7 +139,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
 
     const badTag = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         code: "ADM-BAD-TAG",
         name: "非法标签",
@@ -178,7 +155,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
     const auth = await login();
     const created = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         code: "ADM-SNAP-1",
         name: "快照课",
@@ -216,7 +193,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
 
     const updated = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id,
         code: "ADM-SNAP-1",
@@ -279,7 +256,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
     const auth = await login();
     const response = await SELF.fetch(
       `${origin}/api/admin/reviews?status=pending&q=${encodeURIComponent("规则审核条目")}`,
-      { headers: { Cookie: auth.Cookie } },
+      { headers: { Cookie: auth.cookie } },
     );
     expect(response.status).toBe(200);
     const body = await response.json<{

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parseDotenv, resolveAdminPassword } from "../secrets/inventory";
+import { parseDotenv, resolveAdminSession } from "../secrets/inventory";
 
 const origin = (process.env.JUFEXK_BASE_URL || "https://courses.sein.moe").replace(
   /\/$/,
@@ -28,7 +28,7 @@ for (const envPath of envCandidates) {
     /* try the next dotenv path */
   }
 }
-const password = resolveAdminPassword({ ...fileEnv, ...process.env });
+const adminSession = resolveAdminSession({ ...fileEnv, ...process.env });
 
 type Payload = {
   items: Array<Record<string, unknown>>;
@@ -75,12 +75,12 @@ const api = async (path: string, init: RequestInit = {}) => {
   return body;
 };
 
-const login = await api("/api/admin/login", {
-  method: "POST",
-  body: JSON.stringify({ password }),
-});
-csrf = String((login as { csrfToken?: string }).csrfToken || "");
-if (!csrf) throw new Error("管理员登录未返回 CSRF");
+for (const part of adminSession.cookie.split(";")) {
+  const match = /^([^=]+)=(.*)$/.exec(part.trim());
+  if (match) cookies.set(match[1], match[2]);
+}
+csrf = adminSession.csrf;
+if (!csrf) throw new Error("缺少管理员 CSRF");
 
 let updated = 0;
 const missing: string[] = [];

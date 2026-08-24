@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 import {
   REQUIRED_HEADLINE,
   REQUIRED_NOTE,
@@ -12,7 +13,6 @@ import {
 } from "./ordinary-write-session";
 
 const origin = "https://example.com";
-let loginSequence = 180;
 let ipSequence = 180;
 let uniqueSequence = 1;
 
@@ -20,29 +20,6 @@ function unique(prefix: string) {
   return `${prefix}-${uniqueSequence++}`;
 }
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const cookie = (response.headers as Headers & { getSetCookie(): string[] })
-    .getSetCookie()
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  return {
-    "Content-Type": "application/json",
-    Cookie: cookie,
-    Origin: origin,
-    "X-CSRF-Token": body.csrfToken,
-  };
-}
 
 let writeSession: OrdinaryWriteSession | undefined;
 
@@ -103,7 +80,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
       `${origin}/api/admin/reviews/${id}/content`,
       {
         method: "PATCH",
-        headers: auth,
+        headers: adminHeaders(auth),
         body: JSON.stringify({ comment: "只修改文字", note: "回归测试" }),
       },
     );
@@ -135,7 +112,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
     const auth = await login();
     const update = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id: courseId,
         code,
@@ -155,7 +132,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
 
     const negative = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id: courseId,
         code,
@@ -175,7 +152,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
     const section = unique("非法班");
     const response = await SELF.fetch(`${origin}/api/admin/offerings`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         courseId: 2,
         term,
@@ -210,7 +187,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
     const section = unique("评价班");
     const created = await SELF.fetch(`${origin}/api/admin/offerings`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         courseId,
         term,
@@ -232,7 +209,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
 
     const update = await SELF.fetch(`${origin}/api/admin/offerings`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id: offeringId,
         courseId,
@@ -275,7 +252,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
     const auth = await login();
     const put = await SELF.fetch(`${origin}/api/admin/courses/${courseId}/teachers`, {
       method: "PUT",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({ teacherIds: [] }),
     });
     expect(put.status).toBe(409);
@@ -289,7 +266,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
 
     const post = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id: courseId,
         code,
@@ -324,7 +301,7 @@ describe("backend regression fixes: fields and catalog relations", () => {
     const auth = await login();
     const response = await SELF.fetch(`${origin}/api/admin/courses/${courseId}/teachers`, {
       method: "PUT",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({ teacherIds: [] }),
     });
     expect(response.status).toBe(409);
@@ -391,7 +368,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       Array.from({ length: 8 }, () =>
         SELF.fetch(`${origin}/api/admin/catalog-requests/${id}`, {
           method: "PATCH",
-          headers: auth,
+          headers: adminHeaders(auth),
           body: JSON.stringify({ status: "approved" }),
         }).then(async (response) => ({
           status: response.status,
@@ -475,12 +452,12 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
     const auth = await login();
     const deleteCourse = await SELF.fetch(`${origin}/api/admin/courses/${courseId}`, {
       method: "DELETE",
-      headers: auth,
+      headers: adminHeaders(auth),
     });
     expect(deleteCourse.status).toBe(409);
     const deleteTeacher = await SELF.fetch(`${origin}/api/admin/teachers/${teacherId}`, {
       method: "DELETE",
-      headers: auth,
+      headers: adminHeaders(auth),
     });
     expect(deleteTeacher.status).toBe(409);
     expect(
@@ -557,7 +534,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       `${origin}/api/admin/courses/${courseId}/teachers`,
       {
         method: "PUT",
-        headers: auth,
+        headers: adminHeaders(auth),
         body: JSON.stringify({ teacherIds: [] }),
       },
     );
@@ -566,7 +543,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       `${origin}/api/admin/offerings`,
       {
         method: "POST",
-        headers: auth,
+        headers: adminHeaders(auth),
         body: JSON.stringify({
           id: offeringId,
           courseId,
@@ -581,7 +558,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       (
         await SELF.fetch(`${origin}/api/admin/offerings/${offeringId}`, {
           method: "DELETE",
-          headers: auth,
+          headers: adminHeaders(auth),
         })
       ).status,
     ).toBe(409);
@@ -589,7 +566,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       (
         await SELF.fetch(`${origin}/api/admin/courses/${courseId}`, {
           method: "DELETE",
-          headers: auth,
+          headers: adminHeaders(auth),
         })
       ).status,
     ).toBe(409);
@@ -597,7 +574,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       (
         await SELF.fetch(`${origin}/api/admin/teachers/${teacherId}`, {
           method: "DELETE",
-          headers: auth,
+          headers: adminHeaders(auth),
         })
       ).status,
     ).toBe(409);
@@ -666,7 +643,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       `${origin}/api/admin/legacy-reviews/${id}`,
       {
         method: "PATCH",
-        headers: auth,
+        headers: adminHeaders(auth),
         body: JSON.stringify({ status: "approved", note: "尝试批准" }),
       },
     );
@@ -707,12 +684,12 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
     const auth = await login();
     const deleteCourse = await SELF.fetch(`${origin}/api/admin/courses/${courseId}`, {
       method: "DELETE",
-      headers: auth,
+      headers: adminHeaders(auth),
     });
     expect(deleteCourse.status).toBe(409);
     const deleteTeacher = await SELF.fetch(`${origin}/api/admin/teachers/${teacherId}`, {
       method: "DELETE",
-      headers: auth,
+      headers: adminHeaders(auth),
     });
     expect(deleteTeacher.status).toBe(409);
     await env.DB.prepare("DELETE FROM catalog_requests WHERE id=?")
@@ -747,7 +724,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
     const auth = await login();
     const response = await SELF.fetch(`${origin}/api/admin/teachers/${teacherId}`, {
       method: "DELETE",
-      headers: auth,
+      headers: adminHeaders(auth),
     });
     expect(response.status).toBe(409);
     expect(
@@ -900,7 +877,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       (
         await SELF.fetch(`${origin}/api/admin/import/preview`, {
           method: "POST",
-          headers: auth,
+          headers: adminHeaders(auth),
           body: JSON.stringify(payload),
         })
       ).status,
@@ -909,7 +886,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       (
         await SELF.fetch(`${origin}/api/admin/import`, {
           method: "POST",
-          headers: auth,
+          headers: adminHeaders(auth),
           body: JSON.stringify(payload),
         })
       ).status,
@@ -925,7 +902,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     const auth = await login();
     const direct = await SELF.fetch(`${origin}/api/admin/offerings`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         courseId: 1,
         term: "   ",
@@ -942,7 +919,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     const newCode = unique("ATOMIC-NEW");
     const created = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         code: newCode,
         name: `${newCode} 课程`,
@@ -966,7 +943,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       .run();
     const edited = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id: courseId,
         code: editCode,
@@ -1013,7 +990,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     ]);
     const response = await SELF.fetch(`${origin}/api/admin/courses`, {
       method: "POST",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({
         id: courseId,
         code,
@@ -1045,7 +1022,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
     const id = 900000 + uniqueSequence++;
     const response = await SELF.fetch(`${origin}/api/admin/reviews/${id}`, {
       method: "PATCH",
-      headers: auth,
+      headers: adminHeaders(auth),
       body: JSON.stringify({ status: "approved" }),
     });
     expect(response.status).toBe(404);
@@ -1069,7 +1046,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       ["approved", "rejected", "approved"].map((status) =>
         SELF.fetch(`${origin}/api/admin/reviews/${id}`, {
           method: "PATCH",
-          headers: auth,
+          headers: adminHeaders(auth),
           body: JSON.stringify({
             status,
             note: status === "rejected" ? "并发驳回" : "并发通过",
@@ -1127,12 +1104,12 @@ describe("backend regression fixes: atomic course saves and imports", () => {
       const auth = await login();
       const approved = await SELF.fetch(`${origin}/api/admin/reviews/${approvedId}`, {
         method: "PATCH",
-        headers: auth,
+        headers: adminHeaders(auth),
         body: JSON.stringify({ status: "approved", note: "公开" }),
       });
       const rejected = await SELF.fetch(`${origin}/api/admin/reviews/${rejectedId}`, {
         method: "PATCH",
-        headers: auth,
+        headers: adminHeaders(auth),
         body: JSON.stringify({ status: "rejected", note: "不公开" }),
       });
       expect([approved.status, rejected.status]).toEqual([200, 200]);

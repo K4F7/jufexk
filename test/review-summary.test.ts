@@ -17,6 +17,7 @@ import {
   ordinaryWriteSession,
   type OrdinaryWriteSession,
 } from "./ordinary-write-session";
+import { adminAuth } from "./admin-session";
 import { V3_OFFLINE_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
@@ -442,32 +443,16 @@ describe("summary recompute triggers", () => {
     expect(first.outcome).toBe("updated");
 
     const pendingId = await seedReview(courseId, "一条待审评价", "pending");
-    const loginResponse = await SELF.fetch(`${origin}/api/admin/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: origin,
-        "CF-Connecting-IP": "198.51.100.77",
-      },
-      body: JSON.stringify({ password: "test-password" }),
-    });
-    expect(loginResponse.status).toBe(200);
-    const { csrfToken } = await loginResponse.json<{ csrfToken: string }>();
-    const cookie = (
-      loginResponse.headers as Headers & { getSetCookie(): string[] }
-    )
-      .getSetCookie()
-      .map((value) => value.split(";", 1)[0])
-      .join("; ");
+    const auth = await adminAuth();
 
     const response = await app.fetch(
       new Request(`${origin}/api/admin/reviews/${pendingId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Cookie: cookie,
+          Cookie: auth.cookie,
           Origin: origin,
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": auth.csrf,
         },
         body: JSON.stringify({ status: "rejected", note: "测试驳回" }),
       }),

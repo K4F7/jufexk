@@ -22,7 +22,7 @@ export function AdminHubPage() {
       <section>
         <AdminPageHeader
           title="管理后台"
-          description="全站 Banner 与公告栏在这里维护；屏蔽点评、查询作者、课程设置管理员公告嵌在课程详情页上。"
+          description="全站 Banner、公告栏与管理员学号在这里维护；屏蔽点评、查询作者、课程设置管理员公告嵌在课程详情页上。"
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <Card>
@@ -46,6 +46,18 @@ export function AdminHubPage() {
               </Card.Title>
               <Card.Description>
                 公开公告列表；管理员可发布、编辑、删除。
+              </Card.Description>
+            </Card.Header>
+          </Card>
+          <Card>
+            <Card.Header>
+              <Card.Title>
+                <RouterAriaLink className="text-accent" to="/admin/admins">
+                  管理员学号
+                </RouterAriaLink>
+              </Card.Title>
+              <Card.Description>
+                手动绑定一位或多位校园登录学号；对方登录后即可进入管理分区。
               </Card.Description>
             </Card.Header>
           </Card>

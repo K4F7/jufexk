@@ -8,19 +8,18 @@ import {
   type ReactNode,
 } from "react";
 import { api, setAdminCsrfToken } from "../lib/api";
+import { useViewer } from "./useViewer";
 
 /**
- * 管理员会话状态（与普通用户 ViewerProvider 完全分离）。
- * 口令登录拿 HttpOnly jufexk_admin Cookie + CSRF；CSRF 只存内存，
- * 由 api() 按 /api/admin/* 路径单独携带，不碰普通用户令牌。
+ * 管理员会话状态（与普通用户 ViewerProvider 分离）。
+ * 已绑定学号的校园登录访问 /api/admin/session 时签发独立 admin cookie；
+ * CSRF 只存内存，由 api() 按 /api/admin/* 路径单独携带。
  */
 type AdminSessionContextValue = {
   /** 管理员会话有效（已登录且未过期）。 */
   authed: boolean;
   /** 首次会话探测完成。 */
   ready: boolean;
-  /** 口令登录；失败抛 ApiError（message 可直接展示）。 */
-  login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -30,6 +29,7 @@ const AdminSessionContext = createContext<AdminSessionContextValue | null>(
 );
 
 export function AdminSessionProvider({ children }: { children: ReactNode }) {
+  const { viewer, ready: viewerReady } = useViewer();
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -46,16 +46,6 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async (password: string) => {
-    const d = await api<{ csrfToken: string }>("/api/admin/login", {
-      method: "POST",
-      body: JSON.stringify({ password }),
-    });
-    setAdminCsrfToken(d.csrfToken);
-    setAuthed(true);
-    setReady(true);
-  }, []);
-
   const logout = useCallback(async () => {
     try {
       await api("/api/admin/logout", { method: "POST", body: "{}" });
@@ -66,12 +56,13 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!viewerReady) return;
     void refresh();
-  }, [refresh]);
+  }, [refresh, viewer.authenticated, viewerReady]);
 
   const value = useMemo<AdminSessionContextValue>(
-    () => ({ authed, ready, login, logout, refresh }),
-    [authed, ready, login, logout, refresh],
+    () => ({ authed, ready, logout, refresh }),
+    [authed, ready, logout, refresh],
   );
 
   return (

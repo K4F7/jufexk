@@ -8,7 +8,8 @@
 
 ```powershell
 $env:JUFEXK_BASE_URL = 'https://courses.sein.moe'
-$env:JUFEXK_ADMIN_PASSWORD = '...' # 或 $env:ADMIN_PASSWORD
+$env:JUFEXK_ADMIN_COOKIE = 'jufexk_admin=...; jufexk_csrf=...'
+$env:JUFEXK_ADMIN_CSRF = '...' # 与 cookie 中的 CSRF 一致；用已绑定学号登录 /admin 后复制
 $env:JUFEXK_BACKUP_PATH = 'D:\19016\Documents\Workload\jufexk-production-inputs\backups\issue365-relations-<UTC_TIMESTAMP>.sql'
 pnpm run catalog-relations:v10
 # 已写入后不要再 --apply

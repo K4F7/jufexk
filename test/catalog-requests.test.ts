@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 import { hmacHex } from "../src/ordinary-user-session";
 import {
   CURRENT_SCORES,
@@ -17,7 +18,6 @@ import {
 
 const origin = "https://example.com";
 let ipSequence = 60;
-let loginSequence = 60;
 let writeSession: OrdinaryWriteSession | undefined;
 
 async function publicPost(path: string, body: Record<string, unknown>) {
@@ -32,28 +32,6 @@ async function publicPost(path: string, body: Record<string, unknown>) {
   });
 }
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.18.1.${loginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  const body = await response.json<{ csrfToken: string }>();
-  const cookie = (response.headers as Headers & { getSetCookie(): string[] })
-    .getSetCookie()
-    .map((value) => value.split(";", 1)[0])
-    .join("; ");
-  return {
-    "Content-Type": "application/json",
-    Cookie: cookie,
-    Origin: origin,
-    "X-CSRF-Token": body.csrfToken,
-  };
-}
 
 describe("catalog addition requests", () => {
   it("accepts a course request and keeps it out of the public catalog", async () => {
@@ -95,7 +73,7 @@ describe("catalog addition requests", () => {
       `INSERT INTO catalog_requests(kind,course_code,course_name,category,teacher_name,teacher_source_label,status,submitter_hash)
        VALUES('course','REQ-HOMEROOM-DB','班会','general','班会教师','班会教师','pending','test')`,
     ).run();
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const approval = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${Number(malformed.meta.last_row_id)}`,
       { method: "PATCH", headers, body: JSON.stringify({ status: "approved" }) },
@@ -133,7 +111,7 @@ describe("catalog addition requests", () => {
         '{"overall":5,"comment":"恶意附带评价","term":""}','pending','test')`,
     ).run();
     const id = Number(malformed.meta.last_row_id);
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const approval = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${id}`,
       {
@@ -170,7 +148,7 @@ describe("catalog addition requests", () => {
         '测试学院','{"overall":5,"comment":"不能半完成"}','pending','test')`,
     ).run();
     const id = Number(malformed.meta.last_row_id);
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const approval = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${id}`,
       {
@@ -221,7 +199,7 @@ describe("catalog addition requests", () => {
       teacherSourceLabel: "待审教师",
       department: "测试学院",
     });
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const response = await SELF.fetch(
       `${origin}/api/admin/catalog-requests?status=pending`,
       { headers },
@@ -258,7 +236,7 @@ describe("catalog addition requests", () => {
     });
     const { id } = await submitted.json<{ id: number }>();
 
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const approval = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${id}`,
       {
@@ -409,7 +387,7 @@ describe("catalog addition requests", () => {
     });
     const { id } = await submitted.json<{ id: number }>();
 
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const rejection = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${id}`,
       {
@@ -435,7 +413,7 @@ describe("catalog addition requests", () => {
       department: "测试学院",
     });
     const { id } = await submitted.json<{ id: number }>();
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const note = "无法确认目录归属";
     const rejection = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${id}`,
@@ -467,7 +445,7 @@ describe("catalog addition requests", () => {
       teacherSourceLabel: "有批准事件的教师",
     });
     const { id } = await submitted.json<{ id: number }>();
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const note = "目录信息已核对";
     const approval = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${id}`,
@@ -503,7 +481,7 @@ describe("catalog addition requests", () => {
     });
     const { id } = await submitted.json<{ id: number }>();
 
-    const headers = await login();
+    const headers = adminHeaders(await login());
     await SELF.fetch(`${origin}/api/admin/catalog-requests/${id}`, {
       method: "PATCH",
       headers,
@@ -525,7 +503,7 @@ describe("catalog addition requests", () => {
       department: "测试学院",
     });
     const { id } = await submitted.json<{ id: number }>();
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const first = await SELF.fetch(
       `${origin}/api/admin/catalog-requests/${id}`,
       {
@@ -560,7 +538,7 @@ describe("catalog addition requests", () => {
       },
     });
     const { id } = await submitted.json<{ id: number }>();
-    const headers = await login();
+    const headers = adminHeaders(await login());
     const statuses = await Promise.all(
       ["第一次", "第二次"].map((note) =>
         SELF.fetch(`${origin}/api/admin/catalog-requests/${id}`, {

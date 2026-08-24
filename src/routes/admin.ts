@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "../app-env";
+import type { AppContext } from "./types";
 import { isExcludedCourseName } from "../lib/course-catalog-policy";
 import {
   andSearchTerms,
@@ -18,6 +19,19 @@ import {
   REVIEW_NOTE_HTML_MAX_LENGTH,
   sanitizeReviewNoteValue,
 } from "../lib/review-note-html";
+import {
+  addAdminStudentBindings,
+  casSubjectHash,
+  casSubjectIsAdminBound,
+  deleteAdminStudentBinding,
+  listAdminStudentBindings,
+  loadUserCasSubject,
+  parseBindingUsernames,
+} from "../admin-student-bindings";
+import {
+  canOrdinaryUserWrite,
+  resolveOrdinaryUser,
+} from "../ordinary-user-session";
 import { readSecret } from "../secrets";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
 import { loadSiteBanner, sanitizeSiteBanner } from "../site-banner";
@@ -38,13 +52,12 @@ import {
   parseStashedReview,
   parseTagCsv,
   rating,
-  takeRateLimit,
   token,
 } from "./support";
 import {
   adminCourseNoticeSchema,
   adminCourseSchema,
-  adminLoginSchema,
+  adminStudentBindingsSchema,
   adminOfferingSchema,
   adminTeacherSchema,
   adminUserBlockSchema,
@@ -70,33 +83,22 @@ type CatalogRequestRow = {
   author_user_id: string | null;
 };
 
-// Admin password sessions are separate from ordinary-user campus JWT.
-adminRoutes.post("/api/admin/login", async (c) => {
-  if (!originOk(c)) return fail(c, "来源校验失败", 403);
-  const ipHash = await keyedDigest(
+async function clientIpHash(c: AppContext) {
+  return keyedDigest(
     c.req.header("CF-Connecting-IP") || "unknown",
     await readSecret(c.env.IP_HASH_SECRET),
   );
-  if (!(await takeRateLimit(c.env.DB, `admin-login:${ipHash}`, 900, 8)))
-    return fail(c, "登录尝试过多，请稍后再试", 429);
-  const parsedBody = adminLoginSchema.safeParse(await c.req.json<unknown>());
-  if (!parsedBody.success) return fail(c, "口令错误", 401);
-  const b = parsedBody.data;
-  const adminPassword = await readSecret(c.env.ADMIN_PASSWORD);
-  const ok = !!adminPassword && b.password === adminPassword;
-  await c.env.DB.prepare(
-    "INSERT INTO admin_login_attempts(ip_hash,success) VALUES(?,?)",
-  )
-    .bind(ipHash, ok ? 1 : 0)
-    .run();
-  if (!ok) return fail(c, "口令错误", 401);
-  const raw = token(),
-    sessionId = token().slice(0, 32),
-    csrf = token();
+}
+
+async function issueAdminSession(c: AppContext, ipHash: string) {
+  const raw = token();
+  const sessionId = token().slice(0, 32);
+  const csrf = token();
+  const tokenHash = await digest(raw);
   await c.env.DB.prepare(
     `INSERT INTO admin_sessions(token_hash,csrf_token,ip_hash,expires_at,session_id) VALUES(?,?,?,datetime('now','+24 hours'),?)`,
   )
-    .bind(await digest(raw), csrf, ipHash, sessionId)
+    .bind(tokenHash, csrf, ipHash, sessionId)
     .run();
   setCookie(c, "jufexk_admin", raw, {
     httpOnly: true,
@@ -112,29 +114,52 @@ adminRoutes.post("/api/admin/login", async (c) => {
     path: "/",
     maxAge: 86400,
   });
-  return c.json({ ok: true, kind: "admin", csrfToken: csrf });
-});
+  c.set("adminSession", tokenHash);
+  c.set("adminSessionId", sessionId);
+  c.set("adminCsrf", csrf);
+  c.set("adminSource", "student");
+  return csrf;
+}
+
+async function tryElevateStudentAdmin(c: AppContext) {
+  const user = await resolveOrdinaryUser(c);
+  if (!user || !canOrdinaryUserWrite(user)) return false;
+  const subject = await loadUserCasSubject(c.env.DB, user.id);
+  if (!subject || !(await casSubjectIsAdminBound(c.env.DB, subject))) {
+    return false;
+  }
+  await issueAdminSession(c, await clientIpHash(c));
+  return true;
+}
+
+// Admin access is an allowlisted CAS student identity, not a shared password.
 adminRoutes.use("/api/admin/*", async (c, next) => {
   const raw = getCookie(c, "jufexk_admin");
-  if (!raw) return fail(c, "请先登录管理员后台", 401);
-  const session = await c.env.DB.prepare(
-    `SELECT token_hash,session_id,csrf_token FROM admin_sessions WHERE token_hash=? AND revoked_at IS NULL AND expires_at>CURRENT_TIMESTAMP`,
-  )
-    .bind(await digest(raw))
-    .first<{ token_hash: string; session_id: string; csrf_token: string }>();
-  if (!session) return fail(c, "会话已失效，请重新登录", 401);
-  c.set("adminSession", session.token_hash);
-  c.set("adminSessionId", session.session_id);
-  c.set("adminCsrf", session.csrf_token);
-  if (
-    c.req.method !== "GET" &&
-    (!originOk(c) || !csrfOk(c, session.csrf_token))
-  )
+  if (raw) {
+    const session = await c.env.DB.prepare(
+      `SELECT token_hash,session_id,csrf_token FROM admin_sessions WHERE token_hash=? AND revoked_at IS NULL AND expires_at>CURRENT_TIMESTAMP`,
+    )
+      .bind(await digest(raw))
+      .first<{ token_hash: string; session_id: string; csrf_token: string }>();
+    if (!session) return fail(c, "会话已失效，请重新登录", 401);
+    c.set("adminSession", session.token_hash);
+    c.set("adminSessionId", session.session_id);
+    c.set("adminCsrf", session.csrf_token);
+  } else if (!(await tryElevateStudentAdmin(c))) {
+    return fail(c, "请先用已绑定的学号登录", 401);
+  }
+  const csrf = c.get("adminCsrf");
+  if (c.req.method !== "GET" && (!originOk(c) || !csrf || !csrfOk(c, csrf)))
     return fail(c, "安全校验失败，请刷新后重试", 403);
   await next();
 });
 adminRoutes.get("/api/admin/session", (c) =>
-  c.json({ ok: true, kind: "admin", csrfToken: c.get("adminCsrf") }),
+  c.json({
+    ok: true,
+    kind: "admin",
+    source: c.get("adminSource") || "session",
+    csrfToken: c.get("adminCsrf"),
+  }),
 );
 adminRoutes.post("/api/admin/logout", async (c) => {
   await c.env.DB.prepare(
@@ -1412,6 +1437,32 @@ adminRoutes.put("/api/admin/courses/:id/teachers", async (c) => {
       ).bind(courseId, id),
     ),
   ]);
+  return c.json({ ok: true });
+});
+adminRoutes.get("/api/admin/student-bindings", async (c) =>
+  c.json({ items: await listAdminStudentBindings(c.env.DB) }),
+);
+adminRoutes.post("/api/admin/student-bindings", async (c) => {
+  const parsedBody = adminStudentBindingsSchema.safeParse(
+    await c.req.json<unknown>(),
+  );
+  if (!parsedBody.success) return fail(c, "学号格式不正确");
+  const parsed = parseBindingUsernames(parsedBody.data);
+  if (!parsed.ok) return fail(c, parsed.error);
+  const identitySecret = await readSecret(c.env.CAMPUS_IDENTITY_SECRET);
+  if (!identitySecret) return fail(c, "身份密钥未配置", 503);
+  const hashes = await Promise.all(
+    parsed.usernames.map((username) => casSubjectHash(username, identitySecret)),
+  );
+  const result = await addAdminStudentBindings(c.env.DB, hashes);
+  return c.json({ ok: true, added: result.added, skipped: result.skipped });
+});
+adminRoutes.delete("/api/admin/student-bindings/:id", async (c) => {
+  const id = integer(c.req.param("id"));
+  if (!id) return fail(c, "绑定不存在", 404);
+  if (!(await deleteAdminStudentBinding(c.env.DB, id))) {
+    return fail(c, "绑定不存在", 404);
+  }
   return c.json({ ok: true });
 });
 adminRoutes.route("/", announcementRoutes);

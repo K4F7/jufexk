@@ -37,7 +37,7 @@ describe("public list precompute invalidation", () => {
   });
 
   it.each([
-    ["POST", "/api/admin/login"],
+    ["POST", "/api/admin/student-bindings"],
     ["POST", "/api/admin/logout"],
     ["POST", "/api/admin/sessions/revoke-others"],
     ["PUT", "/api/reviews/42/endorsement"],

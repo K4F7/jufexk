@@ -1,40 +1,13 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
+import { adminLogin as login, adminHeaders } from "./admin-session";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
 } from "./ordinary-write-session";
 
 const origin = "https://example.com";
-let loginSequence = 10;
 
-async function login() {
-  const response = await SELF.fetch(`${origin}/api/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      "CF-Connecting-IP": `198.51.100.${loginSequence++}`,
-    },
-    body: JSON.stringify({ password: "test-password" }),
-  });
-  expect(response.status).toBe(200);
-  const body = await response.json<{ csrfToken: string }>();
-  const setCookies = (
-    response.headers as Headers & { getSetCookie(): string[] }
-  ).getSetCookie();
-  const cookie = setCookies.map((value) => value.split(";", 1)[0]).join("; ");
-  return { cookie, csrf: body.csrfToken };
-}
-
-function adminHeaders(auth: { cookie: string; csrf: string }) {
-  return {
-    "Content-Type": "application/json",
-    Cookie: auth.cookie,
-    Origin: origin,
-    "X-CSRF-Token": auth.csrf,
-  };
-}
 
 describe("admin sessions and catalog", () => {
   it("rejects creating or renaming a course to 班会", async () => {
@@ -123,24 +96,6 @@ describe("admin sessions and catalog", () => {
       organization: null,
     });
     await env.DB.prepare("DELETE FROM reviews WHERE id=?").bind(id).run();
-  });
-
-  it("atomically caps concurrent login attempts", async () => {
-    const statuses = await Promise.all(
-      Array.from({ length: 12 }, () =>
-        SELF.fetch(`${origin}/api/admin/login`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Origin: origin,
-            "CF-Connecting-IP": "198.51.100.99",
-          },
-          body: JSON.stringify({ password: "wrong-password" }),
-        }).then((response) => response.status),
-      ),
-    );
-    expect(statuses.filter((status) => status === 401)).toHaveLength(8);
-    expect(statuses.filter((status) => status === 429)).toHaveLength(4);
   });
 
   it("lists safe session metadata and revokes other sessions", async () => {

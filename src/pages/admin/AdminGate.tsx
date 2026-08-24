@@ -1,28 +1,20 @@
-import {
-  Alert,
-  Button,
-  Form,
-  Input,
-  Label,
-  TextField,
-  Typography,
-} from "@heroui/react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { Button, Typography, buttonVariants } from "@heroui/react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
+import { RouterAriaLink } from "../../components/RouterAriaLink";
 import { useAdminSession } from "../../hooks/useAdminSession";
+import { useViewer } from "../../hooks/useViewer";
 
 /**
- * 管理员分区门禁：未登录时只渲染口令登录表单。
- * 管理员会话与普通用户会话完全分离；校园 JWT 不能进入这里。
+ * 管理员分区门禁：已绑定学号的校园登录会在探测 /api/admin/session 时
+ * 自动提升为管理员会话。不再接受 Cloudflare 共享口令。
  */
 export function AdminGate({ children }: { children: ReactNode }) {
-  const { authed, ready, login } = useAdminSession();
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const { authed, ready } = useAdminSession();
+  const { viewer, ready: viewerReady } = useViewer();
 
-  if (!ready) {
+  if (!ready || !viewerReady) {
     return (
       <section className="mx-auto max-w-[480px]">
         <DetailLoadingStatus label="检查管理员会话…" />
@@ -31,54 +23,24 @@ export function AdminGate({ children }: { children: ReactNode }) {
   }
 
   if (!authed) {
-    const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      setError("");
-      setPending(true);
-      try {
-        await login(password);
-        setPassword("");
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setPending(false);
-      }
-    };
     return (
       <section className="mx-auto max-w-[480px]">
         <Typography className="m-0 text-[22px] font-bold" type="h1">
           管理后台
         </Typography>
         <p className="mb-4 mt-2 text-[13px] text-muted">
-          使用管理员口令登录。校园统一身份只用于普通用户投稿或认可，不能进入管理分区。
+          {viewer.authenticated
+            ? "当前校园登录未绑定为管理员。请让已有管理员在「管理员学号」中加入你的学号，然后刷新本页。"
+            : "管理分区只接受已绑定的校园统一身份学号。请先用该学号登录，再打开本页。"}
         </p>
-        <Form className="flex flex-col gap-4" onSubmit={onSubmit}>
-          <TextField
-            fullWidth
-            isRequired
-            name="password"
-            type="password"
-            value={password}
-            onChange={setPassword}
+        {viewer.authenticated ? null : (
+          <RouterAriaLink
+            className={`${buttonVariants({ variant: "primary" })} no-underline`}
+            to="/login?from=/admin"
           >
-            <Label>管理员口令</Label>
-            <Input autoComplete="current-password" />
-          </TextField>
-          <div>
-            <Button isPending={pending} type="submit" variant="primary">
-              登录
-            </Button>
-          </div>
-          {error ? (
-            <Alert role="alert" status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Title>登录失败</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
-          ) : null}
-        </Form>
+            去登录
+          </RouterAriaLink>
+        )}
       </section>
     );
   }
