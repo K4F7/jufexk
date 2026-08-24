@@ -1,8 +1,10 @@
 import { Typography } from "@heroui/react";
 import type { ReactNode } from "react";
 import {
+  CONTACT_EMAIL,
   GITHUB_ISSUES_URL,
   GITHUB_REPO_URL,
+  SITE_OFFICIAL_CHANNELS,
   SITE_RESOURCES,
 } from "../lib/site-links";
 
@@ -56,10 +58,16 @@ export function ContactPage() {
   return (
     <SiteInfoPage title="联系我们">
       <p>
-        公开联系渠道是 GitHub Issues。功能建议、缺陷报告和站点问题请在仓库开 issue，不要通过未公布的邮箱或即时通讯号联系。
+        公开联系渠道是 GitHub Issues 与邮箱。功能建议、缺陷报告和站点问题请优先在仓库开
+        issue，也可以发邮件。请不要通过未公布的即时通讯号联系。
       </p>
       <p>
         <ExternalLink href={GITHUB_ISSUES_URL}>前往 GitHub Issues</ExternalLink>
+      </p>
+      <p>
+        <a className="link" href={`mailto:${CONTACT_EMAIL}`}>
+          {CONTACT_EMAIL}
+        </a>
       </p>
     </SiteInfoPage>
   );
@@ -92,6 +100,15 @@ export function ResourcesPage() {
         ))}
       </ul>
       <p>文案、品牌与数据模型均为本站自有；参考的是交互与协议，不是复制站点内容。</p>
+      <p>学校官方频道：</p>
+      <ul>
+        {SITE_OFFICIAL_CHANNELS.map((item) => (
+          <li key={item.href}>
+            <ExternalLink href={item.href}>{item.title}</ExternalLink>
+          </li>
+        ))}
+        <li>教务处微信公众号：jxufe-jwc</li>
+      </ul>
     </SiteInfoPage>
   );
 }
