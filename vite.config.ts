@@ -11,6 +11,7 @@ export default defineConfig({
   // UI Prototype / client HMR: open this origin, proxy /api to wrangler.
   // `pnpm dev` (wrangler) serves production dist — use `pnpm prototype` for Gallery.
   server: {
+    host: "127.0.0.1",
     port: 5173,
     strictPort: true,
     // Issue worktrees copy the full repo. Watching them freezes Vite HMR (#152).
