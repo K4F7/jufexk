@@ -188,4 +188,6 @@ test("course teacher card opens the teacher page", async ({ page }) => {
     page.getByRole("heading", { name: "测试教师", exact: true, level: 1 }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /中国传统文化导论/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "评价" })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "评价列表" })).toHaveCount(0);
 });

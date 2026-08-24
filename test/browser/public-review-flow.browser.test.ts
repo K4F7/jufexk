@@ -570,7 +570,7 @@ test("scheme snapshot reviews show one dimension-average chip", async ({
   await expect(page.getByText("点名频率")).toHaveCount(0);
 });
 
-test("teacher catalog and detail keep the unified text stream", async ({
+test("teacher catalog lists teachers and detail omits the review stream", async ({
   page,
 }) => {
   await page.route("**/api/teachers**", async (route) => {
@@ -638,9 +638,14 @@ test("teacher catalog and detail keep the unified text stream", async ({
   await expect(grid.getByRole("row").nth(1)).toContainText(/21.*投/);
 
   await page.goto("/teachers/9");
-  await expect(reviewItems(page)).toHaveCount(20);
+  await expect(page.getByRole("heading", { name: "评价" })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "评价列表" })).toHaveCount(0);
+  await expect(reviewItems(page)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "课程（共 1 门）" })).toBeVisible();
+  await expect(page.getByText("公开评价")).toBeVisible();
+  await expect(page.getByText("21 条")).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "中国传统文化导论（GEN0108）" }).first(),
+    page.getByRole("link", { name: /中国传统文化导论/ }),
   ).toBeVisible();
 });
 
