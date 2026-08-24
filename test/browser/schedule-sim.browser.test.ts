@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { encodeJwxtImportPayload, JWXT_IMPORT_HASH_PREFIX } from "../../src/lib/jwxt-schedule-text";
 
 const relations = [
   {
@@ -107,4 +108,50 @@ test("search, stage, place two courses on the same slot, and keep the plan", asy
   await expect(timetable.getByText("高等数学（张三）").first()).toBeVisible();
   await expect(timetable.getByText("线性代数（李四）").first()).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("冲突");
+});
+
+test("opens the official jwxt door and imports pasted class times locally", async ({
+  page,
+}) => {
+  await mockScheduleApi(page);
+  await page.goto("/schedule");
+  await page.getByRole("button", { name: "从本科教务导入" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("link", { name: "打开本科教务" })).toHaveAttribute(
+    "href",
+    "https://jwxt.jxufe.edu.cn/jxcjcaslogin",
+  );
+  await dialog.getByPlaceholder("高等数学 张三 星期一 第1-2节").fill(
+    "高等数学 张三 星期一 第1-2节",
+  );
+  await dialog.getByRole("button", { name: "导入粘贴内容" }).click();
+  await expect(page.getByRole("status")).toContainText("已从本科教务导入");
+  await expect(page.getByLabel("已选课程").getByRole("link", { name: "高等数学（张三）" })).toBeVisible();
+  await expect(
+    page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
+  ).toBeVisible();
+});
+
+test("imports class times from the jwxt-import hash without sending cookies", async ({
+  page,
+}) => {
+  await mockScheduleApi(page);
+  const hash = `${JWXT_IMPORT_HASH_PREFIX}${encodeJwxtImportPayload({
+    v: 1,
+    rows: [
+      {
+        courseName: "高等数学",
+        courseCode: "",
+        teacherName: "张三",
+        weekText: "",
+        timeText: "星期二 第3-4节",
+      },
+    ],
+  })}`;
+  await page.goto(`/schedule#${hash}`);
+  await expect(page.getByRole("status")).toContainText("已从本科教务导入");
+  await expect(
+    page.getByRole("grid", { name: "周课表" }).getByText("高等数学（张三）").first(),
+  ).toBeVisible();
+  await expect(page).not.toHaveURL(/jwxt-import/);
 });

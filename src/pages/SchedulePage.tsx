@@ -1,6 +1,7 @@
 /**
  * 排课模拟 /schedule：从公开任课关系检索课程×教师，本机编排周课表并标冲突。
  * 不做开课班目录或教务课表镜像（Issue #486）。
+ * 本科教务导入只在学生浏览器读表，Cookie 不进本站（Issue #488）。
  */
 import {
   Alert,
@@ -15,10 +16,19 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { relationDetailHref } from "../components/CourseRelationRow";
 import { DetailErrorAlert } from "../components/DetailFeedback";
+import { JwxtScheduleImport } from "../components/JwxtScheduleImport";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { Stars } from "../components/Stars";
 import { api } from "../lib/api";
+import {
+  mergeImportedCourses,
+  stagedCoursesFromJwxtImport,
+} from "../lib/jwxt-schedule-import";
+import {
+  readJwxtImportHash,
+  type JwxtImportRow,
+} from "../lib/jwxt-schedule-text";
 import {
   conflictMessage,
   defaultWeeks,
@@ -91,18 +101,26 @@ function StagedCourseCard({
   const [weekday, setWeekday] = useState("1");
   const [startPeriod, setStartPeriod] = useState("1");
   const [endPeriod, setEndPeriod] = useState("2");
-  const href = relationDetailHref({
-    course_id: course.courseId,
-    teacher_id: course.teacherId,
-  });
+  const title = stagedCourseName(course);
+  const href =
+    course.courseId > 0
+      ? relationDetailHref({
+          course_id: course.courseId,
+          teacher_id: course.teacherId,
+        })
+      : "";
 
   return (
     <Card className="mb-3">
       <Card.Header>
         <Card.Title className="text-base">
-          <RouterAriaLink className="text-accent" to={href}>
-            {stagedCourseName(course)}
-          </RouterAriaLink>
+          {href ? (
+            <RouterAriaLink className="text-accent" to={href}>
+              {title}
+            </RouterAriaLink>
+          ) : (
+            title
+          )}
         </Card.Title>
         <Card.Description>
           {course.courseCode}
@@ -194,10 +212,44 @@ export function SchedulePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [courses, setCourses] = useState<StagedCourse[]>(() => loadSchedulePlan());
+  const [importNotice, setImportNotice] = useState("");
 
   useEffect(() => {
     saveSchedulePlan(courses);
   }, [courses]);
+
+  async function applyJwxtImport(rows: JwxtImportRow[]) {
+    const names = [...new Set(rows.map((row) => row.courseName).filter(Boolean))];
+    const relations: CourseRelation[] = [];
+    for (const name of names) {
+      try {
+        const page = await api<Paginated<CourseRelation>>(
+          `/api/courses?view=relations&q=${encodeURIComponent(name)}&page=1&pageSize=20`,
+        );
+        relations.push(...page.items);
+      } catch {
+        // 对不上公开目录时仍写入本机条目。
+      }
+    }
+    const { courses: incoming, skipped } = stagedCoursesFromJwxtImport(rows, relations);
+    if (incoming.length === 0) {
+      setImportNotice("没有解析到可排的上课时间。");
+      return;
+    }
+    setCourses((current) => mergeImportedCourses(current, incoming));
+    setImportNotice(
+      skipped
+        ? `已导入 ${incoming.length} 门课，另有 ${skipped} 行没有可识别的上课时间。`
+        : `已从本科教务导入 ${incoming.length} 门课。Cookie 没有离开你的浏览器。`,
+    );
+  }
+
+  useEffect(() => {
+    const payload = readJwxtImportHash(window.location.hash);
+    if (!payload) return;
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    void applyJwxtImport(payload.rows);
+  }, []);
 
   useEffect(() => {
     const q = submitted.trim();
@@ -291,16 +343,31 @@ export function SchedulePage() {
   return (
     <section>
       <header aria-label="排课模拟标题" className="mb-3">
-        <Typography
-          className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
-          type="h1"
-        >
-          排课模拟
-        </Typography>
-        <p className="mb-0 mt-1 text-sm text-muted">
-          从本站课程×教师目录加入后，自己填写星期与节次。计划只存在这台设备上，不是教务开课班镜像。
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <Typography
+              className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
+              type="h1"
+            >
+              排课模拟
+            </Typography>
+            <p className="mb-0 mt-1 text-sm text-muted">
+              从本站课程×教师目录加入，或从本科教务导入上课时间。计划只存在这台设备上，不是教务开课班镜像。
+            </p>
+          </div>
+          <JwxtScheduleImport onImport={(rows) => void applyJwxtImport(rows)} />
+        </div>
       </header>
+
+      {importNotice ? (
+        <Alert className="mb-4" role="status">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>本科教务导入</Alert.Title>
+            <Alert.Description>{importNotice}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
 
       {conflicts.length > 0 ? (
         <Alert className="mb-4" role="alert" status="danger">
