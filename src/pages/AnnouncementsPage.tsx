@@ -55,9 +55,6 @@ export function AnnouncementsPage() {
           </Button>
         ) : null}
       </div>
-      <p className="mb-0 mt-1 text-[13px] text-muted">
-        站点运营公告；普通用户只读。
-      </p>
 
       {actionError ? (
         <div className="mt-4">
@@ -96,7 +93,7 @@ export function AnnouncementsPage() {
                   ? ` · 更新于 ${formatReviewDate(a.updated_at)}`
                   : ""}
               </p>
-              {isAdmin ? (
+              {adminReady && isAdmin ? (
                 <div className="mt-3 flex gap-2">
                   <Button
                     size="sm"

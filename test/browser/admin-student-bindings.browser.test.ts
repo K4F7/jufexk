@@ -77,7 +77,8 @@ test("guest /admin has no password form and links to campus login", async ({
   });
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "管理后台" })).toBeVisible();
-  await expect(page.getByText("第一个校园登录打开本页的人会成为首位管理员")).toBeVisible();
+  await expect(page.getByText("当前身份不是管理员。")).toBeVisible();
+  await expect(page.getByText("第一个校园登录打开本页的人会成为首位管理员")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "去登录" })).toHaveAttribute(
     "href",
     "/login?from=/admin",
@@ -93,9 +94,7 @@ test("unbound campus session cannot open the admin hub", async ({ page }) => {
     bindCalls: [],
   });
   await page.goto("/admin");
-  await expect(
-    page.getByText("当前校园登录未绑定为管理员"),
-  ).toBeVisible();
+  await expect(page.getByText("当前身份不是管理员。")).toBeVisible();
   await expect(page.getByRole("link", { name: "去登录" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "管理员学号" })).toHaveCount(0);
 });

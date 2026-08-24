@@ -1,6 +1,16 @@
 /** Public GitHub surfaces used by the footer and site-info pages. */
 export const GITHUB_REPO_URL = "https://github.com/K4F7/jufexk";
 export const GITHUB_ISSUES_URL = "https://github.com/K4F7/jufexk/issues";
+export const CONTACT_EMAIL = "nonsein@foxmail.com";
+
+/** Official JUFE channels listed after the attribution block on /resources. */
+export const SITE_OFFICIAL_CHANNELS = [
+  { href: "https://www.jxufe.edu.cn/", title: "学校官网" },
+  { href: "https://jwc.jxufe.edu.cn/", title: "教务处" },
+  { href: "http://xk.jxufe.edu.cn/", title: "选课平台" },
+  { href: "http://ehall.jxufe.edu.cn/", title: "智慧江财" },
+  { href: "https://jwxt.jxufe.edu.cn/jxcjcaslogin", title: "本科教务" },
+] as const;
 
 export const SITE_RESOURCES = [
   {
