@@ -1,5 +1,7 @@
 # 普通用户通过校学生邮箱验证接入，游客只读
 
+_2026-08-24：#483 从 Worker 配置淘汰 AuthBridge / 校园 JWT / 邮件投递变量。`POST /api/auth/callback` 仍固定 503；生产不再绑定 `MAIL_*`。_
+
 _2026-08-24：#480 退役共享 `ADMIN_PASSWORD`。管理员改为手动绑定校园统一身份学号（HMAC 与 CAS `auth_identities.subject` 相同）；已绑定用户校园登录后签发独立 `admin_sessions`。明文学号不落库。口令登录、Cloudflare Secrets Store 中的 `ADMIN_PASSWORD` 不再授权管理分区。_
 
 _2026-08-24：#460 为“我的任课评价被认可”通知新增 `reviews.author_user_id` 内部作者关联；公开评价仍匿名，公开 API 永不返回该字段或认可者身份。进入 `pending_deletion` 不删除任课评价或作者关联；将来若实现最终删除，须在 finalize 前匿名化作者关联。_
