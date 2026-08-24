@@ -218,10 +218,10 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(
     page.getByRole("radio", { name: "选择官方头像 3" }),
   ).toHaveCount(0);
-  const profileCard = page.getByRole("article");
-  await expect(profileCard.getByText("点评")).toBeVisible();
+  const profileCard = page.getByRole("article", { name: "匿名用户#000001" });
+  await expect(profileCard.getByText("点评", { exact: true })).toBeVisible();
   await expect(profileCard.getByText("2 门", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("关注")).toBeVisible();
+  await expect(profileCard.getByText("关注", { exact: true })).toBeVisible();
   await expect(profileCard.getByText("1 门", { exact: true })).toBeVisible();
   await expect(
     page.getByText("公开编号只用于识别作者，不是学号或内部身份。"),
@@ -243,7 +243,7 @@ test("profile page degrades gracefully when the API is missing", async ({
     page.getByRole("heading", { name: "我的主页" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("article").getByText("— 门", { exact: true }).first(),
+    page.getByRole("article", { name: "我的主页" }).getByText("— 门", { exact: true }).first(),
   ).toBeVisible();
 });
 
