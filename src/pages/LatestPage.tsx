@@ -4,11 +4,7 @@
  */
 import { Button, Card, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
-import {
-  ReviewAuthor,
-  ReviewAuthorAvatar,
-  ReviewAuthorHandle,
-} from "../components/ReviewAuthor";
+import { ReviewAuthor } from "../components/ReviewAuthor";
 import { DetailErrorAlert } from "../components/DetailFeedback";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
@@ -191,28 +187,23 @@ function LatestReviewItem({
 
   if (isMobileLayout) {
     return (
-      <article className="border-b border-separator py-4 last:border-b-0">
-        <header className="flex items-baseline justify-between gap-3">
-          <ReviewAuthorHandle
-            publicCode={review.author_public_code}
-            className="text-[calc(13/15*1rem)] font-medium text-accent no-underline"
-          />
-          {date ? (
-            <time
-              className="shrink-0 text-[calc(12/15*1rem)] text-muted"
-              dateTime={date}
-            >
-              {date}
-            </time>
-          ) : null}
-        </header>
-        <div className="mt-1.5 flex gap-3">
-          <span className="mt-0.5">
-            <ReviewAuthorAvatar
-              publicCode={review.author_public_code}
-              avatarKey={review.author_avatar_key}
-            />
-          </span>
+      <article className="flex gap-3 border-b border-separator py-4 last:border-b-0">
+        <ReviewAuthor
+          publicCode={review.author_public_code}
+          avatarKey={review.author_avatar_key}
+          layout="responsive"
+        />
+        <div className="min-w-0 flex-1">
+          <header className="flex min-h-5 items-baseline justify-end">
+            {date ? (
+              <time
+                className="shrink-0 text-[calc(12/15*1rem)] text-muted"
+                dateTime={date}
+              >
+                {date}
+              </time>
+            ) : null}
+          </header>
           {reviewDetails}
         </div>
       </article>
@@ -225,6 +216,7 @@ function LatestReviewItem({
         <ReviewAuthor
           publicCode={review.author_public_code}
           avatarKey={review.author_avatar_key}
+          layout="responsive"
         />
       </span>
       {reviewDetails}
