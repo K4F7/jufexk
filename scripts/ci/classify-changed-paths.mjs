@@ -20,15 +20,7 @@ export function isSkipWebPath(file) {
 }
 
 export function classifyChangedPaths(files) {
-  if (files.length === 0) {
-    return { web: true };
-  }
-
-  let web = false;
-  for (const file of files) {
-    if (!isSkipWebPath(file)) web = true;
-  }
-  return { web };
+  return { web: files.length === 0 || files.some((file) => !isSkipWebPath(file)) };
 }
 
 function readPathLines(text) {
