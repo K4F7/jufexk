@@ -65,12 +65,14 @@ import {
 import {
   getCourseRelationSummaries,
   publicReviewBindingSql,
+  reviewNotDeletedBindingSql,
 } from "../review-summary";
 import { readSecret } from "../secrets";
 import { loadSiteBanner } from "../site-banner";
 import {
   clean,
   fail,
+  hasValidAdminSession,
   integer,
   pageArgs,
   parseTagCsv,
@@ -219,9 +221,13 @@ const getPublicReviewPage = async (
   viewerUserId: string | null = null,
   teacherId: number | null = null,
   query: PublicReviewQuery | null = null,
+  includeBlocked = false,
 ) => {
   const cursorSource = cursor && "source" in cursor ? cursor.source : -1;
   const cursorKey = cursor && "key" in cursor ? cursor.key : "";
+  const reviewBinding = includeBlocked
+    ? reviewNotDeletedBindingSql
+    : publicReviewBinding;
   /** 课程页评价按 课程×教师 作用域展示：选定教师时追加逐分支过滤。 */
   const teacherFilter = (alias: string) =>
     teacherId ? ` AND ${alias}.teacher_id=?` : "";
@@ -276,7 +282,7 @@ const getPublicReviewPage = async (
          headline,grade,
          course_name,course_code,teacher_name,endorsement_count,
          scheme_key,scheme_version,scores,overall,term,created_at,
-         author_public_code,author_avatar_key,
+         author_public_code,author_avatar_key,blocked_at,
          COUNT(*) OVER() filtered_total
        FROM (
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
@@ -286,7 +292,7 @@ const getPublicReviewPage = async (
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
            NULL overall,NULL term,phr.imported_at created_at,
-           ${reservedAuthorSql}
+           ${reservedAuthorSql}, NULL blocked_at
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
          JOIN teachers t ON t.id=phr.teacher_id
@@ -299,7 +305,7 @@ const getPublicReviewPage = async (
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
            NULL overall,NULLIF(trim(COALESCE(lr.term,'')),'') term,lr.created_at,
-           ${reservedAuthorSql}
+           ${reservedAuthorSql}, NULL blocked_at
          FROM legacy_reviews lr
          JOIN courses c ON c.id=lr.course_id
          JOIN teachers t ON t.id=lr.teacher_id
@@ -313,13 +319,13 @@ const getPublicReviewPage = async (
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
            r.scheme_key,r.scheme_version,r.scores,
            r.overall,NULLIF(trim(COALESCE(r.term,'')),'') term,r.created_at,
-           ${authoredReviewAuthorSql}
+           ${authoredReviewAuthorSql}, r.blocked_at
          FROM reviews r
          JOIN courses c ON c.id=r.course_id
          JOIN teachers t ON t.id=r.teacher_id
          ${authoredReviewJoinSql}
          WHERE r.${subject}=? AND r.status='approved'
-           AND trim(COALESCE(r.comment,''))<>''${publicReviewBinding}${teacherFilter("r")}
+           AND trim(COALESCE(r.comment,''))<>''${reviewBinding}${teacherFilter("r")}
        ) public_reviews
        ${pageSql}`,
     )
@@ -365,6 +371,7 @@ const getPublicReviewPage = async (
           scores,
           filtered_total: _filteredTotal,
           grade: rawGrade,
+          blocked_at: blockedAt,
           ...review
         }) => {
           const dimensionAverage = publicDimensionAverage({
@@ -388,6 +395,7 @@ const getPublicReviewPage = async (
             ...publicAuthorFields(review),
             ...(dimensionAverage == null ? {} : { dimensionAverage }),
             ...(dimensionLabels == null ? {} : { dimensionLabels }),
+            ...(includeBlocked && blockedAt ? { blocked: true } : {}),
           };
         },
       ),
@@ -441,6 +449,7 @@ const getPublicReviewPageFor = async (
     await publicReviewViewerId(c),
     teacherId,
     query,
+    await hasValidAdminSession(c),
   );
 publicCatalogRoutes.get("/api/config", async (c) => {
   const turnstileSecret = await readSecret(c.env.TURNSTILE_SECRET);

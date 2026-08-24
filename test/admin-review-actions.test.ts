@@ -9,6 +9,7 @@ import {
   ordinaryWriteSession,
   setOrdinaryUserStatus,
 } from "./ordinary-write-session";
+import { formatPublicCode } from "../src/public-handle";
 import { adminAuth, adminHeaders } from "./admin-session";
 
 const origin = "https://example.com";
@@ -63,6 +64,25 @@ async function publicReviewText() {
   const response = await SELF.fetch(`${origin}/api/courses/1/reviews`);
   expect(response.status).toBe(200);
   return response.text();
+}
+
+type CourseReviewItem = {
+  id: string;
+  comment: string;
+  blocked?: boolean;
+  endorsable?: boolean;
+};
+
+async function courseReviewPage(headers?: HeadersInit) {
+  const response = await SELF.fetch(`${origin}/api/courses/1/reviews`, {
+    headers,
+  });
+  expect(response.status).toBe(200);
+  return response.json<{ items: CourseReviewItem[]; total?: number }>();
+}
+
+function reviewByComment(items: CourseReviewItem[], comment: string) {
+  return items.find((item) => item.comment === comment);
 }
 
 describe("admin review actions", () => {
@@ -165,6 +185,165 @@ describe("admin review actions", () => {
       "deleted",
     ]);
     expect(events.every((event) => Boolean(event.actor_session_id))).toBe(true);
+  });
+
+  it("keeps blocked reviews on course and teacher lists for admin sessions only", async () => {
+    const writer = await ordinaryWriteSession("admin-blocked-list-writer");
+    const stableUserId = await setOrdinaryUserStatus(writer.userId, "active");
+    const comment = "管理员会话仍可见已屏蔽点评";
+    const submitted = await SELF.fetch(`${origin}/api/reviews`, {
+      method: "POST",
+      headers: ordinaryWriteHeaders(writer, {
+        "CF-Connecting-IP": "203.0.113.40",
+      }),
+      body: JSON.stringify({
+        courseId: 1,
+        teacherId: 1,
+        overall: 4,
+        scores: V3_OFFLINE_SCORES,
+        headline: "屏蔽后管理员仍可见",
+        comment,
+      }),
+    });
+    expect(submitted.status).toBe(200);
+    const review = await env.DB.prepare(
+      "SELECT id FROM reviews WHERE comment=?",
+    )
+      .bind(comment)
+      .first<{ id: number }>();
+    const reviewId = review!.id;
+    const publicCode = (
+      await env.DB.prepare("SELECT public_code FROM users WHERE id=?").bind(
+        stableUserId,
+      ).first<{ public_code: number }>()
+    )?.public_code;
+    expect(publicCode).toEqual(expect.any(Number));
+
+    await refreshPublicListPrecomputes(env.DB);
+    const visibleCount = await env.DB.prepare(
+      "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",
+    ).first<{ review_count: number }>();
+
+    const auth = await login();
+    expect((await adminAction(auth, reviewId, "block")).status).toBe(200);
+
+    const publicPage = await courseReviewPage();
+    expect(reviewByComment(publicPage.items, comment)).toBeUndefined();
+    expect(JSON.stringify(publicPage)).not.toContain('"blocked":true');
+
+    const ordinaryPage = await courseReviewPage(ordinaryWriteHeaders(writer));
+    expect(reviewByComment(ordinaryPage.items, comment)).toBeUndefined();
+    expect(JSON.stringify(ordinaryPage)).not.toContain('"blocked":true');
+
+    const bogusPage = await courseReviewPage({
+      Cookie: "jufexk_admin=not-a-session",
+    });
+    expect(reviewByComment(bogusPage.items, comment)).toBeUndefined();
+
+    const revoked = await login();
+    await env.DB.prepare(
+      "UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE session_id=?",
+    )
+      .bind(revoked.sessionId)
+      .run();
+    expect(
+      reviewByComment(
+        (await courseReviewPage({ Cookie: revoked.cookie })).items,
+        comment,
+      ),
+    ).toBeUndefined();
+
+    const expired = await login();
+    await env.DB.prepare(
+      "UPDATE admin_sessions SET expires_at=datetime('now','-1 hours') WHERE session_id=?",
+    )
+      .bind(expired.sessionId)
+      .run();
+    expect(
+      reviewByComment(
+        (await courseReviewPage({ Cookie: expired.cookie })).items,
+        comment,
+      ),
+    ).toBeUndefined();
+
+    const adminPage = await courseReviewPage({ Cookie: auth.cookie });
+    const adminItem = reviewByComment(adminPage.items, comment);
+    expect(adminItem).toMatchObject({
+      id: `review:${reviewId}`,
+      comment,
+      blocked: true,
+      endorsable: false,
+    });
+    expect(JSON.stringify(adminPage)).not.toContain("blocked_at");
+
+    const teacherPage = await SELF.fetch(`${origin}/api/teachers/1/reviews`, {
+      headers: { Cookie: auth.cookie },
+    });
+    expect(teacherPage.status).toBe(200);
+    const teacherBody = await teacherPage.json<{ items: CourseReviewItem[] }>();
+    expect(reviewByComment(teacherBody.items, comment)).toMatchObject({
+      blocked: true,
+    });
+
+    const latest = await SELF.fetch(`${origin}/api/reviews/latest`);
+    expect(latest.status).toBe(200);
+    expect(await latest.text()).not.toContain(comment);
+
+    const latestAsAdmin = await SELF.fetch(`${origin}/api/reviews/latest`, {
+      headers: { Cookie: auth.cookie },
+    });
+    expect(await latestAsAdmin.text()).not.toContain(comment);
+
+    const profile = await SELF.fetch(
+      `${origin}/api/u/${formatPublicCode(publicCode!)}`,
+    );
+    expect(profile.status).toBe(200);
+    expect(await profile.text()).not.toContain(comment);
+
+    await refreshPublicListPrecomputes(env.DB);
+    const blockedCount = await env.DB.prepare(
+      "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",
+    ).first<{ review_count: number }>();
+    expect(blockedCount?.review_count || 0).toBe(
+      (visibleCount?.review_count || 1) - 1,
+    );
+
+    const endorser = await ordinaryWriteSession("admin-blocked-list-endorser");
+    expect(
+      (
+        await SELF.fetch(`${origin}/api/reviews/${reviewId}/endorsement`, {
+          method: "PUT",
+          headers: ordinaryWriteHeaders(endorser, {
+            "Idempotency-Key": "admin-blocked-list-endorsement",
+          }),
+        })
+      ).status,
+    ).toBe(404);
+
+    expect(await (await adminAction(auth, reviewId, "unblock")).json()).toEqual({
+      ok: true,
+      changed: true,
+    });
+    const unblockedPublic = await courseReviewPage();
+    expect(reviewByComment(unblockedPublic.items, comment)).toMatchObject({
+      comment,
+    });
+    expect(reviewByComment(unblockedPublic.items, comment)).not.toHaveProperty(
+      "blocked",
+    );
+    const unblockedAdmin = await courseReviewPage({ Cookie: auth.cookie });
+    expect(reviewByComment(unblockedAdmin.items, comment)).not.toHaveProperty(
+      "blocked",
+    );
+
+    expect(await (await adminAction(auth, reviewId, "delete")).json()).toEqual({
+      ok: true,
+      changed: true,
+    });
+    expect(
+      reviewByComment((await courseReviewPage({ Cookie: auth.cookie })).items, comment),
+    ).toBeUndefined();
+    expect(await publicReviewText()).not.toContain(comment);
   });
 
   it("emails author data without returning it in the API response and audits delivery", async () => {

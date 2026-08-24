@@ -154,7 +154,7 @@ export async function decoratePublicReviews(
     for (const row of results) endorsed.add(row.review_id);
   }
   return items.map((item) => {
-    const endorsable = isEndorsablePublicId(item.id);
+    const endorsable = isEndorsablePublicId(item.id) && item.blocked !== true;
     const reviewId = endorsable ? parseCurrentReviewId(String(item.id)) : null;
     const decorated: Record<string, unknown> = {
       ...item,
