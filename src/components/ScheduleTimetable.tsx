@@ -14,7 +14,7 @@ const COMPACT_CELL = "px-1 py-1 text-center sm:px-4 sm:text-start";
 const COMPACT_HEAD_CELL = `${COMPACT_CELL} sm:py-2.5`;
 const COMPACT_BODY_CELL = `${COMPACT_CELL} sm:py-3`;
 const COMPACT_LINK =
-  "text-[calc(11/15*1rem)] leading-tight [overflow-wrap:anywhere] sm:text-[calc(13/15*1rem)]";
+  "text-[calc(11/15*1rem)] leading-tight [overflow-wrap:anywhere] sm:text-[calc(13/15*1rem)] sm:leading-normal sm:[overflow-wrap:normal]";
 
 export function ScheduleTimetable({ courses }: { courses: StagedCourse[] }) {
   const occupied = buildOccupied(courses);
