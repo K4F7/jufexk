@@ -188,10 +188,8 @@ export function ProfilePage() {
           <Alert status="accent">
             <Alert.Indicator />
             <Alert.Content>
-              <Alert.Title>数据接口尚未就绪</Alert.Title>
-              <Alert.Description>
-                个人主页数据接口（#459）尚未上线，点评与关注列表暂时无法加载，请稍后再来。
-              </Alert.Description>
+              <Alert.Title>个人主页暂时加载不了</Alert.Title>
+              <Alert.Description>请稍后再试。</Alert.Description>
             </Alert.Content>
           </Alert>
         ) : loading ? (

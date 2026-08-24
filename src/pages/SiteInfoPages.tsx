@@ -1,4 +1,4 @@
-import { Typography } from "@heroui/react";
+import { Link, Typography } from "@heroui/react";
 import type { ReactNode } from "react";
 import {
   CONTACT_EMAIL,
@@ -27,6 +27,10 @@ function SiteInfoPage({
   );
 }
 
+/**
+ * HeroUI Link styled as an external control, but rendered as a native <a>.
+ * Absolute URLs must not go through RouterProvider (see AppShell 导师).
+ */
 function ExternalLink({
   href,
   children,
@@ -35,9 +39,27 @@ function ExternalLink({
   children: ReactNode;
 }) {
   return (
-    <a className="link" href={href} rel="noreferrer" target="_blank">
+    <Link
+      href={href}
+      rel="noreferrer"
+      render={(domProps) => (
+        <a
+          {...domProps}
+          className={
+            typeof domProps.className === "string"
+              ? domProps.className
+              : undefined
+          }
+          href={href}
+          rel="noreferrer"
+          target="_blank"
+        />
+      )}
+      target="_blank"
+    >
       {children}
-    </a>
+      <Link.Icon />
+    </Link>
   );
 }
 
@@ -48,7 +70,7 @@ export function AboutPage() {
         本站是江西财经大学非官方课程—教师评价站，站内名称「非官方课评@JUFE」。本站不是学校官方服务，也不代表学校立场。
       </p>
       <p>
-        任课评价必须绑定课程的具体任课教师，公开内容均经人工审核后匿名公开。目录来自获授权采集的可见开课全量，不宣称包含从未开设、未发布或无权查看的对象。
+        点评会绑到具体任课老师。公开内容经人工审核后匿名发布。
       </p>
     </SiteInfoPage>
   );
@@ -58,16 +80,29 @@ export function ContactPage() {
   return (
     <SiteInfoPage title="联系我们">
       <p>
-        公开联系渠道是 GitHub Issues 与邮箱。功能建议、缺陷报告和站点问题请优先在仓库开
-        issue，也可以发邮件。请不要通过未公布的即时通讯号联系。
+        功能建议、缺陷和站点问题，请优先在 GitHub 开
+        issue，也可以发邮件。请走这些公开渠道，不要另找未公开的联系方式。
       </p>
       <p>
         <ExternalLink href={GITHUB_ISSUES_URL}>前往 GitHub Issues</ExternalLink>
       </p>
       <p>
-        <a className="link" href={`mailto:${CONTACT_EMAIL}`}>
+        <Link
+          href={`mailto:${CONTACT_EMAIL}`}
+          render={(domProps) => (
+            <a
+              {...domProps}
+              className={
+                typeof domProps.className === "string"
+                  ? domProps.className
+                  : undefined
+              }
+              href={`mailto:${CONTACT_EMAIL}`}
+            />
+          )}
+        >
           {CONTACT_EMAIL}
-        </a>
+        </Link>
       </p>
     </SiteInfoPage>
   );
@@ -80,7 +115,7 @@ export function ResourcesPage() {
       <p>
         <ExternalLink href={GITHUB_REPO_URL}>{GITHUB_REPO_URL}</ExternalLink>
       </p>
-      <p>产品与实现受益于这些公开工作：</p>
+      <p>也参考了这些公开项目：</p>
       <ul>
         {SITE_RESOURCES.map((item) => (
           <li key={item.href}>
@@ -99,7 +134,6 @@ export function ResourcesPage() {
           </li>
         ))}
       </ul>
-      <p>文案、品牌与数据模型均为本站自有；参考的是交互与协议，不是复制站点内容。</p>
       <p>学校官方频道：</p>
       <ul>
         {SITE_OFFICIAL_CHANNELS.map((item) => (
@@ -123,7 +157,7 @@ export function TermsPage() {
         任课评价经审核后匿名公开。禁止发布违法内容、人身攻击或可识别他人身份的信息。站方可以拒绝、编辑或撤回公开内容。
       </p>
       <p>
-        站点软件以 MIT License 发布。目录来自获授权采集的可见开课全量，公开内容来自任课评价与已审核的历史评价；本站不保证其完整或准确。
+        站点软件以 MIT License 发布。公开内容来自任课评价与已审核的历史评价；本站不保证其完整或准确。
       </p>
     </SiteInfoPage>
   );

@@ -84,7 +84,7 @@ export function JwxtScheduleImport({
             </Modal.Header>
             <Modal.Body className="space-y-3 text-sm">
               <p className="m-0">
-                在你自己的浏览器打开本科教务。教务 Cookie 只留在教务网站，选课志不代持、不落库；回传的只有课程名、教师和上课时间。
+                在你自己的浏览器打开本科教务。课表只在你自己的浏览器里处理，回传的只有课程名、教师和上课时间。
               </p>
               <div className="flex flex-wrap gap-2">
                 <a

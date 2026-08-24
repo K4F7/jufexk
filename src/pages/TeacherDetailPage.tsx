@@ -9,7 +9,7 @@
  * Back restores teacher-catalog URL state (drops prototype params if any).
  * Issue #482 · docs/ui/foundations.md §详情体验.
  */
-import { Card, Typography } from "@heroui/react";
+import { Breadcrumbs, Card, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
@@ -130,13 +130,10 @@ export function TeacherDetailPage() {
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <nav aria-label="面包屑" className="text-[calc(12/15*1rem)] text-muted">
-          <RouterAriaLink className="text-muted" to={catalogHref}>
-            教师目录
-          </RouterAriaLink>
-          <span className="mx-1.5">/</span>
-          {t.name}
-        </nav>
+        <Breadcrumbs aria-label="面包屑">
+          <Breadcrumbs.Item href={catalogHref}>教师目录</Breadcrumbs.Item>
+          <Breadcrumbs.Item>{t.name}</Breadcrumbs.Item>
+        </Breadcrumbs>
 
         <section className="mt-3 mb-6" aria-labelledby="teacher-courses-heading">
           <Typography

@@ -11,6 +11,7 @@
 import {
   Alert,
   Button,
+  Card,
   Chip,
   Label,
   ListBox,
@@ -311,16 +312,18 @@ export function CourseReviewSection({
           <DetailLoadingStatus label="评价加载中…" />
         </div>
       ) : reviews.length === 0 ? (
-        <p
-          className="border-b border-separator py-14 text-center text-[calc(13/15*1rem)] text-muted"
-          role="status"
-        >
-          {teacherId && (term !== "all" || rating !== "all")
-            ? "没有符合当前筛选条件的点评。"
-            : teacherId
-              ? "暂无评价 —— 成为第一位评价这位老师这门课的同学。"
-            : "暂无评价 —— 课程教师待补充，补充任课关系后即可评价。"}
-        </p>
+        <Card className="mt-4" role="status">
+          <Card.Header>
+            <Card.Title>暂无评价</Card.Title>
+            <Card.Description>
+              {teacherId && (term !== "all" || rating !== "all")
+                ? "没有符合当前筛选条件的点评。"
+                : teacherId
+                  ? "成为第一位评价这位老师这门课的同学。"
+                  : "这门课还没写上任课老师，补上之后就可以点评。"}
+            </Card.Description>
+          </Card.Header>
+        </Card>
       ) : (
         <div className="mt-2" role="list" aria-label="评价列表">
           {reviews.map((review) => (

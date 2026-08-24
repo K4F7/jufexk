@@ -87,7 +87,7 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.getByRole("heading", { name: "关于我们" })).toBeVisible();
   await expect(page.getByText(/非官方课程—教师评价站/)).toBeVisible();
-  await expect(page.getByText(/任课评价必须绑定/)).toBeVisible();
+  await expect(page.getByText(/点评会绑到具体任课老师/)).toBeVisible();
 
   await footerNav.getByRole("link", { name: "联系我们" }).click();
   await expect(page).toHaveURL(/\/contact$/);
