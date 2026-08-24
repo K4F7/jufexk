@@ -113,7 +113,40 @@ test("search, stage, place two courses on the same slot, and keep the plan", asy
     "高等数学（张三）与线性代数（李四）在周一第1–2节冲突",
   );
   const timetable = page.getByRole("grid", { name: "周课表" });
-  await expect(timetable.getByText("冲突").first()).toBeVisible();
+  const conflictBadge = timetable.locator('[data-slot="chip"]').first();
+  await expect(conflictBadge).toHaveAccessibleName("冲突");
+  const timetableLink = timetable.getByRole("link", { name: "高等数学（张三）" }).first();
+
+  await page.setViewportSize({ width: 800, height: 720 });
+  await expect(timetableLink).toHaveCSS(
+    "overflow-wrap",
+    "normal",
+  );
+  const desktopLayout = await timetable.evaluate((element) => {
+    const scrollContainer = element.closest<HTMLElement>(
+      '[data-slot="table-scroll-container"]',
+    );
+    return {
+      containerWidth: scrollContainer?.clientWidth ?? 0,
+      tableWidth: element.getBoundingClientRect().width,
+    };
+  });
+  expect(desktopLayout.tableWidth / desktopLayout.containerWidth).toBeGreaterThan(0.99);
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(timetableLink).toHaveCSS("overflow-wrap", "anywhere");
+  const conflictCell = timetable.locator('[data-conflict="true"]').first();
+  const badgeBox = await conflictBadge.boundingBox();
+  const cellBox = await conflictCell.boundingBox();
+  expect(badgeBox).toBeTruthy();
+  expect(cellBox).toBeTruthy();
+  expect(badgeBox?.width ?? 0).toBeLessThanOrEqual(cellBox?.width ?? 0);
+  const scrollContainer = timetable.locator('xpath=ancestor::*[@data-slot="table-scroll-container"]');
+  const scrollSize = await scrollContainer.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(scrollSize.scrollWidth).toBeLessThanOrEqual(scrollSize.clientWidth);
 
   await page.reload();
   await expect(timetable.getByText("高等数学（张三）").first()).toBeVisible();
@@ -206,6 +239,21 @@ test("guest can see courses but must log in to add or import", async ({
     ],
   );
   await page.goto("/schedule");
+
+  await page.setViewportSize({ width: 800, height: 720 });
+  const ordinaryTimetableLink = page
+    .getByRole("grid", { name: "周课表" })
+    .getByRole("link", { name: "高等数学（张三）" })
+    .first();
+  const expectedLinkColor = await ordinaryTimetableLink.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--link)";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  await expect(ordinaryTimetableLink).toHaveCSS("color", expectedLinkColor);
 
   await expect(page.getByText("提前处理掉早八刺客")).toBeVisible();
   await expect(page.getByText("查看课表不用登录")).toHaveCount(0);

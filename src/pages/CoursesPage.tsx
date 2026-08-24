@@ -40,6 +40,7 @@ import {
 } from "../components/CatalogSearchHeader";
 import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import {
@@ -70,6 +71,7 @@ const SORT_OPTIONS = [
 
 const ALL_CATEGORY_KEY = "all";
 const DEFAULT_SORT_KEY = "reviews";
+const MOBILE_FILTER_QUERY = "(max-width: 639px)";
 
 function firstSelectedKey(keys: Iterable<Key>): string | undefined {
   const [key] = keys;
@@ -115,6 +117,7 @@ function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
 }
 
 export function CoursesPage() {
+  const isMobileFilterLayout = useMediaQuery(MOBILE_FILTER_QUERY);
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
@@ -287,11 +290,12 @@ export function CoursesPage() {
       role="search"
       variant="secondary"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
         <Label className="shrink-0">课程类别：</Label>
+        {/* 窄屏 3+3 整齐双排(整行宽 grid);sm+ 恢复内联单行。 */}
         <ToggleButtonGroup
           aria-label="课程类别"
-          className="flex-wrap"
+          className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto"
           isDetached
           selectedKeys={[categoryToggleKey(category)]}
           selectionMode="single"
@@ -313,12 +317,15 @@ export function CoursesPage() {
         </ToggleButtonGroup>
       </div>
       <Separator />
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
         <Label className="shrink-0">排序方式：</Label>
+        {/* 窄屏两个选项纵向双排;sm+ 恢复内联单行。 */}
         <ToggleButtonGroup
           aria-label="排序方式"
+          className="flex flex-col items-start sm:inline-flex sm:flex-row sm:items-center"
           disallowEmptySelection
           isDetached
+          orientation={isMobileFilterLayout ? "vertical" : "horizontal"}
           selectedKeys={[sort || DEFAULT_SORT_KEY]}
           selectionMode="single"
           size="sm"

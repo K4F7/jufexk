@@ -429,6 +429,7 @@ export function LoginPage() {
                   <InputOTP
                     aria-label="验证码"
                     autoComplete="one-time-code"
+                    className="justify-center"
                     inputMode="numeric"
                     isDisabled={busy}
                     maxLength={4}
@@ -438,7 +439,7 @@ export function LoginPage() {
                     variant="secondary"
                     onChange={setMfaCode}
                   >
-                    <InputOTP.Group>
+                    <InputOTP.Group className="gap-2 sm:gap-3">
                       <InputOTP.Slot index={0} />
                       <InputOTP.Slot index={1} />
                       <InputOTP.Slot index={2} />

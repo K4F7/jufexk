@@ -2,13 +2,17 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function mockShellApi(
   page: Page,
-  options: { campusEnabled?: boolean } = {},
+  options: { campusEnabled?: boolean; siteName?: string } = {},
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
       return route.fulfill({
-        json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+        json: {
+          siteName: options.siteName ?? "选课志",
+          universityName: "江西财经大学",
+          admin: false,
+        },
       });
     }
     if (url.pathname === "/api/user/session") {
@@ -124,6 +128,52 @@ test("main nav is 课程/课评/排课模拟/导师 with a center course search"
   await expect(scheduleLink).toHaveAttribute("aria-current", "page");
   await expect(latestLink).not.toHaveAttribute("aria-current", "page");
   expect(renderWarnings).toEqual([]);
+});
+
+test("desktop header stays one row for the production site name", async ({
+  page,
+}) => {
+  await mockShellApi(page, { siteName: "非官方课评@JUFE" });
+
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto("/courses");
+  const brand = page.getByRole("banner").getByRole("link", { name: "非官方课评@JUFE" });
+  const nav = page.getByRole("navigation", { name: "主导航" });
+  const search = page.getByRole("searchbox", { name: "搜索课程" });
+  const stacked = await Promise.all([
+    brand.boundingBox(),
+    nav.boundingBox(),
+    search.boundingBox(),
+  ]);
+  expect(stacked[0]).toBeTruthy();
+  expect(stacked[1]).toBeTruthy();
+  expect(stacked[2]).toBeTruthy();
+  expect(stacked[1]!.y).toBeGreaterThan(stacked[0]!.y + stacked[0]!.height - 1);
+  expect(stacked[2]!.y).toBeGreaterThan(stacked[1]!.y + stacked[1]!.height - 1);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const desktop = await Promise.all([
+    brand.boundingBox(),
+    nav.boundingBox(),
+    search.boundingBox(),
+    ...["课程", "课评", "排课模拟", "导师"].map((name) =>
+      nav.getByRole("link", { name }).boundingBox(),
+    ),
+  ]);
+  for (const box of desktop) expect(box).toBeTruthy();
+  const [brandBox, navBox, searchBox, ...linkBoxes] = desktop as NonNullable<
+    (typeof desktop)[number]
+  >[];
+  const sameRow = (
+    a: NonNullable<(typeof desktop)[number]>,
+    b: NonNullable<(typeof desktop)[number]>,
+  ) => a.y < b.y + b.height && b.y < a.y + a.height;
+  expect(sameRow(brandBox, navBox)).toBe(true);
+  expect(sameRow(searchBox, navBox)).toBe(true);
+  const linkTop = linkBoxes[0].y;
+  for (const box of linkBoxes) {
+    expect(Math.abs(box.y - linkTop)).toBeLessThan(2);
+  }
 });
 
 test("brand link uses the site name and goes to /courses", async ({ page }) => {

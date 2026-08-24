@@ -127,11 +127,50 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   ).toHaveCount(0);
   expect(feedRequests.length).toBeGreaterThan(0);
 
-  await page.getByRole("link", { name: "查看全文" }).click();
+  const moreLinkName = (page.viewportSize()?.width ?? 0) < 640 ? "更多" : "查看全文";
+  await page.getByRole("link", { name: moreLinkName }).click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   await expect(
     page.getByRole("heading", { name: /中国传统文化导论/ }),
   ).toBeVisible();
+});
+
+test("latest author layout changes only below the sm breakpoint", async ({ page }) => {
+  await mockShellApi(page);
+  await page.setViewportSize({ width: 800, height: 720 });
+  await page.goto("/latest");
+
+  const author = page.getByRole("link", { name: "匿名用户#000000" });
+  const avatar = page.locator(
+    "img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']:visible",
+  );
+  const desktopAuthorBox = await author.boundingBox();
+  const desktopAvatarBox = await avatar.boundingBox();
+  expect(desktopAuthorBox).toBeTruthy();
+  expect(desktopAvatarBox).toBeTruthy();
+  expect(Math.abs((desktopAuthorBox?.y ?? 0) - (desktopAvatarBox?.y ?? 0))).toBeLessThan(8);
+  await expect(page.getByRole("link", { name: "查看全文" })).toBeVisible();
+
+  await page.setViewportSize({ width: 375, height: 720 });
+  const mobileAuthorBox = await author.boundingBox();
+  const mobileAvatarBox = await avatar.boundingBox();
+  expect(mobileAuthorBox).toBeTruthy();
+  expect(mobileAvatarBox).toBeTruthy();
+  expect(mobileAuthorBox?.y ?? 0).toBeLessThan(mobileAvatarBox?.y ?? 0);
+  const mobileMore = page.getByRole("link", { name: "更多" });
+  await expect(mobileMore).toHaveText(">>更多");
+});
+
+test("latest empty state keeps the official Card composition", async ({ page }) => {
+  await mockShellApi(page);
+  await page.route("**/api/reviews/latest", (route) =>
+    route.fulfill({ json: { items: [], nextCursor: null } }),
+  );
+  await page.goto("/latest");
+
+  const emptyState = page.getByRole("status");
+  await expect(emptyState).toHaveAttribute("data-slot", "card");
+  await expect(emptyState).toContainText("暂时还没有公开课评");
 });
 
 test("latest feed falls back to comment text when headline is empty", async ({
