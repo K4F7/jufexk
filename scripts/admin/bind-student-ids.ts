@@ -20,10 +20,32 @@ function identitySecretFrom(env: NodeJS.Dict<string>) {
   const secret = env.CAMPUS_IDENTITY_SECRET;
   if (!secret) {
     throw new Error(
-      "缺少 CAMPUS_IDENTITY_SECRET。写入 .dev.vars，或 PowerShell: $env:CAMPUS_IDENTITY_SECRET='...'。Cloudflare Secrets Store 不能回读该值。允许名单为空时不必跑本脚本：用目标学号校园登录后打开 /admin 即可自绑。",
+      "缺少 CAMPUS_IDENTITY_SECRET。写入 .dev.vars / 环境变量，或把同一值放到 GitHub Environment production 后跑 Actions「Bind admin student IDs」。Cloudflare Secrets Store 不能回读。允许名单为空时也可校园登录后打开 /admin 自绑。",
     );
   }
   return secret;
+}
+
+function collectUsernames(argv: string[], envText: string | undefined) {
+  const raw = [...argv];
+  if (envText) {
+    raw.push(
+      ...envText
+        .split(/[\s,，;；]+/)
+        .map((part) => part.trim())
+        .filter(Boolean),
+    );
+  }
+  const usernames: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const username = normalizeCasUsername(item);
+    if (!username) throw new Error("学号格式不正确");
+    if (seen.has(username)) continue;
+    seen.add(username);
+    usernames.push(username);
+  }
+  return usernames;
 }
 
 const envCandidates = [
@@ -40,11 +62,7 @@ for (const envPath of envCandidates) {
   }
 }
 
-const usernames = args.map((raw) => {
-  const username = normalizeCasUsername(raw);
-  if (!username) throw new Error("学号格式不正确");
-  return username;
-});
+const usernames = collectUsernames(args, process.env.JUFEXK_ADMIN_STUDENT_IDS);
 if (!usernames.length) {
   throw new Error("请至少提供一个学号");
 }

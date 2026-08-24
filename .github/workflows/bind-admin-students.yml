@@ -1,0 +1,36 @@
+name: Bind admin student IDs
+on:
+  workflow_dispatch:
+    inputs:
+      usernames:
+        description: Campus student IDs (space or comma separated)
+        required: true
+        type: string
+concurrency:
+  group: production-admin-student-bind
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  bind:
+    name: bind
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CAMPUS_IDENTITY_SECRET: ${{ secrets.CAMPUS_IDENTITY_SECRET }}
+      JUFEXK_ADMIN_STUDENT_IDS: ${{ inputs.usernames }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Bind hashed student IDs
+        run: pnpm exec tsx scripts/admin/bind-student-ids.ts --remote --apply
