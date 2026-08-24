@@ -9,6 +9,7 @@ import {
 import {
   EMAIL_LOGIN_COOKIE,
   ORDINARY_USER_CSRF_COOKIE,
+  hmacHex,
 } from "../src/ordinary-user-session";
 import {
   CAS_MFA_CONSUMED_LOGIN_FAILED,
@@ -55,7 +56,7 @@ let mode:
   | "mfa-send-msg"
   | "encrypt"
   | "qr-captcha" = "success";
-let mfaCodeAccepted = "654321";
+let mfaCodeAccepted = "6543";
 let loginGets = 0;
 let loginPosts = 0;
 let qrComet:
@@ -287,7 +288,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   calls = [];
   mode = "success";
-  mfaCodeAccepted = "654321";
+  mfaCodeAccepted = "6543";
   loginGets = 0;
   loginPosts = 0;
   qrComet = "pending";
@@ -712,7 +713,7 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
     expect(stored?.blob).not.toContain(studentId);
     expect(stored?.blob).not.toContain("CASTGC");
 
-    const bad = await finishMfa({ challenge: first.challenge, code: "000000" });
+    const bad = await finishMfa({ challenge: first.challenge, code: "0000" });
     expect(bad.status).toBe(401);
     expect(await bad.json()).toMatchObject({ error: "动态口令错误" });
 
@@ -806,7 +807,7 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
         false,
       );
     }
-    mfaCodeAccepted = "654321";
+    mfaCodeAccepted = "6543";
   });
 
   it("does not treat a pre-MFA reAuthCheck redirect as a finished login", async () => {
@@ -849,7 +850,7 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
     });
     expect(verified.status).toBe(200);
     expect(await verified.json()).toMatchObject({ authenticated: true });
-    mfaCodeAccepted = "654321";
+    mfaCodeAccepted = "6543";
   });
 
   it("does not map a post-OTP login failure to a leftover password error", async () => {
@@ -1134,6 +1135,43 @@ describe("jxufe cas qr login", () => {
       expect(response.status).toBe(200);
     }
     const blocked = await startQr(ip);
+    expect(blocked.status).toBe(429);
+  });
+
+  it("rate-limits QR status per challenge instead of sharing one IP budget", async () => {
+    installCasMock();
+    const ip = nextIp();
+    const first = await startQr(ip);
+    const second = await startQr(ip);
+    const firstBody = await first.json<{ challenge?: string }>();
+    const secondBody = await second.json<{ challenge?: string }>();
+    expect(firstBody.challenge).toMatch(/^[0-9a-f]{32}$/);
+    expect(secondBody.challenge).toMatch(/^[0-9a-f]{32}$/);
+
+    await env.DB.prepare(
+      `INSERT INTO rate_limit_counters(key,window_start,count) VALUES(?,unixepoch(),200)`,
+    )
+      .bind(`cas-qr-status:${firstBody.challenge}`)
+      .run();
+
+    const blocked = await pollQr({ challenge: firstBody.challenge }, ip);
+    expect(blocked.status).toBe(429);
+
+    qrComet = "pending";
+    const other = await pollQr({ challenge: secondBody.challenge }, ip);
+    expect(other.status).toBe(200);
+    expect(await other.json()).toEqual({ status: "pending" });
+  });
+
+  it("caps fabricated QR status ids per IP", async () => {
+    const ip = nextIp();
+    const ipHash = await hmacHex(ip, "test-ip-hash-secret");
+    await env.DB.prepare(
+      `INSERT INTO rate_limit_counters(key,window_start,count) VALUES(?,unixepoch(),2000)`,
+    )
+      .bind(`cas-qr-status-ip:${ipHash}`)
+      .run();
+    const blocked = await pollQr({ challenge: "ab".repeat(16) }, ip);
     expect(blocked.status).toBe(429);
   });
 });

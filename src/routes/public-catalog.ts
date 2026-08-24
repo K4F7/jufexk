@@ -197,12 +197,23 @@ type PublicReviewQuery = {
 };
 const publicReviewPageSize = (c: AppContext) =>
   Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
+function utf8ToBase64(text: string) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function base64ToUtf8(encoded: string) {
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
 const decodePublicReviewCursor = (
   value: string | undefined,
 ): PublicReviewCursor | null => {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(atob(value)) as PublicReviewCursor;
+    const parsed = JSON.parse(base64ToUtf8(value)) as PublicReviewCursor;
     return Number.isInteger(parsed.source) && typeof parsed.key === "string"
       ? parsed
       : null;
@@ -211,7 +222,7 @@ const decodePublicReviewCursor = (
   }
 };
 const encodePublicReviewCursor = (cursor: PublicReviewCursor) =>
-  btoa(JSON.stringify(cursor));
+  utf8ToBase64(JSON.stringify(cursor));
 const getPublicReviewPage = async (
   db: D1Database,
   subject: "course_id" | "teacher_id",
@@ -887,9 +898,9 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
           }),
         })),
         nameVariants: [],
-        enrollment_category: "公共必修",
-        teaching_type: "实践课",
-        course_level: "体育",
+        enrollment_category: "",
+        teaching_type: "",
+        course_level: "",
         ...courseSchemeView(null, "sports", []),
       },
       reviewCount: 0,

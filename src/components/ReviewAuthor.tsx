@@ -20,15 +20,13 @@ export function ReviewAuthor({
   const key = avatarKey ?? defaultAvatarKey(code);
   const handle = formatPublicHandle(code);
   return (
-    <span className="inline-flex items-center gap-2">
+    <RouterAriaLink
+      to={`/u/${formatPublicCode(code)}`}
+      aria-label={handle}
+      className="inline-flex items-center gap-2 text-accent no-underline"
+    >
       <AnonymousAvatar avatarKey={key} size={size} />
-      <RouterAriaLink
-        to={`/u/${formatPublicCode(code)}`}
-        aria-label={handle}
-        className="text-accent no-underline"
-      >
-        {handle}
-      </RouterAriaLink>
-    </span>
+      {handle}
+    </RouterAriaLink>
   );
 }

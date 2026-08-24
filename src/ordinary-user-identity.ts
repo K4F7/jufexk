@@ -3,7 +3,11 @@ import {
   type CampusJwtClaims,
 } from "./campus-jwt";
 import type { OrdinaryUser } from "./ordinary-user-session";
-import { AVATAR_KEY_COUNT, ensureUserPublicHandle } from "./public-handle";
+import {
+  AVATAR_KEY_COUNT,
+  PUBLIC_CODE_MAX,
+  ensureUserPublicHandle,
+} from "./public-handle";
 
 const hex = (bytes: ArrayBuffer) =>
   [...new Uint8Array(bytes)]
@@ -94,7 +98,8 @@ export async function resolveOrCreateIdentityUser(
       )
       .bind(input.provider, input.issuer, input.subject, userId),
     db.prepare(
-      `UPDATE user_public_code_seq SET next_code = next_code + 1 WHERE id = 1`,
+      `UPDATE user_public_code_seq SET next_code = next_code + 1
+       WHERE id = 1 AND next_code <= ${PUBLIC_CODE_MAX}`,
     ),
     db
       .prepare(
@@ -103,9 +108,10 @@ export async function resolveOrCreateIdentityUser(
            (SELECT next_code - 1 FROM user_public_code_seq WHERE id=1),
            (SELECT (next_code - 1) % ${AVATAR_KEY_COUNT} FROM user_public_code_seq WHERE id=1)
          FROM auth_identities
-         WHERE provider=? AND issuer=? AND subject=?`,
+         WHERE provider=? AND issuer=? AND subject=? AND user_id=?
+           AND changes()=1`,
       )
-      .bind(input.provider, input.issuer, input.subject),
+      .bind(input.provider, input.issuer, input.subject, userId),
     identityUserStatement(db, input),
   ]);
   const created = results[3]?.results[0] || null;

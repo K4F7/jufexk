@@ -2,6 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
   casSubjectHash,
+  claimFirstAdminStudentBinding,
   parseBindingUsernames,
 } from "../src/admin-student-bindings";
 import {
@@ -79,6 +80,22 @@ describe("administrator student-ID bindings", () => {
       headers: ordinaryWriteHeaders(later.session),
     });
     expect(denied.status).toBe(401);
+  });
+
+  it("lets only one student win a concurrent empty-allowlist claim", async () => {
+    await env.DB.prepare("DELETE FROM admin_student_bindings").run();
+    const first = await casSubjectHash("2021555101", identitySecret);
+    const second = await casSubjectHash("2021555102", identitySecret);
+    const [claimedFirst, claimedSecond] = await Promise.all([
+      claimFirstAdminStudentBinding(env.DB, first),
+      claimFirstAdminStudentBinding(env.DB, second),
+    ]);
+    expect([claimedFirst, claimedSecond].filter(Boolean)).toHaveLength(1);
+    const stored = await env.DB.prepare(
+      `SELECT subject_hash FROM admin_student_bindings`,
+    ).all<{ subject_hash: string }>();
+    expect(stored.results).toHaveLength(1);
+    expect([first, second]).toContain(stored.results[0]?.subject_hash);
   });
 
   it("lets a passwordless admin bind multiple IDs and rejects invalid ones", async () => {

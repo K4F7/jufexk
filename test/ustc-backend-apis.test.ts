@@ -285,6 +285,52 @@ describe("USTC backend APIs (issue #410)", () => {
     expect(secondPage.total).toBe(2);
   });
 
+  it("paginates reviews with a Chinese term cursor", async () => {
+    const stamp = String(Date.now());
+    const relation = await insertCourseTeacher(`${stamp}-zh-cursor`);
+    const term = "二零二六春季";
+    await insertReview({
+      ...relation,
+      comment: `中文学期点评甲${stamp}`,
+      term,
+      createdAt: "2026-03-01 00:00:00",
+    });
+    await insertReview({
+      ...relation,
+      comment: `中文学期点评乙${stamp}`,
+      term,
+      createdAt: "2026-03-02 00:00:00",
+    });
+    const first = await SELF.fetch(
+      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&sort=latest&term=${encodeURIComponent(term)}&pageSize=1`,
+    );
+    expect(first.status).toBe(200);
+    const firstBody = await first.json<{
+      items: Array<{ id: string; comment: string; term: string }>;
+      nextCursor: string | null;
+      total: number;
+    }>();
+    expect(firstBody.total).toBe(2);
+    expect(firstBody.items).toHaveLength(1);
+    expect(firstBody.items[0]?.term).toBe(term);
+    expect(firstBody.nextCursor).toBeTruthy();
+
+    const second = await SELF.fetch(
+      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&sort=latest&term=${encodeURIComponent(term)}&pageSize=1&cursor=${encodeURIComponent(firstBody.nextCursor || "")}`,
+    );
+    expect(second.status).toBe(200);
+    const secondBody = await second.json<typeof firstBody>();
+    expect(secondBody.items).toHaveLength(1);
+    expect(secondBody.items[0]?.id).not.toBe(firstBody.items[0]?.id);
+    expect(secondBody.items[0]?.term).toBe(term);
+
+    const asciiCursor = btoa(JSON.stringify({ source: 0, key: "0" }));
+    const ascii = await SELF.fetch(
+      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&cursor=${encodeURIComponent(asciiCursor)}`,
+    );
+    expect(ascii.status).toBe(200);
+  });
+
   it("returns site-wide latest public reviews with cursor pagination", async () => {
     const stamp = String(Date.now());
     const first = await insertCourseTeacher(`${stamp}-latest-a`);

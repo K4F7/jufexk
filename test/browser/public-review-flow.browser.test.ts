@@ -380,6 +380,62 @@ test("course without teachers keeps an honest header and no write entry", async 
   ).toBeVisible();
 });
 
+test("invalid teacher query is replaced with a valid relation", async ({
+  page,
+}) => {
+  await page.goto("/courses/8?teacher=999");
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await expect(
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
+  ).toBeVisible();
+  await expect(reviewItems(page)).toHaveCount(20);
+});
+
+test("malformed teacher query is replaced with a valid relation", async ({
+  page,
+}) => {
+  await page.goto("/courses/8?teacher=abc");
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await expect(
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
+  ).toBeVisible();
+});
+
+test("invalid teacher query on a course with no teachers is dropped", async ({
+  page,
+}) => {
+  await page.goto("/courses/10?teacher=999");
+  await expect(page).toHaveURL(/\/courses\/10$/);
+  await expect(
+    page.getByRole("heading", { name: "暂无文字评价课程" }),
+  ).toBeVisible();
+});
+
+test("review hash auto-loads pages until the anchored review is found", async ({
+  page,
+}) => {
+  const reviewRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/courses/8/reviews")
+      reviewRequests.push(url.search);
+  });
+
+  await page.goto("/courses/8?teacher=9#historical-review-21");
+  const target = page.locator("#historical-review-21");
+  await expect(target).toBeVisible();
+  await expect(target).toContainText("匿名评价 21");
+  expect(reviewRequests.some((search) => search.includes("cursor="))).toBe(
+    true,
+  );
+});
+
+test("unknown review hash stops after the last page", async ({ page }) => {
+  await page.goto("/courses/8?teacher=9#does-not-exist");
+  await expect(reviewItems(page)).toHaveCount(21);
+  await expect(page.getByRole("button", { name: "继续加载" })).toHaveCount(0);
+});
+
 test("catalog relation rows link into the matching course×teacher page", async ({
   page,
 }) => {

@@ -71,11 +71,17 @@ function withPublicNames(row: RelationRow): RelationRow {
   };
 }
 
+type ExactTeacherHits = {
+  ids: number[];
+  matchedTerms: Set<string>;
+  active: boolean;
+};
+
 async function loadExactTeacherHits(
   db: D1Database,
   terms: string[],
-): Promise<{ ids: number[]; matchedTerms: Set<string> }> {
-  if (!terms.length) return { ids: [], matchedTerms: new Set() };
+): Promise<ExactTeacherHits> {
+  if (!terms.length) return { ids: [], matchedTerms: new Set(), active: false };
   const placeholders = terms.map(() => "?").join(",");
   const { results } = await db
     .prepare(
@@ -83,19 +89,35 @@ async function loadExactTeacherHits(
     )
     .bind(...terms, ...terms)
     .all<{ id: number; name: string; source_teacher_label: string }>();
-  const ids = new Set<number>();
   const matchedTerms = new Set<string>();
+  const idsByTerm = new Map<string, Set<number>>();
   const termSet = new Set(terms);
+  const addHit = (term: string, id: number) => {
+    matchedTerms.add(term);
+    const ids = idsByTerm.get(term) ?? new Set<number>();
+    ids.add(id);
+    idsByTerm.set(term, ids);
+  };
   for (const row of results ?? []) {
     const id = Number(row.id);
     if (!Number.isSafeInteger(id) || id <= 0) continue;
-    ids.add(id);
-    if (termSet.has(row.name)) matchedTerms.add(row.name);
+    if (termSet.has(row.name)) addHit(row.name, id);
     if (termSet.has(row.source_teacher_label)) {
-      matchedTerms.add(row.source_teacher_label);
+      addHit(row.source_teacher_label, id);
     }
   }
-  return { ids: [...ids], matchedTerms };
+  if (!idsByTerm.size) return { ids: [], matchedTerms, active: false };
+  let intersection: Set<number> | undefined;
+  for (const ids of idsByTerm.values()) {
+    if (!intersection) {
+      intersection = new Set(ids);
+      continue;
+    }
+    for (const id of [...intersection]) {
+      if (!ids.has(id)) intersection.delete(id);
+    }
+  }
+  return { ids: [...(intersection ?? [])], matchedTerms, active: true };
 }
 
 function relationRowHit(terms: string[]): SearchFilter {
@@ -105,6 +127,7 @@ function relationRowHit(terms: string[]): SearchFilter {
     likeSql("c.code"),
     likeSql("c.department"),
     likeSql("pcc.family_label"),
+    likeSql("pcc.teacher_variant_text"),
     likeSql("t.name"),
     likeSql("t.source_teacher_label"),
   ].join(" OR ");
@@ -125,12 +148,31 @@ function relationRowHit(terms: string[]): SearchFilter {
   };
 }
 
+function teacherRelevanceClauses(terms: string[]): SearchFilter {
+  if (!terms.length) return { sql: "", args: [] };
+  const exactSql = terms
+    .map(() => "t.name=? OR t.source_teacher_label=?")
+    .join(" OR ");
+  const likePair = `${likeSql("t.name")} OR ${likeSql("t.source_teacher_label")}`;
+  const likeSqlAll = terms.map(() => likePair).join(" OR ");
+  return {
+    sql: `WHEN ${exactSql} THEN 5
+       WHEN ${likeSqlAll} THEN 6
+       WHEN ${likeSqlAll} THEN 7`,
+    args: [
+      ...terms.flatMap((term) => [term, term]),
+      ...terms.flatMap((term) => [prefixPattern(term), prefixPattern(term)]),
+      ...terms.flatMap((term) => [containsPattern(term), containsPattern(term)]),
+    ],
+  };
+}
+
 async function loadVirtualPeRelations(
   db: D1Database,
   searchTerms: string[],
   teacherId: number | null,
   department: string,
-  exactTeacherIds: number[],
+  exactTeachers: ExactTeacherHits,
   courseSearchTerms: string[],
 ): Promise<RelationRow[]> {
   if (department) return [];
@@ -149,8 +191,8 @@ async function loadVirtualPeRelations(
     if (!teachers.length) continue;
     const filtered = teacherId
       ? teachers.filter((teacher) => teacher.id === teacherId)
-      : exactTeacherIds.length
-        ? teachers.filter((teacher) => exactTeacherIds.includes(teacher.id))
+      : exactTeachers.active
+        ? teachers.filter((teacher) => exactTeachers.ids.includes(teacher.id))
         : courseSearchTerms.length
           ? teachers.filter((teacher) =>
               courseSearchTerms.every(
@@ -183,10 +225,12 @@ function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
   const codeA = String(a.code ?? "");
   const codeB = String(b.code ?? "");
   if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+  const course = Number(a.course_id ?? 0) - Number(b.course_id ?? 0);
+  if (course) return course;
   const teacherA = String(a.teacher_name ?? "");
   const teacherB = String(b.teacher_name ?? "");
   if (teacherA !== teacherB) return teacherA < teacherB ? -1 : 1;
-  return Number(a.course_id ?? 0) - Number(b.course_id ?? 0);
+  return Number(a.teacher_id ?? 0) - Number(b.teacher_id ?? 0);
 }
 
 export async function listCourseRelations(
@@ -209,11 +253,11 @@ export async function listCourseRelations(
   const categoryFilter = publicCategoryFilterSql(cat, "c");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
   const exactTeachers = await loadExactTeacherHits(c.env.DB, searchTerms);
-  const exactTeacherIds = exactTeachers.ids;
-  const exactTeacherFilter =
-    exactTeacherIds.length === 0
-      ? ""
-      : ` AND ct.teacher_id IN (${exactTeacherIds.map(() => "?").join(",")})`;
+  const exactTeacherFilter = !exactTeachers.active
+    ? ""
+    : exactTeachers.ids.length === 0
+      ? " AND 0"
+      : ` AND ct.teacher_id IN (${exactTeachers.ids.map(() => "?").join(",")})`;
   const courseSearchTerms = searchTerms.filter(
     (term) => !exactTeachers.matchedTerms.has(term),
   );
@@ -232,7 +276,7 @@ export async function listCourseRelations(
     ...(teacherId === null ? [] : [teacherId]),
     ...searchGroup.args,
     ...rowHit.args,
-    ...exactTeacherIds,
+    ...exactTeachers.ids,
   ];
   const relationCount = () =>
     c.env.DB.prepare(
@@ -251,6 +295,7 @@ export async function listCourseRelations(
     searchTerms.length > 1
       ? andSearchTerms(searchTerms, `${likeSql("c.name")} OR ${likeSql("c.code")}`)
       : { sql: "", args: [] };
+  const teacherRank = teacherRelevanceClauses(searchTerms);
   const relevanceOrder = `CASE
        WHEN ?='' THEN 0
        WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? THEN 0
@@ -258,9 +303,7 @@ export async function listCourseRelations(
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
        WHEN ${likeSql("c.department")} THEN 4
-       WHEN t.name=? OR t.source_teacher_label=? THEN 5
-       WHEN ${likeSql("t.name")} OR ${likeSql("t.source_teacher_label")} THEN 6
-       WHEN ${likeSql("t.name")} OR ${likeSql("t.source_teacher_label")} THEN 7
+       ${teacherRank.sql}
        WHEN ${likeSql("pcc.pinyin_text")} THEN 8
        ELSE 9
      END,review_count DESC,c.name,c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)`;
@@ -274,12 +317,7 @@ export async function listCourseRelations(
     ...allTermsInTitle.args,
     search,
     prefixPattern(search),
-    search,
-    search,
-    prefixPattern(search),
-    prefixPattern(search),
-    containsPattern(search),
-    containsPattern(search),
+    ...teacherRank.args,
     containsPattern(search),
   ];
   const orderBy =
@@ -288,13 +326,26 @@ export async function listCourseRelations(
       : sort === "rating"
         ? "(rel_rating.rating IS NULL),rel_rating.rating DESC,review_count DESC,c.name,c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)"
         : relevanceOrder;
+  const virtualItems =
+    !cat || cat === "sports"
+      ? await loadVirtualPeRelations(
+          c.env.DB,
+          searchTerms,
+          teacherId,
+          department,
+          exactTeachers,
+          courseSearchTerms,
+        )
+      : [];
+  const mergeName = virtualItems.length > 0 && sort === "name";
+  const paged = !mergeName;
 
   const { results } = await c.env.DB.prepare(
     `SELECT c.id course_id,c.code,c.name,c.category,c.department,
        t.id teacher_id,t.name teacher_name,
        rel_rating.rating,
-       COALESCE(rel_counts.review_count,0) review_count,
-       COUNT(*) OVER() window_total
+       COALESCE(rel_counts.review_count,0) review_count
+       ${paged ? ", COUNT(*) OVER() window_total" : ""}
       FROM courses c
       ${publicCourseCanonicalJoin}
       LEFT JOIN course_teachers ct ON ct.course_id=c.id
@@ -309,34 +360,17 @@ export async function listCourseRelations(
       ) rel_rating ON rel_rating.course_id=c.id AND rel_rating.teacher_id=t.id
      WHERE ${where}
      ORDER BY ${orderBy}
-     LIMIT ? OFFSET ?`,
+     ${paged ? "LIMIT ? OFFSET ?" : ""}`,
   )
     .bind(
       ...args,
       ...(sort === "name" || sort === "rating" ? [] : searchRankArgs),
-      size,
-      (page - 1) * size,
+      ...(paged ? [size, (page - 1) * size] : []),
     )
     .all();
 
   const rows = results as Array<RelationRow & WindowedRow>;
-  const realTotal = rows.length
-    ? Number(rows[0].window_total) || 0
-    : page > 1
-      ? await relationCount()
-      : 0;
   const listed = rows.map((row) => withPublicNames(stripWindowTotal(row)));
-  const virtualItems =
-    !cat || cat === "sports"
-      ? await loadVirtualPeRelations(
-          c.env.DB,
-          searchTerms,
-          teacherId,
-          department,
-          exactTeacherIds,
-          courseSearchTerms,
-        )
-      : [];
   const extras = virtualItems.filter(
     (item) =>
       !listed.some(
@@ -344,17 +378,31 @@ export async function listCourseRelations(
           row.course_id === item.course_id && row.teacher_id === item.teacher_id,
       ),
   );
+  const realTotal = mergeName
+    ? listed.length
+    : rows.length
+      ? Number(rows[0].window_total) || 0
+      : page > 1
+        ? await relationCount()
+        : 0;
   const totalCount = realTotal + extras.length;
   const pages = Math.max(1, Math.ceil(totalCount / size) || 1);
-  let items = listed;
-  if (extras.length) {
-    if (sort === "rating") {
-      if (page === pages) items = [...listed, ...extras];
-    } else if (sort === "name") {
-      if (page === 1) items = [...listed, ...extras].sort(byNameCodeTeacher);
-    } else if (page === 1) {
-      items = [...listed, ...extras];
-    }
+  const start = (page - 1) * size;
+  let items: RelationRow[];
+  if (mergeName) {
+    items = [...listed, ...extras]
+      .sort(byNameCodeTeacher)
+      .slice(start, start + size);
+  } else if (extras.length) {
+    items =
+      start >= realTotal
+        ? extras.slice(start - realTotal, start - realTotal + size)
+        : [
+            ...listed,
+            ...extras.slice(0, Math.max(0, start + size - realTotal)),
+          ];
+  } else {
+    items = listed;
   }
 
   const dimMap = await loadRelationDimensionLabels(

@@ -500,14 +500,106 @@ describe("review template kind API contract", () => {
 
     const yoga = await SELF.fetch(`${origin}/api/courses/800001`);
     const yogaBody = await yoga.json<{
-      course: { name: string; category: string; teachers: Array<{ name: string }> };
+      course: {
+        name: string;
+        category: string;
+        enrollment_category: string;
+        teaching_type: string;
+        course_level: string;
+        teachers: Array<{ name: string }>;
+      };
     }>();
     expect(yoga.status).toBe(200);
     expect(yogaBody.course.name).toBe("瑜伽");
     expect(yogaBody.course.category).toBe("sports");
+    expect(yogaBody.course.enrollment_category).toBe("");
+    expect(yogaBody.course.teaching_type).toBe("");
+    expect(yogaBody.course.course_level).toBe("");
     expect(yogaBody.course.teachers.map((teacher) => teacher.name)).toContain(
       "黄丽萍",
     );
+
+    const wushuDetail = await SELF.fetch(`${origin}/api/courses/800002`);
+    const wushuDetailBody = await wushuDetail.json<{
+      course: {
+        enrollment_category: string;
+        teaching_type: string;
+        course_level: string;
+      };
+    }>();
+    expect(wushuDetail.status).toBe(200);
+    expect(wushuDetailBody.course).toMatchObject({
+      enrollment_category: "",
+      teaching_type: "",
+      course_level: "",
+    });
+
+    const pageSize = 5;
+    type RelationRow = {
+      name: string;
+      code: string;
+      course_id: number;
+      teacher_name: string | null;
+      teacher_id: number | null;
+    };
+    const firstRelations = await SELF.fetch(
+      `${origin}/api/courses?view=relations&sort=name&page=1&pageSize=${pageSize}`,
+    );
+    expect(firstRelations.status).toBe(200);
+    const firstRelationsBody = await firstRelations.json<{
+      items: RelationRow[];
+      page: number;
+      pageSize: number;
+      total: number;
+      pages: number;
+    }>();
+    expect(firstRelationsBody.items.length).toBeLessThanOrEqual(pageSize);
+    const merged: RelationRow[] = [];
+    for (let page = 1; page <= firstRelationsBody.pages; page += 1) {
+      const response = await SELF.fetch(
+        `${origin}/api/courses?view=relations&sort=name&page=${page}&pageSize=${pageSize}`,
+      );
+      const body = await response.json<typeof firstRelationsBody>();
+      expect(body.items.length).toBeLessThanOrEqual(pageSize);
+      merged.push(...body.items);
+    }
+    expect(merged).toHaveLength(firstRelationsBody.total);
+    expect(
+      merged.some(
+        (item) => item.name === "瑜伽" && item.teacher_name === "黄丽萍",
+      ),
+    ).toBe(true);
+    expect(
+      merged.some(
+        (item) => item.name === "武术" && item.teacher_name === "刘春来",
+      ),
+    ).toBe(true);
+    for (let index = 1; index < merged.length; index += 1) {
+      const prev = merged[index - 1];
+      const next = merged[index];
+      const ordered =
+        prev.name < next.name ||
+        (prev.name === next.name && prev.code < next.code) ||
+        (prev.name === next.name &&
+          prev.code === next.code &&
+          prev.course_id < next.course_id) ||
+        (prev.name === next.name &&
+          prev.code === next.code &&
+          prev.course_id === next.course_id &&
+          (prev.teacher_name ?? "") < (next.teacher_name ?? "")) ||
+        (prev.name === next.name &&
+          prev.code === next.code &&
+          prev.course_id === next.course_id &&
+          prev.teacher_name === next.teacher_name &&
+          (prev.teacher_id ?? 0) <= (next.teacher_id ?? 0));
+      expect(ordered).toBe(true);
+    }
+
+    const defaultPage = await SELF.fetch(
+      `${origin}/api/courses?view=relations&pageSize=3`,
+    );
+    const defaultBody = await defaultPage.json<{ items: unknown[] }>();
+    expect(defaultBody.items.length).toBeLessThanOrEqual(3);
 
     const ping = await SELF.fetch(`${origin}/api/teachers/19401`);
     const pingBody = await ping.json<{

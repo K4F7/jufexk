@@ -142,13 +142,14 @@ export const originOk = (c: Context) => {
   );
 };
 
-/** wrangler / Vite loopback only — production Worker hostnames never match. */
+/**
+ * wrangler / Vite loopback only — production Worker hostnames never match.
+ * Origin is ignored: a public HTTP host plus a loopback Origin is not local.
+ */
 export const isLoopbackWorkerRequest = (c: Context) => {
   if (loopbackHostHeader(c.req.header("Host"))) return true;
   try {
-    const url = new URL(c.req.url);
-    if (LOOPBACK_HOSTS.has(url.hostname)) return true;
-    return isWranglerLocalRewrite(c, c.req.header("Origin") || "");
+    return LOOPBACK_HOSTS.has(new URL(c.req.url).hostname);
   } catch {
     return false;
   }

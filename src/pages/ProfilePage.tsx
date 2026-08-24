@@ -16,7 +16,7 @@ import {
   Typography,
   type Key,
 } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import {
   AnonymousAvatar,
@@ -98,6 +98,8 @@ export function ProfilePage() {
   const [available, setAvailable] = useState(true);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const lastAvatarAttemptRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!ready || !viewer.authenticated) return;
@@ -155,7 +157,9 @@ export function ProfilePage() {
       setAvatarPickerOpen(false);
       return;
     }
+    lastAvatarAttemptRef.current = nextKey;
     setSavingAvatar(true);
+    setAvatarError("");
     try {
       const updated = await api<{
         avatar_key: number;
@@ -175,6 +179,9 @@ export function ProfilePage() {
             }
           : current,
       );
+      setAvatarPickerOpen(false);
+    } catch (reason) {
+      setAvatarError((reason as Error).message || "头像保存失败");
       setAvatarPickerOpen(false);
     } finally {
       setSavingAvatar(false);
@@ -324,6 +331,26 @@ export function ProfilePage() {
             </Card.Title>
           </Card.Header>
           <Card.Content>
+            {avatarError ? (
+              <Alert className="mb-3" status="danger">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>头像未能保存</Alert.Title>
+                  <Alert.Description>{avatarError}</Alert.Description>
+                </Alert.Content>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onPress={() => {
+                    const key = lastAvatarAttemptRef.current;
+                    if (key != null && key !== avatarKey) void changeAvatar(key);
+                    else setAvatarPickerOpen(true);
+                  }}
+                >
+                  重试
+                </Button>
+              </Alert>
+            ) : null}
             <dl className="m-0 grid gap-1.5 text-sm">
               <div className="flex justify-between gap-3">
                 <dt className="text-muted">点评</dt>

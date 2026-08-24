@@ -167,7 +167,7 @@ function DefaultShell({
 
             <nav
               aria-label="主导航"
-              className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1 lg:col-span-1 lg:row-start-auto"
+              className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1 lg:col-span-1 lg:row-start-auto lg:flex-nowrap"
             >
               {links.map((link) => {
                 const active = selectedKey === link.id;

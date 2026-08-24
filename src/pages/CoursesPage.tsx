@@ -333,7 +333,7 @@ export function CoursesPage() {
               key={opt.id || DEFAULT_SORT_KEY}
               id={opt.id || DEFAULT_SORT_KEY}
             >
-              {opt.label}
+              {opt.id === "" && q ? "相关度" : opt.label}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>

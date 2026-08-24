@@ -116,6 +116,10 @@ export function parseCategoryPath(text: string): ParsedCategoryPath {
     requirement = parts[0];
     yearPart = parts[1] || "";
     mid = parts[2] || "";
+  } else if (parts.length === 2 && REQUIREMENTS.has(parts[1])) {
+    yearPart = parts[0];
+    requirement = parts[1];
+    mid = "";
   } else if (parts[0] && /^\d{4}/.test(parts[0])) {
     yearPart = parts[0];
     mid = parts[1] || "";

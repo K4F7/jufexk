@@ -110,9 +110,10 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   await page.goto("/latest");
 
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "匿名用户#000000" })).toBeVisible();
+  const author = page.getByRole("link", { name: "匿名用户#000000" });
+  await expect(author).toBeVisible();
   await expect(
-    page.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
+    author.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
   ).toHaveCount(1);
   await expect(page.getByText("点评了")).toBeVisible();
   await expect(

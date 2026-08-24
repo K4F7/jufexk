@@ -30,6 +30,27 @@ describe("aggregateRelationDimensionLabels", () => {
     ]);
   });
 
+  it("breaks a two-way mode tie using the scheme option order", () => {
+    const labels = aggregateRelationDimensionLabels([
+      {
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: { difficulty: 3, homework: 3, grading: 3, gain: 3 },
+      },
+      {
+        schemeKey: "major",
+        schemeVersion: 2,
+        scores: { difficulty: 1, homework: 1, grading: 1, gain: 1 },
+      },
+    ]);
+    expect(labels).toEqual([
+      { id: "difficulty", label: "课程难度", option: "简单" },
+      { id: "homework", label: "作业多少", option: "不多" },
+      { id: "grading", label: "给分好坏", option: "超好" },
+      { id: "gain", label: "收获多少", option: "很多" },
+    ]);
+  });
+
   it("returns null when there are no new four-dim snapshots", () => {
     expect(
       aggregateRelationDimensionLabels([
