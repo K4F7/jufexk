@@ -7,6 +7,7 @@ import {
   Input,
   InputOTP,
   Label,
+  REGEXP_ONLY_DIGITS,
   Skeleton,
   Spinner,
   Tabs,
@@ -107,10 +108,6 @@ function AlreadyLoggedInAlert() {
 const SESSION_LOADING_STATUS = (
   <DetailLoadingStatus label="正在读取登录状态…" />
 );
-
-/* 窄屏（<sm）用 size-11 + gap-2：4 槽约 234px，360px 视口卡片内不溢出。 */
-const MFA_OTP_SLOT_CLASS =
-  "size-11 flex-none [&_.input-otp__slot-value]:text-xl sm:size-14 sm:[&_.input-otp__slot-value]:text-2xl";
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -378,13 +375,12 @@ export function LoginPage() {
   return (
     <section aria-labelledby="login-heading" className="mx-auto max-w-xl py-8">
       <Card
-        className="pb-6"
         role="article"
         aria-labelledby="login-heading"
         variant="secondary"
       >
         <Card.Header>
-          <Card.Title className="text-xl" id="login-heading">
+          <Card.Title id="login-heading">
             登录
           </Card.Title>
         </Card.Header>
@@ -428,32 +424,31 @@ export function LoginPage() {
                     </Alert.Content>
                   </Alert>
                 )}
-                <div className="flex flex-col items-center gap-2">
+                <div className="mx-auto flex w-[280px] flex-col gap-2">
                   <Label>验证码</Label>
                   <InputOTP
                     aria-label="验证码"
                     autoComplete="one-time-code"
-                    className="justify-center gap-2 sm:gap-3"
                     inputMode="numeric"
                     isDisabled={busy}
                     maxLength={4}
                     name="mfa"
-                    pattern="^[0-9]+$"
+                    pattern={REGEXP_ONLY_DIGITS}
                     value={mfaCode}
                     variant="secondary"
                     onChange={setMfaCode}
                   >
                     <InputOTP.Group>
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={0} />
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={1} />
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={2} />
-                      <InputOTP.Slot className={MFA_OTP_SLOT_CLASS} index={3} />
+                      <InputOTP.Slot index={0} />
+                      <InputOTP.Slot index={1} />
+                      <InputOTP.Slot index={2} />
+                      <InputOTP.Slot index={3} />
                     </InputOTP.Group>
                   </InputOTP>
                 </div>
               </div>
             </Card.Content>
-            <Card.Footer className="mt-6 flex flex-col gap-2">
+            <Card.Footer className="mt-4 flex flex-col gap-2">
               <Button
                 fullWidth
                 isDisabled={mfaCode.length !== 4}
