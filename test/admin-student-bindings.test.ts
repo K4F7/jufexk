@@ -138,6 +138,27 @@ describe("administrator student-ID bindings", () => {
       headers: ordinaryWriteHeaders(emailOnly),
     });
     expect(emailDenied.status).toBe(401);
+
+    const muted = await attachCasIdentity("muted-admin-cas", "2021777003");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO admin_student_bindings(subject_hash) VALUES(?)`,
+    )
+      .bind(muted.subject)
+      .run();
+    await env.DB.prepare(
+      `UPDATE users SET muted_until=unixepoch()+3600 WHERE id=?`,
+    )
+      .bind(
+        await hmacHex(
+          "ordinary-test-user:muted-admin-cas",
+          ORDINARY_TEST_AUTH_SECRET,
+        ),
+      )
+      .run();
+    const mutedElevated = await SELF.fetch(`${origin}/api/admin/session`, {
+      headers: ordinaryWriteHeaders(muted.session),
+    });
+    expect(mutedElevated.status).toBe(200);
   });
 
   it("removes a binding so that student no longer elevates", async () => {

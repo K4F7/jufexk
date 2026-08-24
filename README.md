@@ -65,7 +65,7 @@ pnpm exec wrangler d1 migrations apply jufexk --local
 pnpm run dev
 ```
 
-管理员本地口令放在不提交的 `.dev.vars`，再用 `pnpm run secrets:sync-local` 写入本地 Secrets Store。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置。
+本机密钥放在不提交的 `.dev.vars`，再用 `pnpm run secrets:sync-local` 写入本地 Secrets Store。首位管理员用 `pnpm exec tsx scripts/admin/bind-student-ids.ts` 写入学号 HMAC。站点与学校名称在 `wrangler.jsonc` 的 `SITE_NAME`、`UNIVERSITY_NAME` 中配置。
 
 ### 常用命令
 

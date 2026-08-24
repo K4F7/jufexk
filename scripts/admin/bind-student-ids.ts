@@ -38,7 +38,7 @@ for (const envPath of envCandidates) {
 
 const usernames = args.map((raw) => {
   const username = normalizeCasUsername(raw);
-  if (!username) throw new Error(`学号格式不正确: ${raw}`);
+  if (!username) throw new Error("学号格式不正确");
   return username;
 });
 if (!usernames.length) {

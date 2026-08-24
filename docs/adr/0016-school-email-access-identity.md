@@ -14,7 +14,7 @@ _2026-08-19：AuthBridge 开通已按 [ADR-0022](./0022-launch-without-ordinary-
 
 _#137 已否决 Cloudflare Access OTP：Zero Trust 席位不适合全校投稿门。校园 JWT（[Mine-JUFE/AuthBridge](https://github.com/Mine-JUFE/AuthBridge)）不再作为登录路径。_
 
-大多数访问者是游客，课程、教师、任课关系和公开评价只读页面匿名可访问。江财 CAS 代登、校学生邮箱验证或测试 HMAC 头只在投稿、认可等写操作上构成普通用户会话。管理员后台继续使用独立口令 session，不能与普通用户身份互换。
+大多数访问者是游客，课程、教师、任课关系和公开评价只读页面匿名可访问。江财 CAS 代登、校学生邮箱验证或测试 HMAC 头只在投稿、认可等写操作上构成普通用户会话。管理员后台使用独立 `admin_sessions`，不能与普通用户身份互换。
 
 Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC 头），并把认证主体映射到站内稳定、不可公开的普通用户身份。AuthBridge JWT 不再作为登录方案。明文邮箱、AuthBridge `sub`（密文）、学号、管理员会话、IP hash 和既有 `submitter_hash` 都不直接承担任课评价或认可的业务唯一性。
 

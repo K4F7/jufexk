@@ -29,7 +29,7 @@ import {
   parseBindingUsernames,
 } from "../admin-student-bindings";
 import {
-  canOrdinaryUserWrite,
+  isOrdinaryUserAuthenticated,
   resolveOrdinaryUser,
 } from "../ordinary-user-session";
 import { readSecret } from "../secrets";
@@ -123,7 +123,7 @@ async function issueAdminSession(c: AppContext, ipHash: string) {
 
 async function tryElevateStudentAdmin(c: AppContext) {
   const user = await resolveOrdinaryUser(c);
-  if (!user || !canOrdinaryUserWrite(user)) return false;
+  if (!user || !isOrdinaryUserAuthenticated(user)) return false;
   const subject = await loadUserCasSubject(c.env.DB, user.id);
   if (!subject || !(await casSubjectIsAdminBound(c.env.DB, subject))) {
     return false;

@@ -21,7 +21,7 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 不要写入 Secrets Store：
 
 - `SITE_NAME`、`UNIVERSITY_NAME`、`TURNSTILE_SITE_KEY`、`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL`、`MAIL_DELIVERY_URL`、`MAIL_FROM`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置。`CAMPUS_JWT_ENABLED` 不得写入仓库，也不能再打开 AuthBridge callback。
-- Vitest 夹具口令：仅测试
+- Vitest 夹具字符串（Secrets Store 绑定的测试替代值）：仅测试
 - `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`、`JUFEXK_ADMIN_COOKIE`、`JUFEXK_ADMIN_CSRF`：运维参数。管理员不再使用共享口令，先绑定学号再复制会话 Cookie。
 
 ## 本机
