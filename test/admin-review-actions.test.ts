@@ -1,5 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
+import { deliverReviewAuthorLookup } from "../src/admin-review-author-mail";
 import { collectRelationReviewTexts } from "../src/review-summary";
 import { refreshPublicListPrecomputes } from "../src/public-list-precompute";
 import { V3_OFFLINE_SCORES } from "./review-score-fixtures";
@@ -263,5 +264,58 @@ describe("admin review actions", () => {
       note: "failed",
       actor_session_id: expect.any(String),
     });
+  });
+
+  it("treats missing author-lookup mail bindings as unconfigured without leaking private data", async () => {
+    const previousTo = (env as { REVIEW_AUTHOR_LOOKUP_TO?: string })
+      .REVIEW_AUTHOR_LOOKUP_TO;
+    (env as { REVIEW_AUTHOR_LOOKUP_TO?: string }).REVIEW_AUTHOR_LOOKUP_TO = "";
+    try {
+      expect(await deliverReviewAuthorLookup({}, {
+        reviewId: 1,
+        courseCode: "TEST0001",
+        courseName: "未配置投递",
+        teacherName: "",
+        headline: "",
+        comment: "private-unconfigured-comment",
+        reviewCreatedAt: "2026-08-24T00:00:00.000Z",
+        reviewStatus: "approved",
+        blockedAt: null,
+        deletedAt: null,
+        submitterHash: "unconfigured-private-hash",
+        authorUserId: "unconfigured-private-user",
+        authorStatus: "active",
+        authorCreatedAt: "2026-08-24T00:00:00.000Z",
+        identities: [],
+        requestedBySessionId: "session",
+      })).toBe("unconfigured");
+
+      const inserted = await env.DB.prepare(
+        `INSERT INTO reviews(course_id,teacher_id,category,overall,status,submitter_hash,comment)
+         VALUES(1,1,'general',4,'approved','unconfigured-private-hash','未配置投递审计')`,
+      ).run();
+      const reviewId = Number(inserted.meta.last_row_id);
+      const auth = await login();
+      const response = await adminAction(auth, reviewId, "author-lookup");
+      expect(response.status).toBe(503);
+      const raw = await response.text();
+      expect(raw).not.toContain("unconfigured-private-hash");
+      expect(raw).not.toContain("unconfigured-private-user");
+      expect(
+        await env.DB.prepare(
+          `SELECT action,note,actor_session_id FROM review_moderation_events
+           WHERE review_id=? AND action='author_lookup'`,
+        )
+          .bind(reviewId)
+          .first(),
+      ).toMatchObject({
+        action: "author_lookup",
+        note: "unconfigured",
+        actor_session_id: expect.any(String),
+      });
+    } finally {
+      (env as { REVIEW_AUTHOR_LOOKUP_TO?: string }).REVIEW_AUTHOR_LOOKUP_TO =
+        previousTo;
+    }
   });
 });

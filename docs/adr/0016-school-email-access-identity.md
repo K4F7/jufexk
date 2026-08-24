@@ -1,5 +1,7 @@
 # 普通用户通过校学生邮箱验证接入，游客只读
 
+_2026-08-24：#500 再次从 Worker 解绑 `MAIL_*` 与 `REVIEW_AUTHOR_LOOKUP_TO`。#478 曾为点评作者查询把这些变量绑回，但 Secrets Store 没有对应条目，阻塞 `main` 部署。_
+
 _2026-08-24：#483 从 Worker 配置淘汰 AuthBridge / 校园 JWT / 邮件投递变量。`POST /api/auth/callback` 仍固定 503；生产不再绑定 `MAIL_*`。_
 
 _2026-08-24：#480 退役共享 `ADMIN_PASSWORD`。管理员改为手动绑定校园统一身份学号（HMAC 与 CAS `auth_identities.subject` 相同）；已绑定用户校园登录后签发独立 `admin_sessions`。明文学号不落库。口令登录、Cloudflare Secrets Store 中的 `ADMIN_PASSWORD` 不再授权管理分区。_
