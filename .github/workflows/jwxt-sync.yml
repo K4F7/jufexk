@@ -1,0 +1,95 @@
+name: Periodic JWXT sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Collection mode
+        required: true
+        type: choice
+        options:
+          - pilot
+          - incremental
+          - full
+          - resume
+  schedule:
+    # Beijing 03:17 every day (UTC 19:17 on the previous date).
+    - cron: "17 19 * * *"
+    # Beijing 04:37 on day 2 (UTC 20:37 on day 1).
+    - cron: "37 20 1 * *"
+
+concurrency:
+  group: production-jwxt-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: sync
+    if: github.event_name == 'workflow_dispatch' || vars.JWXT_SYNC_ENABLED == 'true'
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      JWXT_USERNAME: ${{ secrets.JWXT_USERNAME }}
+      JWXT_PASSWORD: ${{ secrets.JWXT_PASSWORD }}
+      JWXT_SYNC_ENABLED: ${{ vars.JWXT_SYNC_ENABLED }}
+      JWXT_SYNC_BUCKET: jufexk-jwxt-sync
+    steps:
+      - name: Keep production collection disabled until the protocol gate passes
+        env:
+          DISPATCH_MODE: ${{ inputs.mode }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$DISPATCH_MODE" == "pilot" ]]; then
+            exit 0
+          fi
+          if [[ "$JWXT_SYNC_ENABLED" != "true" ]]; then
+            echo "JWXT automatic sync is disabled; only a manual pilot may run before JWXT_SYNC_ENABLED=true."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Select collection mode
+        id: mode
+        env:
+          DISPATCH_MODE: ${{ inputs.mode }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [[ -n "$DISPATCH_MODE" ]]; then
+            mode="$DISPATCH_MODE"
+          elif [[ "$EVENT_SCHEDULE" == "37 20 1 * *" ]]; then
+            mode="full"
+          else
+            mode="incremental"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+      - name: Collect and redact JWXT capture
+        run: pnpm exec tsx scripts/jwxt-collector/run.ts --mode "${{ steps.mode.outputs.mode }}" --output .local-data/jwxt-sync/capture.json
+      - name: Build package and write D1 staging only
+        id: stage
+        run: |
+          pnpm exec tsx scripts/jwxt-sync/run.ts --mode "${{ steps.mode.outputs.mode }}" --stage-only > .local-data/jwxt-sync/result.json
+          generation_id="$(node -p "JSON.parse(require('fs').readFileSync('.local-data/jwxt-sync/result.json','utf8')).generationId")"
+          echo "generation_id=$generation_id" >> "$GITHUB_OUTPUT"
+      - name: Upload redacted package and checkpoint to R2
+        run: |
+          generation_id="${{ steps.stage.outputs.generation_id }}"
+          pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/generations/$generation_id/manifest.json" --file ".local-data/jwxt-sync/out/$generation_id.manifest.json" --remote
+          pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/generations/$generation_id/offerings.ndjson.gz" --file ".local-data/jwxt-sync/out/$generation_id.ndjson.gz" --remote
+          pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/checkpoints/latest.json" --file ".local-data/jwxt-sync/result.json" --remote
+      - name: Publish the staged generation atomically
+        run: |
+          pnpm exec tsx scripts/jwxt-sync/run.ts --mode "${{ steps.mode.outputs.mode }}" > .local-data/jwxt-sync/published.json
+          pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/checkpoints/latest.json" --file .local-data/jwxt-sync/published.json --remote

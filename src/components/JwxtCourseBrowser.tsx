@@ -2,7 +2,6 @@ import { Button, Card, Label, ListBox, Modal, Select, Table, Tabs, Typography } 
 import { useEffect, useMemo, useState } from "react";
 import { relationDetailHref } from "./CourseRelationRow";
 import { RouterAriaLink } from "./RouterAriaLink";
-import { displaySection } from "../lib/catalog-schedule";
 import {
   planStatusLabel,
   requiredElectiveLabel,
@@ -109,15 +108,13 @@ function OfferingTable({
       ) : (
     <Table>
       <Table.ScrollContainer>
-        <Table.Content aria-label={label} className="w-full min-w-[68rem]">
+        <Table.Content aria-label={label} className="w-full min-w-[56rem]">
           <Table.Header>
             <Table.Column isRowHeader>课程</Table.Column>
             <Table.Column>教师</Table.Column>
-            <Table.Column>班号</Table.Column>
             <Table.Column>周次</Table.Column>
             <Table.Column>时间</Table.Column>
             <Table.Column>地点 / 校区</Table.Column>
-            <Table.Column>容量</Table.Column>
             <Table.Column>本站评价</Table.Column>
             <Table.Column>操作</Table.Column>
           </Table.Header>
@@ -139,7 +136,6 @@ function OfferingTable({
                     <Table.Cell>
                       {offering.teacherName || "—"}
                     </Table.Cell>
-                    <Table.Cell>{displaySection(offering.section)}</Table.Cell>
                     <Table.Cell>{offering.weekText || "—"}</Table.Cell>
                     <Table.Cell>
                       <div>{offering.timeText || "暂无上课时间"}</div>
@@ -147,10 +143,6 @@ function OfferingTable({
                     <Table.Cell>
                       <div>{offering.place || "—"}</div>
                       <div className="text-sm text-muted">{offering.campus || "—"}</div>
-                    </Table.Cell>
-                    <Table.Cell>
-                      {offering.capacitySelected ?? "—"}/{offering.capacityLimit ?? "—"}
-                      {offering.capacityAvailable != null ? ` · 余 ${offering.capacityAvailable}` : ""}
                     </Table.Cell>
                     <Table.Cell>
                       {offering.catalogCourseId ? (
@@ -217,8 +209,7 @@ function SectionTable({
       <Table.ScrollContainer>
         <Table.Content aria-label="开课班" className="w-full min-w-[40rem]">
           <Table.Header>
-            <Table.Column isRowHeader>课程序号</Table.Column>
-            <Table.Column>教师</Table.Column>
+            <Table.Column isRowHeader>教师</Table.Column>
             <Table.Column>校区</Table.Column>
             <Table.Column>课程安排</Table.Column>
             <Table.Column>状态</Table.Column>
@@ -232,7 +223,6 @@ function SectionTable({
               const sameCourse = findSameCourse(planItems, offering.courseCode);
               return (
                 <Table.Row key={key || `section-${index}`} id={key || `section-${index}`}>
-                  <Table.Cell>{displaySection(offering.section)}</Table.Cell>
                   <Table.Cell>{offering.teacherName || "—"}</Table.Cell>
                   <Table.Cell>{offering.campus || "—"}</Table.Cell>
                   <Table.Cell>
@@ -429,7 +419,6 @@ export function JwxtCourseBrowser({
                             </Button>
                             <div className="text-sm text-muted">
                               {item.courseCode}
-                              {item.section && displaySection(item.section) !== "—" ? ` · 班${displaySection(item.section)}` : ""}
                             </div>
                           </Table.Cell>
                           <Table.Cell>{item.credits ?? "—"}</Table.Cell>

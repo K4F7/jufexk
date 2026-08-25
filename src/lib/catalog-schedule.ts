@@ -14,16 +14,18 @@ import type { CourseRelation } from "./types";
 export const CATALOG_TEACHER_SECTION_RE = /^t\d+$/;
 export const HISTORICAL_OFFERING_SECTION = "历史数据";
 
-export type CatalogOfferingRow = {
-  id?: number;
-  course_id?: number;
-  term?: string;
-  section?: string;
-  campus?: string;
-  schedule?: string;
-  status?: string;
-  teachers?: string | null;
-  teacher_ids?: string | null;
+export type ScheduleOfferingRow = {
+  key: string;
+  courseCode: string;
+  courseName: string;
+  teacherName: string;
+  termId: string;
+  campus: string;
+  weekText: string;
+  timeText: string;
+  place: string;
+  catalogCourseId: number;
+  catalogTeacherId: number | null;
 };
 
 export function catalogScheduleTerms(now = new Date()): JwxtFilterOption[] {
@@ -104,56 +106,45 @@ export function relationToOffering(
   });
 }
 
-function teacherIdsOf(row: CatalogOfferingRow): number[] {
-  return (row.teacher_ids || "")
-    .split(",")
-    .map((part) => Number(part.trim()))
-    .filter((id) => Number.isInteger(id) && id > 0);
-}
-
-function teacherNamesOf(row: CatalogOfferingRow): string[] {
-  return (row.teachers || "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-export function catalogTeacherMatches(row: CatalogOfferingRow, offering: JwxtOffering): boolean {
-  if (offering.catalogTeacherId && teacherIdsOf(row).includes(offering.catalogTeacherId)) {
+export function scheduleTeacherMatches(row: ScheduleOfferingRow, offering: JwxtOffering): boolean {
+  if (offering.catalogTeacherId && row.catalogTeacherId === offering.catalogTeacherId) {
     return true;
   }
-  return Boolean(offering.teacherName) && teacherNamesOf(row).includes(offering.teacherName);
+  return Boolean(offering.teacherName) && row.teacherName === offering.teacherName;
 }
 
-export function applyCatalogOfferingRows(
+export function applyScheduleOfferingRows(
   current: JwxtOffering[],
-  rows: CatalogOfferingRow[],
+  rows: ScheduleOfferingRow[],
 ): JwxtOffering[] {
-  const active = rows.filter((row) => (row.status || "active") === "active");
   const patched = current.map((offering) => {
-    const match = active.find((row) => catalogTeacherMatches(row, offering));
+    const match = rows.find((row) => scheduleTeacherMatches(row, offering));
     if (!match) return offering;
     return normalizeOffering({
       ...offering,
-      section: usableOfferingSection(match.section) || offering.section,
-      campus: (match.campus || "").trim() || offering.campus,
-      timeText: (match.schedule || "").trim() || offering.timeText,
+      section: match.key,
+      campus: match.campus.trim() || offering.campus,
+      weekText: match.weekText.trim() || offering.weekText,
+      timeText: match.timeText.trim() || offering.timeText,
+      place: match.place.trim() || offering.place,
     });
   });
   const seed = current[0];
-  const extras = active
-    .filter((row) => (row.schedule || "").trim() && !current.some((offering) => catalogTeacherMatches(row, offering)))
+  const extras = rows
+    .filter((row) => row.timeText.trim() && !current.some((offering) => scheduleTeacherMatches(row, offering)))
     .map((row) =>
       normalizeOffering({
-        courseCode: seed?.courseCode || "",
-        courseName: seed?.courseName || "",
+        courseCode: row.courseCode || seed?.courseCode || "",
+        courseName: row.courseName || seed?.courseName || "",
         categoryPath: seed?.categoryPath || "",
-        section: usableOfferingSection(row.section),
-        teacherName: teacherNamesOf(row)[0] || "",
-        campus: (row.campus || "").trim(),
-        timeText: (row.schedule || "").trim(),
-        catalogCourseId: seed?.catalogCourseId ?? (row.course_id || null),
-        catalogTeacherId: teacherIdsOf(row)[0] || null,
+        section: row.key,
+        teacherName: row.teacherName,
+        campus: row.campus.trim(),
+        weekText: row.weekText.trim(),
+        timeText: row.timeText.trim(),
+        place: row.place.trim(),
+        catalogCourseId: row.catalogCourseId || seed?.catalogCourseId || null,
+        catalogTeacherId: row.catalogTeacherId,
       }),
     );
   return [...patched, ...extras];

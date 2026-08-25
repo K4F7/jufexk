@@ -12,7 +12,7 @@ import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import {
-  applyCatalogOfferingRows,
+  applyScheduleOfferingRows,
   catalogBrowseSnapshot,
   catalogFiltersReady,
   catalogScheduleGrades,
@@ -22,7 +22,7 @@ import {
   isCatalogPublicElective,
   relationToOffering,
   replaceCourseOfferings,
-  type CatalogOfferingRow,
+  type ScheduleOfferingRow,
 } from "../lib/catalog-schedule";
 import type { JwxtFilterOption, JwxtOffering } from "../lib/jwxt-offering";
 import {
@@ -62,9 +62,10 @@ async function fetchCatalogRelations(filters: {
   return items;
 }
 
-async function fetchCatalogOfferings(courseId: number): Promise<CatalogOfferingRow[]> {
+async function fetchScheduleOfferings(courseId: number, termId: string): Promise<ScheduleOfferingRow[]> {
   try {
-    const rows = await api<CatalogOfferingRow[]>(`/api/offerings?courseId=${courseId}`);
+    const params = new URLSearchParams({ courseId: String(courseId), term: termId });
+    const rows = await api<ScheduleOfferingRow[]>(`/api/schedule-offerings?${params.toString()}`);
     return Array.isArray(rows) ? rows : [];
   } catch {
     return [];
@@ -146,7 +147,7 @@ export function SchedulePage() {
     return () => {
       cancelled = true;
     };
-  }, [filtersReady, major.id]);
+  }, [filtersReady, major.id, term.id]);
 
   const snapshot = useMemo(
     () =>
@@ -189,12 +190,13 @@ export function SchedulePage() {
   }
 
   async function enrichCourse(courseCode: string, seed = [...planned, ...publicElectives].filter((item) => item.courseCode === courseCode)) {
-    if (enrichedCodes.current.has(courseCode)) return seed;
+    const cacheKey = `${term.id}:${courseCode}`;
+    if (enrichedCodes.current.has(cacheKey)) return seed;
     const courseId = seed.find((item) => item.catalogCourseId)?.catalogCourseId;
     if (!courseId || seed.length === 0) return seed;
-    const rows = await fetchCatalogOfferings(courseId);
-    enrichedCodes.current.add(courseCode);
-    return applyCatalogOfferingRows(seed, rows);
+    const rows = await fetchScheduleOfferings(courseId, term.id);
+    enrichedCodes.current.add(cacheKey);
+    return applyScheduleOfferingRows(seed, rows);
   }
 
   async function handleSelectCourse(courseCode: string) {
