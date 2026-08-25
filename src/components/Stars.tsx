@@ -1,11 +1,51 @@
 /**
- * 1–5 推荐度星级。rating 为 null 时整排灰星。
+ * 1–5 推荐度星级，支持半星。rating 为 null 时整排灰星。
  * 默认 aria-hidden：旁侧总有数字分或「暂无评价」文字；单独使用时传 label。
  * Icons: HeroUI-recommended @gravity-ui/icons (Star / StarFill). HeroUI has no Rating.
  */
 import { Star, StarFill } from "@gravity-ui/icons";
 
 const STAR_COUNT = 5;
+
+export function starFill(
+  rating: number | null,
+  star: number,
+): "empty" | "half" | "full" {
+  if (rating == null) return "empty";
+  if (rating >= star) return "full";
+  if (rating >= star - 0.5) return "half";
+  return "empty";
+}
+
+export function StarGlyph({
+  fill,
+  className = "",
+}: {
+  fill: "empty" | "half" | "full";
+  className?: string;
+}) {
+  if (fill === "full") {
+    return (
+      <StarFill aria-hidden className={`size-[1em] shrink-0 ${className}`} />
+    );
+  }
+  if (fill === "empty") {
+    return (
+      <Star
+        aria-hidden
+        className={`size-[1em] shrink-0 text-border ${className}`}
+      />
+    );
+  }
+  return (
+    <span className={`relative inline-block size-[1em] shrink-0 ${className}`}>
+      <Star aria-hidden className="absolute inset-0 size-[1em] text-border" />
+      <span className="absolute inset-0 w-1/2 overflow-hidden">
+        <StarFill aria-hidden className="size-[1em]" />
+      </span>
+    </span>
+  );
+}
 
 export function Stars({
   rating,
@@ -17,25 +57,14 @@ export function Stars({
   label?: string;
   className?: string;
 }) {
-  const filled =
-    rating == null
-      ? 0
-      : Math.min(STAR_COUNT, Math.max(0, Math.round(rating)));
   return (
     <span
       className={`inline-flex items-center gap-[0.12em] leading-none text-accent ${className}`}
       {...(label ? { "aria-label": label } : { "aria-hidden": true })}
     >
-      {Array.from({ length: STAR_COUNT }, (_, index) => {
-        const Icon = index < filled ? StarFill : Star;
-        return (
-          <Icon
-            key={index}
-            aria-hidden
-            className={`size-[1em] shrink-0 ${index < filled ? "" : "text-border"}`}
-          />
-        );
-      })}
+      {Array.from({ length: STAR_COUNT }, (_, index) => (
+        <StarGlyph key={index} fill={starFill(rating, index + 1)} />
+      ))}
     </span>
   );
 }

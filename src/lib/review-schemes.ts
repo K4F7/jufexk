@@ -387,18 +387,32 @@ export function snapshotReviewScores(input: {
   tags: readonly string[];
   scores: unknown;
   comment: unknown;
+  reviewOnly?: boolean;
 }):
   | {
       ok: true;
       schemeKey: SchemeKey;
       schemeVersion: number;
       scores: Record<string, number>;
-      scoresJson: string;
+      scoresJson: string | null;
       comment: string;
       commentFormat: "html" | null;
     }
   | { ok: false; error: string } {
   const schemeKey = resolveSchemeKey(input.schemeKey, input.category);
+  if (input.reviewOnly) {
+    const note = validateReviewNote(input.comment);
+    if (!note.ok) return note;
+    return {
+      ok: true,
+      schemeKey,
+      schemeVersion: latestSchemeVersion(schemeKey).version,
+      scores: {},
+      scoresJson: null,
+      comment: note.comment,
+      commentFormat: note.commentFormat,
+    };
+  }
   const validated = validateSubmittedScores(
     input.scores,
     applicableDimensions(schemeKey, input.tags),

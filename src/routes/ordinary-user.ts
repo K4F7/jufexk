@@ -165,20 +165,25 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
   let courseId = b.courseId;
   const offeringId = b.offeringId.value,
     teacherId = b.teacherId,
-    overall = b.overall,
+    reviewOnly = b.reviewOnly,
+    overall = reviewOnly ? null : b.overall,
     ip = c.req.header("CF-Connecting-IP") || "unknown",
     ipHash = await keyedDigest(ip, await readSecret(c.env.IP_HASH_SECRET));
   if (b.offeringId.supplied && (!offeringId || offeringId < 1))
     return fail(c, "开课班无效");
   if (!(await verifyTurnstile(c, b.turnstileToken, ip)))
     return fail(c, "人机验证失败，请重试", 403);
-  if (!courseId || !teacherId || !overall)
+  if (!courseId || !teacherId)
+    return fail(c, "请选择有效的课程和任课教师");
+  if (!reviewOnly && !overall)
     return fail(c, "请选择有效的课程、任课教师和总体评分");
   // 一句话总结必填（#444）；成绩选填，空串存 NULL，不进 AI 总结提示词。
   const headline = b.headline;
   if (!headline) return fail(c, "请填写一句话总结本课");
   if (headline.length > 80) return fail(c, "一句话总结不能超过 80 字");
   if (b.grade.length > 20) return fail(c, "成绩不能超过 20 字");
+  if (b.grade && !/^\d{1,3}$/.test(b.grade))
+    return fail(c, "成绩只接受数字");
   const grade = b.grade || null;
   const course = offeringId
     ? await c.env.DB.prepare(
@@ -214,14 +219,16 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
           offering_term?: string;
         }>();
   if (course) courseId = course.course_id;
-  if (!course || !overall)
+  if (!course) return fail(c, "请选择有效的课程、任课教师和总体评分");
+  if (!reviewOnly && !overall)
     return fail(c, "请选择有效的课程、任课教师和总体评分");
   const snapshot = snapshotReviewScores({
     schemeKey: course.scheme_key,
     category: course.category,
     tags: parseTagCsv(course.tag_csv),
-    scores: b.scores,
+    scores: reviewOnly ? null : b.scores,
     comment: b.comment,
+    reviewOnly,
   });
   if (!snapshot.ok) return fail(c, snapshot.error);
   if (!(await takeRateLimit(c.env.DB, `review-submit:${ipHash}`, 3600, 5)))
@@ -241,8 +248,8 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         dedupeKey,
       ),
       c.env.DB.prepare(
-        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,comment_format,headline,grade,term,submitter_hash,author_user_id,scheme_key,scheme_version,scores,status,reviewed_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP)`,
+        `INSERT INTO reviews(course_id,teacher_id,offering_id,category,overall,comment,comment_format,headline,grade,term,submitter_hash,author_user_id,scheme_key,scheme_version,scores,status,reviewed_at,login_only)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',CURRENT_TIMESTAMP,?)`,
       ).bind(
         courseId,
         teacherId,
@@ -259,6 +266,7 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         snapshot.schemeKey,
         snapshot.schemeVersion,
         snapshot.scoresJson,
+        b.loginOnly ? 1 : 0,
       ),
     ]);
   } catch (error) {

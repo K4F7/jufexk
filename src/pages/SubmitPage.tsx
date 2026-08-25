@@ -1,4 +1,3 @@
-import { Star, StarFill } from "@gravity-ui/icons";
 import {
   Button,
   Card,
@@ -20,11 +19,18 @@ import {
 } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { StarGlyph, starFill } from "../components/Stars";
 import { TurnstileBox } from "../components/TurnstileBox";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
+import {
+  clearReviewDraft,
+  loadReviewDraft,
+  saveReviewDraft,
+} from "../lib/review-draft";
 import { plainTextToReviewNoteHtml } from "../lib/review-note-html";
+import { overallCaption } from "../lib/review-overall";
 import {
   COMMON_CORE_QUESTIONS,
   REVIEW_NOTE_MAX_LENGTH,
@@ -41,7 +47,6 @@ import type {
 } from "../lib/types";
 
 const SEARCH_DELAY = 320;
-const OVERALL_SCALE = ["1", "2", "3", "4", "5"] as const;
 const TERM_OPTIONS = recentTerms();
 /**
  * Grace period before a not-ready Turnstile widget is revealed in form mode:
@@ -106,41 +111,62 @@ function OverallStarRating({
   onChange: (value: string) => void;
 }) {
   const selected = Number(value) || 0;
+  const caption = overallCaption(value);
   return (
-    <RadioGroup
-      isRequired
-      aria-label="本次推荐度"
-      name="overall"
-      orientation="horizontal"
-      value={value}
-      onChange={onChange}
-    >
-      <Label>本次推荐度</Label>
-      {OVERALL_SCALE.map((score) => {
-        const filled = Number(score) <= selected;
-        return (
-          <Radio key={score} value={score}>
-            <Radio.Content>
-              <Radio.Control className="size-auto border-0 bg-transparent p-0 shadow-none">
-                {filled ? (
-                  <StarFill
-                    aria-hidden
-                    className="pointer-events-none size-5 text-accent"
-                  />
-                ) : (
-                  <Star
-                    aria-hidden
-                    className="pointer-events-none size-5 text-border"
-                  />
-                )}
-              </Radio.Control>
-              <span className="sr-only">{score} 星</span>
-            </Radio.Content>
-          </Radio>
-        );
-      })}
-      <FieldError>请选择本次推荐度</FieldError>
-    </RadioGroup>
+    <div className="flex flex-wrap items-end gap-3">
+      <RadioGroup
+        isRequired
+        aria-label="本次推荐度"
+        name="overall"
+        orientation="horizontal"
+        value={value}
+        onChange={onChange}
+      >
+        <Label>本次推荐度</Label>
+        <div className="flex items-center">
+          {[1, 2, 3, 4, 5].map((star) => {
+            const leftValue = star === 1 ? "" : String(star - 0.5);
+            const rightValue = String(star);
+            return (
+              <span key={star} className="relative inline-flex size-6 text-accent">
+                <StarGlyph
+                  className="pointer-events-none size-5"
+                  fill={starFill(selected || null, star)}
+                />
+                {leftValue ? (
+                  <Radio
+                    className="absolute inset-y-0 left-0 w-1/2"
+                    value={leftValue}
+                  >
+                    <Radio.Content className="size-full">
+                      <span className="sr-only">{leftValue} 星</span>
+                    </Radio.Content>
+                  </Radio>
+                ) : null}
+                <Radio
+                  className={
+                    leftValue
+                      ? "absolute inset-y-0 right-0 w-1/2"
+                      : "absolute inset-0"
+                  }
+                  value={rightValue}
+                >
+                  <Radio.Content className="size-full">
+                    <span className="sr-only">{rightValue} 星</span>
+                  </Radio.Content>
+                </Radio>
+              </span>
+            );
+          })}
+        </div>
+        <FieldError>请选择本次推荐度</FieldError>
+      </RadioGroup>
+      {caption ? (
+        <p className="m-0 text-sm text-muted" aria-live="polite">
+          {caption}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -169,6 +195,38 @@ function StatusMessage({ msg }: { msg: string }) {
   );
 }
 
+function ReviewSubjectHeader({
+  headingId,
+  courseName,
+  teacherName,
+  term,
+  code,
+}: {
+  headingId?: string;
+  courseName: string;
+  teacherName: string;
+  term?: string;
+  code?: string;
+}) {
+  const termText = term?.trim() ?? "";
+  const codeText = code?.trim() ?? "";
+  return (
+    <Card.Header className="gap-1">
+      <Card.Title className="text-xl font-bold text-accent" id={headingId}>
+        点评 · {courseName}（{teacherName}）
+      </Card.Title>
+      {termText || codeText ? (
+        <Card.Description>
+          <span className="flex flex-wrap gap-x-6">
+            {termText ? <span>学期：{termText}</span> : null}
+            {codeText ? <span>课程号：{codeText}</span> : null}
+          </span>
+        </Card.Description>
+      ) : null}
+    </Card.Header>
+  );
+}
+
 export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const { viewer, ready: viewerReady } = useViewer();
   const navigate = useNavigate();
@@ -183,11 +241,12 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     null,
   );
   const [teacherId, setTeacherId] = useState("");
-  const [term, setTerm] = useState(TERM_OPTIONS[0] ?? "");
+  const [term, setTerm] = useState("");
   const [scores, setScores] = useState<Record<string, string>>({});
   const [overall, setOverall] = useState("");
   const [grade, setGrade] = useState("");
-  const [realName, setRealName] = useState(false);
+  const [loginOnly, setLoginOnly] = useState(false);
+  const [reviewOnly, setReviewOnly] = useState(false);
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState("");
   const [msg, setMsg] = useState("");
@@ -195,6 +254,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [revealWidget, setRevealWidget] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const widgetRef = useRef<string | number | null>(null);
+  const restoredDraftKey = useRef("");
   const onReadyChange = useCallback((nextReady: boolean) => {
     setReady(nextReady);
   }, []);
@@ -219,6 +279,20 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const questions: ApplicableQuestion[] =
     selectedCourse?.applicableQuestions ?? COMMON_CORE_QUESTIONS;
   const teachers = selectedCourse?.teachers ?? [];
+  const presetCourseId = Number(searchParams.get("courseId"));
+  const presetTeacherId = searchParams.get("teacherId") ?? "";
+  const courseLocked =
+    Number.isSafeInteger(presetCourseId) &&
+    presetCourseId >= 1 &&
+    selectedCourse?.id === presetCourseId;
+  const selectedTeacher =
+    teachers.find((teacher) => String(teacher.id) === teacherId) ?? null;
+  const teacherLocked = Boolean(
+    courseLocked &&
+      presetTeacherId &&
+      selectedTeacher &&
+      String(selectedTeacher.id) === presetTeacherId,
+  );
   const hiddenCoreLabels = (selectedCourse?.tags ?? []).includes("mooc")
     ? COMMON_CORE_QUESTIONS.filter(
         (core) => !questions.some((question) => question.id === core.id),
@@ -249,6 +323,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }, [courseQueryDraft]);
 
   useEffect(() => {
+    if (courseLocked) return;
     const controller = new AbortController();
     let cancelled = false;
     const query = new URLSearchParams({ page: "1", pageSize: "20" });
@@ -270,7 +345,23 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
       cancelled = true;
       controller.abort();
     };
-  }, [courseQuery]);
+  }, [courseQuery, courseLocked]);
+
+  useEffect(() => {
+    if (!selectedCourse || !teacherId) return;
+    const key = `${selectedCourse.id}:${teacherId}`;
+    if (restoredDraftKey.current === key) return;
+    const draft = loadReviewDraft(selectedCourse.id, teacherId);
+    restoredDraftKey.current = key;
+    if (!draft) return;
+    setTerm(draft.term);
+    setScores(draft.scores);
+    setOverall(draft.overall);
+    setNote(draft.note);
+    setGrade(draft.grade);
+    setLoginOnly(draft.loginOnly);
+    setReviewOnly(draft.reviewOnly);
+  }, [selectedCourse, teacherId]);
 
   useEffect(() => {
     if (ready || phase !== "form") {
@@ -315,6 +406,7 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }, [loadCourse, searchParams]);
 
   async function onCourseChange(key: Key | null) {
+    restoredDraftKey.current = "";
     if (key == null) {
       setSelectedCourse(null);
       setTeacherId("");
@@ -338,13 +430,33 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     setPhase("form");
   }
 
+  function saveDraft() {
+    if (!selectedCourse || !teacherId) {
+      setMsg("请先确定课程和任课教师再保存");
+      return;
+    }
+    saveReviewDraft(selectedCourse.id, teacherId, {
+      term,
+      scores,
+      overall,
+      note,
+      grade,
+      loginOnly,
+      reviewOnly,
+    });
+    setMsg("已保存，可稍后继续填写");
+  }
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedCourse || !teacherId) {
       setMsg("请选择课程和任课教师");
       return;
     }
-    if (questions.some((question) => !scores[question.id]) || !overall) {
+    if (
+      !reviewOnly &&
+      (questions.some((question) => !scores[question.id]) || !overall)
+    ) {
       setMsg("请答完本次适用的评分题");
       return;
     }
@@ -373,17 +485,19 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         body: JSON.stringify({
           courseId: selectedCourse.id,
           teacherId: Number(teacherId),
-          overall: Number(overall),
-          scores: payloadScores,
+          overall: reviewOnly ? null : Number(overall),
+          scores: reviewOnly ? null : payloadScores,
           headline: headlineFromNote(note),
           grade: grade.trim(),
+          loginOnly,
+          reviewOnly,
           comment: plainTextToReviewNoteHtml(note),
-          anonymous: !realName,
           term,
           website: "",
           turnstileToken,
         }),
       });
+      clearReviewDraft(selectedCourse.id, teacherId);
       // 发布即公开：回到该 课程×教师 的详情页并展示提交成功条（Issue #402）。
       navigate(
         `/courses/${selectedCourse.id}?teacher=${teacherId}`,
@@ -404,12 +518,21 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     return (
       <section
         aria-labelledby="submit-gate-heading"
-        className="mx-auto max-w-xl py-8"
+        className="mx-auto max-w-md py-8"
       >
         <Card role="article" aria-labelledby="submit-gate-heading">
-          <Card.Header>
-            <Card.Title id="submit-gate-heading">写评价</Card.Title>
-          </Card.Header>
+          {selectedCourse && selectedTeacher ? (
+            <ReviewSubjectHeader
+              headingId="submit-gate-heading"
+              courseName={selectedCourse.name}
+              teacherName={selectedTeacher.name}
+              code={selectedCourse.code}
+            />
+          ) : (
+            <Card.Header>
+              <Card.Title id="submit-gate-heading">写评价</Card.Title>
+            </Card.Header>
+          )}
           <Card.Content>
             <StatusMessage msg={msg} />
             {config?.turnstileSiteKey ? (
@@ -430,11 +553,29 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     );
   }
 
+  const subjectKnown = Boolean(selectedCourse && selectedTeacher);
+
   return (
     <section className="mx-auto max-w-[800px]">
-      <Typography className="mb-4 text-2xl font-bold" type="h1">
-        写评价
-      </Typography>
+      {subjectKnown && selectedCourse && selectedTeacher ? (
+        <Card className="mb-5" role="region" aria-labelledby="submit-review-heading">
+          <ReviewSubjectHeader
+            headingId="submit-review-heading"
+            courseName={selectedCourse.name}
+            teacherName={selectedTeacher.name}
+            term={term}
+            code={selectedCourse.code}
+          />
+        </Card>
+      ) : (
+        <Typography
+          className="mb-4 text-2xl font-bold"
+          id="submit-review-heading"
+          type="h1"
+        >
+          写评价
+        </Typography>
+      )}
 
       <Form
         aria-labelledby="submit-review-heading"
@@ -442,93 +583,105 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         validationBehavior="native"
         onSubmit={onSubmit}
       >
-        <span className="sr-only" id="submit-review-heading">
-          写评价
-        </span>
-        <ComboBox
-          isRequired
-          allowsEmptyCollection
-          className="w-full"
-          defaultFilter={() => true}
-          inputValue={courseQueryDraft}
-          name="courseId"
-          selectedKey={selectedCourse ? String(selectedCourse.id) : null}
-          onInputChange={setCourseQueryDraft}
-          onSelectionChange={onCourseChange}
-        >
-          <Label>课程</Label>
-          <Description>可以搜索课名、老师或课号，再选出对应的课。</Description>
-          <ComboBox.InputGroup>
-            <Input placeholder="搜索课程" />
-            <ComboBox.Trigger />
-          </ComboBox.InputGroup>
-          <ComboBox.Popover>
-            <ListBox
-              renderEmptyState={() => (
-                <div className="py-4 text-center text-sm text-muted">
-                  {courseLoading ? "搜索中…" : "没有匹配的课程"}
-                </div>
-              )}
+        {teacherLocked ? null : (
+          <>
+            {courseLocked && selectedCourse ? (
+              subjectKnown ? null : (
+                <Card role="region" aria-label="评价对象">
+                  <Card.Header>
+                    <Card.Title>{selectedCourse.name}</Card.Title>
+                  </Card.Header>
+                </Card>
+              )
+            ) : (
+              <ComboBox
+                isRequired
+                allowsEmptyCollection
+                className="w-full"
+                defaultFilter={() => true}
+                inputValue={courseQueryDraft}
+                name="courseId"
+                selectedKey={selectedCourse ? String(selectedCourse.id) : null}
+                onInputChange={setCourseQueryDraft}
+                onSelectionChange={onCourseChange}
+              >
+                <Label>课程</Label>
+                <Description>
+                  可以搜索课名、老师或课号，再选出对应的课。
+                </Description>
+                <ComboBox.InputGroup>
+                  <Input placeholder="搜索课程" />
+                  <ComboBox.Trigger />
+                </ComboBox.InputGroup>
+                <ComboBox.Popover>
+                  <ListBox
+                    renderEmptyState={() => (
+                      <div className="py-4 text-center text-sm text-muted">
+                        {courseLoading ? "搜索中…" : "没有匹配的课程"}
+                      </div>
+                    )}
+                  >
+                    {courseOptions.map((course) => (
+                      <ListBox.Item
+                        key={course.id}
+                        id={String(course.id)}
+                        textValue={`${course.name} ${course.code}`}
+                      >
+                        {course.name}
+                        {course.code ? (
+                          <span className="text-muted"> · {course.code}</span>
+                        ) : null}
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    ))}
+                  </ListBox>
+                </ComboBox.Popover>
+              </ComboBox>
+            )}
+
+            <Select
+              isRequired
+              isDisabled={!selectedCourse}
+              className="w-full"
+              name="teacherId"
+              placeholder="请选择"
+              value={teacherId || null}
+              onChange={(value) => setTeacherId(value ? String(value) : "")}
             >
-              {courseOptions.map((course) => (
-                <ListBox.Item
-                  key={course.id}
-                  id={String(course.id)}
-                  textValue={`${course.name} ${course.code}`}
-                >
-                  {course.name}
-                  {course.code ? (
-                    <span className="text-muted"> · {course.code}</span>
-                  ) : null}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </ComboBox.Popover>
-        </ComboBox>
+              <Label>任课教师</Label>
+              <Description>选择这门课的任课老师</Description>
+              <Select.Trigger>
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {teachers.map((teacher) => (
+                    <ListBox.Item
+                      key={teacher.id}
+                      id={String(teacher.id)}
+                      textValue={teacher.name}
+                    >
+                      {teacher.name}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
+              <FieldError>请选择任课教师</FieldError>
+            </Select>
+          </>
+        )}
 
         <Select
-          isRequired
-          isDisabled={!selectedCourse}
-          className="w-full"
-          name="teacherId"
-          placeholder="请选择"
-          value={teacherId || null}
-          onChange={(value) => setTeacherId(value ? String(value) : "")}
-        >
-          <Label>任课教师</Label>
-          <Description>选择这门课的任课老师</Description>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {teachers.map((teacher) => (
-                <ListBox.Item
-                  key={teacher.id}
-                  id={String(teacher.id)}
-                  textValue={teacher.name}
-                >
-                  {teacher.name}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-          <FieldError>请选择任课教师</FieldError>
-        </Select>
-
-        <Select
-          isRequired
           className="w-full"
           name="term"
-          placeholder="请选择"
+          placeholder="选填"
           value={term || null}
           onChange={(value) => setTerm(value ? String(value) : "")}
         >
           <Label>学期</Label>
-          <Description>如果不记得了，可以随便选一个 :)</Description>
+          <Description>选填</Description>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
@@ -547,10 +700,9 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
               ))}
             </ListBox>
           </Select.Popover>
-          <FieldError>请选择学期</FieldError>
         </Select>
 
-        {hiddenCoreLabels.length ? (
+        {reviewOnly ? null : hiddenCoreLabels.length ? (
           <p className="m-0 text-sm text-muted">
             该课程为网课（MOOC），
             {hiddenCoreLabels.map((label) => `「${label}」`).join("、")}
@@ -558,22 +710,43 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           </p>
         ) : null}
 
-        {questions.map((question) => (
-          <ScaleRadios
-            key={question.id}
-            name={`score-${question.id}`}
-            label={question.prompt}
-            options={question.options.map((option) => ({
-              value: String(option.value),
-              label: option.label,
-            }))}
-            value={scores[question.id] || ""}
-            onChange={(value) =>
-              setScores((current) => ({ ...current, [question.id]: value }))
-            }
-          />
-        ))}
-        <OverallStarRating value={overall} onChange={setOverall} />
+        {reviewOnly
+          ? null
+          : questions.map((question) => (
+              <ScaleRadios
+                key={question.id}
+                name={`score-${question.id}`}
+                label={question.prompt}
+                options={question.options.map((option) => ({
+                  value: String(option.value),
+                  label: option.label,
+                }))}
+                value={scores[question.id] || ""}
+                onChange={(value) =>
+                  setScores((current) => ({ ...current, [question.id]: value }))
+                }
+              />
+            ))}
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+          {reviewOnly ? null : (
+            <OverallStarRating value={overall} onChange={setOverall} />
+          )}
+          <Checkbox
+            isSelected={reviewOnly}
+            name="reviewOnly"
+            onChange={setReviewOnly}
+          >
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              只写点评不评分
+            </Checkbox.Content>
+            <Description>
+              建议尽量评分，方便同学比较选课。勾选后本次可不填推荐度和三档题。
+            </Description>
+          </Checkbox>
+        </div>
         <TextField
           isInvalid={!!noteError}
           isRequired
@@ -585,21 +758,15 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           <TextArea className="w-full" rows={6} />
           {noteError ? <FieldError>{noteError}</FieldError> : null}
         </TextField>
-        <TextField name="grade" value={grade} onChange={setGrade}>
+        <TextField
+          name="grade"
+          value={grade}
+          onChange={(value) => setGrade(value.replace(/\D/g, "").slice(0, 3))}
+        >
           <Label>你的成绩</Label>
-          <Input maxLength={20} placeholder="选填，退课请填W" />
+          <Input inputMode="numeric" maxLength={3} placeholder="选填" />
           <Description>选填。分享成绩，方便同学们综合判断。</Description>
         </TextField>
-
-        <Checkbox isSelected={realName} name="realName" onChange={setRealName}>
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-            实名提交
-          </Checkbox.Content>
-          <Description>对外展示为实名</Description>
-        </Checkbox>
 
         {config?.turnstileSiteKey ? (
           <TurnstileBox
@@ -610,9 +777,33 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
           />
         ) : null}
 
-        <Button isPending={submitting} type="submit" variant="primary">
-          发布
-        </Button>
+        <Checkbox
+          isSelected={loginOnly}
+          name="loginOnly"
+          onChange={setLoginOnly}
+        >
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+            仅限登录用户查看
+          </Checkbox.Content>
+          <Description>勾选后，未登录的访客看不到这条点评</Description>
+        </Checkbox>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            isDisabled={!selectedCourse || !teacherId}
+            type="button"
+            variant="secondary"
+            onPress={saveDraft}
+          >
+            保存
+          </Button>
+          <Button isPending={submitting} type="submit" variant="primary">
+            发布
+          </Button>
+        </div>
         <StatusMessage msg={msg} />
       </Form>
     </section>

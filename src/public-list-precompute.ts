@@ -112,6 +112,7 @@ const aggregateInsert = `
     WHERE r.status='approved'
       AND r.blocked_at IS NULL
       AND r.deleted_at IS NULL
+      AND r.login_only=0
       AND trim(COALESCE(r.comment,''))<>''
       AND EXISTS(
         SELECT 1 FROM course_teachers public_relation

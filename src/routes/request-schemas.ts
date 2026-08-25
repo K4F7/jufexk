@@ -44,6 +44,12 @@ export const reviewSubmissionSchema = z
     grade: unknownField.transform((value) =>
       typeof value === "string" ? value.trim() : "",
     ),
+    loginOnly: unknownField.transform(
+      (value) => value === true || value === 1 || value === "1",
+    ),
+    reviewOnly: unknownField.transform(
+      (value) => value === true || value === 1 || value === "1",
+    ),
     term: cleanedField(30),
   })
   .passthrough();
