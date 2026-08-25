@@ -75,6 +75,18 @@ test("reserved handle page shows 学长学姐 copy and is not followable", async
   await expect(
     page.getByRole("heading", { level: 1, name: "匿名用户#000000" }),
   ).toBeVisible();
+  const profileCard = page.locator('[aria-label="公开编号"]');
+  const avatar = profileCard.locator("img").first();
+  const handle = profileCard.getByRole("heading", { name: "匿名用户#000000" });
+  const [avatarBox, handleBox] = await Promise.all([
+    avatar.boundingBox(),
+    handle.boundingBox(),
+  ]);
+  expect(avatarBox).toBeTruthy();
+  expect(handleBox).toBeTruthy();
+  expect(avatarBox!.x).toBeLessThan(handleBox!.x);
+  expect(avatarBox!.y < handleBox!.y + handleBox!.height).toBe(true);
+  expect(handleBox!.y < avatarBox!.y + avatarBox!.height).toBe(true);
   await expect(page.getByText("来自以前的学长学姐的评价").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "关注" })).toHaveCount(0);
   await expect(

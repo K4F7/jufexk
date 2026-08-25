@@ -210,10 +210,22 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(page.getByText("待审核", { exact: true })).toBeVisible();
   await expect(page.getByText("等待审核的点评摘要。")).toBeVisible();
 
-  // 侧栏公开编号与官方头像；不出现邮箱、学号等标识，也不再导向账号删除。
+  // 侧栏公开编号与官方头像横向排列；不出现邮箱、学号等标识，也不再导向账号删除。
   await expect(
     page.getByRole("heading", { name: "匿名用户#000001" }),
   ).toBeVisible();
+  const profileCard = page.getByRole("article", { name: "匿名用户#000001" });
+  const avatar = profileCard.getByRole("button", { name: "更换官方头像" });
+  const handle = profileCard.getByRole("heading", { name: "匿名用户#000001" });
+  const [avatarBox, handleBox] = await Promise.all([
+    avatar.boundingBox(),
+    handle.boundingBox(),
+  ]);
+  expect(avatarBox).toBeTruthy();
+  expect(handleBox).toBeTruthy();
+  expect(avatarBox!.x).toBeLessThan(handleBox!.x);
+  expect(avatarBox!.y < handleBox!.y + handleBox!.height).toBe(true);
+  expect(handleBox!.y < avatarBox!.y + avatarBox!.height).toBe(true);
   await expect(
     page.getByRole("radio", { name: "选择官方头像 1" }),
   ).toHaveCount(0);
@@ -228,7 +240,6 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(
     page.getByRole("radio", { name: "选择官方头像 3" }),
   ).toHaveCount(0);
-  const profileCard = page.getByRole("article", { name: "匿名用户#000001" });
   await expect(profileCard.getByText("关注了", { exact: true }).first()).toBeVisible();
   await expect(profileCard.getByText("1 人", { exact: true })).toBeVisible();
   await expect(profileCard.getByText("被关注", { exact: true })).toBeVisible();
