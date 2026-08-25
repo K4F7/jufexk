@@ -94,7 +94,7 @@ export function meetingsFromOffering(
     startPeriod: slot.startPeriod,
     endPeriod: slot.endPeriod,
     weeks: slot.weeks.length ? slot.weeks : defaultWeeks(),
-    place,
+    place: slot.place || place,
   }));
 }
 
@@ -114,11 +114,12 @@ export function normalizeOffering(partial: Partial<JwxtOffering> & Pick<JwxtOffe
   const courseName = (split.courseName || partial.courseName).trim();
   const weekText = (partial.weekText || "").trim();
   const timeText = (partial.timeText || "").trim();
-  const place = (partial.place || "").trim();
+  const sourcePlace = (partial.place || "").trim();
   const meetings =
     partial.meetings && partial.meetings.length
       ? partial.meetings
-      : meetingsFromOffering(timeText, weekText, place);
+      : meetingsFromOffering(timeText, weekText, sourcePlace);
+  const place = sourcePlace || meetings.find((meeting) => meeting.place)?.place || "";
   return {
     courseCode,
     courseName,

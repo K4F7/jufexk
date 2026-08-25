@@ -16,9 +16,12 @@ export function parseJwxtBookmarkletMeetings(
     "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 7, "天": 7,
   };
   const weeks = new Set<number>();
-  const rangePattern = /(\d{1,2})\s*[-–—~至]\s*(\d{1,2})/g;
+  const weekSource = weekText.trim() || timeText;
+  const rangePattern = weekText.trim()
+    ? /(\d{1,2})\s*[-–—~至到]\s*(\d{1,2})/g
+    : /(\d{1,2})\s*[-–—~至到]\s*(\d{1,2})\s*周/g;
   let range: RegExpExecArray | null;
-  while ((range = rangePattern.exec(weekText))) {
+  while ((range = rangePattern.exec(weekSource))) {
     const start = Number(range[1]);
     const end = Number(range[2]);
     for (let week = Math.min(start, end); week <= Math.max(start, end); week += 1) {
@@ -26,7 +29,10 @@ export function parseJwxtBookmarkletMeetings(
     }
   }
   if (weeks.size === 0) {
-    for (const token of weekText.match(/\d{1,2}/g) ?? []) {
+    const singles = weekText.trim()
+      ? weekSource.match(/\d{1,2}/g) ?? []
+      : [...weekSource.matchAll(/(\d{1,2})\s*周/g)].map((match) => match[1]);
+    for (const token of singles) {
       const week = Number(token);
       if (week >= 1 && week <= 60) weeks.add(week);
     }
@@ -34,7 +40,7 @@ export function parseJwxtBookmarkletMeetings(
   if (weeks.size === 0) {
     for (let week = 1; week <= 16; week += 1) weeks.add(week);
   }
-  const parity = /单周|奇数周/.test(weekText) ? 1 : /双周|偶数周/.test(weekText) ? 0 : null;
+  const parity = /单周|奇数周/.test(weekSource) ? 1 : /双周|偶数周/.test(weekSource) ? 0 : null;
   const normalizedWeeks = [...weeks]
     .filter((week) => parity === null || week % 2 === parity)
     .sort((left, right) => left - right);
@@ -51,6 +57,20 @@ export function parseJwxtBookmarkletMeetings(
       endPeriod,
       weeks: normalizedWeeks,
       place,
+    });
+  }
+  const bracketPattern = /(?:^|[;；\n])\s*(?:(?:\d{1,2}\s*[-–—~至到]\s*\d{1,2}|\d{1,2})\s*周\s*)?(?:星期|周)?([一二三四五六日天])\s*\[\s*(\d{1,2})(?:\s*[-–—~至到]\s*(\d{1,2}))?\s*\]\s*([^;；\n]*)/g;
+  while ((time = bracketPattern.exec(timeText))) {
+    const startPeriod = Number(time[2]);
+    const endPeriod = Number(time[3] || time[2]);
+    if (startPeriod < 1 || endPeriod < startPeriod || endPeriod > 20) continue;
+    const inlinePlace = time[4].trim();
+    meetings.push({
+      weekday: dayMap[time[1]],
+      startPeriod,
+      endPeriod,
+      weeks: normalizedWeeks,
+      place: inlinePlace || (place === timeText ? "" : place),
     });
   }
   return meetings;
@@ -77,10 +97,14 @@ export function jwxtImportBookmarkletSource(origin: string): string {
     return out;
   }
   function textOf(el){
-    if (typeof el==="string") return el.replace(/\\s+/g," ").trim();
-    return String((el && (el.innerText || el.textContent)) || "").replace(/\\s+/g," ").trim();
+    if (typeof el==="string") return el.replace(/\\s*\\n+\\s*/g,"；").replace(/\\s+/g," ").trim();
+    return String((el && (el.innerText || el.textContent)) || "").replace(/\\s*\\n+\\s*/g,"；").replace(/\\s+/g," ").trim();
   }
   function headerIndex(cells, names){
+    for (var x=0;x<cells.length;x++){
+      var exact=textOf(cells[x]);
+      for (var y=0;y<names.length;y++) if (exact===names[y]) return x;
+    }
     for (var i=0;i<cells.length;i++){
       var t=textOf(cells[i]);
       for (var j=0;j<names.length;j++) if (t.indexOf(names[j])>=0) return i;
@@ -150,10 +174,14 @@ export function jwxtSnapshotBookmarkletSource(): string {
     return out;
   }
   function textOf(el){
-    if (typeof el==="string") return el.replace(/\\s+/g," ").trim();
-    return String((el && (el.innerText || el.textContent)) || "").replace(/\\s+/g," ").trim();
+    if (typeof el==="string") return el.replace(/\\s*\\n+\\s*/g,"；").replace(/\\s+/g," ").trim();
+    return String((el && (el.innerText || el.textContent)) || "").replace(/\\s*\\n+\\s*/g,"；").replace(/\\s+/g," ").trim();
   }
   function headerIndex(cells, names){
+    for (var x=0;x<cells.length;x++){
+      var exact=textOf(cells[x]);
+      for (var y=0;y<names.length;y++) if (exact===names[y]) return x;
+    }
     for (var i=0;i<cells.length;i++){
       var t=textOf(cells[i]);
       for (var j=0;j<names.length;j++) if (t.indexOf(names[j])>=0) return i;
@@ -218,13 +246,10 @@ export function jwxtSnapshotBookmarkletSource(): string {
   var enrolled=[];
   var planned=[];
   var publicElectives=[];
-  var pageText="";
   var roots=docs(document);
   roots.forEach(function(doc){
-    var docText=textOf(doc.body||doc.documentElement);
     var docUrl="";
     try { docUrl=String(doc.location&&doc.location.href||""); } catch (e) {}
-    pageText += " " + docText;
     var tables=doc.querySelectorAll("table");
     for (var t=0;t<tables.length;t++){
       var grid=tableGrid(tables[t]);
@@ -232,7 +257,10 @@ export function jwxtSnapshotBookmarkletSource(): string {
       var headerRow=0;
       while (headerRow<grid.length && headerIndex(grid[headerRow],["课程"])<0) headerRow+=1;
       if (headerRow>=grid.length) continue;
-      var heads=grid[headerRow];
+      var courseHeaderColumn=headerIndex(grid[headerRow],["课程名称","课程名","课程"]);
+      var headerEnd=headerRow;
+      while (headerEnd+1<grid.length && ["课程号","课程代码","课程名称","课程名","课程"].indexOf(textOf(grid[headerEnd+1][courseHeaderColumn]||""))>=0) headerEnd+=1;
+      var heads=grid[headerEnd];
       var ci=headerIndex(heads,["课程名称","课程名"]);
       if (ci<0) ci=headerIndex(heads,["课程"]);
       if (ci<0) continue;
@@ -240,26 +268,28 @@ export function jwxtSnapshotBookmarkletSource(): string {
       var ti=headerIndex(heads,["上课时间"]);
       var ji=headerIndex(heads,["任课教师","教师"]);
       var wi=headerIndex(heads,["周次"]);
-      var si=headerIndex(heads,["上课班号","班号"]);
+      var si=headerIndex(heads,["上课班级","上课班号","班号"]);
       var ki=headerIndex(heads,["课程类别","类别"]);
       var xi=headerIndex(heads,["学分"]);
       var pi=headerIndex(heads,["上课地点"]);
       var cai=headerIndex(heads,["开课校区","校区"]);
-      var cli=headerIndex(heads,["容量","人数上限"]);
-      var csi=headerIndex(heads,["已选人数","已选"]);
-      var cvi=headerIndex(heads,["剩余人数","余量"]);
+      var cli=headerIndex(heads,["限选人数","人数上限","限选","容量"]);
+      var csi=headerIndex(heads,["已选人数","已选/免听","已选"]);
+      var cvi=headerIndex(heads,["可选人数","剩余人数","可选","余量"]);
       var ei=headerIndex(heads,["选课状态","状态"]);
       var rows=[];
-      for (var r=headerRow+1;r<grid.length;r++){
+      for (var r=headerEnd+1;r<grid.length;r++){
         var cells=grid[r];
         var name=textOf(cells[ci]||{});
         if (!name) continue;
         if (/CASTGC|JSESSIONID|password|passwd|cookie|学号|姓名/i.test(name)) return;
-        var codeMatch=/^(\\d{8,12})\\s+(.+)$/.exec(name);
+        var codeMatch=/^\\[\\s*([A-Za-z0-9._-]{4,32})\\s*\\]\\s*(.+)$/.exec(name)||/^(\\d{8,12})\\s+(.+)$/.exec(name);
         var explicitCode=coi>=0?textOf(cells[coi]||{}):"";
         var weekText=wi>=0?textOf(cells[wi]||{}):"";
         var timeText=ti>=0?textOf(cells[ti]||{}):"";
-        var place=pi>=0?textOf(cells[pi]||{}):"";
+        var place=pi>=0&&pi!==ti?textOf(cells[pi]||{}):"";
+        var parsedMeetings=meetings(timeText,weekText,place);
+        if (!place && parsedMeetings.length) place=parsedMeetings[0].place||"";
         function countAt(index){
           var match=index>=0?/\\d+/.exec(textOf(cells[index]||{}).replace(/,/g,"")):null;
           return match?Number(match[0]):null;
@@ -280,24 +310,21 @@ export function jwxtSnapshotBookmarkletSource(): string {
           capacitySelected: countAt(csi),
           capacityAvailable: countAt(cvi),
           enrollStatus: ei>=0?textOf(cells[ei]||{}):"",
-          meetings: meetings(timeText,weekText,place),
+          meetings: parsedMeetings,
           catalogCourseId: null,
           catalogTeacherId: null
         });
       }
       if (!rows.length) continue;
-      var tableContext=docUrl+" "+textOf(tables[t])+" "+rows.map(function(row){return row.categoryPath;}).join(" ");
-      if (/S20301|个人课表|选课结果|已选课程/i.test(tableContext)) enrolled=enrolled.concat(rows);
+      var tableMarker=String(tables[t].id||tables[t].getAttribute("name")||"");
+      var tableContext=docUrl+" "+tableMarker+" "+rows.map(function(row){return row.categoryPath;}).join(" ");
+      if (/S2020302|S20301|个人课表|选课结果|已选课程/i.test(tableContext)) enrolled=enrolled.concat(rows);
       else if (/公共选修|公选|通识选修/.test(tableContext)) publicElectives=publicElectives.concat(rows);
       else planned=planned.concat(rows);
     }
   });
-  if (/登录超时|会话过期|请先登录|cas\\/login/i.test(pageText) && !enrolled.length && !planned.length && !publicElectives.length) {
-    alert("教务登录已失效，请重新登录后再导出");
-    return;
-  }
   if (!enrolled.length && !planned.length && !publicElectives.length){
-    alert("当前页没有找到课程表，请先打开选课结果或候选课程");
+    alert("当前页没有找到课程表；请确认教务会话有效，并打开选课结果或候选课程");
     return;
   }
   var terms=optionList(roots,["xnxq","xq","term"]);

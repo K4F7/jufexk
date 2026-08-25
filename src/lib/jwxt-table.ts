@@ -1,5 +1,5 @@
 /**
- * 解析 KINGOSOFT 选课表 HTML（S20301 已选、S2020103 候选）。
+ * 解析 KINGOSOFT 选课表 HTML（S2020302 已选、S2020103 候选）。
  * 动态表头、rowspan、分页与登录失效全部失败关闭；不读 Cookie。
  */
 import {
@@ -46,15 +46,15 @@ const HEADER_ALIASES: Record<string, string[]> = {
   course: ["课程", "课程号", "课程名称"],
   credits: ["学分"],
   category: ["课程类别", "类别"],
-  section: ["上课班号", "班号", "班次"],
+  section: ["上课班级", "上课班号", "班号", "班次"],
   teacher: ["任课教师", "教师"],
   campus: ["开课校区", "校区"],
   weeks: ["周次"],
   time: ["上课时间", "授课时段"],
   place: ["上课地点", "场地"],
-  limit: ["限选人数", "容量"],
-  selected: ["已选"],
-  available: ["可选人数"],
+  limit: ["限选人数", "人数上限", "限选", "容量"],
+  selected: ["已选人数", "已选/免听", "已选"],
+  available: ["可选人数", "剩余人数", "可选", "余量"],
   status: ["选课状态", "状态"],
 };
 
@@ -74,7 +74,7 @@ function decodeEntities(value: string) {
 
 function textOf(html: string) {
   return decodeEntities(
-    html.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<[^>]+>/g, " "),
+    html.replace(/<br\s*\/?\s*>/gi, "；").replace(/<[^>]+>/g, " "),
   )
     .replace(/\s+/g, " ")
     .trim();
@@ -125,11 +125,24 @@ function expandGrid(tableHtml: string): { headers: string[]; rows: string[][] } 
     if (row.some((cell) => cell)) grids.push(row);
   }
   if (grids.length < 2) return { headers: grids[0] ?? [], rows: [] };
-  return { headers: grids[0], rows: grids.slice(1) };
+  const headerStart = grids.findIndex((row) => headerIndex(row, HEADER_ALIASES.course) >= 0);
+  if (headerStart < 0) return { headers: grids[0], rows: grids.slice(1) };
+  const courseColumn = headerIndex(grids[headerStart], HEADER_ALIASES.course);
+  let headerEnd = headerStart;
+  while (
+    headerEnd + 1 < grids.length &&
+    HEADER_ALIASES.course.includes((grids[headerEnd + 1][courseColumn] || "").trim())
+  ) {
+    headerEnd += 1;
+  }
+  return { headers: grids[headerEnd], rows: grids.slice(headerEnd + 1) };
 }
 
 function headerIndex(headers: string[], keys: string[]) {
-  return headers.findIndex((header) => keys.some((key) => header.includes(key)));
+  const exact = headers.findIndex((header) => keys.includes(header.trim()));
+  return exact >= 0
+    ? exact
+    : headers.findIndex((header) => keys.some((key) => header.includes(key)));
 }
 
 function cell(row: string[], index: number) {
@@ -216,7 +229,7 @@ function offeringsFromGrid(headers: string[], rows: string[][]): JwxtOffering[] 
         campus: cell(row, indexes.campus),
         weekText: cell(row, indexes.weeks),
         timeText: timeIndex >= 0 ? cell(row, timeIndex) : "",
-        place: cell(row, indexes.place),
+        place: indexes.place === timeIndex ? "" : cell(row, indexes.place),
         capacityLimit: parseCount(cell(row, indexes.limit)),
         capacitySelected: parseCount(cell(row, indexes.selected)),
         capacityAvailable: parseCount(cell(row, indexes.available)),

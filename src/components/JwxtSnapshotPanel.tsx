@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { jwxtSnapshotBookmarkletHref } from "../lib/jwxt-import-bookmarklet";
 import {
-  EHALL_URL,
+  EHALL_JWXT_APP_URL,
   JWXT_CHANNEL2_URL,
 } from "../lib/jwxt-schedule-text";
 import {
@@ -14,7 +14,7 @@ import {
 } from "../lib/jwxt-snapshot";
 
 export const JWXT_REFRESH_NOTICE =
-  "协议闸门未打通 Worker 代查教务。刷新只导入本机 JSON / 教务页表格；快照包含来源教师名，不包含 Cookie、学生学号或学生姓名。";
+  "本站登录与本科教务会话相互独立。教务登录和导出都在你的浏览器内完成；本站只导入脱敏快照，不接触 Cookie、票据、学生学号或学生姓名。";
 
 export function JwxtSnapshotPanel({
   canEdit,
@@ -143,22 +143,40 @@ export function JwxtSnapshotPanel({
               <p className="m-0">{JWXT_REFRESH_NOTICE}</p>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href={JWXT_CHANNEL2_URL}
+                  href={EHALL_JWXT_APP_URL}
                   rel="noreferrer"
+                  render={(domProps) => (
+                    <a
+                      {...(domProps as object)}
+                      className={typeof domProps.className === "string" ? domProps.className : undefined}
+                      href={EHALL_JWXT_APP_URL}
+                      rel="noreferrer"
+                      target="_blank"
+                    />
+                  )}
                   target="_blank"
                 >
-                  打开本科教务
+                  经智慧江财进入本科教务
                 </Link>
                 <Link
-                  href={EHALL_URL}
+                  href={JWXT_CHANNEL2_URL}
                   rel="noreferrer"
+                  render={(domProps) => (
+                    <a
+                      {...(domProps as object)}
+                      className={typeof domProps.className === "string" ? domProps.className : undefined}
+                      href={JWXT_CHANNEL2_URL}
+                      rel="noreferrer"
+                      target="_blank"
+                    />
+                  )}
                   target="_blank"
                 >
-                  打开智慧江财
+                  已有教务会话？直接打开
                 </Link>
               </div>
               <p className="m-0 text-muted">
-                在已打开的教务页用书签导出 JSON，再回到本页导入。页面加载不会访问教务。
+                首选从智慧江财的“本科教务”应用进入；如学校要求，请在新页面完成 CAS 登录。打开“选课结果”后运行下方书签导出 JSON，再回到本页导入。页面加载不会访问教务。
               </p>
               <a className="text-accent" href={bookmarklet}>
                 导出教务快照
