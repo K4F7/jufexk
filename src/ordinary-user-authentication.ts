@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { getCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   ensureUserPublicHandle,
   insertUserWithPublicHandle,
@@ -145,6 +145,10 @@ export async function issueOrdinaryUserSessionCookie(
     maxAge: ORDINARY_USER_SESSION_TTL_SECONDS,
   });
   return token;
+}
+
+export function clearOrdinaryUserSessionCookie(c: Context) {
+  deleteCookie(c, EMAIL_LOGIN_COOKIE, { path: "/" });
 }
 
 export async function resolveOrdinaryUserSessionCredential(

@@ -2,8 +2,8 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { CAMPUS_JWT_COOKIE } from "./campus-jwt";
 import {
-  EMAIL_LOGIN_COOKIE,
   ORDINARY_USER_SESSION_TTL_SECONDS,
+  clearOrdinaryUserSessionCookie,
   resolveOrdinaryUser,
   type OrdinaryUser,
 } from "./ordinary-user-authentication";
@@ -61,7 +61,7 @@ export function issueOrdinaryUserCsrf(c: Context, token: string) {
 
 export function clearOrdinaryUserCookies(c: Context) {
   deleteCookie(c, CAMPUS_JWT_COOKIE, { path: "/" });
-  deleteCookie(c, EMAIL_LOGIN_COOKIE, { path: "/" });
+  clearOrdinaryUserSessionCookie(c);
   deleteCookie(c, ORDINARY_USER_CSRF_COOKIE, { path: "/" });
   deleteCookie(c, EHALL_SESSION_COOKIE, { path: EHALL_SESSION_COOKIE_PATH });
 }

@@ -2,10 +2,14 @@ import { env } from "cloudflare:test";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { AppEnv } from "../src/app-env";
+import {
+  ORDINARY_TEST_AUTH_SECRET,
+  WRITE_ORIGIN,
+} from "./ordinary-write-session";
 
-export const ORDINARY_TEST_AUTH_SECRET = "test-ordinary-user-auth";
+export { ORDINARY_TEST_AUTH_SECRET };
 export const ORDINARY_IDENTITY_SECRET = "test-campus-identity";
-export const ORDINARY_TEST_ORIGIN = "https://example.com";
+export const ORDINARY_TEST_ORIGIN = WRITE_ORIGIN;
 
 export async function withOrdinaryUserContext<T>(
   request: Request,

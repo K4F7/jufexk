@@ -5,6 +5,7 @@ import {
   EMAIL_LOGIN_COOKIE,
   ORDINARY_USER_ID_HEADER,
   ORDINARY_USER_MAC_HEADER,
+  clearOrdinaryUserSessionCookie,
   createOrdinaryUserResolver,
   hmacHex,
   issueOrdinaryUserSessionCookie,
@@ -234,6 +235,19 @@ describe("ordinary user authentication adapters", () => {
       (c) => resolveOrdinaryUserSessionCredential(c),
     );
     expect(fromCookie?.id).toBe(userId);
+
+    const { response: cleared } = await withOrdinaryUserContext(
+      ordinaryUserRequest("/clear", {
+        Cookie: `${EMAIL_LOGIN_COOKIE}=${match?.[1]}`,
+      }),
+      async (c) => {
+        clearOrdinaryUserSessionCookie(c);
+        return null;
+      },
+    );
+    expect(cleared.headers.get("set-cookie") || "").toMatch(
+      new RegExp(`${EMAIL_LOGIN_COOKIE}=(?:;|$)`),
+    );
   });
 
   it("returns active, banned, pending_deletion, and deleted users from valid credentials", async () => {
