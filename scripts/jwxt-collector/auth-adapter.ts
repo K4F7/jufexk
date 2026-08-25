@@ -268,8 +268,19 @@ export class EhallCookieAuthAdapter extends JwxtSessionAdapter {
           },
           signal: AbortSignal.timeout(15_000),
         });
-      } catch {
-        throw new JwxtAuthenticationError(`ehall_fetch_failed:${url.origin}`);
+      } catch (error) {
+        const errorName = error instanceof Error ? error.name : "unknown";
+        const cause =
+          typeof error === "object" && error !== null && "cause" in error
+            ? (error as { cause?: unknown }).cause
+            : undefined;
+        const causeCode =
+          typeof cause === "object" && cause !== null && "code" in cause
+            ? String((cause as { code?: unknown }).code || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 32)
+            : "";
+        throw new JwxtAuthenticationError(
+          `ehall_fetch_failed:${url.origin}:${errorName}${causeCode ? `:${causeCode}` : ""}`,
+        );
       }
       captureCookies(this.cookiesFor(url), response);
       const location = response.headers.get("location") || "";
