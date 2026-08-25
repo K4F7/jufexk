@@ -257,15 +257,20 @@ export class EhallCookieAuthAdapter extends JwxtSessionAdapter {
         throw new EhallCookieExpiredError("ehall_cookie_expired");
       }
       seen.add(url.toString());
-      const response = await this.fetchImpl(url.toString(), {
-        redirect: "manual",
-        headers: {
-          accept: "text/html,*/*;q=0.8",
-          cookie: cookieHeader(this.cookiesFor(url)),
-          "user-agent": USER_AGENT,
-        },
-        signal: AbortSignal.timeout(15_000),
-      });
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url.toString(), {
+          redirect: "manual",
+          headers: {
+            accept: "text/html,*/*;q=0.8",
+            cookie: cookieHeader(this.cookiesFor(url)),
+            "user-agent": USER_AGENT,
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch {
+        throw new JwxtAuthenticationError(`ehall_fetch_failed:${url.origin}`);
+      }
       captureCookies(this.cookiesFor(url), response);
       const location = response.headers.get("location") || "";
       if (!REDIRECT_STATUSES.has(response.status) || !location) {
