@@ -16,10 +16,11 @@ import {
   catalogBrowseSnapshot,
   catalogFiltersReady,
   catalogScheduleGrades,
+  catalogScheduleMajors,
   catalogScheduleTerms,
   currentCatalogTermId,
-  departmentsToMajors,
   isCatalogPublicElective,
+  matchDepartmentForMajor,
   relationToOffering,
   replaceCourseOfferings,
   type ScheduleOfferingRow,
@@ -90,7 +91,8 @@ export function SchedulePage() {
   const [term, setTerm] = useState<JwxtFilterOption>(defaultTerm);
   const [grade, setGrade] = useState<JwxtFilterOption>(emptyFilter);
   const [major, setMajor] = useState<JwxtFilterOption>(emptyFilter);
-  const [majors, setMajors] = useState<JwxtFilterOption[]>([]);
+  const majors = useMemo(() => catalogScheduleMajors(), []);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [planned, setPlanned] = useState<JwxtOffering[]>([]);
   const [publicElectives, setPublicElectives] = useState<JwxtOffering[]>([]);
   const [notice, setNotice] = useState("");
@@ -107,7 +109,7 @@ export function SchedulePage() {
     let cancelled = false;
     void api<{ items: string[] }>("/api/courses/departments")
       .then((data) => {
-        if (!cancelled) setMajors(departmentsToMajors(data.items ?? []));
+        if (!cancelled) setDepartments((data.items ?? []).map((item) => item.trim()).filter(Boolean));
       })
       .catch(() => {
         if (!cancelled) setCatalogError("无法读取本站院系目录。");
@@ -118,6 +120,7 @@ export function SchedulePage() {
   }, []);
 
   const filtersReady = catalogFiltersReady(grade, major);
+  const department = matchDepartmentForMajor(major.id, departments);
 
   useEffect(() => {
     if (!filtersReady) {
@@ -128,7 +131,7 @@ export function SchedulePage() {
     }
     let cancelled = false;
     void Promise.all([
-      fetchCatalogRelations({ department: major.id }),
+      department ? fetchCatalogRelations({ department }) : Promise.resolve([]),
       fetchCatalogRelations({ category: "sports" }),
     ])
       .then(([departmentRows, sportsRows]) => {
@@ -147,7 +150,7 @@ export function SchedulePage() {
     return () => {
       cancelled = true;
     };
-  }, [filtersReady, major.id, term.id]);
+  }, [department, filtersReady, term.id]);
 
   const snapshot = useMemo(
     () =>

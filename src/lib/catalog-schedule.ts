@@ -1,6 +1,6 @@
 /**
- * 排课模拟的本站目录适配：学期/年级是本机筛选，专业用公开院系，
- * 候选课用课程×教师任课关系，上课时间只在开课班 schedule 有原文时解析。
+ * 排课模拟的本站目录适配：学期/年级是本机筛选，专业用本科专业名单，
+ * 候选课按专业所属学院匹配公开开课单位后取课程×教师任课关系。
  */
 import { JWXT_SNAPSHOT_SOURCE, JWXT_SNAPSHOT_VERSION, type JwxtSnapshotV1 } from "./jwxt-snapshot";
 import {
@@ -10,6 +10,8 @@ import {
   type JwxtOffering,
 } from "./jwxt-offering";
 import type { CourseRelation } from "./types";
+
+export { catalogScheduleMajors, matchDepartmentForMajor } from "./catalog-majors";
 
 export const CATALOG_TEACHER_SECTION_RE = /^t\d+$/;
 export const HISTORICAL_OFFERING_SECTION = "历史数据";
@@ -58,13 +60,6 @@ export function catalogScheduleGrades(now = new Date()): JwxtFilterOption[] {
     const grade = latest - offset;
     return { id: String(grade), label: `${grade}级` };
   });
-}
-
-export function departmentsToMajors(departments: string[]): JwxtFilterOption[] {
-  return departments
-    .map((name) => name.trim())
-    .filter(Boolean)
-    .map((name) => ({ id: name, label: name }));
 }
 
 export function isCatalogPublicElective(category: string): boolean {

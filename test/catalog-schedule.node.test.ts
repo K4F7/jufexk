@@ -4,11 +4,12 @@ import {
   catalogBrowseSnapshot,
   catalogFiltersReady,
   catalogScheduleGrades,
+  catalogScheduleMajors,
   catalogScheduleTerms,
   catalogTeacherSection,
   currentCatalogTermId,
-  departmentsToMajors,
   displaySection,
+  matchDepartmentForMajor,
   isCatalogPublicElective,
   relationToOffering,
   replaceCourseOfferings,
@@ -32,14 +33,18 @@ describe("catalog schedule helpers", () => {
     expect(catalogScheduleTerms(now).map((item) => item.id)).toContain("2026-2027-1");
     expect(catalogScheduleGrades(now)[0]).toEqual({ id: "2026", label: "2026级" });
     expect(catalogFiltersReady({ id: "2026", label: "2026级" }, { id: "", label: "" })).toBe(false);
-    expect(catalogFiltersReady({ id: "2026", label: "2026级" }, { id: "数学学院", label: "数学学院" })).toBe(true);
+    expect(catalogFiltersReady({ id: "2026", label: "2026级" }, { id: "会计学", label: "会计学" })).toBe(true);
   });
 
-  it("maps departments and public-elective sports separately", () => {
-    expect(departmentsToMajors([" 数学学院 ", "", "体育学院"])).toEqual([
-      { id: "数学学院", label: "数学学院" },
-      { id: "体育学院", label: "体育学院" },
-    ]);
+  it("lists undergraduate majors and matches their home-unit departments", () => {
+    const labels = catalogScheduleMajors().map((item) => item.label);
+    expect(labels).toContain("会计学");
+    expect(labels).toContain("数学与应用数学");
+    expect(labels).not.toContain("宣传部、融媒体中心");
+    expect(matchDepartmentForMajor("会计学", ["[002]宣传部、融媒体中心", "[040]会计学院"])).toBe("[040]会计学院");
+    expect(matchDepartmentForMajor("数学与应用数学", ["信息管理学院", "数学学院"])).toBe("数学学院");
+    expect(matchDepartmentForMajor("信息管理与信息系统", ["信息管理学院", "数学学院"])).toBe("信息管理学院");
+    expect(matchDepartmentForMajor("会计学", ["[023]教务处"])).toBe("");
     expect(isCatalogPublicElective("sports")).toBe(true);
     expect(isCatalogPublicElective("general")).toBe(false);
   });
@@ -116,12 +121,12 @@ describe("catalog schedule helpers", () => {
       grade: { id: "", label: "" },
       grades: catalogScheduleGrades(new Date("2026-08-26T00:00:00+08:00")),
       major: { id: "", label: "" },
-      majors: departmentsToMajors(["数学学院"]),
+      majors: catalogScheduleMajors(),
       planned: [],
       publicElectives: [],
     });
     expect(snapshot.educationLevels).toEqual([]);
     expect(snapshot.enrolled).toEqual([]);
-    expect(snapshot.majors[0].label).toBe("数学学院");
+    expect(snapshot.majors.map((item) => item.label)).toContain("会计学");
   });
 });
