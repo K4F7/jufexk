@@ -290,11 +290,18 @@ describe("summary source collection", () => {
     expect(prompt).toContain("【评价 2】\n内容扎实，值得推荐");
     expect(prompt).toContain("公开历史评价正文");
     expect(prompt).toContain("历史评价正文");
+    expect(prompt).toContain("凑门槛的第五条公开评价");
     expect(prompt).not.toContain("投稿中的文字");
     expect(prompt).not.toContain("被驳回的文字");
     expect(prompt).not.toContain("点评开始");
     expect(prompt.indexOf("富文本加粗与链接")).toBeLessThan(
       prompt.indexOf("内容扎实，值得推荐"),
+    );
+    expect(prompt.indexOf("内容扎实，值得推荐")).toBeLessThan(
+      prompt.indexOf("公开历史评价正文"),
+    );
+    expect(prompt.indexOf("内容扎实，值得推荐")).toBeLessThan(
+      prompt.indexOf("历史评价正文"),
     );
   });
 

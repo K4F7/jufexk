@@ -77,6 +77,7 @@ describe("public review visibility", () => {
     expect(reviewSummary).not.toHaveProperty("recomputeRelationSummary");
     expect(reviewSummary).not.toHaveProperty("isSummaryRecomputeDue");
     expect(reviewSummary).not.toHaveProperty("drainPersistedSummaryJobs");
+    expect(reviewSummary).not.toHaveProperty("requestSummary");
   });
 
   it("admits approved, unblocked, bound reviews and tightens guest vs public views", async () => {

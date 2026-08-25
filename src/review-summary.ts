@@ -34,7 +34,7 @@ export type SummaryGatewayEnv = {
   OPENAI_MODEL?: string;
 };
 
-export type SummaryGateway = {
+type SummaryGateway = {
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -56,7 +56,7 @@ export function hasInjectionMarker(text: string): boolean {
   return INJECTION_MARKERS.some((marker) => text.includes(marker));
 }
 
-export type SummaryReviewInput = {
+type SummaryReviewInput = {
   text: string;
   recognition: number;
   createdAt: string;
@@ -181,14 +181,6 @@ type SummaryRequestResult = {
 };
 
 /** 调用 OpenAI 兼容网关；任何失败返回 null，由调用方保留旧总结。 */
-async function requestSummary(
-  gateway: SummaryGateway,
-  prompt: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<string | null> {
-  return (await requestSummaryResult(gateway, prompt, fetchImpl)).summary;
-}
-
 async function requestSummaryResult(
   gateway: SummaryGateway,
   prompt: string,
@@ -245,7 +237,7 @@ async function requestSummaryResult(
   }
 }
 
-export type SummaryRecomputeOutcome =
+type SummaryRecomputeOutcome =
   | "updated"
   | "cleared"
   | "unchanged"
@@ -254,7 +246,7 @@ export type SummaryRecomputeOutcome =
   | "failed"
   | "no-relation";
 
-export type SummaryRecomputeResult = {
+type SummaryRecomputeResult = {
   outcome: SummaryRecomputeOutcome;
   reviewCount: number;
   totalChars: number;
