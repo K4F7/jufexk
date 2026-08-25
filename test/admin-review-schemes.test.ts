@@ -7,8 +7,6 @@ import {
   REQUIRED_HEADLINE,
   REQUIRED_NOTE,
   V1_OFFLINE_SCORES,
-  V3_OFFLINE_SCORES,
-  V3_OFFLINE_SCORES_JSON,
 } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
@@ -171,7 +169,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
       courseId: id,
       teacherId: 1,
       overall: 4,
-      scores: V3_OFFLINE_SCORES,
+      scores: CURRENT_SCORES,
       comment: REQUIRED_NOTE,
     });
     expect(first.status).toBe(200);
@@ -187,8 +185,8 @@ describe("admin review scheme and mooc tag maintenance", () => {
       }>();
     expect(before).toMatchObject({
       scheme_key: "major",
-      scheme_version: 3,
-      scores: V3_OFFLINE_SCORES_JSON,
+      scheme_version: 4,
+      scores: CURRENT_SCORES_JSON,
     });
 
     const updated = await SELF.fetch(`${origin}/api/admin/courses`, {
@@ -241,7 +239,7 @@ describe("admin review scheme and mooc tag maintenance", () => {
       .first();
     expect(newest).toMatchObject({
       scheme_key: "ideology",
-      scheme_version: 3,
+      scheme_version: 4,
       scores: CURRENT_SCORES_JSON,
     });
   });

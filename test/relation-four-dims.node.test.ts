@@ -51,6 +51,19 @@ describe("aggregateRelationDimensionLabels", () => {
     ]);
   });
 
+  it("treats a v4 snapshot as the same four dims as v2", () => {
+    expect(
+      aggregateRelationDimensionLabels([
+        { schemeKey: "major", schemeVersion: 4, scores: CURRENT_SCORES },
+      ]),
+    ).toEqual([
+      { id: "difficulty", label: "课程难度", option: "简单" },
+      { id: "homework", label: "作业多少", option: "中等" },
+      { id: "grading", label: "给分好坏", option: "杀手" },
+      { id: "gain", label: "收获多少", option: "一般" },
+    ]);
+  });
+
   it("returns null when there are no new four-dim snapshots", () => {
     expect(
       aggregateRelationDimensionLabels([

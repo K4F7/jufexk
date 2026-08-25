@@ -26,7 +26,7 @@ import {
   type OrdinaryWriteSession,
 } from "./ordinary-write-session";
 import { adminAuth, adminHeaders } from "./admin-session";
-import { V3_OFFLINE_SCORES } from "./review-score-fixtures";
+import { CURRENT_SCORES } from "./review-score-fixtures";
 
 const origin = "https://example.com";
 const gatewayEnv: SummaryGatewayEnv = {
@@ -751,7 +751,7 @@ describe("summary recompute triggers", () => {
           courseId,
           teacherId: 1,
           overall: 4,
-          scores: V3_OFFLINE_SCORES,
+          scores: CURRENT_SCORES,
           comment,
           headline: "一句话总结",
         }),
@@ -808,7 +808,7 @@ describe("summary recompute triggers", () => {
           courseId,
           teacherId: 1,
           overall: 4,
-          scores: V3_OFFLINE_SCORES,
+          scores: CURRENT_SCORES,
           comment: "队列故障时评价仍应发布成功",
           headline: "一句话总结",
         }),

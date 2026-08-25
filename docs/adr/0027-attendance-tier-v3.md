@@ -12,3 +12,5 @@
 - 投稿接口、投稿页与目录申请随附评价继续共用同一个适用题目计算点（`applicableDimensions`）。
 
 权威规格：GitHub issue #371
+
+修订：[ADR-0031](./0031-drop-attendance-from-questionnaire.md) 追加 v4，问卷不再出考勤松紧；本版快照只读。

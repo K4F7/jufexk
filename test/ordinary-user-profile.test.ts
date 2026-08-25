@@ -122,7 +122,7 @@ describe("ordinary-user profile", () => {
         courseId: 1,
         teacherId: 1,
         overall: 5,
-        scores: { difficulty: 1, homework: 2, grading: 1, gain: 1, attendance: 1 },
+        scores: { difficulty: 1, homework: 2, grading: 1, gain: 1 },
         comment: "这是一条用于验证个人主页归属的新点评",
         headline: "归属正确",
       }),

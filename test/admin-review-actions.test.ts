@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { deliverReviewAuthorLookup } from "../src/admin-review-author-mail";
 import { collectRelationReviewTexts } from "../src/review-summary";
 import { refreshPublicListPrecomputes } from "../src/public-list-precompute";
-import { V3_OFFLINE_SCORES } from "./review-score-fixtures";
+import { CURRENT_SCORES } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
   ordinaryWriteSession,
@@ -99,7 +99,7 @@ describe("admin review actions", () => {
         courseId: 1,
         teacherId: 1,
         overall: 5,
-        scores: V3_OFFLINE_SCORES,
+        scores: CURRENT_SCORES,
         headline: "管理员动作回归",
         comment,
       }),
@@ -200,7 +200,7 @@ describe("admin review actions", () => {
         courseId: 1,
         teacherId: 1,
         overall: 4,
-        scores: V3_OFFLINE_SCORES,
+        scores: CURRENT_SCORES,
         headline: "屏蔽后管理员仍可见",
         comment,
       }),
