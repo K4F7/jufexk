@@ -37,12 +37,6 @@ async function mockPublicApi(page: Page) {
     if (url.pathname === "/api/announcements") {
       return route.fulfill({ json: { items: [] } });
     }
-    if (url.pathname === "/api/admin/session") {
-      return route.fulfill({
-        status: 401,
-        json: { error: "请先用已绑定的学号登录" },
-      });
-    }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
@@ -75,7 +69,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "资源" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "使用条款" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "公告" })).toHaveCount(0);
-  await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
+  await expect(footerNav.getByRole("link", { name: "管理" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "系统状态" })).toHaveCount(0);
   const badge = footerNav.getByTitle("系统运行状态");
   await expect(badge).toBeVisible();
@@ -84,7 +78,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
     await badge.getAttribute("src"),
   );
   const separators = footerNav.locator('[data-slot="separator"]');
-  await expect(separators).toHaveCount(6);
+  await expect(separators).toHaveCount(5);
   for (const separator of await separators.all()) {
     await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
   }
@@ -149,9 +143,4 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page.getByText(/站方可以拒绝、编辑或撤回公开内容/)).toBeVisible();
   await expect(page.getByText(/经审核后/)).toHaveCount(0);
   await expect(page.getByText(/MIT License/)).toBeVisible();
-
-  await footerNav.getByRole("link", { name: "管理" }).click();
-  await expect(page).toHaveURL(/\/admin$/);
-  await expect(page.getByText("当前身份不是管理员。")).toBeVisible();
-  await expect(page.getByRole("link", { name: "管理员学号" })).toHaveCount(0);
 });
