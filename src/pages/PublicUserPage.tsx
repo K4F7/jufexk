@@ -128,15 +128,13 @@ export function PublicUserPage() {
         )}
       </div>
       <aside className="min-w-0">
-        <Card aria-label="公开编号">
-          <Card.Header className="flex-row items-center gap-3">
+        <Card className="gap-6" aria-label="公开编号">
+          <Card.Header className="items-center text-center">
             <AnonymousAvatar avatarKey={profile.avatar_key} size="lg" />
-            <div className="min-w-0">
-              <Card.Title>{handle}</Card.Title>
-              {profile.reserved ? (
-                <Card.Description>来自以前的学长学姐的评价</Card.Description>
-              ) : null}
-            </div>
+            <Card.Title>{handle}</Card.Title>
+            {profile.reserved ? (
+              <Card.Description>来自以前的学长学姐的评价</Card.Description>
+            ) : null}
           </Card.Header>
           <Card.Content>
             <dl className="m-0 grid gap-3 text-sm">

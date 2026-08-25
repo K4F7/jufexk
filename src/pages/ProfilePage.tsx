@@ -290,8 +290,8 @@ export function ProfilePage() {
       </div>
 
       <aside className="min-w-0 self-start">
-        <Card role="article" aria-labelledby="profile-card-heading">
-          <Card.Header className="flex-row items-center gap-3">
+        <Card className="gap-6" role="article" aria-labelledby="profile-card-heading">
+          <Card.Header className="items-center text-center">
             <Popover isOpen={avatarPickerOpen} onOpenChange={setAvatarPickerOpen}>
               <Button
                 aria-label="更换官方头像"
