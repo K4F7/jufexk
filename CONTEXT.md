@@ -94,6 +94,10 @@ _Avoid_: 本站已收藏、本地候选、退课记录
 `origin=enrolled` 条目的本地 `included=false` 状态。表示不在当前模拟课表中占格，不会向教务发起退课；同一稳定班次刷新后继续保留，可由学生恢复。
 _Avoid_: 退课、删除教务已选、隐藏公开课程
 
+**排课模拟（Schedule simulation）**：
+`/schedule` 上的本机周课表编排。只按电脑端交付，不另做手机布局；窄屏进入时弹一次「只支持电脑端」告示。
+_Avoid_: 手机课表、第二套移动端排课 UI
+
 **本地课表计划（Local schedule plan）**：
 排课模拟在本机保存的学期分桶计划（v2）。条目带 `origin=enrolled|planned|public|legacy`、`included` 与稳定键 `term+courseCode+section`。小型计划放 localStorage，候选与教务快照放 IndexedDB。v1 手填计划自动迁成 `legacy`。
 _Avoid_: 服务器课表、公开课表镜像

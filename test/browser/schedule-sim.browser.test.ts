@@ -2,8 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
 import { jwxtSnapshotBookmarkletSource } from "../../src/lib/jwxt-import-bookmarklet";
+import { SCHEDULE_MOBILE_NOTICE_KEY } from "../../src/lib/schedule-mobile-notice";
+import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
 
 const snapshotJson = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/snapshot.v1.json"),
@@ -36,7 +37,24 @@ const catalogRelations = [
   { course_id: 20, code: "30100001", name: "书法鉴赏", category: "general", department: "艺术", teacher_id: 21, teacher_name: "教师巳", rating: 4.5, review_count: 9 },
 ];
 
-async function mockScheduleApi(page: Page, authenticated = true) {
+async function rememberMobileNotice(page: Page) {
+  await page.addInitScript((key) => {
+    localStorage.setItem(key, "1");
+  }, SCHEDULE_MOBILE_NOTICE_KEY);
+}
+
+function scheduleDesktopNotice(page: Page) {
+  return page.getByRole("alertdialog", { name: "本功能只支持电脑端" });
+}
+
+async function mockScheduleApi(
+  page: Page,
+  authenticated = true,
+  options?: { showMobileNotice?: boolean },
+) {
+  if (!options?.showMobileNotice) {
+    await rememberMobileNotice(page);
+  }
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
@@ -301,4 +319,22 @@ test("same-course swap is atomic and exclude survives a second import", async ({
   await page.getByLabel("计划内课程").getByRole("button", { name: "换班" }).click();
   await expect(page.getByLabel("本学期计划")).toContainText("班03");
   await expect(page.getByLabel("本学期计划")).not.toContainText("班01");
+});
+
+test("shows the desktop-only notice once on a narrow viewport", async ({
+  page,
+}) => {
+  await mockScheduleApi(page, true, { showMobileNotice: true });
+  await page.goto("/schedule");
+  const notice = scheduleDesktopNotice(page);
+  if ((page.viewportSize()?.width ?? 0) >= 640) {
+    await expect(notice).toHaveCount(0);
+    return;
+  }
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("移动端不适配");
+  await notice.getByRole("button", { name: "知道了" }).click();
+  await expect(notice).toHaveCount(0);
+  await page.reload();
+  await expect(scheduleDesktopNotice(page)).toHaveCount(0);
 });

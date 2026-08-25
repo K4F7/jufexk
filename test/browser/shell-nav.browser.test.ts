@@ -124,6 +124,10 @@ test("main nav is 课程/课评/排课模拟/导师 with a center course search 
 
   await scheduleLink.click();
   await expect(page).toHaveURL(/\/schedule$/);
+  const desktopNotice = page.getByRole("alertdialog", { name: "本功能只支持电脑端" });
+  if (await desktopNotice.isVisible()) {
+    await desktopNotice.getByRole("button", { name: "知道了" }).click();
+  }
   await expect(page.getByRole("heading", { name: "排课模拟" })).toBeVisible();
   await expect(scheduleLink).toHaveAttribute("aria-current", "page");
   await expect(latestLink).not.toHaveAttribute("aria-current", "page");
