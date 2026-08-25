@@ -4,6 +4,7 @@ import { collectJwxt, type CollectorCheckpoint } from "./collector";
 import {
   JwxtAuthAdapter,
   JwxtCookieAuthAdapter,
+  EhallCookieAuthAdapter,
   UnsupportedJwxtAuthenticationError,
 } from "./auth-adapter";
 
@@ -20,8 +21,9 @@ if (!mode || !["pilot", "incremental", "full", "resume"].includes(mode) || !outp
 }
 const username = process.env.JWXT_USERNAME;
 const password = process.env.JWXT_PASSWORD;
+const ehallCookie = process.env.EHALL_COOKIE;
 const cookie = process.env.JWXT_COOKIE;
-if (!cookie && (!username || !password)) {
+if (!ehallCookie && !cookie && (!username || !password)) {
   throw new Error("JWXT credentials are not configured");
 }
 
@@ -36,7 +38,9 @@ try {
     await writeFile(target, `${JSON.stringify(checkpoint)}\n`, { mode: 0o600 });
   };
   const capture = await collectJwxt(
-    cookie
+    ehallCookie
+      ? new EhallCookieAuthAdapter(ehallCookie)
+      : cookie
       ? new JwxtCookieAuthAdapter(cookie)
       : new JwxtAuthAdapter(username!, password!),
     mode as "pilot" | "incremental" | "full" | "resume",

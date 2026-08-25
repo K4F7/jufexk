@@ -1,6 +1,10 @@
 import { responseSetCookieLines } from "../../src/lib/set-cookie";
 import { startCasPasswordLogin, type CasSsoGrant } from "../../src/lib/jxufe-cas";
 import {
+  EHALL_APP_URL,
+  EHALL_ORIGIN,
+  JWXT_CALLBACK_ORIGIN,
+  JWXT_CALLBACK_PATH,
   completePreparedEhallLogin,
   launchJwxtFromEhall,
   prepareEhallLogin,
@@ -12,6 +16,7 @@ const USER_AGENT = "jufexk-jwxt-collector/1.0 (+https://github.com/K4F7/jufexk)"
 export class UnsupportedJwxtAuthenticationError extends Error {}
 export class JwxtAuthenticationError extends Error {}
 export class JwxtCookieExpiredError extends UnsupportedJwxtAuthenticationError {}
+export class EhallCookieExpiredError extends UnsupportedJwxtAuthenticationError {}
 
 type FetchLike = typeof fetch;
 
@@ -46,6 +51,10 @@ export function parseJwxtCookieHeader(raw: string) {
   return cookies;
 }
 
+export function parseEhallCookieHeader(raw: string) {
+  return parseJwxtCookieHeader(raw);
+}
+
 function captureCookies(cookies: Map<string, string>, response: Response) {
   for (const raw of responseSetCookieLines(response)) {
     const pair = raw.split(";", 1)[0] || "";
@@ -77,7 +86,7 @@ abstract class JwxtSessionAdapter {
 
   protected abstract establishSession(): Promise<void>;
 
-  private async followTicket(location: string) {
+  protected async followTicket(location: string) {
     let url = fixedJwxtUrl(location);
     for (let hop = 0; hop < 6; hop += 1) {
       const response = await this.fetchImpl(url, {
@@ -192,5 +201,82 @@ export class JwxtCookieAuthAdapter extends JwxtSessionAdapter {
 
   protected establishSession(): Promise<void> {
     return Promise.reject(new JwxtCookieExpiredError("jwxt_cookie_expired"));
+  }
+}
+
+const CAS_ORIGIN = "https://ssl.jxufe.edu.cn";
+const CAS_COOKIE_NAMES = new Set(["TGC", "SESSION", "CASTGC", "CASSTOC"]);
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+function fixedBrowserRedirect(raw: string, base: string) {
+  const url = new URL(raw, base);
+  if (url.toString().length > 2_048) {
+    throw new JwxtAuthenticationError("ehall_redirect_blocked");
+  }
+  if (![EHALL_ORIGIN, CAS_ORIGIN, JWXT_CALLBACK_ORIGIN].includes(url.origin)) {
+    throw new JwxtAuthenticationError("ehall_redirect_blocked");
+  }
+  return url;
+}
+
+/**
+ * Replays the browser's eHall session, then follows the fixed eHall/CAS/JWXT
+ * redirect chain until JWXT issues a fresh JSESSIONID.
+ */
+export class EhallCookieAuthAdapter extends JwxtSessionAdapter {
+  private readonly ehallCookies: Map<string, string>;
+  private readonly casCookies = new Map<string, string>();
+
+  constructor(rawCookie: string, fetchImpl: FetchLike = fetch) {
+    super(new Map(), fetchImpl, false);
+    this.ehallCookies = parseEhallCookieHeader(rawCookie);
+    for (const [name, value] of this.ehallCookies) {
+      if (CAS_COOKIE_NAMES.has(name)) this.casCookies.set(name, value);
+    }
+  }
+
+  private cookiesFor(url: URL) {
+    if (url.origin === EHALL_ORIGIN) return this.ehallCookies;
+    if (url.origin === CAS_ORIGIN) return this.casCookies;
+    return this.cookies;
+  }
+
+  private async establishFromEhall() {
+    let url = new URL(EHALL_APP_URL);
+    const seen = new Set<string>();
+    for (let hop = 0; hop < 8; hop += 1) {
+      if (seen.has(url.toString())) {
+        throw new EhallCookieExpiredError("ehall_cookie_expired");
+      }
+      seen.add(url.toString());
+      const response = await this.fetchImpl(url.toString(), {
+        redirect: "manual",
+        headers: {
+          accept: "text/html,*/*;q=0.8",
+          cookie: cookieHeader(this.cookiesFor(url)),
+          "user-agent": USER_AGENT,
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+      captureCookies(this.cookiesFor(url), response);
+      const location = response.headers.get("location") || "";
+      if (!REDIRECT_STATUSES.has(response.status) || !location) {
+        throw new EhallCookieExpiredError("ehall_cookie_expired");
+      }
+      url = fixedBrowserRedirect(location, url.toString());
+      if (
+        url.origin === JWXT_CALLBACK_ORIGIN &&
+        url.pathname === JWXT_CALLBACK_PATH &&
+        url.searchParams.has("ticket")
+      ) {
+        return url.toString();
+      }
+    }
+    throw new EhallCookieExpiredError("ehall_cookie_expired");
+  }
+
+  protected async establishSession() {
+    const callback = await this.establishFromEhall();
+    await this.followTicket(callback);
   }
 }

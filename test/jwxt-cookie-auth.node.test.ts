@@ -3,6 +3,7 @@ import {
   JwxtAuthenticationError,
   JwxtCookieAuthAdapter,
   JwxtCookieExpiredError,
+  EhallCookieAuthAdapter,
   parseJwxtCookieHeader,
 } from "../scripts/jwxt-collector/auth-adapter";
 
@@ -47,5 +48,46 @@ describe("JWXT cookie authentication", () => {
     await expect(adapter.request("/student/wsxk.kcbcx10319.html")).rejects.toBeInstanceOf(
       JwxtCookieExpiredError,
     );
+  });
+
+  it("replays an eHall cookie before establishing a JWXT session", async () => {
+    const calls: Array<{ url: string; cookie: string }> = [];
+    const adapter = new EhallCookieAuthAdapter(
+      "JSESSIONID=ehall-session",
+      async (input, init) => {
+        const url = String(input);
+        calls.push({ url, cookie: new Headers(init?.headers).get("cookie") || "" });
+        if (url.startsWith("http://ehall.jxufe.edu.cn/appShow")) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              location: "https://ssl.jxufe.edu.cn/cas/login?service=https%3A%2F%2Fjwxt.jxufe.edu.cn%2Fjxcjcaslogin",
+            },
+          });
+        }
+        if (url.startsWith("https://ssl.jxufe.edu.cn/cas/login")) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              location: "https://jwxt.jxufe.edu.cn/jxcjcaslogin?ticket=ST-fixture",
+            },
+          });
+        }
+        if (url.startsWith("https://jwxt.jxufe.edu.cn/jxcjcaslogin")) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              location: "/student/index.jsp",
+              "set-cookie": "JSESSIONID=jwxt-session; Path=/; HttpOnly",
+            },
+          });
+        }
+        return new Response("ok");
+      },
+    );
+
+    await adapter.request("/student/wsxk.kcbcx10319.html");
+    expect(calls[0].cookie).toBe("JSESSIONID=ehall-session");
+    expect(calls.at(-1)?.cookie).toBe("JSESSIONID=jwxt-session");
   });
 });
