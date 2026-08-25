@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { deliverReviewAuthorLookup } from "../src/admin-review-author-mail";
-import { collectRelationReviewTexts } from "../src/review-summary";
+import { guestReviewBindingSql } from "../src/public-review-visibility";
 import { refreshPublicListPrecomputes } from "../src/public-list-precompute";
 import { CURRENT_SCORES } from "./review-score-fixtures";
 import {
@@ -66,6 +66,21 @@ async function publicReviewText() {
   return response.text();
 }
 
+async function summaryInputContains(
+  courseId: number,
+  teacherId: number,
+  comment: string,
+) {
+  const { results } = await env.DB.prepare(
+    `SELECT r.comment FROM reviews r
+     WHERE r.course_id=? AND r.teacher_id=? AND r.status='approved'
+       AND trim(COALESCE(r.comment,''))<>''${guestReviewBindingSql}`,
+  )
+    .bind(courseId, teacherId)
+    .all<{ comment: string }>();
+  return results.some((row) => row.comment.includes(comment));
+}
+
 type CourseReviewItem = {
   id: string;
   comment: string;
@@ -114,11 +129,7 @@ describe("admin review actions", () => {
     const reviewId = review!.id;
 
     expect(await publicReviewText()).toContain(comment);
-    expect(
-      (await collectRelationReviewTexts(env.DB, 1, 1)).some((item) =>
-        item.text.includes(comment),
-      ),
-    ).toBe(true);
+    expect(await summaryInputContains(1, 1, comment)).toBe(true);
     await refreshPublicListPrecomputes(env.DB);
     const visibleCount = await env.DB.prepare(
       "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",
@@ -131,11 +142,7 @@ describe("admin review actions", () => {
     const blockedAgain = await adminAction(auth, reviewId, "block");
     expect(await blockedAgain.json()).toEqual({ ok: true, changed: false });
     expect(await publicReviewText()).not.toContain(comment);
-    expect(
-      (await collectRelationReviewTexts(env.DB, 1, 1)).some((item) =>
-        item.text.includes(comment),
-      ),
-    ).toBe(false);
+    expect(await summaryInputContains(1, 1, comment)).toBe(false);
     await refreshPublicListPrecomputes(env.DB);
     const blockedCount = await env.DB.prepare(
       "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",

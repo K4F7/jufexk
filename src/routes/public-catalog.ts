@@ -175,7 +175,7 @@ const loadVirtualPeSportItems = async (
   }
   return items;
 };
-// 公开评价绑定规则的唯一来源在 public-review-visibility.ts。
+// 任课评价公开可见性规则与全站公开投影共用。
 const publicReviewBinding = publicReviewBindingSql;
 type PublicReviewCursor =
   | { source: number; key: string }

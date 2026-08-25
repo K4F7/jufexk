@@ -1,4 +1,4 @@
-import { escapeHtml } from "./html";
+import { escapeHtml, reviewHtmlToText } from "./html";
 import { guestReviewBindingSql } from "./public-review-visibility";
 import { readSecret, type SecretBinding } from "./secrets";
 
@@ -7,9 +7,9 @@ import { readSecret, type SecretBinding } from "./secrets";
  * 总结是挂在 课程×教师 上的公开评价文字缓存，由后台任务异步重算，
  * 不是评分，不参与推荐度。未配置 OpenAI 兼容接口时生成整体为 no-op。
  *
- * 调用方只学习三类稳定能力：调度某个任课关系的总结重算、
+ * 业务调用方只学习三类稳定能力：调度某个任课关系的总结重算、
  * 管理员查询符合重算条件的任课关系、读取某门课程的非空任课关系总结。
- * 任课评价公开可见性规则由 public-review-visibility 拥有。
+ * Worker 只接线列消费入口。任课评价公开可见性由独立 module 拥有。
  */
 
 export const SUMMARY_MIN_REVIEWS = 5;
@@ -40,7 +40,7 @@ export type SummaryGateway = {
   model: string;
 };
 
-export async function summaryGateway(
+async function summaryGateway(
   env: SummaryGatewayEnv,
 ): Promise<SummaryGateway | null> {
   const apiKey = await readSecret(env.OPENAI_API_KEY);
@@ -50,52 +50,6 @@ export async function summaryGateway(
     .trim()
     .replace(/\/+$/, "");
   return { baseUrl, apiKey, model };
-}
-
-const HTML_ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-};
-
-const decodeHtmlEntities = (text: string) =>
-  text.replace(/&(#x?[0-9a-fA-F]+|\w+);/g, (raw, name: string) => {
-    if (name[0] === "#") {
-      const code = name[1]?.toLowerCase() === "x"
-        ? parseInt(name.slice(2), 16)
-        : parseInt(name.slice(1), 10);
-      if (Number.isSafeInteger(code) && code > 0) {
-        try {
-          return String.fromCodePoint(code);
-        } catch {
-          return raw;
-        }
-      }
-      return raw;
-    }
-    return HTML_ENTITIES[name] ?? raw;
-  });
-
-/** 评价正文（可能是富文本 HTML）→ 纯文本：去链接、去图片、去标签。 */
-export function reviewHtmlToText(value: string): string {
-  let text = value;
-  text = text.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "");
-  text = text.replace(/<img\b[^>]*>/gi, "");
-  text = text.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, "$1");
-  text = text.replace(/<br\s*\/?>/gi, "\n");
-  text = text.replace(/<\/(p|div|li|h[1-6]|blockquote|tr)>/gi, "\n");
-  text = text.replace(/<li\b[^>]*>/gi, "- ");
-  text = text.replace(/<[^>]+>/g, "");
-  text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
-  text = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
-  text = decodeHtmlEntities(text);
-  return text
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 export function hasInjectionMarker(text: string): boolean {
@@ -113,7 +67,7 @@ export type SummaryReviewInput = {
  * 已批准历史评价、公开历史评价；按认可数降序、再按时间降序。
  * 投稿中、驳回、未公开的一律不进。
  */
-export async function collectRelationReviewTexts(
+async function collectRelationReviewTexts(
   db: D1Database,
   courseId: number,
   teacherId: number,
@@ -227,7 +181,7 @@ type SummaryRequestResult = {
 };
 
 /** 调用 OpenAI 兼容网关；任何失败返回 null，由调用方保留旧总结。 */
-export async function requestSummary(
+async function requestSummary(
   gateway: SummaryGateway,
   prompt: string,
   fetchImpl: typeof fetch = fetch,
@@ -310,7 +264,7 @@ export type SummaryRecomputeResult = {
 };
 
 /** 公开评价输入的稳定哈希，用于抵御 Queue 至少一次投递造成的重复计费。 */
-export async function summarySourceHash(
+async function summarySourceHash(
   reviews: SummaryReviewInput[],
 ): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(reviews));
@@ -324,7 +278,7 @@ export async function summarySourceHash(
  * 重算单个任课关系的总结：低于门槛时清空已有总结；接口失败保留旧文；
  * 未配置网关时不碰旧文。
  */
-export async function recomputeRelationSummary(
+async function recomputeRelationSummary(
   env: SummaryGatewayEnv,
   db: D1Database,
   courseId: number,
@@ -490,7 +444,7 @@ export async function listQualifyingSummaryRelations(
 }
 
 /** 24 小时去抖：immediate（驳回/撤回/删除）绕过；从未更新或超过 24h 才算到期。 */
-export async function isSummaryRecomputeDue(
+async function isSummaryRecomputeDue(
   db: D1Database,
   courseId: number,
   teacherId: number,
@@ -585,7 +539,7 @@ function isPersistedRelationId(value: number | null | undefined): value is numbe
  * summary_recompute_pending. After the Queue migration those rows are otherwise
  * never read, so enqueue them once and clear the D1 tables.
  */
-export async function drainPersistedSummaryJobs(
+async function drainPersistedSummaryJobs(
   env: AiSummaryQueueEnv,
 ): Promise<number> {
   const jobs = new Map<string, AiSummaryQueueMessage>();
@@ -699,7 +653,7 @@ export async function scheduleRelationSummaryRecompute(
 }
 
 /** 单条 Queue 消息的处理入口；异常和临时网关故障由 Queue 自动重试并最终进 DLQ。 */
-export async function consumeAiSummaryMessage(
+async function consumeAiSummaryMessage(
   message: Message<AiSummaryQueueMessage>,
   env: AiSummaryQueueEnv,
   fetchImpl: typeof fetch = fetch,
@@ -826,6 +780,7 @@ export async function consumeAiSummaryMessage(
 export async function consumeAiSummaryQueue(
   batch: MessageBatch<AiSummaryQueueMessage>,
   env: AiSummaryQueueEnv,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   try {
     await drainPersistedSummaryJobs(env);
@@ -838,7 +793,9 @@ export async function consumeAiSummaryQueue(
     );
   }
   await Promise.all(
-    batch.messages.map((message) => consumeAiSummaryMessage(message, env)),
+    batch.messages.map((message) =>
+      consumeAiSummaryMessage(message, env, fetchImpl),
+    ),
   );
 }
 

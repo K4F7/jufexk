@@ -73,6 +73,10 @@ describe("public review visibility", () => {
     expect(reviewSummary).not.toHaveProperty("reviewNotDeletedBindingSql");
     expect(reviewSummary).not.toHaveProperty("publicReviewBindingSql");
     expect(reviewSummary).not.toHaveProperty("guestReviewBindingSql");
+    expect(reviewSummary).not.toHaveProperty("collectRelationReviewTexts");
+    expect(reviewSummary).not.toHaveProperty("recomputeRelationSummary");
+    expect(reviewSummary).not.toHaveProperty("isSummaryRecomputeDue");
+    expect(reviewSummary).not.toHaveProperty("drainPersistedSummaryJobs");
   });
 
   it("admits approved, unblocked, bound reviews and tightens guest vs public views", async () => {

@@ -9,7 +9,7 @@ import {
   ensureUserPublicHandle,
   formatPublicHandle,
 } from "./public-handle";
-import { reviewHtmlToText } from "./review-summary";
+import { reviewHtmlToText } from "./html";
 
 export const USER_PROFILE_PATH = "/api/user/profile";
 const COMMENT_SUMMARY_LENGTH = 180;

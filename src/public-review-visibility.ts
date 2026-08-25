@@ -28,7 +28,7 @@ export const reviewNotDeletedBindingSql = `
 export const publicReviewBindingSql = `
        AND r.blocked_at IS NULL${reviewNotDeletedBindingSql}`;
 
-/** 访客公开流再排除「仅限登录用户查看」的点评。 */
+/** 游客视图再排除「仅限登录用户查看」的评价。 */
 export const guestReviewBindingSql = `
        ${publicReviewBindingSql}
        AND r.login_only=0`;
