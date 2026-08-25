@@ -2,10 +2,8 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
 import { isAsciiLetterTerm } from "../lib/catalog-pinyin";
 import {
-  andSearchTerms,
   andSearchTermsWithPinyin,
   containsPattern,
-  delimitedExactSql,
   likeSql,
   parseSearchTerms,
   prefixPattern,
@@ -14,8 +12,6 @@ import {
   isPublicListCategoryFilter,
   isVirtualPeSportId,
   publicCategoryFilterError,
-  publicCategoryFilterSql,
-  publicBrowseFamilySql,
   publicOptionDisplayName,
   publicCourseVisibleSql,
   VIRTUAL_PE_SPORTS,
@@ -48,7 +44,10 @@ import {
   loadCourseRelationTerms,
   loadRelationDimensionLabels,
 } from "../lib/relation-projections";
-import { listCourseRelations } from "../course-relations-catalog";
+import {
+  queryPublicCourseRelations,
+  queryPublicCourses,
+} from "../public-catalog-query";
 import { handleLatestPublicReviews } from "../public-reviews-latest";
 import { decoratePublicReviews } from "../review-endorsements";
 import { loadRelationSignalPayloads } from "../relation-signals";
@@ -483,153 +482,45 @@ publicCatalogRoutes.get("/api/site/banner", async (c) =>
   c.json(await loadSiteBanner(c.env.DB)),
 );
 publicCatalogRoutes.get("/api/courses", async (c) => {
-  await ensurePublicListPrecomputes(c.env.DB);
-  if (clean(c.req.query("view"), 20) === "relations") {
-    const viewerId = await publicReviewViewerId(c);
-    const response = await listCourseRelations(c, viewerId);
-    if (!viewerId) setPublicCatalogCacheHeaders(c);
-    return response;
-  }
-  const { page, size } = pageArgs(c),
-    search = clean(c.req.query("q"), 80),
-    searchTerms = parseSearchTerms(search),
-    cat = clean(c.req.query("category"), 20),
-    department = clean(c.req.query("department"), 80),
-    teacherId = integer(c.req.query("teacherId")),
-    // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
-    sort = clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews";
+  const { page, size } = pageArgs(c);
+  const search = clean(c.req.query("q"), 80);
+  const cat = clean(c.req.query("category"), 20);
+  const department = clean(c.req.query("department"), 80);
+  const teacherId = integer(c.req.query("teacherId"));
   if (cat && !isPublicListCategoryFilter(cat))
     return fail(c, publicCategoryFilterError());
-  const categoryFilter = publicCategoryFilterSql(cat, "c");
-  const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  // 单个词条打预计算 match_text；ASCII 字母词条再 OR 拼音面。
-  const searchGroup = andSearchTermsWithPinyin(
-    searchTerms,
-    likeSql("pcc.match_text"),
-    likeSql("pcc.pinyin_text"),
-    isAsciiLetterTerm,
-  );
-  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
-  const args = [
-    ...categoryFilter.args,
-    department,
-    department,
-    ...(teacherId === null ? [] : [teacherId]),
-    ...searchGroup.args,
-  ];
-  const countJoins =
-    teacherId === null
-      ? publicCourseCanonicalJoin
-      : `${publicCourseCanonicalJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id`;
-  const courseCount = () =>
-    c.env.DB.prepare(
-      `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
-    )
-      .bind(...args)
-      .first<{ n: number }>()
-      .then((row) => row?.n || 0);
-  // 其余档位比的是整串查询（精确、再前缀），多词查询永远到不了那些档：这一档
-  // 用包含匹配，让所有词条都落在课名或课号上的结果排在院系与教师命中之前。
-  const allTermsInTitle =
-    searchTerms.length > 1
-      ? andSearchTerms(
-          searchTerms,
-          `${likeSql("c.name")} OR ${likeSql("c.code")}`,
-        )
-      : { sql: "", args: [] };
-  const relevanceOrder = `CASE
-       WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? THEN 0
-       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} THEN 1
-       ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
-       WHEN c.department=? THEN 3
-       WHEN ${likeSql("c.department")} THEN 4
-       WHEN ${delimitedExactSql("pcc.teacher_variant_text")} THEN 5
-       WHEN ${likeSql("pcc.teacher_variant_text")} THEN 6
-       WHEN ${likeSql("pcc.pinyin_text")} THEN 7
-       ELSE 8
-     END,review_count DESC,c.name,c.code,c.id`;
-  const searchRankArgs = [
-    search,
-    search,
-    search,
-    search,
-    prefixPattern(search),
-    prefixPattern(search),
-    ...allTermsInTitle.args,
-    search,
-    prefixPattern(search),
-    search,
-    prefixPattern(search),
-    containsPattern(search),
-  ];
-  const { results } = await c.env.DB.prepare(
-    `SELECT c.*,
-       GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
-       GROUP_CONCAT(DISTINCT t.name) teachers,
-       COALESCE(course_review_counts.review_count,0) review_count,
-       COUNT(*) OVER() window_total
-      FROM courses c
-      ${publicCourseCanonicalJoin}
-      LEFT JOIN course_teachers ct ON ct.course_id=c.id
-      LEFT JOIN teachers t ON t.id=ct.teacher_id
-      LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM public_review_counts GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id
-     WHERE ${where}
-     GROUP BY c.id
-     ORDER BY ${sort === "name" ? "c.name,c.code,c.id" : relevanceOrder}
-     LIMIT ? OFFSET ?`,
-  )
-    .bind(
-      ...args,
-      ...(sort === "name" ? [] : searchRankArgs),
-      size,
-      (page - 1) * size,
-    )
-    .all();
-  const pageRows = await windowedPage(
-    results as WindowedRow[],
-    page,
-    courseCount,
-  );
-  const virtualItems =
-    !cat || cat === "sports"
-      ? await loadVirtualPeSportItems(
-          c.env.DB,
-          searchTerms,
-          teacherId,
-          department,
-        )
-      : [];
-  const listed = pageRows.items.map(withPublicCourseCategory);
-  const extras = virtualItems
-    .filter((item) => !listed.some((row) => row.name === item.name))
-    .map(({ rating: _rating, ...item }) => item);
-  const totalCount = pageRows.total + extras.length;
-  // 虚拟体育课项只落在第一页；课名排序时按同一次序并入，而不是追加在末尾。
-  const byNameCodeId = (
-    a: { id?: unknown; code?: unknown; name?: unknown },
-    b: { id?: unknown; code?: unknown; name?: unknown },
-  ) => {
-    const nameA = String(a.name ?? "");
-    const nameB = String(b.name ?? "");
-    if (nameA !== nameB) return nameA < nameB ? -1 : 1;
-    const codeA = String(a.code ?? "");
-    const codeB = String(b.code ?? "");
-    if (codeA !== codeB) return codeA < codeB ? -1 : 1;
-    return Number(a.id ?? 0) - Number(b.id ?? 0);
-  };
-  const firstPage =
-    sort === "name"
-      ? [...listed, ...extras].sort(byNameCodeId)
-      : [...listed, ...extras];
-  setPublicCatalogCacheHeaders(c);
-  return c.json({
-    items: page === 1 ? firstPage : listed,
+  if (clean(c.req.query("view"), 20) === "relations") {
+    const viewerId = await publicReviewViewerId(c);
+    const sortRaw = clean(c.req.query("sort"), 20);
+    const result = await queryPublicCourseRelations(
+      c.env.DB,
+      {
+        page,
+        pageSize: size,
+        q: search,
+        category: cat,
+        department,
+        teacherId,
+        sort:
+          sortRaw === "name" ? "name" : sortRaw === "rating" ? "rating" : "reviews",
+      },
+      viewerId,
+    );
+    if (!viewerId) setPublicCatalogCacheHeaders(c);
+    return c.json(result);
+  }
+  // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
+  const result = await queryPublicCourses(c.env.DB, {
     page,
     pageSize: size,
-    total: totalCount,
-    pages: Math.ceil(totalCount / size),
+    q: search,
+    category: cat,
+    department,
+    teacherId,
+    sort: clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews",
   });
+  setPublicCatalogCacheHeaders(c);
+  return c.json(result);
 });
 publicCatalogRoutes.get("/api/teachers", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
