@@ -4,7 +4,6 @@ import {
   GITHUB_ISSUES_URL,
   GITHUB_REPO_URL,
   SITE_OFFICIAL_CHANNELS,
-  STATUS_PAGE_URL,
   statusBadgeUrl,
 } from "../../src/lib/site-links";
 
@@ -77,12 +76,8 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "使用条款" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "公告" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
-  const status = footerNav.getByRole("link", { name: "系统状态" });
-  await expect(status).toBeVisible();
-  await expect(status).toHaveAttribute("href", STATUS_PAGE_URL);
-  await expect(status).toHaveAttribute("target", "_blank");
-  await expect(status).toHaveAttribute("rel", /noreferrer/);
-  const badge = footer.getByTitle("系统运行状态");
+  await expect(footerNav.getByRole("link", { name: "系统状态" })).toHaveCount(0);
+  const badge = footerNav.getByTitle("系统运行状态");
   await expect(badge).toBeVisible();
   await expect(badge).toHaveAttribute("src", /\/badge\?theme=(light|dark)$/);
   expect([statusBadgeUrl("light"), statusBadgeUrl("dark")]).toContain(
@@ -93,6 +88,10 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   for (const separator of await separators.all()) {
     await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
   }
+
+  const badgePair = badge.locator("..");
+  await expect(badgePair.locator('[data-slot="separator"]')).toHaveCount(1);
+  await expect(badgePair).toHaveCSS("white-space", "nowrap");
 
   for (const link of await footerNav.getByRole("link").all()) {
     if ((await link.getAttribute("aria-label")) === "GitHub 仓库") continue;
