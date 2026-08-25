@@ -60,6 +60,8 @@ function state(overrides: Partial<MockState> = {}): MockState {
       ],
       review_count: 2,
       follow_count: 1,
+      following_user_count: 1,
+      follower_count: 3,
     },
     profileStatus: 200,
     avatarFailsRemaining: 0,
@@ -227,10 +229,13 @@ test("profile page renders own reviews, follows and stats", async ({
     page.getByRole("radio", { name: "选择官方头像 3" }),
   ).toHaveCount(0);
   const profileCard = page.getByRole("article", { name: "匿名用户#000001" });
-  await expect(profileCard.getByText("点评", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("2 门", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("关注", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("1 门", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("关注了", { exact: true }).first()).toBeVisible();
+  await expect(profileCard.getByText("1 人", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("被关注", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("3 人", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("1 门课程", { exact: true })).toBeVisible();
+  await expect(profileCard.getByText("2 门课程", { exact: true })).toBeVisible();
+  await expect(profileCard.getByRole("button", { name: "关注" })).toHaveCount(0);
   await expect(
     page.getByText("公开编号只用于识别作者，不是学号或内部身份。"),
   ).toHaveCount(0);
@@ -252,7 +257,7 @@ test("profile page degrades gracefully when the API is missing", async ({
     page.getByRole("heading", { name: "我的主页" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("article", { name: "我的主页" }).getByText("— 门", { exact: true }).first(),
+    page.getByRole("article", { name: "我的主页" }).getByText("— 人", { exact: true }).first(),
   ).toBeVisible();
 });
 

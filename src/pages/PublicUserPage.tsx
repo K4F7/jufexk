@@ -63,9 +63,19 @@ export function PublicUserPage() {
       const result = await api<{ viewer_followed: boolean }>(path, {
         method: profile.viewer_followed ? "DELETE" : "PUT",
       });
-      setProfile((current) =>
-        current ? { ...current, viewer_followed: result.viewer_followed } : current,
-      );
+      setProfile((current) => {
+        if (!current) return current;
+        const delta = result.viewer_followed === current.viewer_followed
+          ? 0
+          : result.viewer_followed
+            ? 1
+            : -1;
+        return {
+          ...current,
+          viewer_followed: result.viewer_followed,
+          follower_count: Math.max(0, current.follower_count + delta),
+        };
+      });
     } catch (reason) {
       setFollowError((reason as Error).message || "关注失败");
     } finally {
@@ -122,12 +132,26 @@ export function PublicUserPage() {
           <Card.Header className="items-center text-center">
             <AnonymousAvatar avatarKey={profile.avatar_key} size="lg" />
             <Card.Title>{handle}</Card.Title>
-            <Card.Description>
-              {profile.reserved
-                ? "来自以前的学长学姐的评价"
-                : `${profile.review_count} 条公开点评`}
-            </Card.Description>
+            {profile.reserved ? (
+              <Card.Description>来自以前的学长学姐的评价</Card.Description>
+            ) : null}
           </Card.Header>
+          <Card.Content>
+            <dl className="m-0 grid gap-1.5 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">关注了</dt>
+                <dd className="m-0 tabular">{profile.following_count ?? 0} 人</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">被关注</dt>
+                <dd className="m-0 tabular">{profile.follower_count ?? 0} 人</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">点评了</dt>
+                <dd className="m-0 tabular">{profile.review_count ?? 0} 门课程</dd>
+              </div>
+            </dl>
+          </Card.Content>
           {profile.reserved || profile.viewer_is_self ? null : (
             <Card.Footer className="flex flex-col items-center gap-2">
               <Button

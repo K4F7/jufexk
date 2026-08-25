@@ -101,10 +101,16 @@ describe("public user profile and follow", () => {
     const guestBody = await guest.json<{
       handle: string;
       followable: boolean;
+      following_count: number;
+      follower_count: number;
       reviews: Array<{ headline?: string; status?: string }>;
     }>();
     expect(guestBody.handle).toBe(formatPublicHandle(public_code));
     expect(guestBody.followable).toBe(false);
+    expect(guestBody).toMatchObject({
+      following_count: 0,
+      follower_count: 0,
+    });
     expect(guestBody.reviews).toEqual([
       expect.objectContaining({ headline: "公开总结" }),
     ]);
@@ -135,8 +141,26 @@ describe("public user profile and follow", () => {
       { headers: follower.auth },
     );
     const viewingBody = await viewing.json();
-    expect(viewingBody).toMatchObject({ viewer_followed: true });
+    expect(viewingBody).toMatchObject({
+      viewer_followed: true,
+      follower_count: 1,
+      following_count: 0,
+    });
     expect(JSON.stringify(viewingBody)).not.toContain(followerId);
+    const authorInbox = await SELF.fetch(`${WRITE_ORIGIN}/api/user/notifications`, {
+      headers: author.auth,
+    });
+    const authorInboxBody = await authorInbox.json<{
+      items: Array<{ type: string; message: string; link: string }>;
+    }>();
+    expect(
+      authorInboxBody.items.some(
+        (item) =>
+          item.type === "user_followed" &&
+          item.message.includes("关注了你") &&
+          item.link.startsWith("/u/"),
+      ),
+    ).toBe(true);
 
     await env.DB.prepare(
       `INSERT INTO reviews(
