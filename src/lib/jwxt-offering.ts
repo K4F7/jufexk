@@ -52,6 +52,40 @@ export type JwxtCategoryOption = JwxtFilterOption & {
   kind: JwxtCategoryKind;
 };
 
+export const JWXT_MAJOR_REQUIRED_MESSAGE = "请先选择年级和专业，再导出快照";
+
+/** 保持为无外部依赖函数，以便通过 toString 内联进教务页书签。 */
+export function isJwxtPlaceholderOption(id: string, label = ""): boolean {
+  const idText = id.trim();
+  const labelText = label.trim();
+  if (!idText && !labelText) return true;
+  const tokens = [idText, labelText];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.startsWith("请选择") || token === "全部" || token === "--" || token === "—") {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isJwxtFilterSelected(option: JwxtFilterOption | null | undefined): boolean {
+  if (!option?.id.trim()) return false;
+  return !isJwxtPlaceholderOption(option.id, option.label);
+}
+
+export function jwxtCandidateFiltersReady(snapshot: {
+  grade: JwxtFilterOption;
+  major: JwxtFilterOption;
+  grades: JwxtFilterOption[];
+  majors: JwxtFilterOption[];
+}): boolean {
+  return (
+    (snapshot.grades.length === 0 || isJwxtFilterSelected(snapshot.grade)) &&
+    (snapshot.majors.length === 0 || isJwxtFilterSelected(snapshot.major))
+  );
+}
+
 const SECRET_RE = /CASTGC|JSESSIONID|password|passwd|cookie|Set-Cookie/i;
 const PERSONAL_RE = /学号\s*\d{6,}|学生姓名|姓名\s*[:：]\s*\S/;
 

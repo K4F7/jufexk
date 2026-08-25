@@ -4,6 +4,8 @@
  */
 import {
   JWXT_DTO_VERSION,
+  JWXT_MAJOR_REQUIRED_MESSAGE,
+  isJwxtFilterSelected,
   looksLikeForbidden,
   offeringKey,
   offeringHasForbidden,
@@ -11,7 +13,7 @@ import {
   type JwxtFilterOption,
   type JwxtOffering,
 } from "./jwxt-offering";
-import { parseJwxtTableHtml, type JwxtTableParse } from "./jwxt-table";
+import { parseJwxtTableHtml, type JwxtSelectParse, type JwxtTableParse } from "./jwxt-table";
 
 export const JWXT_SNAPSHOT_VERSION = JWXT_DTO_VERSION;
 export const JWXT_SNAPSHOT_SOURCE = "browser-export" as const;
@@ -106,6 +108,17 @@ function isBucket(value: unknown): value is JwxtSnapshotBucket {
 
 function firstOption(list: JwxtFilterOption[], fallback: JwxtFilterOption): JwxtFilterOption {
   return list[0] ?? fallback;
+}
+
+function pickDimension(
+  current: JwxtFilterOption,
+  parsed: JwxtSelectParse,
+  fallbackList: JwxtFilterOption[],
+): JwxtFilterOption {
+  if (isJwxtFilterSelected(current)) return current;
+  if (parsed.selected) return parsed.selected;
+  if (parsed.hasPlaceholder) return { id: "", label: "" };
+  return firstOption(fallbackList, current);
 }
 
 export function emptySnapshot(): JwxtSnapshotV1 {
@@ -234,12 +247,23 @@ export function snapshotFromHtml(
   }
   const merged = mergeFilters(current, parsed);
   const term = isFilter(merged.term) && merged.term.id ? merged.term : firstOption(merged.terms, merged.term);
+  const grade = pickDimension(merged.grade, parsed.gradeSelect, merged.grades);
+  const major = pickDimension(merged.major, parsed.majorSelect, merged.majors);
+  if (
+    (bucket === "planned" || bucket === "public") &&
+    (
+      (parsed.gradeSelect.hasPlaceholder && !isJwxtFilterSelected(grade)) ||
+      (parsed.majorSelect.hasPlaceholder && !isJwxtFilterSelected(major))
+    )
+  ) {
+    return { ok: false, kind: "malformed", message: JWXT_MAJOR_REQUIRED_MESSAGE };
+  }
   const next: JwxtSnapshotV1 = {
     ...merged,
     term,
     educationLevel: merged.educationLevel.id ? merged.educationLevel : firstOption(merged.educationLevels, merged.educationLevel),
-    grade: merged.grade.id ? merged.grade : firstOption(merged.grades, merged.grade),
-    major: merged.major.id ? merged.major : firstOption(merged.majors, merged.major),
+    grade,
+    major,
     captured: [...new Set([...(merged.captured ?? []), bucket])],
     enrolled: bucket === "enrolled" ? parsed.offerings : merged.enrolled,
     planned: bucket === "planned"

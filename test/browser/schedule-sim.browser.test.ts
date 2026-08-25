@@ -2,10 +2,17 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { jwxtSnapshotBookmarkletSource } from "../../src/lib/jwxt-import-bookmarklet";
+import { JWXT_MAJOR_REQUIRED_MESSAGE } from "../../src/lib/jwxt-offering";
 import { SCHEDULE_MOBILE_NOTICE_KEY } from "../../src/lib/schedule-mobile-notice";
 import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
 import { emptyPlan, mergeEnrolledRefresh } from "../../src/lib/jwxt-plan";
 import type { JwxtSnapshotV1 } from "../../src/lib/jwxt-snapshot";
+
+const unselectedHtml = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/s2020103-unselected.html"),
+  "utf8",
+);
 
 const snapshotJson = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/snapshot.v1.json"),
@@ -151,6 +158,19 @@ async function chooseFilter(page: Page, label: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 
+async function openCoursePicker(page: Page) {
+  await page.getByRole("button", { name: "选择课程" }).click();
+  return page.getByRole("dialog", { name: "选择课程" });
+}
+
+function courseList(page: Page) {
+  return page.getByRole("grid", { name: "选课列表" });
+}
+
+function sectionList(page: Page) {
+  return page.getByRole("grid", { name: "开课班" });
+}
+
 test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mobile-smoke", async ({
   page,
 }) => {
@@ -177,43 +197,45 @@ test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mo
   await seedCachedSelection(page, snapshotJson, true);
   await expect(page.getByText("年级", { exact: true })).toBeVisible();
   await expect(page.getByText("专业", { exact: true })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "已选" })).toBeVisible();
-  await expect(page.getByLabel("已选课程")).toContainText("高等数学");
+  await expect(page.getByRole("button", { name: "选择课程" })).toBeEnabled();
+  await expect(courseList(page)).toContainText("高等数学");
 
-  await page.getByRole("tab", { name: "计划内" }).click();
-  const planned = page.getByLabel("计划内课程");
+  const picker = await openCoursePicker(page);
+  await picker.getByRole("tab", { name: "计划内" }).click();
+  const planned = picker.getByLabel("计划内课程");
   await expect(planned).toContainText("微观经济学");
   await expect(planned).toContainText("30/60 · 余 30");
   await expect(planned.getByRole("link", { name: "4.3 · 7 条" })).toBeVisible();
   await planned.getByRole("button", { name: "加入课表" }).first().click();
-  await expect(page.getByLabel("本学期计划")).toContainText("微观经济学");
+  await expect(courseList(page)).toContainText("微观经济学");
 
-  await page.getByRole("tab", { name: "公共选修" }).click();
-  await page.getByLabel("公共选修").getByRole("button", { name: "加入课表" }).click();
-  await expect(page.getByLabel("本学期计划")).toContainText("书法鉴赏");
+  await picker.getByRole("tab", { name: "公共选修" }).click();
+  await picker.getByLabel("公共选修").getByRole("button", { name: "加入课表" }).click();
+  await expect(courseList(page)).toContainText("书法鉴赏");
 
   const timetable = page.getByRole("grid", { name: "周课表" });
   await expect(timetable.getByText("高等数学（教师甲）").first()).toBeVisible();
   await expect(timetable.getByText("微观经济学（教师辰）").first()).toBeVisible();
   await expect(timetable.getByText("书法鉴赏（教师巳）").first()).toBeVisible();
 
-  await page.getByRole("tab", { name: "计划内" }).click();
-  await page.getByLabel("计划内课程").getByRole("button", { name: "加入课表" }).click();
+  await picker.getByRole("tab", { name: "计划内" }).click();
+  await picker.getByLabel("计划内课程").getByRole("button", { name: "加入课表" }).click();
   await expect(page.getByRole("alert")).toContainText("冲突课");
   await expect(page.getByRole("alert")).toContainText("未加入");
 
+  await picker.getByRole("button", { name: "完成" }).click();
+  await page.getByRole("button", { name: "保存课表" }).click();
+  await expect(page.getByText("课表已保存到本机")).toBeVisible();
+
   await page.reload();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
-  await expect(page.getByLabel("本学期计划")).toContainText("微观经济学");
-  await expect(page.getByLabel("本学期计划")).toContainText("书法鉴赏");
+  await expect(courseList(page)).toContainText("微观经济学");
+  await expect(courseList(page)).toContainText("书法鉴赏");
 
   await page.setViewportSize({ width: 320, height: 720 });
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
-  const layout = await page.locator("section").evaluate((section) => {
-    const grid = section.querySelector(".grid");
-    return grid ? getComputedStyle(grid).gridTemplateColumns : "";
-  });
-  expect(layout.split(" ").length).toBe(1);
+  const direction = await page.getByRole("region", { name: "课程与开课班" }).evaluate((el) => getComputedStyle(el).flexDirection);
+  expect(direction).toBe("column");
 });
 
 test("switches candidate data only between cached selections", async ({ page }) => {
@@ -222,22 +244,73 @@ test("switches candidate data only between cached selections", async ({ page }) 
   await seedCachedSelection(page, snapshotJson, true);
 
   await chooseFilter(page, "年级", "2023");
-  await page.getByRole("tab", { name: "计划内" }).click();
-  await expect(page.getByLabel("计划内课程")).not.toContainText("微观经济学");
-  await expect(page.getByText("这一类还没有课程。")).toBeVisible();
+  await expect(page.getByText("请先选择专业")).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择课程" })).toBeDisabled();
+  await expect(page.getByRole("tab", { name: "计划内" })).toHaveCount(0);
+  await chooseFilter(page, "专业", "数学与应用数学");
+  const emptyPicker = await openCoursePicker(page);
+  await emptyPicker.getByRole("tab", { name: "计划内" }).click();
+  await expect(emptyPicker.getByLabel("计划内课程")).toHaveCount(0);
+  await expect(emptyPicker.getByText("暂无数据")).toBeVisible();
+  await expect(emptyPicker).not.toContainText("微观经济学");
+  await emptyPicker.getByRole("button", { name: "完成" }).click();
 
   await seedCachedSelection(page, secondSelectionJson);
-  await page.getByRole("tab", { name: "计划内" }).click();
-  await expect(page.getByLabel("计划内课程")).toContainText("数据结构");
+  const secondPicker = await openCoursePicker(page);
+  await secondPicker.getByRole("tab", { name: "计划内" }).click();
+  await expect(secondPicker.getByLabel("计划内课程")).toContainText("数据结构");
+  await secondPicker.getByRole("button", { name: "完成" }).click();
 
   await chooseFilter(page, "年级", "2024");
-  await page.getByRole("tab", { name: "计划内" }).click();
-  await expect(page.getByLabel("计划内课程")).toContainText("微观经济学");
-  await expect(page.getByLabel("计划内课程")).not.toContainText("数据结构");
+  await expect(page.getByText("请先选择专业")).toBeVisible();
+  await chooseFilter(page, "专业", "数学与应用数学");
+  const year2024 = await openCoursePicker(page);
+  await year2024.getByRole("tab", { name: "计划内" }).click();
+  await expect(year2024.getByLabel("计划内课程")).toContainText("微观经济学");
+  await expect(year2024.getByLabel("计划内课程")).not.toContainText("数据结构");
+  await year2024.getByRole("button", { name: "完成" }).click();
 
   await chooseFilter(page, "年级", "2023");
-  await page.getByRole("tab", { name: "计划内" }).click();
-  await expect(page.getByLabel("计划内课程")).toContainText("数据结构");
+  await chooseFilter(page, "专业", "数学与应用数学");
+  const year2023 = await openCoursePicker(page);
+  await year2023.getByRole("tab", { name: "计划内" }).click();
+  await expect(year2023.getByLabel("计划内课程")).toContainText("数据结构");
+});
+
+test("hides planned and public tables until a major is selected", async ({ page }) => {
+  const unsetMajor = {
+    ...JSON.parse(snapshotJson),
+    major: { id: "", label: "" },
+  };
+  await mockScheduleApi(page);
+  await page.goto("/schedule");
+  await seedCachedSelection(page, JSON.stringify(unsetMajor), true);
+  await expect(page.getByText("请先选择专业")).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择课程" })).toBeDisabled();
+  await expect(page.getByRole("tab", { name: "计划内" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "公共选修" })).toHaveCount(0);
+  await expect(courseList(page)).toContainText("高等数学");
+});
+
+test("bookmarklet refuses S2020103 until grade and major are selected", async ({ page }) => {
+  const resultUrl = "https://jwxt.jxufe.edu.cn/student/wsxk.xskc.html?menucode=S2020103";
+  await page.route(resultUrl, (route) => route.fulfill({
+    body: unselectedHtml,
+    contentType: "text/html; charset=utf-8",
+  }));
+  const messages: string[] = [];
+  page.on("dialog", (dialog) => {
+    messages.push(dialog.message());
+    void dialog.accept();
+  });
+  await page.goto(resultUrl);
+  const downloads: string[] = [];
+  page.on("download", (download) => {
+    downloads.push(download.suggestedFilename());
+  });
+  await page.addScriptTag({ content: jwxtSnapshotBookmarkletSource() });
+  await expect.poll(() => messages[0] ?? "").toBe(JWXT_MAJOR_REQUIRED_MESSAGE);
+  expect(downloads).toEqual([]);
 });
 
 test("guest can see a cached plan but must log in to refresh", async ({ page }) => {
@@ -298,15 +371,14 @@ test("same-course swap is atomic and exclusion survives cached refresh", async (
   await mockScheduleApi(page);
   await page.goto("/schedule");
   await seedCachedSelection(page, snapshotJson, true);
-  await page.getByRole("tab", { name: "已选" }).click();
-  await page.getByLabel("已选课程").getByRole("button", { name: "排除" }).click();
+  await courseList(page).getByRole("button", { name: "排除" }).click();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
   await seedCachedSelection(page, snapshotJson);
-  await expect(page.getByLabel("本学期计划")).toContainText("已排除");
-  await page.getByRole("tab", { name: "计划内" }).click();
-  await page.getByLabel("计划内课程").getByRole("button", { name: "换班" }).click();
-  await expect(page.getByLabel("本学期计划")).toContainText("班03");
-  await expect(page.getByLabel("本学期计划")).not.toContainText("班01");
+  await expect(courseList(page)).toContainText("已排除");
+  await courseList(page).getByRole("button", { name: "高等数学" }).click();
+  await sectionList(page).getByRole("button", { name: "换班" }).click();
+  await expect(courseList(page)).toContainText("班03");
+  await expect(courseList(page)).not.toContainText("班01");
 });
 
 test("shows the desktop-only notice once on a narrow viewport", async ({

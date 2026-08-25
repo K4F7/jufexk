@@ -1,5 +1,5 @@
 import { JWXT_IMPORT_HASH_PREFIX } from "./jwxt-schedule-text";
-import type { JwxtMeeting } from "./jwxt-offering";
+import { isJwxtPlaceholderOption, JWXT_MAJOR_REQUIRED_MESSAGE, type JwxtMeeting } from "./jwxt-offering";
 
 export function isJwxtImportHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
@@ -202,6 +202,7 @@ export function jwxtSnapshotBookmarkletSource(): string {
         var id=opts[o].value||textOf(opts[o]);
         var label=textOf(opts[o])||id;
         if (!id && !label) continue;
+        if (isPlaceholder(id,label)) continue;
         if (/CASTGC|JSESSIONID|password|passwd|cookie|学号|姓名/i.test(id+label)) continue;
         if (opts[o].selected) out.unshift({id:id,label:label});
         else out.push({id:id,label:label});
@@ -209,6 +210,27 @@ export function jwxtSnapshotBookmarkletSource(): string {
     }
     }
     return out;
+  }
+  function findSelect(documents, names){
+    for (var d=0;d<documents.length;d++){
+      var selects=documents[d].querySelectorAll("select");
+      for (var s=0;s<selects.length;s++){
+        var name=String(selects[s].getAttribute("name")||selects[s].id||"").toLowerCase();
+        for (var n=0;n<names.length;n++) if (name.indexOf(names[n])>=0) return selects[s];
+      }
+    }
+    return null;
+  }
+  function selectedReal(select){
+    if (!select) return null;
+    var opts=select.querySelectorAll("option");
+    for (var o=0;o<opts.length;o++){
+      if (!opts[o].selected) continue;
+      var id=opts[o].value||textOf(opts[o]);
+      var label=textOf(opts[o])||id;
+      if (!isPlaceholder(id,label)) return {id:id,label:label};
+    }
+    return null;
   }
   function tableGrid(table){
     var out=[];
@@ -243,10 +265,17 @@ export function jwxtSnapshotBookmarkletSource(): string {
     return out;
   }
   var meetings=${parseJwxtBookmarkletMeetings.toString()};
+  var isPlaceholder=${isJwxtPlaceholderOption.toString()};
   var enrolled=[];
   var planned=[];
   var publicElectives=[];
   var roots=docs(document);
+  var gradeSelect=findSelect(roots,["nj","grade"]);
+  var majorSelect=findSelect(roots,["zy","major"]);
+  if ((gradeSelect && !selectedReal(gradeSelect)) || (majorSelect && !selectedReal(majorSelect))) {
+    alert(${JSON.stringify(JWXT_MAJOR_REQUIRED_MESSAGE)});
+    return;
+  }
   roots.forEach(function(doc){
     var docUrl="";
     try { docUrl=String(doc.location&&doc.location.href||""); } catch (e) {}
