@@ -201,14 +201,7 @@ async function refreshCatalogPinyinTexts(
       db
         .prepare(
           `UPDATE public_course_canonicals SET pinyin_text=?
-           WHERE course_id=? AND EXISTS(
-             SELECT 1 FROM public_precompute_state
-             WHERE id=1
-               AND dirty=1
-               AND generation=?
-               AND refresh_token=?
-               AND refresh_lease_until>unixepoch()
-           )`,
+           WHERE course_id=? AND ${refreshLeaseGuard}`,
         )
         .bind(
           catalogPinyinText([
@@ -226,14 +219,7 @@ async function refreshCatalogPinyinTexts(
       db
         .prepare(
           `UPDATE public_teacher_search SET pinyin_text=?
-           WHERE teacher_id=? AND EXISTS(
-             SELECT 1 FROM public_precompute_state
-             WHERE id=1
-               AND dirty=1
-               AND generation=?
-               AND refresh_token=?
-               AND refresh_lease_until>unixepoch()
-           )`,
+           WHERE teacher_id=? AND ${refreshLeaseGuard}`,
         )
         .bind(
           catalogPinyinText([row.name], { surname: true }),

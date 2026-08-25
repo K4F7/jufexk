@@ -113,7 +113,7 @@ describe("public list projection plan", () => {
     }
   });
 
-  it("keeps 大学英语 I–IV as submit options while collapsing the public family", async () => {
+  it("keeps 大学英语 I–IV as 投稿选项 while collapsing the 公开展示课名", async () => {
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO courses(id,code,name,category,department)
@@ -359,7 +359,7 @@ describe("public list projection plan", () => {
       const count = await env.DB.prepare(
         "SELECT course_count FROM public_teacher_course_counts WHERE teacher_id=57441",
       ).first<{ course_count: number }>();
-      // 大学英语 I/II 折叠为一个 canonical；体育1 不计入可见课。
+      // 大学英语 I/II 归并为一个公开展示课名；教务伞形课名「体育1」不计入公开浏览。
       expect(count?.course_count).toBe(2);
     } finally {
       await env.DB.prepare(

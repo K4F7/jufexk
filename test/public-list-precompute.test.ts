@@ -19,7 +19,7 @@ const databaseWithBatch = (
     },
   }) as D1Database;
 
-describe("public list precompute invalidation", () => {
+describe("public list refresh coordination", () => {
   it.each([
     ["POST", "/api/admin/catalog-relation-additions"],
     ["POST", "/api/admin/import/relations"],
@@ -154,7 +154,9 @@ describe("public list query shape", () => {
         .run();
     }
   });
+});
 
+describe("public list refresh coordination", () => {
   it("publishes clean projections only after the source generation stays stable", async () => {
     await SELF.fetch("https://example.com/api/courses?q=TEST101");
     const before = await env.DB.prepare(
@@ -346,6 +348,16 @@ describe("public list query shape", () => {
       await expect(refreshPublicListPrecomputes(env.DB)).rejects.toThrow(
         /issue355 pinyin refresh failure/,
       );
+      const failed = await env.DB.prepare(
+        `SELECT dirty,refresh_token,refresh_lease_until
+         FROM public_precompute_state WHERE id=1`,
+      ).first<{
+        dirty: number;
+        refresh_token: string | null;
+        refresh_lease_until: number | null;
+      }>();
+      expect(failed?.dirty).toBe(1);
+      expect(failed?.refresh_token).not.toBeNull();
     } finally {
       await env.DB.exec(`
         DROP TRIGGER IF EXISTS issue355_fail_dirty_cleanup;
@@ -359,7 +371,9 @@ describe("public list query shape", () => {
       await refreshPublicListPrecomputes(env.DB);
     }
   });
+});
 
+describe("public list query shape", () => {
   it("reads course-row visibility from the precomputed canonical mapping", async () => {
     await SELF.fetch("https://example.com/api/courses?q=TEST101");
     await env.DB.prepare(
@@ -567,46 +581,47 @@ describe("public list refresh coordination", () => {
        SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL
        WHERE id=1`,
     ).run();
-    let renewCalls = 0;
-    const database = new Proxy(env.DB, {
-      get(target, property) {
-        if (property === "prepare")
-          return (query: string) => {
-            if (
-              query.includes("SET refresh_lease_until=unixepoch()+?") &&
-              !query.includes("SET refresh_token=?")
-            )
-              return {
-                bind: (...args: unknown[]) => ({
-                  run: async () => {
-                    renewCalls += 1;
-                    if (renewCalls === 1) return { results: [] };
-                    return target.prepare(query).bind(...args).run();
-                  },
-                }),
-              } as unknown as D1PreparedStatement;
-            return target.prepare(query);
-          };
-        const value = Reflect.get(target, property, target);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    }) as D1Database;
-
-    await refreshPublicListPrecomputes(database);
-    const state = await env.DB.prepare(
-      `SELECT dirty,refresh_token,refresh_lease_until
-       FROM public_precompute_state WHERE id=1`,
-    ).first<{
-      dirty: number;
-      refresh_token: string | null;
-      refresh_lease_until: number | null;
-    }>();
-    expect(renewCalls).toBeGreaterThan(1);
-    expect(state).toEqual({
-      dirty: 0,
-      refresh_token: null,
-      refresh_lease_until: null,
-    });
+    await env.DB.prepare(
+      "CREATE TABLE issue574_lease_lost(id INTEGER PRIMARY KEY)",
+    ).run();
+    await env.DB.prepare(`
+      CREATE TRIGGER issue574_lose_lease_after_projection
+      AFTER INSERT ON public_teacher_search
+      WHEN NOT EXISTS(SELECT 1 FROM issue574_lease_lost)
+      BEGIN
+        INSERT INTO issue574_lease_lost(id) VALUES(1);
+        UPDATE public_precompute_state
+           SET refresh_lease_until=unixepoch()-1
+         WHERE id=1 AND refresh_token IS NOT NULL;
+      END;
+    `).run();
+    try {
+      await refreshPublicListPrecomputes(env.DB);
+      const state = await env.DB.prepare(
+        `SELECT dirty,refresh_token,refresh_lease_until
+         FROM public_precompute_state WHERE id=1`,
+      ).first<{
+        dirty: number;
+        refresh_token: string | null;
+        refresh_lease_until: number | null;
+      }>();
+      expect(state).toEqual({
+        dirty: 0,
+        refresh_token: null,
+        refresh_lease_until: null,
+      });
+    } finally {
+      await env.DB.exec(`
+        DROP TRIGGER IF EXISTS issue574_lose_lease_after_projection;
+        DROP TABLE IF EXISTS issue574_lease_lost;
+      `);
+      await env.DB.prepare(
+        `UPDATE public_precompute_state
+         SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL
+         WHERE id=1`,
+      ).run();
+      await refreshPublicListPrecomputes(env.DB);
+    }
   });
 });
 
