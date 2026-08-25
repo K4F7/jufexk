@@ -4,7 +4,6 @@
  * must degrade to a normal load-error alert when they 404.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { officialAvatarSrc } from "../../src/components/AnonymousAvatar";
 
 type MockState = {
   authenticated: boolean;
@@ -204,10 +203,7 @@ test("profile page renders own reviews, follows and stats", async ({
 
   const account = page.getByRole("button", { name: "账号" });
   await expect(account).toContainText("匿名用户#000001");
-  await expect(account.locator("img")).toHaveAttribute(
-    "src",
-    officialAvatarSrc(0),
-  );
+  await expect(account.locator("img")).toHaveCount(0);
 
   await expect(
     page.getByRole("heading", { name: "点评（2 门）" }),
@@ -263,10 +259,7 @@ test("profile page renders own reviews, follows and stats", async ({
     page.getByRole("radio", { name: "选择官方头像 3" }),
   ).toHaveCount(0);
   await expect(account).toContainText("匿名用户#000001");
-  await expect(account.locator("img")).toHaveAttribute(
-    "src",
-    officialAvatarSrc(2),
-  );
+  await expect(account.locator("img")).toHaveCount(0);
   await expect(profileCard.getByText("关注了", { exact: true }).first()).toBeVisible();
   await expect(profileCard.getByText("1 人", { exact: true })).toBeVisible();
   await expect(profileCard.getByText("被关注", { exact: true })).toBeVisible();

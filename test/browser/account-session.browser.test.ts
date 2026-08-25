@@ -175,7 +175,7 @@ test("signed-in viewer sees the account menu and the logged-in login page", asyn
   const account = page.getByRole("button", { name: "账号" });
   await expect(account).toBeVisible();
   await expect(account).toContainText("匿名用户#000001");
-  await expect(account.locator("img")).toBeVisible();
+  await expect(account.locator("img")).toHaveCount(0);
   await expect(account).not.toHaveText(/^账号$/);
   await expect(page.getByRole("link", { name: "登录" })).toHaveCount(0);
 
