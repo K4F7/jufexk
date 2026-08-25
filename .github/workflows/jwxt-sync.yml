@@ -76,7 +76,12 @@ jobs:
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
       - name: Collect and redact JWXT capture
-        run: pnpm exec tsx scripts/jwxt-collector/run.ts --mode "${{ steps.mode.outputs.mode }}" --output .local-data/jwxt-sync/capture.json
+        run: |
+          mkdir -p .local-data/jwxt-sync
+          if [[ "${{ steps.mode.outputs.mode }}" == "resume" ]]; then
+            pnpm exec wrangler r2 object get "$JWXT_SYNC_BUCKET/checkpoints/collector-latest.json" --file .local-data/jwxt-sync/collector-checkpoint.json --remote
+          fi
+          pnpm exec tsx scripts/jwxt-collector/run.ts --mode "${{ steps.mode.outputs.mode }}" --output .local-data/jwxt-sync/capture.json --checkpoint .local-data/jwxt-sync/collector-checkpoint.json
       - name: Build package and write D1 staging only
         id: stage
         run: |
@@ -89,6 +94,9 @@ jobs:
           pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/generations/$generation_id/manifest.json" --file ".local-data/jwxt-sync/out/$generation_id.manifest.json" --remote
           pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/generations/$generation_id/offerings.ndjson.gz" --file ".local-data/jwxt-sync/out/$generation_id.ndjson.gz" --remote
           pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/checkpoints/latest.json" --file ".local-data/jwxt-sync/result.json" --remote
+          if [[ -f .local-data/jwxt-sync/collector-checkpoint.json ]]; then
+            pnpm exec wrangler r2 object put "$JWXT_SYNC_BUCKET/checkpoints/collector-latest.json" --file .local-data/jwxt-sync/collector-checkpoint.json --remote
+          fi
       - name: Publish the staged generation atomically
         run: |
           pnpm exec tsx scripts/jwxt-sync/run.ts --mode "${{ steps.mode.outputs.mode }}" > .local-data/jwxt-sync/published.json
