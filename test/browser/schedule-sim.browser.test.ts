@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
+import { jwxtSnapshotBookmarkletSource } from "../../src/lib/jwxt-import-bookmarklet";
 
 const snapshotJson = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/snapshot.v1.json"),
@@ -10,6 +11,10 @@ const snapshotJson = readFileSync(
 );
 const loginExpiredHtml = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/login-expired.html"),
+  "utf8",
+);
+const s2020302Html = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/s2020302-result.html"),
   "utf8",
 );
 const secondSelectionJson = JSON.stringify({
@@ -97,6 +102,18 @@ test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mo
   await page.goto("/schedule");
   await expect(page.getByText("还没有教务数据")).toBeVisible();
 
+  await page.getByRole("button", { name: "刷新教务数据" }).click();
+  const refreshDialog = page.getByRole("dialog");
+  const authoritativeEntry = refreshDialog.getByRole("link", {
+    name: "经智慧江财进入本科教务",
+  });
+  await expect(authoritativeEntry).toHaveAttribute(
+    "href",
+    "http://ehall.jxufe.edu.cn/appShow?appId=5853686007071845",
+  );
+  await expect(authoritativeEntry).toHaveAttribute("target", "_blank");
+  await refreshDialog.getByRole("button", { name: "取消" }).click();
+
   await importSnapshot(page, snapshotJson);
   await expect(page.getByText("已导入教务快照")).toBeVisible();
   await expect(page.getByText("年级", { exact: true })).toBeVisible();
@@ -158,6 +175,39 @@ test("login-expired fixture surfaces session expiry without writing a snapshot",
   await importSnapshot(page, loginExpiredHtml);
   await expect(page.getByText("教务登录已失效", { exact: true })).toBeVisible();
   await expect(page.getByText("还没有教务数据")).toBeVisible();
+});
+
+test("bookmarklet exports the live S2020302 table shape", async ({ page }) => {
+  const resultUrl = "https://jwxt.jxufe.edu.cn/student/wsxk.zxjg.jsp?menucode=S2020302";
+  await page.route(resultUrl, (route) => route.fulfill({
+    body: s2020302Html,
+    contentType: "text/html; charset=utf-8",
+  }));
+  await page.goto(resultUrl);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.addScriptTag({ content: jwxtSnapshotBookmarkletSource() }),
+  ]);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const snapshot = JSON.parse(readFileSync(downloadPath!, "utf8"));
+  expect(snapshot.captured).toEqual(["enrolled"]);
+  expect(snapshot.enrolled).toHaveLength(1);
+  expect(snapshot.enrolled[0]).toMatchObject({
+    courseCode: "1234567890",
+    courseName: "测试课程",
+    section: "2026001-001",
+    capacitySelected: 12,
+    capacityLimit: 60,
+    capacityAvailable: 48,
+    place: "测试楼A101",
+    meetings: [{
+      weekday: 4,
+      startPeriod: 6,
+      endPeriod: 7,
+      place: "测试楼A101",
+    }],
+  });
 });
 
 test("switches candidate data only between cached selection snapshots", async ({ page }) => {

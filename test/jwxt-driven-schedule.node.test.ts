@@ -68,6 +68,41 @@ describe("jwxt table fixtures", () => {
     expect(parsed.pagination).toMatchObject({ tableId: "S20301", total: 2 });
   });
 
+  it("parses the live S2020302 selected-result shape without filter selects", () => {
+    const html = readFixture("s2020302-result.html");
+    const parsed = parseJwxtTableHtml(html);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.filters).toEqual({
+      terms: [],
+      educationLevels: [],
+      grades: [],
+      majors: [],
+      categories: [],
+    });
+    expect(parsed.pagination).toMatchObject({ tableId: "S2020302", total: 1 });
+    expect(parsed.offerings).toHaveLength(1);
+    expect(parsed.offerings[0]).toMatchObject({
+      courseCode: "1234567890",
+      courseName: "测试课程",
+      credits: 2.5,
+      section: "2026001-001",
+      teacherName: "测试教师",
+      campus: "蛟桥园",
+      capacitySelected: 12,
+      capacityLimit: 60,
+      capacityAvailable: 48,
+      place: "测试楼A101",
+    });
+    expect(parsed.offerings[0].meetings[0]).toEqual({
+      weekday: 4,
+      startPeriod: 6,
+      endPeriod: 7,
+      weeks: Array.from({ length: 18 }, (_, index) => index + 1),
+      place: "测试楼A101",
+    });
+  });
+
   it("reads dynamic headers, rowspan, multi-teacher, odd/even weeks, multi-slot and no fixed time", () => {
     const dynamic = parseJwxtTableHtml(readFixture("dynamic-headers.html"));
     expect(dynamic.ok && dynamic.offerings[0]?.courseName).toBe("大学英语");
@@ -235,10 +270,30 @@ describe("snapshot import/export", () => {
         { weekday: 5, startPeriod: 8, endPeriod: 8, weeks: [1, 3, 5, 7], place: "A101" },
       ]);
     const source = jwxtSnapshotBookmarkletSource();
-    expect(source).toContain("meetings: meetings(timeText,weekText,place)");
+    expect(source).toContain("meetings: parsedMeetings");
     expect(source).toContain('if (planned.length) captured.push("planned")');
     expect(source).toContain('if (publicElectives.length) captured.push("public")');
     expect(source).toContain("2*1024*1024");
+  });
+
+  it("recognizes S2020302 bracket schedules in the browser exporter", () => {
+    expect(parseJwxtBookmarkletMeetings(
+      "1-18周 四[06-07] 测试楼A101",
+      "",
+      "1-18周 四[06-07] 测试楼A101",
+    )).toEqual([{
+      weekday: 4,
+      startPeriod: 6,
+      endPeriod: 7,
+      weeks: Array.from({ length: 18 }, (_, index) => index + 1),
+      place: "测试楼A101",
+    }]);
+    const source = jwxtSnapshotBookmarkletSource();
+    expect(source).toContain("S2020302");
+    expect(source).toContain("上课班级");
+    expect(source).toContain('["课程号","课程代码","课程名称","课程名","课程"]');
+    expect(source).not.toContain("textOf(doc.body");
+    expect(source).not.toContain("textOf(tables[t])");
   });
 });
 

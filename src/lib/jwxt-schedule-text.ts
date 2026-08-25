@@ -6,6 +6,8 @@ import { defaultWeeks, PERIOD_COUNT } from "./schedule-plan";
 
 export const JWXT_CHANNEL2_URL = "https://jwxt.jxufe.edu.cn/jxcjcaslogin";
 export const EHALL_URL = "http://ehall.jxufe.edu.cn/";
+export const EHALL_JWXT_APP_URL =
+  "http://ehall.jxufe.edu.cn/appShow?appId=5853686007071845";
 export const JWXT_IMPORT_HASH_PREFIX = "jwxt-import=";
 export const JWXT_IMPORT_VERSION = 1;
 export const JWXT_PENDING_IMPORT_KEY = "jufexk-jwxt-pending-import";
@@ -28,6 +30,7 @@ export type ParsedJwxtSlot = {
   startPeriod: number;
   endPeriod: number;
   weeks: number[];
+  place?: string;
 };
 
 const WEEKDAY_TOKEN: Record<string, number> = {
@@ -47,6 +50,8 @@ function looksLikeSecret(text: string) {
 
 export function splitCourseCell(text: string): { courseCode: string; courseName: string } {
   const raw = text.replace(/\s+/g, " ").trim();
+  const bracketed = /^\[\s*([A-Za-z0-9._-]{4,32})\s*\]\s*(.+)$/.exec(raw);
+  if (bracketed) return { courseCode: bracketed[1], courseName: bracketed[2].trim() };
   const match = /^(\d{8,12})\s+(.+)$/.exec(raw);
   if (match) return { courseCode: match[1], courseName: match[2].trim() };
   return { courseCode: "", courseName: raw };
@@ -61,7 +66,7 @@ export function parseJwxtWeeks(text: string): number[] {
   if (raw.includes("双周")) {
     return defaultWeeks().filter((week) => week % 2 === 0);
   }
-  const weekOnly = !/节|星期/.test(raw);
+  const weekOnly = !/节|星期|周[一二三四五六日天]|[一二三四五六日天]\[/.test(raw);
   if (weekOnly && (raw === "1-16" || raw === "1-16周")) return defaultWeeks();
   const weeks = new Set<number>();
   const range = weekOnly
@@ -85,6 +90,14 @@ export function parseJwxtWeeks(text: string): number[] {
 }
 
 function periodPair(raw: string): { startPeriod: number; endPeriod: number } | null {
+  const bracketed = /\[\s*(\d{1,2})(?:\s*[-–—~至到,，]\s*(\d{1,2}))?\s*\]/.exec(raw);
+  if (bracketed) {
+    const start = Number(bracketed[1]);
+    const end = Number(bracketed[2] || bracketed[1]);
+    if (start >= 1 && end <= PERIOD_COUNT && start <= end) {
+      return { startPeriod: start, endPeriod: end };
+    }
+  }
   const range = /第?\s*(\d{1,2})\s*[-–—~至到,，]\s*(\d{1,2})\s*节/.exec(raw);
   if (range) {
     const start = Number(range[1]);
@@ -104,13 +117,18 @@ function periodPair(raw: string): { startPeriod: number; endPeriod: number } | n
 }
 
 function weekdayOf(raw: string): number | null {
-  const match = /星期([一二三四五六日天])|周([一二三四五六日天])/.exec(raw);
+  const match = /星期([一二三四五六日天])|周([一二三四五六日天])|([一二三四五六日天])\s*\[/.exec(raw);
   if (!match) return null;
-  return WEEKDAY_TOKEN[match[1] || match[2]] ?? null;
+  return WEEKDAY_TOKEN[match[1] || match[2] || match[3]] ?? null;
+}
+
+function placeOf(raw: string): string | undefined {
+  const bracketed = /\]\s*([^;；\n|/]+)$/.exec(raw);
+  return bracketed?.[1].trim() || undefined;
 }
 
 export function parseJwxtTimeText(timeText: string, weekText = ""): ParsedJwxtSlot[] {
-  const fallbackWeeks = parseJwxtWeeks(weekText);
+  const fallbackWeeks = parseJwxtWeeks(weekText || timeText);
   const chunks = timeText
     .split(/[;；\n|/]+/)
     .map((chunk) => chunk.trim())
@@ -122,7 +140,7 @@ export function parseJwxtTimeText(timeText: string, weekText = ""): ParsedJwxtSl
     if (weekday == null || !periods) continue;
     const weeks =
       /节\[/.test(chunk) || /\d+周/.test(chunk) ? parseJwxtWeeks(chunk) : fallbackWeeks;
-    slots.push({ weekday, ...periods, weeks });
+    slots.push({ weekday, ...periods, weeks, place: placeOf(chunk) });
   }
   return mergeAdjacentSlots(slots);
 }
@@ -139,6 +157,7 @@ export function mergeAdjacentSlots(slots: ParsedJwxtSlot[]): ParsedJwxtSlot[] {
       previous &&
       previous.weekday === slot.weekday &&
       previous.weeks.join(",") === slot.weeks.join(",") &&
+      previous.place === slot.place &&
       previous.endPeriod + 1 >= slot.startPeriod;
     if (canMerge && previous) {
       previous.endPeriod = Math.max(previous.endPeriod, slot.endPeriod);

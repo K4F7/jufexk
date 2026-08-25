@@ -256,7 +256,7 @@ export function snapshotFromHtml(
 }
 
 export function inferHtmlBucket(html: string): "enrolled" | "planned" | "public" {
-  if (/S20301|选课结果|已选/.test(html) && !/S2020103/.test(html)) return "enrolled";
+  if (/S2020302|S20301|选课结果|已选/.test(html) && !/S2020103/.test(html)) return "enrolled";
   if (/公共选修|公选/.test(html)) return "public";
   return "planned";
 }
