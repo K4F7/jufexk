@@ -6,6 +6,7 @@ import authRoutes from "../src/routes/auth";
 import importRoutes from "../src/routes/imports";
 import ordinaryUserRoutes from "../src/routes/ordinary-user";
 import publicCatalogRoutes from "../src/routes/public-catalog";
+import scheduleOfferingRoutes from "../src/routes/schedule-offerings";
 import { adminAuth, adminHeaders as sessionHeaders } from "./admin-session";
 import {
   ordinaryWriteHeaders,
@@ -25,6 +26,7 @@ describe("domain route composition", () => {
     const appKeys = app.routes.map(routeKey);
     const domainRoutes = [
       publicCatalogRoutes,
+      scheduleOfferingRoutes,
       authRoutes,
       ordinaryUserRoutes,
       adminRoutes,
@@ -42,6 +44,9 @@ describe("domain route composition", () => {
   it("keeps representative routes in their owning domains", () => {
     expect(publicCatalogRoutes.routes.map(routeKey)).toContain(
       "GET /api/courses",
+    );
+    expect(scheduleOfferingRoutes.routes.map(routeKey)).toContain(
+      "GET /api/schedule-offerings",
     );
     expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/cas");
     expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/dev");

@@ -15,6 +15,10 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 | `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA deploy / migrate / bind-admin | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。deploy 需 Workers Scripts Edit、Account Settings Read；migrate / bind-admin 需 D1 Edit、Account Settings Read |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
 | `CAMPUS_IDENTITY_SECRET`（可选副本） | GitHub Environment `production` | GHA `Bind admin student IDs` | 必须与 Secrets Store 中的同名值一致。Secrets Store 不能回读，本机没有 `.dev.vars` 时用这条工作流写管理员学号 HMAC |
+| `JWXT_USERNAME` | GitHub Environment `production` | GHA `Periodic JWXT sync` | 获授权的只读采集账号；只进入 Actions 进程环境，不得写日志、Artifact、R2 或 D1 |
+| `JWXT_PASSWORD` | GitHub Environment `production` | GHA `Periodic JWXT sync` | 与 `JWXT_USERNAME` 成对；真实 pilot 前由维护者配置，仓库与 issue 不记录值 |
+
+`JWXT_SYNC_ENABLED` 是 GitHub Environment `production` 的非秘密变量，默认缺失/`false`。手动 `pilot` 可在自动同步关闭时运行；只有 pilot 明确得到 `supported` 且数据质量通过后才设为 `true`，从而允许每日/月度 schedule 与手动 `incremental/full/resume`。
 
 不要写入 Secrets Store：
 

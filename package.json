@@ -23,6 +23,7 @@
     "audit:catalog-pilot": "tsx scripts/catalog-baseline/audit-pilot.ts",
     "audit:catalog-full": "tsx scripts/catalog-baseline/audit-full.ts",
     "catalog-baseline": "tsx scripts/catalog-baseline/cli.ts",
+    "jwxt-sync": "tsx scripts/jwxt-sync/run.ts",
     "deploy": "pnpm run build && wrangler deploy",
     "types": "wrangler types",
     "check:static": "wrangler types && tsc --noEmit && pnpm run test:static && vite build && wrangler deploy --dry-run",

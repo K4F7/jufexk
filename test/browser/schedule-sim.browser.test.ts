@@ -25,28 +25,33 @@ const catalogRelations = [
 ];
 
 const offeringSchedules: Record<string, Array<{
-  course_id: number;
-  section: string;
+  key: string;
+  courseCode: string;
+  courseName: string;
+  termId: string;
   campus: string;
-  schedule: string;
-  teachers: string;
-  teacher_ids: string;
+  weekText: string;
+  timeText: string;
+  place: string;
+  teacherName: string;
+  catalogCourseId: number;
+  catalogTeacherId: number;
 }>> = {
   "8": [
-    { course_id: 8, section: "01", campus: "麦庐园", schedule: "星期一 第1-2节", teachers: "教师甲", teacher_ids: "9" },
-    { course_id: 8, section: "03", campus: "麦庐园", schedule: "星期三 第1-2节", teachers: "教师乙", teacher_ids: "12" },
+    { key: "offering-8-a", courseCode: "10100001", courseName: "高等数学", termId: currentCatalogTermId(), campus: "麦庐园", weekText: "1-16周", timeText: "星期一 第1-2节", place: "一教101", teacherName: "教师甲", catalogCourseId: 8, catalogTeacherId: 9 },
+    { key: "offering-8-b", courseCode: "10100001", courseName: "高等数学", termId: currentCatalogTermId(), campus: "麦庐园", weekText: "1-16周", timeText: "星期三 第1-2节", place: "一教103", teacherName: "教师乙", catalogCourseId: 8, catalogTeacherId: 12 },
   ],
   "10": [
-    { course_id: 10, section: "02", campus: "麦庐园", schedule: "星期二 第3-4节", teachers: "教师辰", teacher_ids: "11" },
+    { key: "offering-10-a", courseCode: "10200001", courseName: "微观经济学", termId: currentCatalogTermId(), campus: "麦庐园", weekText: "1-16周", timeText: "星期二 第3-4节", place: "二教202", teacherName: "教师辰", catalogCourseId: 10, catalogTeacherId: 11 },
   ],
   "14": [
-    { course_id: 14, section: "01", campus: "麦庐园", schedule: "星期一 第1-2节", teachers: "教师丁", teacher_ids: "15" },
+    { key: "offering-14-a", courseCode: "20100001", courseName: "冲突课", termId: currentCatalogTermId(), campus: "麦庐园", weekText: "1-16周", timeText: "星期一 第1-2节", place: "一教102", teacherName: "教师丁", catalogCourseId: 14, catalogTeacherId: 15 },
   ],
   "16": [
-    { course_id: 16, section: "01", campus: "麦庐园", schedule: "星期四 第1-2节", teachers: "教师戊", teacher_ids: "17" },
+    { key: "offering-16-a", courseCode: "20200001", courseName: "数据结构", termId: currentCatalogTermId(), campus: "麦庐园", weekText: "1-16周", timeText: "星期四 第1-2节", place: "一教104", teacherName: "教师戊", catalogCourseId: 16, catalogTeacherId: 17 },
   ],
   "20": [
-    { course_id: 20, section: "01", campus: "麦庐园", schedule: "星期五 第6-7节", teachers: "教师巳", teacher_ids: "21" },
+    { key: "offering-20-a", courseCode: "30100001", courseName: "羽毛球", termId: currentCatalogTermId(), campus: "麦庐园", weekText: "1-16周", timeText: "星期五 第6-7节", place: "体育馆", teacherName: "教师巳", catalogCourseId: 20, catalogTeacherId: 21 },
   ],
 };
 
@@ -117,8 +122,9 @@ async function mockScheduleApi(
       });
       return route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 50, pages: 1 } });
     }
-    if (url.pathname === "/api/offerings") {
+    if (url.pathname === "/api/schedule-offerings") {
       const courseId = url.searchParams.get("courseId") || "";
+      expect(url.searchParams.get("term")).toBe(currentCatalogTermId());
       return route.fulfill({ json: offeringSchedules[courseId] ?? [] });
     }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
@@ -178,6 +184,7 @@ test("catalog filters, two candidate kinds, place, persist @mobile-smoke", async
   const planned = picker.getByLabel("计划内课程");
   await expect(planned).toContainText("高等数学");
   await expect(planned).toContainText("微观经济学");
+  await expect(planned).not.toContainText(/班号|容量|A-01/);
   await expect(planned.getByRole("link", { name: "4.2 · 6 条" }).first()).toBeVisible();
   await planned.getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入课表" }).first().click();
   await expect(courseList(page)).toContainText("高等数学");
@@ -334,8 +341,7 @@ test("same-course swap is atomic after selecting a catalog section", async ({ pa
   await courseList(page).getByRole("button", { name: "高等数学" }).click();
   await expect(sectionList(page)).toContainText("教师乙");
   await sectionList(page).getByRole("button", { name: "换班" }).click();
-  await expect(courseList(page)).toContainText("班03");
-  await expect(courseList(page)).not.toContainText("班01");
+  await expect(courseList(page)).not.toContainText(/班03|班01/);
 });
 
 test("shows the desktop-only notice once on a narrow viewport", async ({

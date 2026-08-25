@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyCatalogOfferingRows,
+  applyScheduleOfferingRows,
   catalogBrowseSnapshot,
   catalogFiltersReady,
   catalogScheduleGrades,
@@ -56,23 +56,28 @@ describe("catalog schedule helpers", () => {
 
   it("overlays offering schedule text only when the catalog row has it", () => {
     const seed = [relationToOffering(relation({ course_id: 8, code: "10100001", name: "高等数学" }))];
-    const withoutTime = applyCatalogOfferingRows(seed, [
-      { course_id: 8, section: "历史数据", campus: "", schedule: "", teachers: "教师甲", teacher_ids: "9" },
+    const withoutTime = applyScheduleOfferingRows(seed, [
+      { key: "catalog-1", courseCode: "10100001", courseName: "高等数学", termId: "2026-2027-1", campus: "", weekText: "", timeText: "", place: "", teacherName: "教师甲", catalogCourseId: 8, catalogTeacherId: 9 },
     ]);
     expect(withoutTime[0].meetings).toEqual([]);
     expect(withoutTime[0].timeText).toBe("");
 
-    const withTime = applyCatalogOfferingRows(seed, [
+    const withTime = applyScheduleOfferingRows(seed, [
       {
-        course_id: 8,
-        section: "01",
+        key: "jwxt-opaque-1",
+        courseCode: "10100001",
+        courseName: "高等数学",
+        termId: "2026-2027-1",
         campus: "麦庐园",
-        schedule: "星期一 第1-2节",
-        teachers: "教师甲",
-        teacher_ids: "9",
+        weekText: "1-16周",
+        timeText: "星期一 第1-2节",
+        place: "一教101",
+        teacherName: "教师甲",
+        catalogCourseId: 8,
+        catalogTeacherId: 9,
       },
     ]);
-    expect(withTime[0].section).toBe("01");
+    expect(withTime[0].section).toBe("jwxt-opaque-1");
     expect(withTime[0].campus).toBe("麦庐园");
     expect(withTime[0].meetings[0]).toMatchObject({ weekday: 1, startPeriod: 1, endPeriod: 2 });
   });
@@ -86,15 +91,21 @@ describe("catalog schedule helpers", () => {
       category: "sports",
       department: "体育学院",
     }), "public");
-    const next = applyCatalogOfferingRows([math], [{
-      course_id: 8,
-      section: "03",
-      schedule: "星期二 第3-4节",
-      teachers: "教师甲",
-      teacher_ids: "9",
+    const next = applyScheduleOfferingRows([math], [{
+      key: "jwxt-opaque-3",
+      courseCode: "10100001",
+      courseName: "高等数学",
+      termId: "2026-2027-1",
+      campus: "",
+      weekText: "1-16周",
+      timeText: "星期二 第3-4节",
+      place: "",
+      teacherName: "教师甲",
+      catalogCourseId: 8,
+      catalogTeacherId: 9,
     }]);
     expect(replaceCourseOfferings([sport], "10100001", next)).toEqual([sport]);
-    expect(replaceCourseOfferings([math], "10100001", next)[0].section).toBe("03");
+    expect(replaceCourseOfferings([math], "10100001", next)[0].section).toBe("jwxt-opaque-3");
   });
 
   it("builds a browse snapshot without education-level or enrolled JWXT rows", () => {

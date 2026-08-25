@@ -5,6 +5,7 @@ import ciWorkflow from "../.github/workflows/ci.yml?raw";
 import playwrightConfig from "../playwright.config.ts?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
 import migrateWorkflow from "../.github/workflows/migrate.yml?raw";
+import jwxtSyncWorkflow from "../.github/workflows/jwxt-sync.yml?raw";
 import packageJsonRaw from "../package.json?raw";
 
 const packageScripts = (JSON.parse(packageJsonRaw) as { scripts: Record<string, string> }).scripts;
@@ -111,5 +112,27 @@ describe("classifyChangedPaths", () => {
     expect(bindAdminWorkflow).toContain(
       "scripts/admin/bind-student-ids.ts --remote --apply",
     );
+  });
+
+  it("keeps periodic JWXT sync isolated, least-privileged, and disabled by default", () => {
+    expect(jwxtSyncWorkflow).toContain("workflow_dispatch:");
+    expect(jwxtSyncWorkflow).toContain('17 19 * * *');
+    expect(jwxtSyncWorkflow).toContain('37 20 1 * *');
+    expect(jwxtSyncWorkflow).not.toContain("pull_request:");
+    expect(jwxtSyncWorkflow).not.toContain("push:");
+    expect(jwxtSyncWorkflow).toContain("production-jwxt-sync");
+    expect(jwxtSyncWorkflow).toContain("cancel-in-progress: false");
+    expect(jwxtSyncWorkflow).toContain("contents: read");
+    expect(jwxtSyncWorkflow).toContain("environment: production");
+    expect(jwxtSyncWorkflow).toContain("timeout-minutes: 330");
+    expect(jwxtSyncWorkflow).toContain("vars.JWXT_SYNC_ENABLED");
+    expect(jwxtSyncWorkflow).toContain('DISPATCH_MODE" == "pilot"');
+    expect(jwxtSyncWorkflow).toContain("secrets.CLOUDFLARE_API_TOKEN");
+    expect(jwxtSyncWorkflow).toContain("wrangler r2 object put");
+    expect(jwxtSyncWorkflow).not.toContain("actions/upload-artifact");
+    for (const mode of ["pilot", "incremental", "full", "resume"]) {
+      expect(jwxtSyncWorkflow).toContain(`- ${mode}`);
+    }
+    expect(ciWorkflow).not.toContain("jwxt-sync");
   });
 });
