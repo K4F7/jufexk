@@ -72,9 +72,10 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
 
   await expect(footerNav.getByRole("link", { name: "关于我们" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "联系我们" })).toHaveCount(0);
-  await expect(footerNav.getByRole("link", { name: "资源" })).toBeVisible();
+  await expect(footerNav.getByRole("link", { name: "友情链接" })).toBeVisible();
+  await expect(footerNav.getByRole("link", { name: "资源" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "使用条款" })).toBeVisible();
-  await expect(footerNav.getByRole("link", { name: "公告" })).toBeVisible();
+  await expect(footerNav.getByRole("link", { name: "公告" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
   const status = footerNav.getByRole("link", { name: "系统状态" });
   await expect(status).toBeVisible();
@@ -88,7 +89,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
     await badge.getAttribute("src"),
   );
   const separators = footerNav.locator('[data-slot="separator"]');
-  await expect(separators).toHaveCount(7);
+  await expect(separators).toHaveCount(6);
   for (const separator of await separators.all()) {
     await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
   }
@@ -125,9 +126,10 @@ test("footer site-info links open their pages", async ({ page }) => {
   const mail = page.getByRole("link", { name: CONTACT_EMAIL });
   await expect(mail).toHaveAttribute("href", `mailto:${CONTACT_EMAIL}`);
 
-  await footerNav.getByRole("link", { name: "资源" }).click();
+  await footerNav.getByRole("link", { name: "友情链接" }).click();
   await expect(page).toHaveURL(/\/resources$/);
-  await expect(page.getByRole("heading", { name: "资源" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "友情链接" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "资源" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "评知校园" })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "USTC-iCourse / ustc-course" }),
@@ -148,12 +150,6 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page.getByText(/站方可以拒绝、编辑或撤回公开内容/)).toBeVisible();
   await expect(page.getByText(/经审核后/)).toHaveCount(0);
   await expect(page.getByText(/MIT License/)).toBeVisible();
-
-  await footerNav.getByRole("link", { name: "公告" }).click();
-  await expect(page).toHaveURL(/\/announcements$/);
-  await expect(page.getByRole("heading", { name: "公告栏" })).toBeVisible();
-  await expect(page.getByText("站点运营公告；普通用户只读。")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "发布公告" })).toHaveCount(0);
 
   await footerNav.getByRole("link", { name: "管理" }).click();
   await expect(page).toHaveURL(/\/admin$/);

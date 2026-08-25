@@ -7,9 +7,8 @@ import { StatusPageBadge } from "./StatusPageBadge";
 const INTERNAL_LINKS = [
   { to: "/contact", label: "反馈问题" },
   { to: "/about", label: "关于我们" },
-  { to: "/resources", label: "资源" },
+  { to: "/resources", label: "友情链接" },
   { to: "/terms", label: "使用条款" },
-  { to: "/announcements", label: "公告" },
   { to: "/admin", label: "管理" },
 ] as const;
 
