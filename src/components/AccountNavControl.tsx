@@ -3,14 +3,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAdminSession } from "../hooks/useAdminSession";
 import { useViewer } from "../hooks/useViewer";
 import { useUnreadNotificationCount } from "../hooks/useUnreadNotifications";
-import { AnonymousAvatar } from "./AnonymousAvatar";
 import { RouterAriaLink } from "./RouterAriaLink";
 
 /**
- * Low-emphasis login / account entry in the shell nav (issue #139 / #325 / #595).
+ * Low-emphasis login / account entry in the shell nav (issue #139 / #325 / #595 / #609).
  * The session payload carries no email, sub or users.id. After login the
- * trigger shows only the public handle and official avatar; guests still see
- * 「登录」. The accessible name stays 「账号」 so existing tests keep working.
+ * trigger shows only the public handle; guests still see 「登录」. The
+ * accessible name stays 「账号」 so existing tests keep working.
  * Guests always get a real login link: CAS password proxy is the
  * production path. AuthBridge callback is abandoned.
  *
@@ -44,7 +43,6 @@ export function AccountNavControl() {
     <Dropdown>
       <Badge.Anchor>
         <Button aria-label="账号" size="sm" variant="ghost">
-          <AnonymousAvatar avatarKey={viewer.avatar_key ?? 0} size="sm" />
           {viewer.handle ? (
             <span className="max-w-28 truncate">{viewer.handle}</span>
           ) : null}
