@@ -2,6 +2,13 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
 import { handleCampusAuthStatus } from "../campus-jwt";
 import {
+  EHALL_LAUNCH_PATH,
+  EHALL_SESSION_PATH,
+  handleEhallLaunch,
+  handleEhallSessionRevoke,
+  handleEhallSessionStatus,
+} from "../ehall-session";
+import {
   DEV_LOGIN_PATH,
   handleCasLogin,
   handleCasMfa,
@@ -33,6 +40,9 @@ import { handlePublicUserProfile } from "../public-user-profile";
 
 const authRoutes = new Hono<AppEnv>();
 authRoutes.get("/api/user/session", handleOrdinaryUserSession);
+authRoutes.get(EHALL_SESSION_PATH, handleEhallSessionStatus);
+authRoutes.delete(EHALL_SESSION_PATH, handleEhallSessionRevoke);
+authRoutes.post(EHALL_LAUNCH_PATH, handleEhallLaunch);
 authRoutes.get(USER_PROFILE_PATH, handleOrdinaryUserProfile);
 authRoutes.patch(`${USER_PROFILE_PATH}/avatar`, handleUpdateOrdinaryUserAvatar);
 authRoutes.get("/api/u/:code", handlePublicUserProfile);

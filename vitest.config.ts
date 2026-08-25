@@ -39,6 +39,7 @@ export default defineConfig(async () => {
             MAIL_DELIVERY_TOKEN: "test-mail-token",
             REVIEW_AUTHOR_LOOKUP_TO: "admin@example.test",
             CAS_CHALLENGE_SECRET: "test-cas-challenge",
+            EHALL_SESSION_SECRET: "test-ehall-session",
           },
         },
       }),

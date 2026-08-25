@@ -2,6 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import app from "../src/index";
+import { EHALL_SESSION_COOKIE } from "../src/ehall-session";
 import {
   AUTH_PROVIDER_CAS,
   CAS_IDENTITY_ISSUER,
@@ -13,6 +14,8 @@ import {
 } from "../src/ordinary-user-session";
 import {
   CAS_MFA_CONSUMED_LOGIN_FAILED,
+  CAS_SERVICE_URL,
+  applySetCookie,
   extractCasServiceTicket,
   isAllowedCasUrl,
   isSuccessfulCasRedirect,
@@ -27,6 +30,16 @@ import {
 const origin = "https://example.com";
 const studentId = "2202100099";
 const password = "campus-pass-99";
+const jwxtTestService =
+  "https://jwxt.jxufe.edu.cn//jxcjcaslogin";
+const jwxtTestTicketLocation = `${jwxtTestService}?ticket=ST-jwxt-test-1`;
+const jwxtTestEntry =
+  "https://jwxt.jxufe.edu.cn/jxcjcaslogin?t_s=1&amp_sec_version_=1&gid_=test&EMAP_LANG=zh&THEME=indigo";
+const ehallHome = "http://ehall.jxufe.edu.cn/new/index.html";
+const ehallLogin = `http://ehall.jxufe.edu.cn/login?service=${encodeURIComponent(ehallHome)}`;
+const ehallAdapterToken = "adapter-session-token";
+const ehallAdapterService =
+  `http://ehall.jxufe.edu.cn/amp-auth-adapter/loginSuccess?sessionToken=${ehallAdapterToken}`;
 const loginHtml = (execution = "e1s1", encrypt = false) =>
   `<html><body><form><input name="execution" value="${execution}"></form><script>var cfg={"encryptEnabled":"${encrypt ? "true" : "false"}"}</script></body></html>`;
 
@@ -48,6 +61,8 @@ let mode:
   | "mfa-ticket-after-valid"
   | "mfa-reauth-get-after-valid"
   | "mfa-reauth-post-after-valid"
+  | "mfa-reauth-without-tgc"
+  | "mfa-session-cookie"
   | "mfa-login-fails-after-valid"
   | "mfa-stale-execution-then-ok"
   | "reauth-without-mfa"
@@ -59,6 +74,16 @@ let mode:
 let mfaCodeAccepted = "6543";
 let loginGets = 0;
 let loginPosts = 0;
+let appShowCalls = 0;
+let ehallLaunchMode:
+  | "active"
+  | "expired-once"
+  | "cas-expired"
+  | "hostile-redirect"
+  | "hostile-jwxt-query"
+  | "hostile-cas-service"
+  | "network-error" = "active";
+let appShowGate: Promise<void> | null = null;
 let qrComet:
   | "pending"
   | "scanned"
@@ -90,13 +115,139 @@ function installCasMock() {
       return new Response("blocked", { status: 500 });
     }
 
+    if (
+      url.hostname === "ehall.jxufe.edu.cn" &&
+      url.pathname === "/login" &&
+      url.searchParams.get("service") === ehallHome &&
+      url.searchParams.get("ticket") === "ST-ehall-final-1" &&
+      request.headers.get("cookie")?.includes("CASTGC=ehall-castgc-secret")
+    ) {
+      const headers = new Headers({ location: ehallHome });
+      headers.append("set-cookie", "asessionid=ehall-session-secret; Path=/; HttpOnly");
+      headers.append("set-cookie", "CASSTOC=ehall-cas-secret; Path=/; HttpOnly");
+      return new Response(null, { status: 302, headers });
+    }
+
+    if (
+      url.hostname === "ehall.jxufe.edu.cn" &&
+      url.pathname === "/login" &&
+      url.searchParams.get("service") === ehallHome &&
+      !url.searchParams.has("ticket")
+    ) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location:
+            `/amp-auth-adapter/login?service=${encodeURIComponent(ehallLogin)}`,
+          "set-cookie":
+            "MOD_AMP_AUTH=adapter-state-secret; Path=/amp-auth-adapter/; HttpOnly",
+        },
+      });
+    }
+
+    if (
+      url.hostname === "ehall.jxufe.edu.cn" &&
+      url.pathname === "/amp-auth-adapter/login" &&
+      url.searchParams.get("service") === ehallLogin &&
+      request.headers.get("cookie")?.includes("MOD_AMP_AUTH=adapter-state-secret")
+    ) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location:
+            `https://ssl.jxufe.edu.cn/cas/login?service=${encodeURIComponent(ehallAdapterService)}`,
+        },
+      });
+    }
+
+    if (
+      url.hostname === "ehall.jxufe.edu.cn" &&
+      url.pathname === "/amp-auth-adapter/loginSuccess" &&
+      url.searchParams.get("sessionToken") === ehallAdapterToken &&
+      url.searchParams.get("ticket") === "ST-ehall-adapter-1" &&
+      request.headers.get("cookie")?.includes("MOD_AMP_AUTH=adapter-state-secret")
+    ) {
+      const headers = new Headers({
+        location:
+          `${ehallLogin}&ticket=ST-ehall-final-1`,
+      });
+      headers.append("set-cookie", "CASTGC=ehall-castgc-secret; Path=/; HttpOnly");
+      return new Response(null, { status: 302, headers });
+    }
+
     if (url.hostname === "ssl.jxufe.edu.cn" && url.pathname === "/cas/login") {
+      const requestedService =
+        url.searchParams.get("service") || "http://ehall.jxufe.edu.cn";
+      const ticketLocation = (ticket: string) =>
+        `${requestedService}${requestedService.includes("?") ? "&" : "?"}ticket=${ticket}`;
+      if (
+        request.method === "GET" &&
+        url.searchParams.get("service") === jwxtTestService
+      ) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: jwxtTestTicketLocation,
+          },
+        });
+      }
+      if (
+        request.method === "GET" &&
+        (request.headers.get("cookie")?.includes("TGC=tgc-test-secret") ||
+          request.headers.get("cookie")?.includes("SESSION=cas-session-secret")) &&
+        url.searchParams.get("service") === ehallAdapterService
+      ) {
+        if (ehallLaunchMode === "cas-expired") {
+          return new Response(loginHtml("e-adapter-renew"), {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        }
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: `${ehallAdapterService}&ticket=ST-ehall-adapter-1`,
+          },
+        });
+      }
+      if (
+        request.method === "GET" &&
+        (request.headers.get("cookie")?.includes("TGC=tgc-test-secret") ||
+          request.headers.get("cookie")?.includes("SESSION=cas-session-secret")) &&
+        url.searchParams.get("service") === "http://ehall.jxufe.edu.cn"
+      ) {
+        if (ehallLaunchMode === "cas-expired") {
+          return new Response(loginHtml("e-renew"), {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        }
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: "http://ehall.jxufe.edu.cn/?ticket=ST-ehall-renew-1",
+          },
+        });
+      }
       if (request.method === "GET") {
         loginGets += 1;
+        if (
+          mode === "mfa-reauth-without-tgc" &&
+          url.searchParams.get("reAuthCheck") === "1"
+        ) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              location: ticketLocation("ST-ehall-adapter-1"),
+              "set-cookie":
+                "JSESSIONID=after-mfa; Path=/cas; HttpOnly, TGC=tgc-test-secret; Path=/cas/; HttpOnly; Secure; SameSite=Lax",
+            },
+          });
+        }
         if (mode === "mfa-ticket-after-valid" && loginGets >= 2) {
           return new Response(null, {
             status: 302,
-            headers: { location: "http://ehall.jxufe.edu.cn/?ticket=ST-mfa-2" },
+            headers: { location: ticketLocation("ST-ehall-adapter-1") },
           });
         }
         if (mode === "mfa-reauth-get-after-valid" && loginGets >= 2) {
@@ -104,7 +255,9 @@ function installCasMock() {
             status: 302,
             headers: {
               location:
-                "https://ssl.jxufe.edu.cn/cas/login?service=http://ehall.jxufe.edu.cn&reAuthCheck=1",
+                `https://ssl.jxufe.edu.cn/cas/login?service=${encodeURIComponent(requestedService)}&reAuthCheck=1`,
+              "set-cookie":
+                "TGC=tgc-test-secret; Path=/cas/; HttpOnly; Secure; SameSite=Lax",
             },
           });
         }
@@ -126,6 +279,8 @@ function installCasMock() {
           mode === "mfa-ticket-after-valid" ||
           mode === "mfa-reauth-get-after-valid" ||
           mode === "mfa-reauth-post-after-valid" ||
+          mode === "mfa-reauth-without-tgc" ||
+          mode === "mfa-session-cookie" ||
           mode === "mfa-login-fails-after-valid" ||
           mode === "mfa-stale-execution-then-ok" ||
           mode === "mfa-send-msg";
@@ -159,18 +314,102 @@ function installCasMock() {
           { status: 200, headers: { "content-type": "text/html" } },
         );
       }
-      if (mode === "reauth-without-mfa" || mode === "mfa-reauth-post-after-valid") {
+      if (
+        mode === "mfa-session-cookie"
+      ) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: ticketLocation("ST-ehall-adapter-1"),
+            "set-cookie":
+              "TGC=; Path=/cas/; Max-Age=0; HttpOnly; Secure, SESSION=cas-session-secret; Path=/cas/; HttpOnly; Secure; SameSite=Lax",
+          },
+        });
+      }
+      if (
+        mode === "reauth-without-mfa" ||
+        mode === "mfa-reauth-post-after-valid" ||
+        mode === "mfa-reauth-without-tgc"
+      ) {
+        const setCookie =
+          mode === "mfa-reauth-without-tgc"
+            ? "JSESSIONID=before-tgc; Path=/cas; HttpOnly"
+            : "TGC=tgc-test-secret; Path=/cas/; HttpOnly; Secure; SameSite=Lax";
         return new Response(null, {
           status: 302,
           headers: {
             location:
-              "https://ssl.jxufe.edu.cn/cas/login?service=http://ehall.jxufe.edu.cn&reAuthCheck=1",
+              `https://ssl.jxufe.edu.cn/cas/login?service=${encodeURIComponent(requestedService)}&reAuthCheck=1`,
+            "set-cookie": setCookie,
           },
         });
       }
       return new Response(null, {
         status: 302,
-        headers: { location: "http://ehall.jxufe.edu.cn/?ticket=ST-test-1" },
+        headers: {
+          location: ticketLocation("ST-ehall-adapter-1"),
+          "set-cookie":
+            "TGC=tgc-test-secret; Path=/cas/; HttpOnly; Secure; SameSite=Lax",
+        },
+      });
+    }
+
+    if (
+      url.hostname === "ehall.jxufe.edu.cn" &&
+      url.pathname === "/appShow" &&
+      url.searchParams.get("appId") === "5853686007071845"
+    ) {
+      appShowCalls += 1;
+      if (appShowGate) await appShowGate;
+      if (ehallLaunchMode === "network-error") {
+        throw new TypeError("sanitized upstream network failure");
+      }
+      if (ehallLaunchMode === "hostile-redirect") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://evil.example/steal" },
+        });
+      }
+      if (ehallLaunchMode === "hostile-jwxt-query") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: `${jwxtTestEntry}&unexpected=1` },
+        });
+      }
+      if (ehallLaunchMode === "hostile-cas-service") {
+        const service = `${jwxtTestService}?unexpected=1`;
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: `https://ssl.jxufe.edu.cn/cas/login?service=${encodeURIComponent(service)}`,
+          },
+        });
+      }
+      if (ehallLaunchMode !== "active" && appShowCalls === 1) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location:
+              "/login;jsessionid=expired?service=http://ehall.jxufe.edu.cn/appShow?appId=5853686007071845",
+          },
+        });
+      }
+      return new Response(null, {
+        status: 302,
+        headers: { location: jwxtTestEntry },
+      });
+    }
+
+    if (
+      url.hostname === "jwxt.jxufe.edu.cn" &&
+      url.pathname === "/jxcjcaslogin" &&
+      !url.searchParams.has("ticket")
+    ) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: `https://ssl.jxufe.edu.cn/cas/login?service=${encodeURIComponent(jwxtTestService)}`,
+        },
       });
     }
 
@@ -185,6 +424,8 @@ function installCasMock() {
         mode === "mfa-ticket-after-valid" ||
         mode === "mfa-reauth-get-after-valid" ||
         mode === "mfa-reauth-post-after-valid" ||
+        mode === "mfa-reauth-without-tgc" ||
+        mode === "mfa-session-cookie" ||
         mode === "mfa-login-fails-after-valid" ||
         mode === "mfa-stale-execution-then-ok" ||
         mode === "mfa-send-msg" ||
@@ -291,13 +532,18 @@ afterEach(() => {
   mfaCodeAccepted = "6543";
   loginGets = 0;
   loginPosts = 0;
+  appShowCalls = 0;
+  ehallLaunchMode = "active";
+  appShowGate = null;
   qrComet = "pending";
 });
 
 function assertNoIdentityLeak(value: unknown) {
   const raw = JSON.stringify(value);
   expect(raw).not.toMatch(new RegExp(studentId));
-  expect(raw).not.toMatch(/campus-pass-99|CASTGC|JSESSIONID=abc|gid-1/);
+  expect(raw).not.toMatch(
+    /campus-pass-99|CASTGC|JSESSIONID=abc|gid-1|tgc-test-secret|cas-session-secret|ehall-session-secret|ehall-cas-secret/,
+  );
   expect(raw).not.toMatch(/qr-state-key-secret|qrCodeKey|stateKey/);
   expect(raw).not.toMatch(/"id":"[0-9a-f]{32}"/);
 }
@@ -307,6 +553,11 @@ function cookieHeader(response: Response) {
   return (headers.getSetCookie?.() || [])
     .map((value) => value.split(";", 1)[0])
     .join("; ");
+}
+
+function setCookies(response: Response) {
+  const headers = response.headers as Headers & { getSetCookie?(): string[] };
+  return headers.getSetCookie?.() || [];
 }
 
 let ipSeq = 20;
@@ -360,7 +611,7 @@ async function finishMfa(body: Record<string, unknown>, ip = nextIp()) {
       Origin: origin,
       "CF-Connecting-IP": ip,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ password, ...body }),
   });
 }
 
@@ -426,6 +677,23 @@ function delayExpiredChallengePurge(db: D1Database) {
 }
 
 describe("jxufe cas helpers", () => {
+  it("captures TGC when upstream combines multiple Set-Cookie values", () => {
+    const jar: Record<string, string> = {};
+    applySetCookie(
+      jar,
+      new Response(null, {
+        headers: {
+          "set-cookie":
+            "JSESSIONID=session-value; Path=/cas; HttpOnly, TGC=tgc-value; Path=/cas/; HttpOnly; Secure; SameSite=Lax",
+        },
+      }),
+    );
+    expect(jar).toMatchObject({
+      JSESSIONID: "session-value",
+      TGC: "tgc-value",
+    });
+  });
+
   it("accepts campus hosts and ehall ticket redirects", () => {
     expect(isAllowedCasUrl("https://ssl.jxufe.edu.cn/cas/login")).toBe(true);
     expect(isAllowedCasUrl("https://mfa.jxufe.edu.cn/api")).toBe(true);
@@ -435,9 +703,11 @@ describe("jxufe cas helpers", () => {
     );
     expect(isSuccessfulCasRedirect("/cas/login?reAuthCheck=1")).toBe(false);
     expect(
-      isSuccessfulCasRedirect("/cas/login?reAuthCheck=1", {
-        acceptReauthCheck: true,
-      }),
+      isSuccessfulCasRedirect(
+        `/cas/login?service=${encodeURIComponent(CAS_SERVICE_URL)}&reAuthCheck=1`, {
+          acceptReauthCheck: true,
+        },
+      ),
     ).toBe(true);
     expect(
       isSuccessfulCasRedirect("https://evil.example/?reAuthCheck=1", {
@@ -653,9 +923,43 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
     assertNoIdentityLeak(session);
     expect(cookieHeader(first)).toContain(`${EMAIL_LOGIN_COOKIE}=`);
     expect(cookieHeader(first)).toContain(`${ORDINARY_USER_CSRF_COOKIE}=`);
+    expect(
+      setCookies(first).find((value) => value.startsWith(`${EMAIL_LOGIN_COOKIE}=`)),
+    ).toContain("Max-Age=604800");
+    expect(
+      setCookies(first).find((value) => value.startsWith(`${ORDINARY_USER_CSRF_COOKIE}=`)),
+    ).toContain("Max-Age=604800");
     expect(calls.some((call) => /ehall\.jxufe\.edu\.cn\/.+/.test(call.url))).toBe(
-      false,
+      true,
     );
+
+    const browserCookies = cookieHeader(first);
+    expect(browserCookies).toContain("jufexk_ehall_session=");
+    expect(browserCookies).not.toContain("tgc-test-secret");
+    expect(browserCookies).not.toContain("ehall-session-secret");
+    const callsBeforeStatus = calls.length;
+    const ehallStatus = await SELF.fetch(`${origin}/api/ehall/session`, {
+      headers: { Cookie: browserCookies },
+    });
+    expect(ehallStatus.status).toBe(200);
+    expect(await ehallStatus.json()).toMatchObject({ available: true });
+    expect(calls).toHaveLength(callsBeforeStatus);
+
+    const launch = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+    });
+    expect(launch.status).toBe(302);
+    expect(launch.headers.get("location")).toBe(
+      jwxtTestTicketLocation,
+    );
+    expect(await launch.text()).toBe("");
 
     const identity = await env.DB.prepare(
       "SELECT user_id FROM auth_identities WHERE provider=? AND issuer=?",
@@ -682,6 +986,377 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
       .bind(AUTH_PROVIDER_CAS, CAS_IDENTITY_ISSUER)
       .first<{ n: number }>();
     expect(identities?.n).toBe(1);
+  });
+
+  it("establishes eHall through the fixed amp auth adapter handshake", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+
+    expect(loggedIn.status).toBe(200);
+    expect(
+      calls.some((call) => {
+        const url = new URL(call.url);
+        return url.hostname === "ehall.jxufe.edu.cn" && url.pathname === "/login";
+      }),
+    ).toBe(true);
+    expect(
+      calls.some((call) => {
+        const url = new URL(call.url);
+        return (
+          url.hostname === "ehall.jxufe.edu.cn" &&
+          url.pathname === "/amp-auth-adapter/login"
+        );
+      }),
+    ).toBe(true);
+    expect(
+      calls.some((call) => {
+        const url = new URL(call.url);
+        return (
+          url.hostname === "ehall.jxufe.edu.cn" &&
+          url.pathname === "/amp-auth-adapter/loginSuccess" &&
+          url.searchParams.has("sessionToken") &&
+          url.searchParams.has("ticket")
+        );
+      }),
+    ).toBe(true);
+    expect(
+      calls.some((call) => {
+        const url = new URL(call.url);
+        return (
+          url.hostname === "ehall.jxufe.edu.cn" &&
+          url.pathname === "/login" &&
+          url.searchParams.get("service") === ehallHome &&
+          url.searchParams.has("ticket")
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it("silently renews an expired eHall session with the held TGC", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{
+      authenticated: boolean;
+      csrfToken?: string;
+    }>();
+    const browserCookies = cookieHeader(loggedIn);
+    const callsAfterLogin = calls.length;
+    ehallLaunchMode = "expired-once";
+    appShowCalls = 0;
+
+    const launch = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+    });
+
+    expect(launch.status).toBe(302);
+    expect(launch.headers.get("location")).toBe(
+      jwxtTestTicketLocation,
+    );
+    expect(appShowCalls).toBe(2);
+    expect(
+      calls.slice(callsAfterLogin).some((call) => {
+        const url = new URL(call.url);
+        if (url.hostname !== "ssl.jxufe.edu.cn" || url.pathname !== "/cas/login") {
+          return false;
+        }
+        const service = new URL(url.searchParams.get("service") || "");
+        return service.pathname === "/amp-auth-adapter/loginSuccess";
+      }),
+    ).toBe(true);
+    expect(cookieHeader(launch)).toContain("jufexk_ehall_session=");
+    expect(cookieHeader(launch)).not.toContain("ehall-session-renewed");
+  });
+
+  it("rejects launch requests without same-origin CSRF before any upstream call", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.clone().json<{ csrfToken?: string }>();
+    const browserCookies = cookieHeader(loggedIn);
+    const upstreamCalls = calls.length;
+
+    const badOrigin = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: "https://attacker.example",
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: "forged" }),
+    });
+    expect(badOrigin.status).toBe(403);
+    expect(calls).toHaveLength(upstreamCalls);
+
+    const missingCsrf = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "",
+    });
+    expect(missingCsrf.status).toBe(403);
+    expect(calls).toHaveLength(upstreamCalls);
+
+    const wrongContentType = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "text/plain",
+      },
+      body: `_csrf=${session.csrfToken || ""}`,
+    });
+    expect(wrongContentType.status).toBe(403);
+    expect(calls).toHaveLength(upstreamCalls);
+
+    const oversized = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: `_csrf=${session.csrfToken || ""}&padding=${"x".repeat(1_024)}`,
+    });
+    expect(oversized.status).toBe(403);
+    expect(calls).toHaveLength(upstreamCalls);
+  });
+
+  it("treats a tampered sealed eHall cookie as unavailable without upstream access", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const browserCookies = cookieHeader(loggedIn);
+    const upstreamCalls = calls.length;
+    const tamperedCookies = browserCookies.replace(
+      /jufexk_ehall_session=([^;]+)/,
+      (_match, value: string) =>
+        `jufexk_ehall_session=${value.slice(0, -1)}${value.endsWith("0") ? "1" : "0"}`,
+    );
+
+    const status = await SELF.fetch(`${origin}/api/ehall/session`, {
+      headers: { Cookie: tamperedCookies },
+    });
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ available: false });
+    expect(calls).toHaveLength(upstreamCalls);
+  });
+
+  it("never follows a hostile redirect returned by eHall", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{ csrfToken?: string }>();
+    const browserCookies = cookieHeader(loggedIn);
+    ehallLaunchMode = "hostile-redirect";
+    appShowCalls = 0;
+
+    const launch = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+    });
+
+    expect(launch.status).toBe(303);
+    expect(launch.headers.get("location")).toContain("reauth=campus");
+    expect(calls.some((call) => call.url.startsWith("https://evil.example"))).toBe(false);
+  });
+
+  it("rejects extra query keys on the fixed JWXT entry", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{ csrfToken?: string }>();
+    const browserCookies = cookieHeader(loggedIn);
+    ehallLaunchMode = "hostile-jwxt-query";
+    const upstreamCalls = calls.length;
+
+    const launch = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+    });
+
+    expect(launch.status).toBe(303);
+    expect(calls.slice(upstreamCalls)).toHaveLength(1);
+  });
+
+  it("rejects query keys embedded in a direct JWXT CAS service", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{ csrfToken?: string }>();
+    const browserCookies = cookieHeader(loggedIn);
+    ehallLaunchMode = "hostile-cas-service";
+    const upstreamCalls = calls.length;
+
+    const launch = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+    });
+
+    expect(launch.status).toBe(303);
+    expect(calls.slice(upstreamCalls)).toHaveLength(1);
+  });
+
+  it("keeps the sealed session on a transient upstream network failure", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{ csrfToken?: string }>();
+    const browserCookies = cookieHeader(loggedIn);
+    ehallLaunchMode = "network-error";
+    appShowCalls = 0;
+
+    const launch = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+    });
+
+    expect(launch.status).toBe(303);
+    expect(launch.headers.get("location")).toBe("/schedule?ehall=unavailable");
+    expect(
+      setCookies(launch).some((value) => value.startsWith(`${EHALL_SESSION_COOKIE}=`)),
+    ).toBe(false);
+  });
+
+  it("revokes the sealed eHall session without logging out of the site", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{
+      authenticated: boolean;
+      csrfToken?: string;
+    }>();
+    const browserCookies = cookieHeader(loggedIn);
+
+    const revoked = await SELF.fetch(`${origin}/api/ehall/session`, {
+      method: "DELETE",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "X-CSRF-Token": session.csrfToken || "",
+      },
+    });
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toEqual({ available: false });
+    expect(
+      setCookies(revoked).find((value) =>
+        value.startsWith(`${EHALL_SESSION_COOKIE}=`),
+      ),
+    ).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/);
+
+    const siteSession = await SELF.fetch(`${origin}/api/user/session`, {
+      headers: { Cookie: browserCookies },
+    });
+    expect(await siteSession.json()).toMatchObject({ authenticated: true });
+  });
+
+  it("keeps the site session when campus SSO needs revalidation", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{
+      authenticated: boolean;
+      csrfToken?: string;
+    }>();
+    const browserCookies = cookieHeader(loggedIn);
+    ehallLaunchMode = "cas-expired";
+    appShowCalls = 0;
+
+    const launch = await SELF.fetch(`${origin}/api/ehall/launch`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Origin: origin,
+        Cookie: browserCookies,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+    });
+    expect(launch.status).toBe(303);
+    expect(launch.headers.get("location")).toBe(
+      "/login?reauth=campus&from=%2Fschedule%3Fehall%3Dretry",
+    );
+    expect(
+      setCookies(launch).find((value) =>
+        value.startsWith(`${EHALL_SESSION_COOKIE}=`),
+      ),
+    ).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/);
+
+    const stillLoggedIn = await SELF.fetch(`${origin}/api/user/session`, {
+      headers: { Cookie: browserCookies },
+    });
+    expect(await stillLoggedIn.json()).toMatchObject({ authenticated: true });
+  });
+
+  it("serializes concurrent launches for the same sealed session", async () => {
+    installCasMock();
+    const loggedIn = await startCas({ username: studentId, password });
+    const session = await loggedIn.json<{
+      authenticated: boolean;
+      csrfToken?: string;
+    }>();
+    const browserCookies = cookieHeader(loggedIn);
+    appShowCalls = 0;
+    let releaseAppShow!: () => void;
+    appShowGate = new Promise<void>((resolve) => {
+      releaseAppShow = resolve;
+    });
+    const launch = () =>
+      SELF.fetch(`${origin}/api/ehall/launch`, {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          Origin: origin,
+          Cookie: browserCookies,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ _csrf: session.csrfToken || "" }),
+      });
+
+    const firstPromise = launch();
+    await vi.waitFor(() => expect(appShowCalls).toBe(1));
+    const secondPromise = launch();
+    const second = await Promise.race([
+      secondPromise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 300)),
+    ]);
+    releaseAppShow();
+    const first = await firstPromise;
+    if (!second) await secondPromise;
+    expect(second?.status).toBe(303);
+    expect(second?.headers.get("location")).toBe("/schedule?ehall=busy");
+    expect(appShowCalls).toBe(1);
+    expect(first.status).toBe(302);
+    appShowGate = null;
   });
 
   it("completes MFA then rejects replay and expiry", async () => {
@@ -713,6 +1388,13 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
     expect(stored?.blob).not.toContain(studentId);
     expect(stored?.blob).not.toContain("CASTGC");
 
+    const withoutPassword = await finishMfa({
+      challenge: first.challenge,
+      code: mfaCodeAccepted,
+      password: "",
+    });
+    expect(withoutPassword.status).toBe(401);
+
     const bad = await finishMfa({ challenge: first.challenge, code: "0000" });
     expect(bad.status).toBe(401);
     expect(await bad.json()).toMatchObject({ error: "动态口令错误" });
@@ -736,10 +1418,17 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
       afterValid.some((call) => call.url.includes("/cas/mfa/detect")),
     ).toBe(false);
     expect(
-      afterValid.some(
-        (call) => call.method === "GET" && call.url.includes("/cas/login"),
-      ),
-    ).toBe(false);
+      afterValid
+        .filter((call) => call.method === "GET" && call.url.includes("/cas/login"))
+        .every((call) => {
+          const service = new URL(call.url).searchParams.get("service") || "";
+          const serviceUrl = new URL(service);
+          return (
+            serviceUrl.hostname === "ehall.jxufe.edu.cn" &&
+            serviceUrl.pathname === "/amp-auth-adapter/loginSuccess"
+          );
+        }),
+    ).toBe(true);
     const cookies = cookieHeader(verified);
     expect(cookies).toContain(`${EMAIL_LOGIN_COOKIE}=`);
 
@@ -784,6 +1473,9 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
     });
     expect(logout.status).toBe(200);
     expect(await logout.json()).toMatchObject({ authenticated: false });
+    expect(
+      setCookies(logout).find((value) => value.startsWith(`${EHALL_SESSION_COOKIE}=`)),
+    ).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/);
   });
 
   it("treats a reAuthCheck redirect after MFA as login success", async () => {
@@ -804,10 +1496,40 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
       expect(await verified.json()).toMatchObject({ authenticated: true });
       expect(cookieHeader(verified)).toContain(`${EMAIL_LOGIN_COOKIE}=`);
       expect(calls.some((call) => /ehall\.jxufe\.edu\.cn\/.+/.test(call.url))).toBe(
-        false,
+        true,
       );
     }
     mfaCodeAccepted = "6543";
+  });
+
+  it("finishes reAuthCheck to obtain TGC before creating the eHall session", async () => {
+    mode = "mfa-reauth-without-tgc";
+    installCasMock();
+    const started = await startCas({ username: studentId, password });
+    const challenge = (await started.json<{ challenge?: string }>()).challenge;
+
+    const verified = await finishMfa({ challenge, code: mfaCodeAccepted });
+
+    expect(verified.status).toBe(200);
+    expect(cookieHeader(verified)).toContain(`${EHALL_SESSION_COOKIE}=`);
+    expect(
+      calls.some(
+        (call) => call.method === "GET" && call.url.includes("reAuthCheck=1"),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses the surviving CAS SESSION cookie when TGC is revoked", async () => {
+    mode = "mfa-session-cookie";
+    installCasMock();
+    const started = await startCas({ username: studentId, password });
+    const challenge = (await started.json<{ challenge?: string }>()).challenge;
+
+    const verified = await finishMfa({ challenge, code: mfaCodeAccepted });
+
+    expect(verified.status).toBe(200);
+    expect(cookieHeader(verified)).toContain(`${EHALL_SESSION_COOKIE}=`);
+    expect(cookieHeader(verified)).not.toContain("cas-session-secret");
   });
 
   it("does not treat a pre-MFA reAuthCheck redirect as a finished login", async () => {
@@ -894,8 +1616,10 @@ describe("jxufe cas login", { timeout: 15_000 }, () => {
     );
     expect(login?.body).toContain("__RSA__");
     expect(login?.body).not.toContain(password);
+    expect(login?.body).toContain("rememberMe=on");
     void privateKey;
   });
+
 
   it("rate-limits repeated CAS login attempts from one IP", async () => {
     installCasMock();
@@ -999,7 +1723,7 @@ describe("jxufe cas qr login", () => {
     expect(await expired.json()).toEqual({ status: "expired" });
   });
 
-  it("issues a session from comet accounts and does not follow ehall", async () => {
+  it("issues a session from comet accounts and establishes eHall", async () => {
     qrComet = "authorized";
     installCasMock();
     const started = await startQr();
@@ -1022,8 +1746,9 @@ describe("jxufe cas qr login", () => {
     expect(login?.body).toContain("_eventId_success=Submit");
     expect(login?.body).not.toContain("execution=");
     expect(calls.some((call) => /ehall\.jxufe\.edu\.cn\/.+/.test(call.url))).toBe(
-      false,
+      true,
     );
+    expect(cookieHeader(authorized)).toContain(`${EHALL_SESSION_COOKIE}=`);
     expect(
       calls.some((call) => /federatedRedirect|openweixin/.test(call.url)),
     ).toBe(false);
@@ -1054,8 +1779,17 @@ describe("jxufe cas qr login", () => {
       calls.some((call) => call.url.includes("/cas/p3/serviceValidate")),
     ).toBe(true);
     expect(calls.some((call) => /ehall\.jxufe\.edu\.cn\/.+/.test(call.url))).toBe(
-      false,
+      true,
     );
+    expect(
+      calls.some(
+        (call) =>
+          call.method === "GET" &&
+          call.url.includes(
+            "/cas/login?service=http%3A%2F%2Fehall.jxufe.edu.cn",
+          ),
+      ),
+    ).toBe(true);
   });
 
   it("fails closed when authorized QR has no normalized student id", async () => {

@@ -136,6 +136,33 @@ test("direct visit shows the CAS form without extra copy or a back link", async 
   await expect(page.getByRole("link", { name: "返回继续浏览" })).toHaveCount(0);
 });
 
+test("an authenticated site session can revalidate campus SSO and return to schedule", async ({
+  page,
+}) => {
+  await page.route("**/api/user/session", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        csrfToken: "csrf-existing",
+        loginPath: "/login",
+        logoutPath: "/logout",
+      },
+    }),
+  );
+  await page.goto(
+    "/login?reauth=campus&from=%2Fschedule%3Fehall%3Dretry",
+  );
+  await expect(
+    page.getByRole("heading", { name: "重新验证校园身份" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("学号")).toBeVisible();
+  await expect(page.getByText("已登录", { exact: true })).toHaveCount(0);
+  await page.getByLabel("学号").fill("2202100099");
+  await page.getByLabel("校园密码").fill("campus-pass");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page).toHaveURL(/\/schedule\?ehall=retry$/);
+});
+
 test("hides the school-email login entry on the ordinary-user card", async ({
   page,
 }) => {
@@ -203,6 +230,7 @@ test("MFA step drops a leftover password error and names 企业微信", async ({
   await page.getByRole("button", { name: "完成登录" }).click();
   await expect(page).toHaveURL(/\/courses$/);
   expect(mfaPayload).toContain("8765");
+  expect(mfaPayload).toContain("secret-pass");
 });
 
 test("post-OTP password failure returns to the credential form", async ({

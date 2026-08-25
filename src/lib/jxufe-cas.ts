@@ -1,4 +1,5 @@
 import { encryptCasPassword } from "./cas-rsa";
+import { responseSetCookieLines } from "./set-cookie";
 
 export const CAS_BASE_URL = "https://ssl.jxufe.edu.cn/cas/";
 export const CAS_SERVICE_URL = "http://ehall.jxufe.edu.cn";
@@ -10,8 +11,9 @@ export type CasCookieJar = Record<string, string>;
 
 export type CasMfaHold = {
   cookies: CasCookieJar;
+  serviceUrl: string;
   execution: string;
-  password: string;
+  encryptEnabled: boolean;
   username: string;
   fpVisitorId: string;
   mfaState: string;
@@ -23,6 +25,7 @@ export type CasMfaHold = {
 export type CasQrHold = {
   kind: "qr";
   cookies: CasCookieJar;
+  serviceUrl: string;
   fpVisitorId: string;
 };
 
@@ -41,10 +44,21 @@ export type CasQrPollAuthorized = {
   ok: true;
   status: "authorized";
   username: string;
+  sso?: CasSsoGrant;
 };
 export type CasQrPollResult = CasQrPollWaiting | CasQrPollAuthorized | CasLoginFail;
 
-export type CasLoginOk = { ok: true };
+export type CasSsoCookie = {
+  name: "TGC" | "SESSION";
+  value: string;
+};
+
+export type CasSsoGrant = {
+  cookies: CasSsoCookie[];
+  serviceTicketLocation: string | null;
+};
+
+export type CasLoginOk = { ok: true; sso?: CasSsoGrant };
 export type CasLoginMfa = { ok: false; needsMfa: true; hold: CasMfaHold };
 export type CasLoginFail = {
   ok: false;
@@ -57,7 +71,6 @@ export type CasLoginResult = CasLoginOk | CasLoginMfa | CasLoginFail;
 export const CAS_MFA_CONSUMED_LOGIN_FAILED =
   "验证码已核销，但学号或密码未通过。请确认后重新登录。";
 
-const LOGIN_URL = `${CAS_BASE_URL}login?service=${encodeURIComponent(CAS_SERVICE_URL)}`;
 const PUBLIC_KEY_URL = `${CAS_BASE_URL}jwt/publicKey`;
 const MFA_DETECT_URL = `${CAS_BASE_URL}mfa/detect`;
 const MFA_INIT_URL = `${CAS_BASE_URL}mfa/initByType/securephone`;
@@ -66,6 +79,8 @@ const QR_COMET_URL = `${CAS_BASE_URL}qr/comet`;
 const SERVICE_VALIDATE_URL = `${CAS_BASE_URL}p3/serviceValidate`;
 const QR_IMAGE_MIN_BYTES = 32;
 const QR_IMAGE_MAX_BYTES = 80_000;
+const CAS_RESPONSE_MAX_BYTES = 512_000;
+const CAS_UPSTREAM_TIMEOUT_MS = 8_000;
 
 export function normalizeCasUsername(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -104,24 +119,24 @@ function isCasReauthCheckLocation(location: string) {
 /** jufe_cas: 302 即口令通过；同域 `reAuthCheck` 只在 MFA 核销后当作本站探针成功。 */
 export function isSuccessfulCasRedirect(
   location: string,
-  options: { acceptReauthCheck?: boolean } = {},
+  options: { acceptReauthCheck?: boolean; serviceUrl?: string } = {},
 ): boolean {
   if (!location) return false;
   if (isCasReauthCheckLocation(location)) {
-    return Boolean(options.acceptReauthCheck);
+    return Boolean(
+      options.acceptReauthCheck &&
+        fixedCasReauthUrl(location, options.serviceUrl || CAS_SERVICE_URL),
+    );
   }
-  if (/[?&]ticket=/.test(location)) return true;
+  if (options.serviceUrl && fixedServiceTicketLocation(location, options.serviceUrl)) {
+    return true;
+  }
+  if (!options.serviceUrl && /[?&]ticket=/.test(location)) return true;
   return /ehall\.jxufe\.edu\.cn/i.test(location);
 }
 
 export function applySetCookie(jar: CasCookieJar, response: Response) {
-  const headers = response.headers as Headers & { getSetCookie?(): string[] };
-  const lines = [...(headers.getSetCookie?.() || [])];
-  if (lines.length === 0) {
-    const single = response.headers.get("set-cookie");
-    if (single) lines.push(single);
-  }
-  for (const raw of lines) {
+  for (const raw of responseSetCookieLines(response)) {
     const [pair] = raw.split(";");
     const eq = pair.indexOf("=");
     if (eq <= 0) continue;
@@ -137,6 +152,101 @@ export function cookieHeader(jar: CasCookieJar): string {
   return Object.entries(jar)
     .map(([name, value]) => `${name}=${value}`)
     .join("; ");
+}
+
+function casLoginUrl(serviceUrl: string) {
+  return `${CAS_BASE_URL}login?service=${encodeURIComponent(serviceUrl)}`;
+}
+
+function fixedServiceTicketLocation(location: string, expectedService: string) {
+  if (!extractCasServiceTicket(location)) return null;
+  try {
+    const actual = new URL(location, CAS_BASE_URL);
+    const expected = new URL(expectedService);
+    if (
+      actual.origin !== expected.origin ||
+      actual.pathname !== expected.pathname ||
+      actual.toString().length > 2_048
+    ) {
+      return null;
+    }
+    const actualKeys = [...actual.searchParams.keys()].filter((key) => key !== "ticket");
+    const expectedKeys = [...expected.searchParams.keys()];
+    if (
+      actualKeys.length !== expectedKeys.length ||
+      expectedKeys.some((key) => actual.searchParams.get(key) !== expected.searchParams.get(key))
+    ) {
+      return null;
+    }
+    return actual.toString();
+  } catch {
+    return null;
+  }
+}
+
+function casSsoGrant(
+  jar: CasCookieJar,
+  location: string,
+  serviceUrl: string,
+): CasSsoGrant | undefined {
+  const cookies: CasSsoCookie[] = [];
+  if (jar.TGC) cookies.push({ name: "TGC", value: jar.TGC });
+  if (jar.SESSION) cookies.push({ name: "SESSION", value: jar.SESSION });
+  if (cookies.length === 0) return undefined;
+  const serviceTicketLocation = fixedServiceTicketLocation(location, serviceUrl);
+  return { cookies, serviceTicketLocation };
+}
+
+function fixedCasReauthUrl(location: string, serviceUrl: string): string | null {
+  try {
+    const url = new URL(location, casLoginUrl(serviceUrl));
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "ssl.jxufe.edu.cn" ||
+      url.pathname !== "/cas/login" ||
+      !url.searchParams.has("reAuthCheck") ||
+      url.searchParams.get("reAuthCheck") !== "1" ||
+      url.searchParams.get("service") !== serviceUrl ||
+      [...url.searchParams.keys()].length !== 2 ||
+      url.searchParams.getAll("service").length !== 1 ||
+      url.searchParams.getAll("reAuthCheck").length !== 1
+    ) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function finishCasSsoRedirect(
+  jar: CasCookieJar,
+  response: Response,
+  acceptReauthCheck: boolean,
+  serviceUrl: string,
+) {
+  let location = response.headers.get("location") || "";
+  let sso = casSsoGrant(jar, location, serviceUrl);
+  const reauthUrl =
+    acceptReauthCheck && !sso ? fixedCasReauthUrl(location, serviceUrl) : null;
+  if (!reauthUrl) return { location, sso };
+
+  const finished = await casFetch(reauthUrl, jar, {
+    followRedirects: false,
+    serviceUrl,
+  });
+  const finishedLocation = finished.headers.get("location") || "";
+  if (
+    isRedirectStatus(finished.status) &&
+    isSuccessfulCasRedirect(finishedLocation, {
+      acceptReauthCheck: true,
+      serviceUrl,
+    })
+  ) {
+    location = finishedLocation;
+    sso = casSsoGrant(jar, location, serviceUrl);
+  }
+  return { location, sso };
 }
 
 export function parseLoginPage(html: string): {
@@ -230,6 +340,7 @@ async function casFetch(
     accept?: string;
     followRedirects?: boolean;
     hops?: number;
+    serviceUrl?: string;
   } = {},
 ): Promise<Response> {
   if (!isAllowedCasUrl(url)) throw new Error("cas_host_blocked");
@@ -239,16 +350,18 @@ async function casFetch(
   });
   const cookie = cookieHeader(jar);
   if (cookie) headers.set("cookie", cookie);
-  if (init.method === "POST") headers.set("referer", LOGIN_URL);
+  const referer = casLoginUrl(init.serviceUrl || CAS_SERVICE_URL);
+  if (init.method === "POST") headers.set("referer", referer);
   if (init.body !== undefined) {
     headers.set("content-type", init.contentType || "application/x-www-form-urlencoded");
-    headers.set("referer", LOGIN_URL);
+    headers.set("referer", referer);
   }
   const response = await fetch(url, {
     method: init.method || "GET",
     headers,
     body: init.body,
     redirect: "manual",
+    signal: AbortSignal.timeout(CAS_UPSTREAM_TIMEOUT_MS),
   });
   applySetCookie(jar, response);
   const location = response.headers.get("location") || "";
@@ -267,13 +380,49 @@ async function casFetch(
     ) {
       return response;
     }
-    return casFetch(next, jar, { followRedirects: true, hops: hops + 1 });
+    return casFetch(next, jar, {
+      followRedirects: true,
+      hops: hops + 1,
+      serviceUrl: init.serviceUrl,
+    });
   }
   return response;
 }
 
 async function readText(response: Response) {
-  return response.text();
+  return new TextDecoder().decode(
+    await readBytes(response, CAS_RESPONSE_MAX_BYTES),
+  );
+}
+
+async function readBytes(response: Response, limit: number) {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    throw new Error("cas_response_too_large");
+  }
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > limit) throw new Error("cas_response_too_large");
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown> | null> {
@@ -297,15 +446,19 @@ function isPasswordishCasError(error: string) {
 
 async function fetchLoginPage(
   jar: CasCookieJar,
+  serviceUrl: string,
   options: { acceptReauthCheck?: boolean } = {},
 ): Promise<CasLoginOk | { ok: false; page: ReturnType<typeof parseLoginPage> }> {
-  const response = await casFetch(LOGIN_URL, jar, { followRedirects: true });
+  const response = await casFetch(casLoginUrl(serviceUrl), jar, {
+    followRedirects: true,
+    serviceUrl,
+  });
   const location = response.headers.get("location") || "";
   if (
     isRedirectStatus(response.status) &&
-    isSuccessfulCasRedirect(location, options)
+    isSuccessfulCasRedirect(location, { ...options, serviceUrl })
   ) {
-    return { ok: true };
+    return { ok: true, sso: casSsoGrant(jar, location, serviceUrl) };
   }
   const html = await readText(response);
   if (/not found in service registry/i.test(html)) {
@@ -317,8 +470,8 @@ async function fetchLoginPage(
   return { ok: false, page };
 }
 
-async function loadLoginPage(jar: CasCookieJar) {
-  const loaded = await fetchLoginPage(jar);
+async function loadLoginPage(jar: CasCookieJar, serviceUrl: string) {
+  const loaded = await fetchLoginPage(jar, serviceUrl);
   if (loaded.ok) throw new Error("cas_already_authenticated");
   return loaded.page;
 }
@@ -362,6 +515,7 @@ async function detectMfa(
 
 async function submitLogin(
   jar: CasCookieJar,
+  serviceUrl: string,
   input: {
     username: string;
     password: string;
@@ -371,7 +525,7 @@ async function submitLogin(
   },
   options: { acceptReauthCheck?: boolean } = {},
 ): Promise<CasLoginResult> {
-  const response = await casFetch(LOGIN_URL, jar, {
+  const response = await casFetch(casLoginUrl(serviceUrl), jar, {
     method: "POST",
     body: new URLSearchParams({
       username: input.username,
@@ -388,12 +542,22 @@ async function submitLogin(
       rememberMe: "on",
     }).toString(),
     followRedirects: false,
+    serviceUrl,
   });
   if (
     response.status === 302 &&
-    isSuccessfulCasRedirect(response.headers.get("location") || "", options)
+    isSuccessfulCasRedirect(response.headers.get("location") || "", {
+      ...options,
+      serviceUrl,
+    })
   ) {
-    return { ok: true };
+    const completed = await finishCasSsoRedirect(
+      jar,
+      response,
+      Boolean(options.acceptReauthCheck),
+      serviceUrl,
+    );
+    return { ok: true, sso: completed.sso };
   }
   const html = await readText(response);
   if (response.status === 401) {
@@ -409,10 +573,11 @@ async function submitLogin(
 export async function startCasPasswordLogin(
   username: string,
   password: string,
+  serviceUrl = CAS_SERVICE_URL,
 ): Promise<CasLoginResult> {
   const jar: CasCookieJar = {};
   try {
-    const page = await loadLoginPage(jar);
+    const page = await loadLoginPage(jar, serviceUrl);
     const encoded = await passwordToSend(password, page.encryptEnabled, jar);
     const fpVisitorId = randomFingerprint();
     const mfa = await detectMfa(jar, username, encoded, fpVisitorId);
@@ -452,8 +617,9 @@ export async function startCasPasswordLogin(
         needsMfa: true,
         hold: {
           cookies: jar,
+          serviceUrl,
           execution: page.execution || "",
-          password: encoded,
+          encryptEnabled: page.encryptEnabled,
           username,
           fpVisitorId,
           mfaState: mfa.state,
@@ -463,7 +629,7 @@ export async function startCasPasswordLogin(
         },
       };
     }
-    return submitLogin(jar, {
+    return submitLogin(jar, serviceUrl, {
       username,
       password: encoded,
       execution: page.execution || "",
@@ -485,6 +651,7 @@ export async function startCasPasswordLogin(
 export async function completeCasPasswordLogin(
   hold: CasMfaHold,
   code: string,
+  password: string,
 ): Promise<CasLoginResult> {
   const jar = { ...hold.cookies };
   try {
@@ -504,11 +671,13 @@ export async function completeCasPasswordLogin(
     if (validBody?.code !== 0 || data?.status !== 2) {
       return fail(parseCasJsonError(validBody) || "验证码不正确", 401);
     }
+    const encoded = await passwordToSend(password, hold.encryptEnabled, jar);
     const first = await submitLogin(
       jar,
+      hold.serviceUrl,
       {
         username: hold.username,
-        password: hold.password,
+        password: encoded,
         execution: hold.execution,
         mfaState: hold.mfaState,
         fpVisitorId: hold.fpVisitorId,
@@ -519,14 +688,17 @@ export async function completeCasPasswordLogin(
     if (!first.needsMfa && isPasswordishCasError(first.error)) {
       return fail(CAS_MFA_CONSUMED_LOGIN_FAILED, first.status);
     }
-    const mfa = await detectMfa(jar, hold.username, hold.password, hold.fpVisitorId);
-    const loaded = await fetchLoginPage(jar, { acceptReauthCheck: true });
+    const mfa = await detectMfa(jar, hold.username, encoded, hold.fpVisitorId);
+    const loaded = await fetchLoginPage(jar, hold.serviceUrl, {
+      acceptReauthCheck: true,
+    });
     if (loaded.ok) return loaded;
     const result = await submitLogin(
       jar,
+      hold.serviceUrl,
       {
         username: hold.username,
-        password: hold.password,
+        password: encoded,
         execution: loaded.page.execution || hold.execution,
         mfaState: mfa.state || hold.mfaState,
         fpVisitorId: hold.fpVisitorId,
@@ -641,7 +813,7 @@ async function fetchQrImage(jar: CasCookieJar) {
   if (!response.ok || !/image\/png/i.test(contentType)) {
     throw new Error("cas_qr_image");
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const bytes = await readBytes(response, QR_IMAGE_MAX_BYTES);
   if (
     bytes.length < QR_IMAGE_MIN_BYTES ||
     bytes.length > QR_IMAGE_MAX_BYTES ||
@@ -654,10 +826,11 @@ async function fetchQrImage(jar: CasCookieJar) {
 
 async function submitQrLogin(
   jar: CasCookieJar,
+  serviceUrl: string,
   qrCodeKey: string,
   fpVisitorId: string,
-): Promise<{ ok: true; ticket: string | null } | CasLoginFail> {
-  const response = await casFetch(LOGIN_URL, jar, {
+): Promise<{ ok: true; ticket: string | null; sso?: CasSsoGrant } | CasLoginFail> {
+  const response = await casFetch(casLoginUrl(serviceUrl), jar, {
     method: "POST",
     body: new URLSearchParams({
       qrCodeKey,
@@ -668,28 +841,40 @@ async function submitQrLogin(
       _eventId_success: "Submit",
     }).toString(),
     followRedirects: false,
+    serviceUrl,
   });
   const location = response.headers.get("location") || "";
   if (
     isRedirectStatus(response.status) &&
-    isSuccessfulCasRedirect(location, { acceptReauthCheck: true })
+    isSuccessfulCasRedirect(location, { acceptReauthCheck: true, serviceUrl })
   ) {
-    return { ok: true, ticket: extractCasServiceTicket(location) };
+    const completed = await finishCasSsoRedirect(jar, response, true, serviceUrl);
+    return {
+      ok: true,
+      ticket: extractCasServiceTicket(completed.location),
+      sso: completed.sso,
+    };
   }
   return fail("登录失败，请稍后重试", 400);
 }
 
-async function usernameFromServiceTicket(jar: CasCookieJar, ticket: string) {
-  const url = `${SERVICE_VALIDATE_URL}?service=${encodeURIComponent(CAS_SERVICE_URL)}&ticket=${encodeURIComponent(ticket)}`;
+async function usernameFromServiceTicket(
+  jar: CasCookieJar,
+  serviceUrl: string,
+  ticket: string,
+) {
+  const url = `${SERVICE_VALIDATE_URL}?service=${encodeURIComponent(serviceUrl)}&ticket=${encodeURIComponent(ticket)}`;
   const response = await casFetch(url, jar, { followRedirects: false });
   if (!response.ok) return null;
   return parseCasServiceValidateUser(await readText(response));
 }
 
-export async function startCasQrLogin(): Promise<CasQrStartResult> {
+export async function startCasQrLogin(
+  serviceUrl = CAS_SERVICE_URL,
+): Promise<CasQrStartResult> {
   const jar: CasCookieJar = {};
   try {
-    const loaded = await fetchLoginPage(jar);
+    const loaded = await fetchLoginPage(jar, serviceUrl);
     if (loaded.ok) return fail("登录失败，请稍后重试");
     const imagePng = await fetchQrImage(jar);
     return {
@@ -697,6 +882,7 @@ export async function startCasQrLogin(): Promise<CasQrStartResult> {
       hold: {
         kind: "qr",
         cookies: jar,
+        serviceUrl,
         fpVisitorId: randomFingerprint(),
       },
       imagePng,
@@ -738,13 +924,25 @@ export async function pollCasQrLogin(hold: CasQrHold): Promise<CasQrPollResult> 
       (typeof qrRecord?.stateKey === "string" && qrRecord.stateKey) ||
       "";
     if (!qrCodeKey) return fail("登录失败，请稍后重试");
-    const submitted = await submitQrLogin(jar, qrCodeKey, hold.fpVisitorId);
+    const submitted = await submitQrLogin(
+      jar,
+      hold.serviceUrl,
+      qrCodeKey,
+      hold.fpVisitorId,
+    );
     if (!submitted.ok) return submitted;
+    const cometUsername = usernameFromCometData(data);
     const username =
-      usernameFromCometData(data) ||
-      (submitted.ticket ? await usernameFromServiceTicket(jar, submitted.ticket) : null);
+      cometUsername ||
+      (submitted.ticket
+        ? await usernameFromServiceTicket(jar, hold.serviceUrl, submitted.ticket)
+        : null);
     if (!username) return fail("登录失败，请稍后重试", 401);
-    return { ok: true, status: "authorized", username };
+    const sso =
+      submitted.sso && !cometUsername
+        ? { ...submitted.sso, serviceTicketLocation: null }
+        : submitted.sso;
+    return { ok: true, status: "authorized", username, sso };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "";
     if (reason === "cas_captcha_required") {

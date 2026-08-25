@@ -7,15 +7,13 @@ import { Alert, Button, Card, Typography } from "@heroui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { relationDetailHref } from "../components/CourseRelationRow";
 import { JwxtCourseBrowser } from "../components/JwxtCourseBrowser";
-import { JwxtSnapshotPanel } from "../components/JwxtSnapshotPanel";
+import { JwxtRefreshPanel } from "../components/JwxtRefreshPanel";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { ScheduleMobileNotice } from "../components/ScheduleMobileNotice";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { useViewer } from "../hooks/useViewer";
-import { api } from "../lib/api";
 import {
   loadSnapshotCaches,
-  saveSnapshotCache,
 } from "../lib/jwxt-cache";
 import type { JwxtOffering } from "../lib/jwxt-offering";
 import {
@@ -24,7 +22,6 @@ import {
   itemsOf,
   joinOffering,
   loadPlan,
-  mergeEnrolledRefresh,
   removeItem,
   savePlan,
   setIncluded,
@@ -37,47 +34,6 @@ import {
   type JwxtSnapshotV1,
 } from "../lib/jwxt-snapshot";
 import { conflictMessage, listConflicts } from "../lib/schedule-plan";
-import type { CourseRelation, Paginated } from "../lib/types";
-
-async function enrichSnapshotFromCatalog(snapshot: JwxtSnapshotV1): Promise<JwxtSnapshotV1> {
-  const offerings = [...snapshot.enrolled, ...snapshot.planned, ...snapshot.publicElectives];
-  const codes = [...new Set(offerings.map((offering) => offering.courseCode.trim()).filter(Boolean))];
-  const relations = new Map<string, CourseRelation[]>();
-  for (let offset = 0; offset < codes.length; offset += 8) {
-    const batch = codes.slice(offset, offset + 8);
-    const results = await Promise.all(batch.map(async (code) => {
-      try {
-        const query = new URLSearchParams({ q: code, view: "relations", page: "1", pageSize: "50" });
-        const result = await api<Paginated<CourseRelation>>(`/api/courses?${query}`);
-        return [code, result.items.filter((relation) => relation.code === code)] as const;
-      } catch {
-        return [code, [] as CourseRelation[]] as const;
-      }
-    }));
-    for (const [code, items] of results) relations.set(code, items);
-  }
-  const enrich = (offering: JwxtOffering): JwxtOffering => {
-    const matches = relations.get(offering.courseCode.trim()) ?? [];
-    const teacher = offering.teacherName.trim();
-    const exact = teacher
-      ? matches.find((relation) => relation.teacher_name?.trim() === teacher)
-      : undefined;
-    const course = exact ?? matches[0];
-    return {
-      ...offering,
-      catalogCourseId: course?.course_id ?? null,
-      catalogTeacherId: exact?.teacher_id ?? null,
-      catalogRating: exact?.rating ?? null,
-      catalogReviewCount: exact?.review_count ?? 0,
-    };
-  };
-  return {
-    ...snapshot,
-    enrolled: snapshot.enrolled.map(enrich),
-    planned: snapshot.planned.map(enrich),
-    publicElectives: snapshot.publicElectives.map(enrich),
-  };
-}
 
 function upsertSnapshotList(current: JwxtSnapshotV1[], incoming: JwxtSnapshotV1): {
   snapshots: JwxtSnapshotV1[];
@@ -146,11 +102,9 @@ export function SchedulePage() {
   const [snapshot, setSnapshot] = useState<JwxtSnapshotV1 | null>(null);
   const [notice, setNotice] = useState("");
   const [joinError, setJoinError] = useState("");
-  const [sessionExpired, setSessionExpired] = useState(false);
   const [cacheReady, setCacheReady] = useState(false);
   const snapshotsRef = useRef<JwxtSnapshotV1[]>([]);
   const interactionVersion = useRef(0);
-  const importRequest = useRef(0);
 
   useEffect(() => {
     savePlan(plan);
@@ -189,24 +143,6 @@ export function SchedulePage() {
     [plan, snapshot],
   );
   const conflicts = useMemo(() => listConflicts(staged), [staged]);
-
-  async function applySnapshot(next: JwxtSnapshotV1) {
-    const request = ++importRequest.current;
-    const visibleVersion = interactionVersion.current;
-    const enriched = await enrichSnapshotFromCatalog(next);
-    if (request !== importRequest.current) return;
-    const updated = upsertSnapshotList(snapshotsRef.current, enriched);
-    snapshotsRef.current = updated.snapshots;
-    if (interactionVersion.current === visibleVersion) setSnapshot(updated.merged);
-    setSessionExpired(false);
-    setPlan((current) => mergeEnrolledRefresh(current, updated.merged));
-    try {
-      await saveSnapshotCache(updated.merged);
-      setNotice("已导入教务快照。已选班次已更新，本地排除保持不变。");
-    } catch {
-      setNotice("快照已导入当前页面，但 IndexedDB 写入失败；关闭页面后可能无法恢复本次数据。");
-    }
-  }
 
   function handleFilters(patch: Partial<Pick<JwxtSnapshotV1, "term" | "educationLevel" | "grade" | "major">>) {
     if (!snapshot) return;
@@ -250,13 +186,10 @@ export function SchedulePage() {
             </Typography>
             <p className="mb-0 mt-1 text-sm text-muted">提前处理掉早八刺客</p>
           </div>
-          <JwxtSnapshotPanel
+          <JwxtRefreshPanel
             canEdit={canEdit}
+            csrfToken={viewer.csrfToken || ""}
             loginHref={`${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`}
-            snapshot={snapshot}
-            sessionExpired={sessionExpired}
-            onImport={applySnapshot}
-            onExpired={() => setSessionExpired(true)}
           />
         </div>
       </header>
@@ -265,7 +198,7 @@ export function SchedulePage() {
         <Alert className="mb-4" role="status">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>教务快照</Alert.Title>
+            <Alert.Title>教务数据</Alert.Title>
             <Alert.Description>{notice}</Alert.Description>
           </Alert.Content>
         </Alert>
@@ -297,7 +230,7 @@ export function SchedulePage() {
         <div className="min-w-0">
           {cacheReady && !snapshot ? (
             <p className="text-sm text-muted" role="status">
-              还没有教务数据。点「刷新教务数据」导入快照后，再按年级、专业浏览已选、计划内和公共选修。
+              还没有教务数据。点「刷新教务数据」后，再按年级、专业浏览已选、计划内和公共选修。
             </p>
           ) : snapshot ? (
             <JwxtCourseBrowser

@@ -2,20 +2,13 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { jwxtSnapshotBookmarkletSource } from "../../src/lib/jwxt-import-bookmarklet";
 import { SCHEDULE_MOBILE_NOTICE_KEY } from "../../src/lib/schedule-mobile-notice";
 import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
+import { emptyPlan, mergeEnrolledRefresh } from "../../src/lib/jwxt-plan";
+import type { JwxtSnapshotV1 } from "../../src/lib/jwxt-snapshot";
 
 const snapshotJson = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/snapshot.v1.json"),
-  "utf8",
-);
-const loginExpiredHtml = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/login-expired.html"),
-  "utf8",
-);
-const s2020302Html = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/s2020302-result.html"),
   "utf8",
 );
 const secondSelectionJson = JSON.stringify({
@@ -99,13 +92,58 @@ async function mockScheduleApi(
   });
 }
 
-async function importSnapshot(page: Page, text: string) {
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "刷新教务数据" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "刷新教务数据" })).toBeVisible();
-  await dialog.getByPlaceholder(/browser-export/).fill(text);
-  await dialog.getByRole("button", { name: "导入快照" }).click();
+function cachedSelection(text: string) {
+  const snapshot = JSON.parse(text) as JwxtSnapshotV1;
+  const enrich = (offering: JwxtSnapshotV1["enrolled"][number]) => {
+    const relation = catalogRelations.find((item) => item.code === offering.courseCode);
+    return {
+      ...offering,
+      catalogCourseId: relation?.course_id ?? null,
+      catalogTeacherId: relation?.teacher_id ?? null,
+      catalogRating: relation?.rating ?? null,
+      catalogReviewCount: relation?.review_count ?? 0,
+    };
+  };
+  return {
+    ...snapshot,
+    enrolled: snapshot.enrolled.map(enrich),
+    planned: snapshot.planned.map(enrich),
+    publicElectives: snapshot.publicElectives.map(enrich),
+  };
+}
+
+async function seedCachedSelection(page: Page, text: string, seedPlan = false) {
+  const snapshot = cachedSelection(text);
+  const plan = seedPlan
+    ? mergeEnrolledRefresh(emptyPlan(snapshot.term.id), snapshot)
+    : null;
+  await page.evaluate(
+    async ({ snapshot: value, plan: nextPlan, planKey }) => {
+      if (nextPlan) localStorage.setItem(planKey, JSON.stringify(nextPlan));
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("jufexk-jwxt", 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains("snapshots")) {
+            request.result.createObjectStore("snapshots");
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const key = [value.term.id, value.educationLevel.id, value.grade.id, value.major.id]
+        .map((part) => encodeURIComponent(part.trim()))
+        .join("|");
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("snapshots", "readwrite");
+        tx.objectStore("snapshots").put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    },
+    { snapshot, plan, planKey: SCHEDULE_PLAN_STORAGE_KEY },
+  );
+  await page.reload();
 }
 
 async function chooseFilter(page: Page, label: string, option: string) {
@@ -116,24 +154,27 @@ async function chooseFilter(page: Page, label: string, option: string) {
 test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mobile-smoke", async ({
   page,
 }) => {
+  const ehallRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/ehall/")) {
+      ehallRequests.push(request.url());
+    }
+  });
   await mockScheduleApi(page);
   await page.goto("/schedule");
   await expect(page.getByText("还没有教务数据")).toBeVisible();
+  expect(ehallRequests).toEqual([]);
 
-  await page.getByRole("button", { name: "刷新教务数据" }).click();
-  const refreshDialog = page.getByRole("dialog");
-  const authoritativeEntry = refreshDialog.getByRole("link", {
-    name: "经智慧江财进入本科教务",
-  });
-  await expect(authoritativeEntry).toHaveAttribute(
-    "href",
-    "http://ehall.jxufe.edu.cn/appShow?appId=5853686007071845",
-  );
-  await expect(authoritativeEntry).toHaveAttribute("target", "_blank");
-  await refreshDialog.getByRole("button", { name: "取消" }).click();
+  const refresh = page.getByRole("button", { name: "刷新教务数据" });
+  const launchForm = refresh.locator("xpath=ancestor::form");
+  await expect(launchForm).toHaveAttribute("action", "/api/ehall/launch");
+  await expect(launchForm).toHaveAttribute("method", "post");
+  await expect(launchForm).toHaveAttribute("target", "_blank");
+  await expect(launchForm.locator('input[name="_csrf"]')).toHaveValue("csrf-user");
+  await expect(page.getByText(/快照|JSON|书签/)).toHaveCount(0);
+  expect(ehallRequests).toEqual([]);
 
-  await importSnapshot(page, snapshotJson);
-  await expect(page.getByText("已导入教务快照")).toBeVisible();
+  await seedCachedSelection(page, snapshotJson, true);
   await expect(page.getByText("年级", { exact: true })).toBeVisible();
   await expect(page.getByText("专业", { exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "已选" })).toBeVisible();
@@ -161,16 +202,6 @@ test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mo
   await expect(page.getByRole("alert")).toContainText("冲突课");
   await expect(page.getByRole("alert")).toContainText("未加入");
 
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.getByRole("button", { name: "导出快照" }).click(),
-  ]);
-  const downloadPath = await download.path();
-  expect(downloadPath).toBeTruthy();
-  const exported = readFileSync(downloadPath!, "utf8");
-  expect(exported).toContain('"source": "browser-export"');
-  expect(exported).not.toMatch(/CASTGC|JSESSIONID|cookie|学号|姓名/i);
-
   await page.reload();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
   await expect(page.getByLabel("本学期计划")).toContainText("微观经济学");
@@ -185,60 +216,17 @@ test("manual refresh, filters, enrolled, two candidate kinds, place, persist @mo
   expect(layout.split(" ").length).toBe(1);
 });
 
-test("login-expired fixture surfaces session expiry without writing a snapshot", async ({
-  page,
-}) => {
+test("switches candidate data only between cached selections", async ({ page }) => {
   await mockScheduleApi(page);
   await page.goto("/schedule");
-  await importSnapshot(page, loginExpiredHtml);
-  await expect(page.getByText("教务登录已失效", { exact: true })).toBeVisible();
-  await expect(page.getByText("还没有教务数据")).toBeVisible();
-});
-
-test("bookmarklet exports the live S2020302 table shape", async ({ page }) => {
-  const resultUrl = "https://jwxt.jxufe.edu.cn/student/wsxk.zxjg.jsp?menucode=S2020302";
-  await page.route(resultUrl, (route) => route.fulfill({
-    body: s2020302Html,
-    contentType: "text/html; charset=utf-8",
-  }));
-  await page.goto(resultUrl);
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.addScriptTag({ content: jwxtSnapshotBookmarkletSource() }),
-  ]);
-  const downloadPath = await download.path();
-  expect(downloadPath).toBeTruthy();
-  const snapshot = JSON.parse(readFileSync(downloadPath!, "utf8"));
-  expect(snapshot.captured).toEqual(["enrolled"]);
-  expect(snapshot.enrolled).toHaveLength(1);
-  expect(snapshot.enrolled[0]).toMatchObject({
-    courseCode: "1234567890",
-    courseName: "测试课程",
-    section: "2026001-001",
-    capacitySelected: 12,
-    capacityLimit: 60,
-    capacityAvailable: 48,
-    place: "测试楼A101",
-    meetings: [{
-      weekday: 4,
-      startPeriod: 6,
-      endPeriod: 7,
-      place: "测试楼A101",
-    }],
-  });
-});
-
-test("switches candidate data only between cached selection snapshots", async ({ page }) => {
-  await mockScheduleApi(page);
-  await page.goto("/schedule");
-  await importSnapshot(page, snapshotJson);
+  await seedCachedSelection(page, snapshotJson, true);
 
   await chooseFilter(page, "年级", "2023");
   await page.getByRole("tab", { name: "计划内" }).click();
   await expect(page.getByLabel("计划内课程")).not.toContainText("微观经济学");
   await expect(page.getByText("这一类还没有课程。")).toBeVisible();
 
-  await importSnapshot(page, secondSelectionJson);
+  await seedCachedSelection(page, secondSelectionJson);
   await page.getByRole("tab", { name: "计划内" }).click();
   await expect(page.getByLabel("计划内课程")).toContainText("数据结构");
 
@@ -306,14 +294,14 @@ test("guest can see a cached plan but must log in to refresh", async ({ page }) 
   await expect(page).toHaveURL(/\/login\?from=%2Fschedule/);
 });
 
-test("same-course swap is atomic and exclude survives a second import", async ({ page }) => {
+test("same-course swap is atomic and exclusion survives cached refresh", async ({ page }) => {
   await mockScheduleApi(page);
   await page.goto("/schedule");
-  await importSnapshot(page, snapshotJson);
+  await seedCachedSelection(page, snapshotJson, true);
   await page.getByRole("tab", { name: "已选" }).click();
   await page.getByLabel("已选课程").getByRole("button", { name: "排除" }).click();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
-  await importSnapshot(page, snapshotJson);
+  await seedCachedSelection(page, snapshotJson);
   await expect(page.getByLabel("本学期计划")).toContainText("已排除");
   await page.getByRole("tab", { name: "计划内" }).click();
   await page.getByLabel("计划内课程").getByRole("button", { name: "换班" }).click();
