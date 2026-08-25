@@ -4,7 +4,7 @@ export const GITHUB_ISSUES_URL = "https://github.com/K4F7/jufexk/issues";
 export const CONTACT_EMAIL = "nonsein@foxmail.com";
 
 /** Better Stack public status page and embeddable badge. */
-export const STATUS_PAGE_URL = "https://jxufexk.betteruptime.com";
+export const STATUS_PAGE_URL = "https://xk-jxufe.betteruptime.com";
 
 export function statusBadgeUrl(theme: "light" | "dark"): string {
   return `${STATUS_PAGE_URL}/badge?theme=${theme}`;
