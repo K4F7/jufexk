@@ -306,9 +306,8 @@ test("keyboard reaches the account menu and logout confirm", async ({
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
-  // Keyboard open focuses the first item (我的主页); 消息 / 账号管理 follow,
-  // so three ArrowDowns reach 退出登录.
-  await page.keyboard.press("ArrowDown");
+  // Keyboard open focuses the first item (主页); 消息 follows,
+  // so two ArrowDowns reach 退出登录.
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");

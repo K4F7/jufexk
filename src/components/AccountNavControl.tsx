@@ -14,7 +14,7 @@ import { RouterAriaLink } from "./RouterAriaLink";
  * Guests always get a real login link: CAS password proxy is the
  * production path. AuthBridge callback is abandoned.
  *
- * 登录后菜单含「我的主页」与「消息」（#459 / #460）；管理员会话再多一项
+ * 登录后菜单含「主页」与「消息」（#459 / #460 / #607）；管理员会话再多一项
  * 「管理后台」。未读数接口不可用时隐藏角标，不影响菜单本身。
  */
 export function AccountNavControl() {
@@ -61,13 +61,12 @@ export function AccountNavControl() {
           onAction={(key) => {
             if (key === "profile") navigate("/profile");
             if (key === "notices") navigate("/notices");
-            if (key === "account") navigate("/account");
             if (key === "admin") navigate("/admin");
             if (key === "logout") navigate(viewer.logoutPath);
           }}
         >
-          <Dropdown.Item id="profile" textValue="我的主页">
-            <Label>我的主页</Label>
+          <Dropdown.Item id="profile" textValue="主页">
+            <Label>主页</Label>
           </Dropdown.Item>
           <Dropdown.Item
             id="notices"
@@ -79,9 +78,6 @@ export function AccountNavControl() {
                 <Chip.Label>{unreadLabel}</Chip.Label>
               </Chip>
             ) : null}
-          </Dropdown.Item>
-          <Dropdown.Item id="account" textValue="账号管理">
-            <Label>账号管理</Label>
           </Dropdown.Item>
           {adminReady && adminAuthed ? (
             <Dropdown.Item id="admin" textValue="管理后台">
