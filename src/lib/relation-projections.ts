@@ -5,7 +5,7 @@ import {
 } from "./relation-four-dims";
 import { publicTerm } from "./public-review-fields";
 import type { PublicDimensionLabel } from "./review-schemes";
-import { publicReviewBindingSql } from "../review-summary";
+import { publicReviewBindingSql } from "../public-review-visibility";
 
 export type RelationKey = { courseId: number; teacherId: number | null };
 

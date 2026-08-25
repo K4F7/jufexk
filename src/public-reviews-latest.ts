@@ -14,7 +14,7 @@ import {
   publicAuthorFields,
   reservedAuthorSql,
 } from "./public-handle";
-import { guestReviewBindingSql } from "./review-summary";
+import { guestReviewBindingSql } from "./public-review-visibility";
 
 const fail = (c: Context, error: string, status = 400) =>
   c.json({ error }, status as 400);
