@@ -309,19 +309,57 @@ test("course detail defaults to the most-reviewed relation", async ({
   const otherTeachersCard = aside
     .locator("[data-slot='card']")
     .filter({ hasText: "其他老师的这门课" });
-  await expect(
-    otherTeachersCard.getByRole("link", { name: "另一位教师" }),
-  ).toBeVisible();
-  await expect(otherTeachersCard.getByText("（2）")).toBeVisible();
+  const otherTeacherLink = otherTeachersCard.getByRole("link", {
+    name: "另一位教师",
+  });
+  const otherTeacherCount = otherTeachersCard.getByText("（2）");
+  await expect(otherTeacherLink).toBeVisible();
+  await expect(otherTeacherCount).toBeVisible();
   await expect(otherTeachersCard.getByText("4.6")).toHaveCount(0);
+  const otherTeacherNameBox = await otherTeacherLink.boundingBox();
+  const otherTeacherCountBox = await otherTeacherCount.boundingBox();
+  const otherTeachersCardBox = await otherTeachersCard.boundingBox();
+  expect(otherTeacherNameBox).toBeTruthy();
+  expect(otherTeacherCountBox).toBeTruthy();
+  expect(otherTeachersCardBox).toBeTruthy();
+  expect(
+    otherTeacherCountBox!.x -
+      (otherTeacherNameBox!.x + otherTeacherNameBox!.width),
+  ).toBeLessThan(16);
+  expect(
+    otherTeacherCountBox!.x -
+      (otherTeacherNameBox!.x + otherTeacherNameBox!.width),
+  ).toBeGreaterThan(-2);
+  expect(
+    otherTeachersCardBox!.x +
+      otherTeachersCardBox!.width -
+      otherTeacherCountBox!.x,
+  ).toBeGreaterThan(40);
 
   const otherCoursesCard = aside
     .locator("[data-slot='card']")
     .filter({ hasText: "这位老师的其他课" });
-  await expect(
-    otherCoursesCard.getByRole("link", { name: "写作与沟通" }),
-  ).toBeVisible();
-  await expect(otherCoursesCard.getByText("4.2（3）")).toBeVisible();
+  const otherCourseLink = otherCoursesCard.getByRole("link", {
+    name: "写作与沟通",
+  });
+  const otherCourseStats = otherCoursesCard.getByText("4.2（3）");
+  await expect(otherCourseLink).toBeVisible();
+  await expect(otherCourseStats).toBeVisible();
+  const otherCourseNameBox = await otherCourseLink.boundingBox();
+  const otherCourseStatsBox = await otherCourseStats.boundingBox();
+  const otherCoursesCardBox = await otherCoursesCard.boundingBox();
+  expect(otherCourseNameBox).toBeTruthy();
+  expect(otherCourseStatsBox).toBeTruthy();
+  expect(otherCoursesCardBox).toBeTruthy();
+  expect(
+    otherCourseStatsBox!.x -
+      (otherCourseNameBox!.x + otherCourseNameBox!.width),
+  ).toBeLessThan(16);
+  expect(
+    otherCoursesCardBox!.x +
+      otherCoursesCardBox!.width -
+      otherCourseStatsBox!.x,
+  ).toBeGreaterThan(40);
   await expect(otherCoursesCard.getByText("GEN0201")).toBeVisible();
   await expect(otherCoursesCard.getByText("4.1（2）")).toBeVisible();
   await expect(otherCoursesCard.getByText("MARX1001")).toBeVisible();
