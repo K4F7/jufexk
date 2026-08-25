@@ -292,11 +292,10 @@ export function ProfilePage() {
                 <AnonymousAvatar avatarKey={avatarKey} size="lg" />
               </Button>
               <Popover.Content>
-                <Popover.Dialog>
-                  <Popover.Heading>选择官方头像</Popover.Heading>
+                <Popover.Dialog aria-label="选择官方头像">
                   <ToggleButtonGroup
                     aria-label="选择官方头像"
-                    className="mt-2 flex flex-wrap justify-center"
+                    className="flex flex-wrap justify-center"
                     disallowEmptySelection
                     isDetached
                     isDisabled={savingAvatar}

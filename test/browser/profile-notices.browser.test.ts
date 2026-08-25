@@ -218,7 +218,7 @@ test("profile page renders own reviews, follows and stats", async ({
   await page.getByRole("button", { name: "更换官方头像" }).click();
   await expect(
     page.getByRole("heading", { name: "选择官方头像" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("radio", { name: "选择官方头像 1" }),
   ).toBeVisible();

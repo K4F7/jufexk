@@ -65,18 +65,17 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
 
   const feedback = footerNav.getByRole("link", { name: "反馈问题" });
   await expect(feedback).toBeVisible();
-  await expect(feedback).toHaveAttribute("href", GITHUB_ISSUES_URL);
-  await expect(feedback).toHaveAttribute("target", "_blank");
-  await expect(feedback).toHaveAttribute("rel", /noreferrer/);
+  await expect(feedback).toHaveAttribute("href", "/contact");
+  await expect(feedback).not.toHaveAttribute("target", "_blank");
 
   await expect(footerNav.getByRole("link", { name: "关于我们" })).toBeVisible();
-  await expect(footerNav.getByRole("link", { name: "联系我们" })).toBeVisible();
+  await expect(footerNav.getByRole("link", { name: "联系我们" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "资源" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "使用条款" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "公告" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
   const separators = footerNav.locator('[data-slot="separator"]');
-  await expect(separators).toHaveCount(7);
+  await expect(separators).toHaveCount(6);
   for (const separator of await separators.all()) {
     await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
   }
@@ -103,9 +102,10 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page.getByText(/公开内容匿名发布，站方可拒绝或撤回/)).toBeVisible();
   await expect(page.getByText(/经人工审核/)).toHaveCount(0);
 
-  await footerNav.getByRole("link", { name: "联系我们" }).click();
+  await footerNav.getByRole("link", { name: "反馈问题" }).click();
   await expect(page).toHaveURL(/\/contact$/);
-  await expect(page.getByRole("heading", { name: "联系我们" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "反馈问题" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "联系我们" })).toHaveCount(0);
   const issues = page.getByRole("link", { name: "前往 GitHub Issues" });
   await expect(issues).toHaveAttribute("href", GITHUB_ISSUES_URL);
   await expect(issues).toHaveAttribute("target", "_blank");

@@ -1,11 +1,11 @@
 import { LogoGithub } from "@gravity-ui/icons";
 import { buttonVariants, Separator } from "@heroui/react";
-import { GITHUB_ISSUES_URL, GITHUB_REPO_URL } from "../lib/site-links";
+import { GITHUB_REPO_URL } from "../lib/site-links";
 import { RouterAriaLink } from "./RouterAriaLink";
 
 const INTERNAL_LINKS = [
+  { to: "/contact", label: "反馈问题" },
   { to: "/about", label: "关于我们" },
-  { to: "/contact", label: "联系我们" },
   { to: "/resources", label: "资源" },
   { to: "/terms", label: "使用条款" },
   { to: "/announcements", label: "公告" },
@@ -42,19 +42,6 @@ export function SiteFooter({
           >
             <LogoGithub />
           </a>
-          <span className="inline-flex items-center gap-4 whitespace-nowrap">
-            <span aria-hidden>
-              <Separator className="h-4" orientation="vertical" />
-            </span>
-            <a
-              className="link text-muted"
-              href={GITHUB_ISSUES_URL}
-              rel="noreferrer"
-              target="_blank"
-            >
-              反馈问题
-            </a>
-          </span>
           {INTERNAL_LINKS.map((link) => (
             <span
               key={link.to}
