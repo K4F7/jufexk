@@ -50,7 +50,7 @@ describe("review template kind API contract", () => {
     ).toBe("general");
 
     for (const [category, name] of [
-      ["english", "大学英语"],
+      ["english", "大学英语1"],
       ["ideology", "思想道德与法治"],
       ["math", "高等数学A"],
     ] as const) {
@@ -85,7 +85,7 @@ describe("review template kind API contract", () => {
       expect(names).toContain("计量经济学");
       expect(names).toContain("公共基础导论");
       expect(names).not.toContain("测试体育课");
-      expect(names).not.toContain("大学英语");
+      expect(names).not.toContain("大学英语1");
       expect(names).not.toContain("思想道德与法治");
       expect(names).not.toContain("高等数学A");
       expect(names).not.toContain("大学体育理论");
@@ -335,7 +335,7 @@ describe("review template kind API contract", () => {
     }>();
     expect(listed.status).toBe(200);
     expect(
-      listedBody.items.find((item) => item.name === "网球")?.category,
+      listedBody.items.find((item) => item.name === "体育1-4 [网球]")?.category,
     ).toBe("sports");
 
     const sports = await SELF.fetch(`${origin}/api/courses?category=sports`);
@@ -344,10 +344,10 @@ describe("review template kind API contract", () => {
     }>();
     expect(sports.status).toBe(200);
     const sportsNames = sportsBody.items.map((item) => item.name);
-    expect(sportsNames).toContain("网球");
-    expect(sportsNames).toContain("击剑");
-    expect(sportsNames).toContain("篮球");
-    expect(sportsNames).toContain("健美操");
+    expect(sportsNames).toContain("体育1-4 [网球]");
+    expect(sportsNames).toContain("体育1-4 [击剑]");
+    expect(sportsNames).toContain("体育1-4 [篮球]");
+    expect(sportsNames).toContain("体育1-4 [健美操]");
     expect(sportsNames).toContain("测试体育课");
     expect(sportsNames).not.toContain("击剑专项理论与实践1");
     expect(sportsNames).not.toContain("击剑专项理论与实践2");
@@ -376,7 +376,9 @@ describe("review template kind API contract", () => {
       items: Array<{ name: string }>;
     }>();
     expect(fencingSearch.status).toBe(200);
-    expect(fencingSearchBody.items.map((item) => item.name)).toEqual(["击剑"]);
+    expect(fencingSearchBody.items.map((item) => item.name)).toEqual([
+      "体育1-4 [击剑]",
+    ]);
 
     const aerobicsSearch = await SELF.fetch(
       `${origin}/api/courses?q=${encodeURIComponent("健美操")}`,
@@ -385,7 +387,25 @@ describe("review template kind API contract", () => {
       items: Array<{ name: string }>;
     }>();
     expect(aerobicsSearch.status).toBe(200);
-    expect(aerobicsSearchBody.items.map((item) => item.name)).toContain("健美操");
+    expect(aerobicsSearchBody.items.map((item) => item.name)).toContain(
+      "体育1-4 [健美操]",
+    );
+
+    const prefixSearch = await SELF.fetch(
+      `${origin}/api/courses?q=${encodeURIComponent("体育1-4")}`,
+    );
+    const prefixSearchBody = await prefixSearch.json<{
+      items: Array<{ name: string }>;
+    }>();
+    expect(prefixSearch.status).toBe(200);
+    expect(prefixSearchBody.items.map((item) => item.name)).toEqual(
+      expect.arrayContaining([
+        "体育1-4 [网球]",
+        "体育1-4 [击剑]",
+        "体育1-4 [篮球]",
+        "体育1-4 [健美操]",
+      ]),
+    );
 
     const tennis = await SELF.fetch(`${origin}/api/courses/18103`);
     const tennisBody = await tennis.json<{
@@ -393,7 +413,7 @@ describe("review template kind API contract", () => {
     }>();
     expect(tennis.status).toBe(200);
     expect(tennisBody.course).toMatchObject({
-      name: "网球",
+      name: "体育1-4 [网球]",
       category: "sports",
     });
     expect(categoryLabel(tennisBody.course.category)).toBe("体育课");
@@ -404,7 +424,7 @@ describe("review template kind API contract", () => {
     }>();
     expect(fencing.status).toBe(200);
     expect(fencingBody.course).toMatchObject({
-      name: "击剑",
+      name: "体育1-4 [击剑]",
       category: "sports",
     });
 
@@ -414,7 +434,7 @@ describe("review template kind API contract", () => {
     }>();
     expect(aerobics.status).toBe(200);
     expect(aerobicsBody.course).toMatchObject({
-      name: "健美操",
+      name: "体育1-4 [健美操]",
       category: "sports",
     });
 
@@ -454,10 +474,10 @@ describe("review template kind API contract", () => {
     expect(teacher.status).toBe(200);
     expect(teacherBody.courses.map((course) => course.name)).toEqual([
       "会计学",
-      "健美操",
-      "击剑",
-      "篮球",
-      "网球",
+      "体育1-4 [健美操]",
+      "体育1-4 [击剑]",
+      "体育1-4 [篮球]",
+      "体育1-4 [网球]",
     ]);
     expect(teacherBody.teacher.course_count).toBe(5);
     expect(
@@ -465,10 +485,10 @@ describe("review template kind API contract", () => {
         teacherBody.courses.map((course) => [course.name, course.category]),
       ),
     ).toMatchObject({
-      网球: "sports",
-      击剑: "sports",
-      篮球: "sports",
-      健美操: "sports",
+      "体育1-4 [网球]": "sports",
+      "体育1-4 [击剑]": "sports",
+      "体育1-4 [篮球]": "sports",
+      "体育1-4 [健美操]": "sports",
       会计学: "general",
     });
   });
@@ -492,9 +512,9 @@ describe("review template kind API contract", () => {
     }>();
     expect(sports.status).toBe(200);
     const sportsNames = sportsBody.items.map((item) => item.name);
-    expect(sportsNames).toContain("瑜伽");
-    expect(sportsNames).toContain("武术");
-    expect(sportsNames).toContain("健美操");
+    expect(sportsNames).toContain("体育1-4 [瑜伽]");
+    expect(sportsNames).toContain("体育1-4 [武术]");
+    expect(sportsNames).toContain("体育1-4 [健美操]");
     expect(sportsNames).not.toContain("体育1");
     expect(sportsNames).not.toContain("健身教练");
 
@@ -510,7 +530,7 @@ describe("review template kind API contract", () => {
       };
     }>();
     expect(yoga.status).toBe(200);
-    expect(yogaBody.course.name).toBe("瑜伽");
+    expect(yogaBody.course.name).toBe("体育1-4 [瑜伽]");
     expect(yogaBody.course.category).toBe("sports");
     expect(yogaBody.course.enrollment_category).toBe("");
     expect(yogaBody.course.teaching_type).toBe("");
@@ -566,12 +586,14 @@ describe("review template kind API contract", () => {
     expect(merged).toHaveLength(firstRelationsBody.total);
     expect(
       merged.some(
-        (item) => item.name === "瑜伽" && item.teacher_name === "黄丽萍",
+        (item) =>
+          item.name === "体育1-4 [瑜伽]" && item.teacher_name === "黄丽萍",
       ),
     ).toBe(true);
     expect(
       merged.some(
-        (item) => item.name === "武术" && item.teacher_name === "刘春来",
+        (item) =>
+          item.name === "体育1-4 [武术]" && item.teacher_name === "刘春来",
       ),
     ).toBe(true);
     for (let index = 1; index < merged.length; index += 1) {
@@ -607,7 +629,9 @@ describe("review template kind API contract", () => {
       courses: Array<{ name: string }>;
     }>();
     expect(ping.status).toBe(200);
-    expect(pingBody.courses.map((course) => course.name)).toContain("瑜伽");
+    expect(pingBody.courses.map((course) => course.name)).toContain(
+      "体育1-4 [瑜伽]",
+    );
     expect(pingBody.teacher.course_count).toBe(1);
 
     const wushu = await SELF.fetch(`${origin}/api/teachers/19402`);
@@ -618,7 +642,7 @@ describe("review template kind API contract", () => {
     expect(wushu.status).toBe(200);
     expect(wushuBody.courses.map((course) => course.name)).toEqual([
       "体育心理学",
-      "武术",
+      "体育1-4 [武术]",
     ]);
     expect(wushuBody.teacher.course_count).toBe(2);
 
@@ -634,10 +658,10 @@ describe("review template kind API contract", () => {
     expect(stored?.name).toBe("体育1");
   });
 
-  it("collapses 大学英语 I–IV in public browse but keeps option and catalog names", async () => {
+  it("keeps 大学英语 I–IV as distinct 公开展示课名 and groups one teacher’s levels", async () => {
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(36701,'英语教师','英语教师')",
+        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(36701,'英语教师','英语教师'),(36702,'乙英语','乙英语')",
       ),
       env.DB.prepare(
         `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
@@ -651,7 +675,7 @@ describe("review template kind API contract", () => {
           (36708,'1004600502','大学英语预备级','general','外国语学院','english')`,
       ),
       env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(36701,36701),(36702,36701),(36703,36701),(36704,36701),(36705,36701),(36706,36701),(36707,36701),(36708,36701)",
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(36701,36701),(36702,36701),(36703,36701),(36704,36701),(36705,36701),(36706,36701),(36707,36701),(36708,36701),(36701,36702),(36702,36702)",
       ),
     ]);
 
@@ -661,15 +685,19 @@ describe("review template kind API contract", () => {
     const listedBody = await listed.json<{ items: Array<{ name: string }> }>();
     expect(listed.status).toBe(200);
     const listedNames = listedBody.items.map((item) => item.name);
-    expect(listedNames.filter((name) => name === "大学英语")).toHaveLength(1);
-    expect(listedNames).not.toContain("大学英语I");
-    expect(listedNames).not.toContain("大学英语II");
-    expect(listedNames).not.toContain("大学英语III");
-    expect(listedNames).not.toContain("大学英语IV");
-    expect(listedNames).toContain("大学英语I(涉外)");
-    expect(listedNames).toContain("大学英语I(艺体）");
-    expect(listedNames).toContain("大学英语I（运训）");
-    expect(listedNames).toContain("大学英语预备级");
+    expect(listedNames.filter((name) => name === "大学英语")).toHaveLength(0);
+    expect(listedNames).toEqual(
+      expect.arrayContaining([
+        "大学英语I",
+        "大学英语II",
+        "大学英语III",
+        "大学英语IV",
+        "大学英语I(涉外)",
+        "大学英语I(艺体）",
+        "大学英语I（运训）",
+        "大学英语预备级",
+      ]),
+    );
 
     const searchTwo = await SELF.fetch(
       `${origin}/api/courses?q=${encodeURIComponent("大学英语II")}`,
@@ -678,9 +706,9 @@ describe("review template kind API contract", () => {
       items: Array<{ name: string }>;
     }>();
     expect(searchTwo.status).toBe(200);
-    expect(searchTwoBody.items.map((item) => item.name)).toContain("大学英语");
+    expect(searchTwoBody.items.map((item) => item.name)).toContain("大学英语II");
     expect(searchTwoBody.items.map((item) => item.name)).not.toContain(
-      "大学英语II",
+      "大学英语",
     );
 
     const options = await SELF.fetch(
@@ -704,19 +732,68 @@ describe("review template kind API contract", () => {
       courses: Array<{ name: string }>;
     }>();
     expect(teacher.status).toBe(200);
-    expect(
-      teacherBody.courses.filter((course) => course.name === "大学英语"),
-    ).toHaveLength(1);
+    const teacherEnglish = teacherBody.courses
+      .map((course) => course.name)
+      .filter((name) =>
+        ["大学英语I", "大学英语II", "大学英语III", "大学英语IV"].includes(name),
+      );
+    expect(teacherEnglish).toEqual([
+      "大学英语I",
+      "大学英语II",
+      "大学英语III",
+      "大学英语IV",
+    ]);
     expect(teacherBody.courses.map((course) => course.name)).toEqual(
       expect.arrayContaining([
-        "大学英语",
+        "大学英语I",
+        "大学英语II",
+        "大学英语III",
+        "大学英语IV",
         "大学英语I(涉外)",
         "大学英语I(艺体）",
         "大学英语I（运训）",
         "大学英语预备级",
       ]),
     );
-    expect(teacherBody.teacher.course_count).toBe(5);
+    expect(teacherBody.teacher.course_count).toBe(8);
+
+    const relations = await SELF.fetch(
+      `${origin}/api/courses?view=relations&q=${encodeURIComponent("大学英语")}&category=english&sort=name&pageSize=50`,
+    );
+    const relationsBody = await relations.json<{
+      items: Array<{ name: string; teacher_name: string | null }>;
+    }>();
+    expect(relations.status).toBe(200);
+    const levelRows = relationsBody.items.filter((item) =>
+      ["大学英语I", "大学英语II", "大学英语III", "大学英语IV"].includes(
+        item.name,
+      ),
+    );
+    const teacherA = levelRows
+      .filter((item) => item.teacher_name === "英语教师")
+      .map((item) => item.name);
+    const teacherB = levelRows
+      .filter((item) => item.teacher_name === "乙英语")
+      .map((item) => item.name);
+    expect(teacherA).toEqual([
+      "大学英语I",
+      "大学英语II",
+      "大学英语III",
+      "大学英语IV",
+    ]);
+    expect(teacherB).toEqual(["大学英语I", "大学英语II"]);
+    const firstA = levelRows.findIndex(
+      (item) => item.teacher_name === "英语教师",
+    );
+    const lastA = levelRows.findLastIndex(
+      (item) => item.teacher_name === "英语教师",
+    );
+    expect(lastA - firstA).toBe(3);
+    expect(
+      levelRows
+        .slice(firstA, lastA + 1)
+        .every((item) => item.teacher_name === "英语教师"),
+    ).toBe(true);
 
     const detail = await SELF.fetch(`${origin}/api/courses/36702`);
     const detailBody = await detail.json<{
@@ -726,7 +803,7 @@ describe("review template kind API contract", () => {
       };
     }>();
     expect(detail.status).toBe(200);
-    expect(detailBody.course.name).toBe("大学英语");
+    expect(detailBody.course.name).toBe("大学英语II");
     expect(detailBody.course.teachers.map((teacher) => teacher.name)).toContain(
       "英语教师",
     );

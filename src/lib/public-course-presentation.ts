@@ -33,7 +33,7 @@ export const UMBRELLA_PE_COURSE_NAMES = [
   "大学体育Ⅳ",
 ] as const;
 
-/** Exact 大学英语 1–4 / I–IV titles that collapse to one public name. */
+/** Shared sort-group key for 大学英语 1–4 / I–IV. Not a collapsed 公开展示课名. */
 export const ENGLISH_PUBLIC_LABEL = "大学英语";
 
 export const ENGLISH_LEVEL_COURSE_NAMES = [
@@ -51,11 +51,24 @@ export const ENGLISH_LEVEL_COURSE_NAMES = [
   "大学英语Ⅳ",
 ] as const;
 
-export const ENGLISH_FIRST_LEVEL_NAMES = [
-  "大学英语1",
-  "大学英语I",
-  "大学英语Ⅰ",
-] as const;
+const ENGLISH_LEVEL_ORDER: Record<(typeof ENGLISH_LEVEL_COURSE_NAMES)[number], number> =
+  {
+    大学英语1: 1,
+    大学英语I: 1,
+    大学英语Ⅰ: 1,
+    大学英语2: 2,
+    大学英语II: 2,
+    大学英语Ⅱ: 2,
+    大学英语3: 3,
+    大学英语III: 3,
+    大学英语Ⅲ: 3,
+    大学英语4: 4,
+    大学英语IV: 4,
+    大学英语Ⅳ: 4,
+  };
+
+/** Public PE skill prefix. Space before `[` is required. */
+export const PE_PUBLIC_DISPLAY_PREFIX = "体育1-4";
 
 /**
  * Public PE skill families. Numbered / 专项理论与实践 siblings collapse
@@ -104,14 +117,26 @@ export function virtualPeSportForTeacherName(name?: string | null) {
   );
 }
 
+export function formatPeSkillDisplayName(skillLabel: string): string {
+  return `${PE_PUBLIC_DISPLAY_PREFIX} [${skillLabel}]`;
+}
+
+export function virtualPeSportDisplayName(
+  sport: (typeof VIRTUAL_PE_SPORTS)[number],
+): string {
+  return formatPeSkillDisplayName(sport.label);
+}
+
 /** 与目录搜索同构：每个词条都要命中课名或某位任课教师。 */
 export function virtualPeSportMatchesQuery(
   sport: (typeof VIRTUAL_PE_SPORTS)[number],
   terms: string[],
 ) {
+  const displayName = virtualPeSportDisplayName(sport);
   return terms.every(
     (term) =>
       sport.label.includes(term) ||
+      displayName.includes(term) ||
       sport.teacherNames.some((teacher) => teacher.includes(term)),
   );
 }
@@ -154,25 +179,70 @@ export function isPublicSportsSkillName(name?: string | null): boolean {
   return publicPeSkillLabel(name) !== null;
 }
 
-export function publicEnglishFamilyLabel(name?: string | null): string | null {
+export function publicPeSkillDisplayName(name?: string | null): string | null {
+  const label = publicPeSkillLabel(name);
+  return label ? formatPeSkillDisplayName(label) : null;
+}
+
+export function isEnglishLevelCourseName(name?: string | null): boolean {
   const trimmed = name?.trim() ?? "";
-  if (!trimmed) return null;
-  return (ENGLISH_LEVEL_COURSE_NAMES as readonly string[]).includes(trimmed)
-    ? ENGLISH_PUBLIC_LABEL
-    : null;
+  return (ENGLISH_LEVEL_COURSE_NAMES as readonly string[]).includes(trimmed);
+}
+
+export function englishLevelSortOrder(name?: string | null): number | null {
+  const trimmed = name?.trim() ?? "";
+  if (!isEnglishLevelCourseName(trimmed)) return null;
+  return ENGLISH_LEVEL_ORDER[trimmed as (typeof ENGLISH_LEVEL_COURSE_NAMES)[number]];
+}
+
+/** Identify 大学英语 1–4 / I–IV for grouping. Does not rewrite the 公开展示课名. */
+export function publicEnglishFamilyLabel(name?: string | null): string | null {
+  return isEnglishLevelCourseName(name) ? ENGLISH_PUBLIC_LABEL : null;
 }
 
 export function publicCourseDisplayName(name?: string | null): string {
   const trimmed = name?.trim() ?? "";
-  return (
-    publicPeSkillLabel(trimmed) ?? publicEnglishFamilyLabel(trimmed) ?? trimmed
-  );
+  return publicPeSkillDisplayName(trimmed) ?? trimmed;
 }
 
-/** 投稿选项只折叠体育专项，保留大学英语 I–IV 教务名。 */
+/** 投稿选项折叠体育专项展示名，保留大学英语 I–IV 教务名。 */
 export function publicOptionDisplayName(name?: string | null): string {
-  const trimmed = name?.trim() ?? "";
-  return publicPeSkillLabel(trimmed) ?? trimmed;
+  return publicCourseDisplayName(name);
+}
+
+export function groupEnglishLevelItems<
+  T extends {
+    name: string;
+    teacher_id?: number | null;
+    teacher_name?: string | null;
+  },
+>(items: T[]): T[] {
+  const englishIndexes = items.flatMap((item, index) =>
+    englishLevelSortOrder(item.name) == null ? [] : [index],
+  );
+  if (englishIndexes.length <= 1) return items;
+  const groups = new Map<string, T[]>();
+  const teacherOrder: string[] = [];
+  for (const index of englishIndexes) {
+    const item = items[index];
+    const key = `${item.teacher_id ?? ""}:${item.teacher_name ?? ""}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      teacherOrder.push(key);
+    }
+    groups.get(key)?.push(item);
+  }
+  const grouped = teacherOrder.flatMap((key) =>
+    (groups.get(key) ?? []).sort((left, right) => {
+      const level =
+        (englishLevelSortOrder(left.name) ?? 0) -
+        (englishLevelSortOrder(right.name) ?? 0);
+      return level || (left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+    }),
+  );
+  const rest = items.filter((item) => englishLevelSortOrder(item.name) == null);
+  const insertAt = Math.min(Math.min(...englishIndexes), rest.length);
+  return [...rest.slice(0, insertAt), ...grouped, ...rest.slice(insertAt)];
 }
 
 export function publicCourseCategory(
@@ -205,8 +275,72 @@ export function publicEnglishFamilySql(alias = "c"): string {
   return `CASE WHEN ${alias}.name IN (${names}) THEN ${sqlStringLiteral(ENGLISH_PUBLIC_LABEL)} ELSE NULL END`;
 }
 
+export function publicEnglishLevelOrderSql(alias = "c"): string {
+  const branches = ENGLISH_LEVEL_COURSE_NAMES.map(
+    (name) =>
+      `WHEN ${alias}.name=${sqlStringLiteral(name)} THEN ${ENGLISH_LEVEL_ORDER[name]}`,
+  );
+  return `CASE ${branches.join(" ")} ELSE NULL END`;
+}
+
+export function publicCourseDisplayNameSql(alias = "c"): string {
+  const family = publicPeSkillFamilySql(alias);
+  return `CASE WHEN (${family}) IS NOT NULL THEN ${sqlStringLiteral(`${PE_PUBLIC_DISPLAY_PREFIX} [`)} || (${family}) || ']' ELSE ${alias}.name END`;
+}
+
+export function publicPeDisplaySearchSql(alias = "c"): string {
+  const family = publicPeSkillFamilySql(alias);
+  return `CASE WHEN (${family}) IS NOT NULL THEN ${sqlStringLiteral(`${PE_PUBLIC_DISPLAY_PREFIX} [`)} || (${family}) || '] ' || ${sqlStringLiteral(PE_PUBLIC_DISPLAY_PREFIX)} ELSE '' END`;
+}
+
+export function publicRelationNameSortSql(
+  alias = "c",
+  teacherAlias = "t",
+): string {
+  const display = publicCourseDisplayNameSql(alias);
+  const level = publicEnglishLevelOrderSql(alias);
+  const group = `CASE WHEN (${level}) IS NOT NULL THEN ${sqlStringLiteral(ENGLISH_PUBLIC_LABEL)} ELSE ${display} END`;
+  return `${group},CASE WHEN (${level}) IS NOT NULL THEN COALESCE(${teacherAlias}.name,'') ELSE '' END,COALESCE(${level},0),${display},${alias}.code,${alias}.id,COALESCE(${teacherAlias}.name,''),COALESCE(${teacherAlias}.id,0)`;
+}
+
+function padSortInt(value: number, width: number): string {
+  return String(value).padStart(width, "0");
+}
+
+export function publicRelationNameSortKey(row: {
+  name: string;
+  code?: string | null;
+  course_id?: number | null;
+  teacher_name?: string | null;
+  teacher_id?: number | null;
+}): string {
+  const level = englishLevelSortOrder(row.name);
+  return [
+    level != null ? ENGLISH_PUBLIC_LABEL : row.name,
+    level != null ? (row.teacher_name ?? "") : "",
+    padSortInt(level ?? 0, 2),
+    row.name,
+    row.code ?? "",
+    padSortInt(row.course_id ?? 0, 10),
+    row.teacher_name ?? "",
+    padSortInt(row.teacher_id ?? 0, 10),
+  ].join("\u001f");
+}
+
+export function publicRelationNameSortKeySql(
+  alias = "c",
+  teacherAlias = "t",
+): string {
+  const display = publicCourseDisplayNameSql(alias);
+  const level = publicEnglishLevelOrderSql(alias);
+  const group = `CASE WHEN (${level}) IS NOT NULL THEN ${sqlStringLiteral(ENGLISH_PUBLIC_LABEL)} ELSE ${display} END`;
+  const engTeacher = `CASE WHEN (${level}) IS NOT NULL THEN COALESCE(${teacherAlias}.name,'') ELSE '' END`;
+  return `printf('%s',${group}) || char(31) || printf('%s',${engTeacher}) || char(31) || printf('%02d',COALESCE(${level},0)) || char(31) || printf('%s',${display}) || char(31) || printf('%s',${alias}.code) || char(31) || printf('%010d',${alias}.id) || char(31) || printf('%s',COALESCE(${teacherAlias}.name,'')) || char(31) || printf('%010d',COALESCE(${teacherAlias}.id,0))`;
+}
+
+/** PE families still merge. 大学英语 I–IV / 1–4 stay unmerged. */
 export function publicBrowseFamilySql(alias = "c"): string {
-  return `COALESCE(${publicPeSkillFamilySql(alias)}, ${publicEnglishFamilySql(alias)})`;
+  return publicPeSkillFamilySql(alias);
 }
 
 export function publicPeHasTextReviewSql(alias: string): string {

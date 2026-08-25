@@ -1,9 +1,9 @@
 import { catalogPinyinText } from "./lib/catalog-pinyin";
 import {
-  ENGLISH_FIRST_LEVEL_NAMES,
-  ENGLISH_PUBLIC_LABEL,
   PE_SKILL_FAMILIES,
   publicBrowseFamilySql,
+  publicCourseDisplayName,
+  publicPeDisplaySearchSql,
   publicPeHasTextReviewSql,
   publicCourseVisibleSql,
 } from "./lib/public-course-presentation";
@@ -11,18 +11,12 @@ import { guestReviewBindingSql } from "./public-review-visibility";
 
 const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
-const unnumberedPreference = [
-  ...PE_SKILL_FAMILIES.flatMap((family) => family.keys),
-  ENGLISH_PUBLIC_LABEL,
-]
+const unnumberedPreference = PE_SKILL_FAMILIES.flatMap((family) => family.keys)
   .map(sqlLiteral)
   .join(",");
-const firstNumberedPreference = [
-  ...PE_SKILL_FAMILIES.flatMap((family) =>
-    family.keys.flatMap((key) => [`${key}1`, `${key}专项理论与实践1`]),
-  ),
-  ...ENGLISH_FIRST_LEVEL_NAMES,
-]
+const firstNumberedPreference = PE_SKILL_FAMILIES.flatMap((family) =>
+  family.keys.flatMap((key) => [`${key}1`, `${key}专项理论与实践1`]),
+)
   .map(sqlLiteral)
   .join(",");
 
@@ -84,6 +78,7 @@ const canonicalInsert = `
       COALESCE(c.code,'') || ' ' ||
       COALESCE(c.department,'') || ' ' ||
       COALESCE(c.family_label,'') || ' ' ||
+      COALESCE((${publicPeDisplaySearchSql("c")}),'') || ' ' ||
       COALESCE(fs.search_text,'') || ' ' ||
       COALESCE(tt.names,'') || ' ' ||
       COALESCE(vt.names,'')
@@ -143,10 +138,8 @@ export const publicCourseCanonicalJoin =
 export const publicCourseMatchJoin =
   "JOIN public_course_canonicals pcc ON pcc.course_id=c.id";
 
-// 投稿选项保留大学英语 I-IV 的教务课名；其余公开族只保留 canonical 行。
-export const publicCourseOptionJoin = `JOIN public_course_canonicals pcc
-  ON pcc.course_id=c.id
- AND (pcc.canonical_course_id=c.id OR pcc.family_label=${sqlLiteral(ENGLISH_PUBLIC_LABEL)})`;
+// 大学英语 I–IV 各是独立公开展示课名，投稿选项与浏览共用 canonical 行。
+export const publicCourseOptionJoin = publicCourseCanonicalJoin;
 
 export const publicTeacherSearchJoin =
   "JOIN public_teacher_search pts ON pts.teacher_id=t.id";
@@ -207,6 +200,7 @@ async function refreshCatalogPinyinTexts(
           catalogPinyinText([
             row.name,
             row.family_label,
+            publicCourseDisplayName(row.name),
             ...splitNames(row.teachers),
             ...splitNames(row.variants),
           ]),
