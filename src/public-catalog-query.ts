@@ -25,16 +25,14 @@ import {
 import { relationDimensionKey } from "./lib/relation-four-dims";
 import { loadRelationDimensionLabels } from "./lib/relation-projections";
 import type { PublicDimensionLabel } from "./lib/review-schemes";
-import {
-  ensurePublicListPrecomputes,
-  publicCourseCanonicalJoin,
-} from "./public-list-precompute";
+import { ensurePublicListPrecomputes } from "./public-list-precompute";
+import { publicCourseCanonicalJoin } from "./public-list-projection-plan";
+import { publicReviewBindingSql } from "./public-review-visibility";
 import {
   loadRelationSignalPayloads,
   type RelationSignalCounts,
   type RelationSignalViewer,
 } from "./relation-signals";
-import { publicReviewBindingSql } from "./public-review-visibility";
 
 export type PublicCourseListSort = "name" | "reviews";
 export type PublicRelationListSort = "name" | "rating" | "reviews";
