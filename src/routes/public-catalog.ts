@@ -25,12 +25,12 @@ import {
   publicDimensionLabels,
 } from "../lib/review-schemes";
 import { setPublicCatalogCacheHeaders } from "../lib/public-catalog-cache";
+import { ensurePublicListPrecomputes } from "../public-list-precompute";
 import {
-  ensurePublicListPrecomputes,
   publicCourseCanonicalJoin,
   publicCourseOptionJoin,
   publicTeacherSearchJoin,
-} from "../public-list-precompute";
+} from "../public-list-projection-plan";
 import { deriveCourseCatalogMeta } from "../lib/course-metadata";
 import {
   publicCreatedAt,

@@ -1,6 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
+  ensurePublicListPrecomputes,
   refreshPublicListPrecomputes,
   shouldRefreshPublicListPrecomputes,
 } from "../src/public-list-precompute";
@@ -414,3 +415,168 @@ describe("public list query shape", () => {
     }
   });
 });
+
+describe("public list refresh coordination", () => {
+  it("leaves a clean projection untouched and rebuilds only when dirty", async () => {
+    await refreshPublicListPrecomputes(env.DB);
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO public_review_counts(course_id,teacher_id,review_count)
+         VALUES(1,1,321)
+         ON CONFLICT(course_id,teacher_id) DO UPDATE SET review_count=excluded.review_count`,
+      ),
+      env.DB.prepare(
+        "UPDATE public_precompute_state SET dirty=0 WHERE id=1",
+      ),
+    ]);
+
+    await refreshPublicListPrecomputes(env.DB);
+    await ensurePublicListPrecomputes(env.DB);
+    const clean = await env.DB.prepare(
+      "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",
+    ).first<{ review_count: number }>();
+    expect(clean?.review_count).toBe(321);
+
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET dirty=1 WHERE id=1",
+    ).run();
+    await ensurePublicListPrecomputes(env.DB);
+    const rebuilt = await env.DB.prepare(
+      "SELECT dirty,refresh_token,refresh_lease_until FROM public_precompute_state WHERE id=1",
+    ).first<{
+      dirty: number;
+      refresh_token: string | null;
+      refresh_lease_until: number | null;
+    }>();
+    const after = await env.DB.prepare(
+      "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",
+    ).first<{ review_count: number }>();
+    expect(rebuilt).toEqual({
+      dirty: 0,
+      refresh_token: null,
+      refresh_lease_until: null,
+    });
+    expect(after?.review_count ?? 0).not.toBe(321);
+  });
+
+  it("single-flights concurrent refresh calls on the same D1 object", async () => {
+    await env.DB.prepare(
+      `UPDATE public_precompute_state
+       SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL
+       WHERE id=1`,
+    ).run();
+    let batchStarts = 0;
+    let releaseBatch!: () => void;
+    const holdBatch = new Promise<void>((resolve) => {
+      releaseBatch = resolve;
+    });
+    const database = databaseWithBatch(async (statements) => {
+      batchStarts += 1;
+      if (batchStarts === 1) await holdBatch;
+      return env.DB.batch(statements);
+    });
+
+    const first = refreshPublicListPrecomputes(database);
+    const second = refreshPublicListPrecomputes(database);
+    expect(second).toBe(first);
+    releaseBatch();
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(batchStarts).toBeGreaterThan(0);
+  });
+
+  it("waits on a live foreign lease and takes over after it expires", async () => {
+    await refreshPublicListPrecomputes(env.DB);
+    await env.DB.prepare(
+      `UPDATE public_precompute_state
+       SET dirty=1,refresh_token='held-by-other',refresh_lease_until=unixepoch()+60
+       WHERE id=1`,
+    ).run();
+
+    let batchCalls = 0;
+    const waitingDb = databaseWithBatch(async (statements) => {
+      batchCalls += 1;
+      return env.DB.batch(statements);
+    });
+    const waiting = refreshPublicListPrecomputes(waitingDb);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(batchCalls).toBe(0);
+
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET dirty=0,refresh_token=NULL,refresh_lease_until=NULL WHERE id=1",
+    ).run();
+    await waiting;
+    expect(batchCalls).toBe(0);
+
+    await env.DB.prepare(
+      `UPDATE public_precompute_state
+       SET dirty=1,refresh_token='expired-lease',refresh_lease_until=unixepoch()-1
+       WHERE id=1`,
+    ).run();
+    await refreshPublicListPrecomputes(env.DB);
+    const takenOver = await env.DB.prepare(
+      `SELECT dirty,refresh_token,refresh_lease_until
+       FROM public_precompute_state WHERE id=1`,
+    ).first<{
+      dirty: number;
+      refresh_token: string | null;
+      refresh_lease_until: number | null;
+    }>();
+    expect(takenOver).toEqual({
+      dirty: 0,
+      refresh_token: null,
+      refresh_lease_until: null,
+    });
+  });
+
+  it("retries the rebuild after the refresh lease is lost mid-flight", async () => {
+    await env.DB.prepare(
+      `UPDATE public_precompute_state
+       SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL
+       WHERE id=1`,
+    ).run();
+    let renewCalls = 0;
+    const database = new Proxy(env.DB, {
+      get(target, property) {
+        if (property === "prepare")
+          return (query: string) => {
+            if (
+              query.includes("SET refresh_lease_until=unixepoch()+?") &&
+              !query.includes("SET refresh_token=?")
+            )
+              return {
+                bind: (...args: unknown[]) => ({
+                  run: async () => {
+                    renewCalls += 1;
+                    if (renewCalls === 1) return { results: [] };
+                    return target.prepare(query).bind(...args).run();
+                  },
+                }),
+              } as unknown as D1PreparedStatement;
+            return target.prepare(query);
+          };
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as D1Database;
+
+    await refreshPublicListPrecomputes(database);
+    const state = await env.DB.prepare(
+      `SELECT dirty,refresh_token,refresh_lease_until
+       FROM public_precompute_state WHERE id=1`,
+    ).first<{
+      dirty: number;
+      refresh_token: string | null;
+      refresh_lease_until: number | null;
+    }>();
+    expect(renewCalls).toBeGreaterThan(1);
+    expect(state).toEqual({
+      dirty: 0,
+      refresh_token: null,
+      refresh_lease_until: null,
+    });
+  });
+});
+
