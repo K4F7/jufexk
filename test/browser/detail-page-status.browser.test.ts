@@ -174,7 +174,7 @@ test("teacher detail page error uses official Alert", async ({ page }) => {
   await expect(page.getByRole("status", { name: "加载中…", exact: true })).toHaveCount(0);
 });
 
-test("course AI summary omits the generated-content disclaimer", async ({
+test("course AI summary shows the generated-content disclaimer beside the heading", async ({
   page,
 }) => {
   await page.route("**/api/courses/8", (route) =>
@@ -200,7 +200,7 @@ test("course AI summary omits the generated-content disclaimer", async ({
   await expect(page.getByText("这是一条自动生成的总结正文。")).toBeVisible();
   await expect(
     page.getByText("AI 总结为根据点评内容自动生成，仅供参考"),
-  ).toHaveCount(0);
+  ).toBeVisible();
 });
 
 test("empty review stream still uses the frozen empty copy", async ({ page }) => {
