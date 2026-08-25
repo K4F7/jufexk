@@ -1,61 +1,102 @@
 /**
- * 排课模拟 /schedule：教务驱动选课流程。
- * 协议闸门失败：只导入/导出版本化 DTO，页面加载不访问教务（Issue #540）。
+ * 排课模拟 /schedule：用本站目录驱动专业选择和选课列表。
+ * 不走刷新教务 / 书签导入；上课时间只在开课班原文存在时解析。
  * 只做电脑端；窄屏进入弹一次告示（Issue #565）。
  */
-import { Alert, Typography } from "@heroui/react";
+import { Alert, Button, Modal, Typography } from "@heroui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { JwxtCourseBrowser } from "../components/JwxtCourseBrowser";
-import { JwxtRefreshPanel } from "../components/JwxtRefreshPanel";
 import { ScheduleMobileNotice } from "../components/ScheduleMobileNotice";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { useViewer } from "../hooks/useViewer";
+import { api } from "../lib/api";
 import {
-  loadSnapshotCaches,
-} from "../lib/jwxt-cache";
-import type { JwxtOffering } from "../lib/jwxt-offering";
+  applyCatalogOfferingRows,
+  catalogBrowseSnapshot,
+  catalogFiltersReady,
+  catalogScheduleGrades,
+  catalogScheduleTerms,
+  currentCatalogTermId,
+  departmentsToMajors,
+  isCatalogPublicElective,
+  relationToOffering,
+  replaceCourseOfferings,
+  type CatalogOfferingRow,
+} from "../lib/catalog-schedule";
+import type { JwxtFilterOption, JwxtOffering } from "../lib/jwxt-offering";
 import {
   includedItems,
   itemToStaged,
   itemsOf,
   joinOffering,
   loadPlan,
-  mergeEnrolledRefresh,
   removeItem,
   savePlan,
   setIncluded,
   type SchedulePlanV2,
 } from "../lib/jwxt-plan";
-import {
-  mergeSnapshots,
-  snapshotSelectionKey,
-  type JwxtSnapshotV1,
-} from "../lib/jwxt-snapshot";
 import { conflictMessage, listConflicts } from "../lib/schedule-plan";
+import type { CourseRelation, Paginated } from "../lib/types";
 
-function upsertSnapshotList(current: JwxtSnapshotV1[], incoming: JwxtSnapshotV1): {
-  snapshots: JwxtSnapshotV1[];
-  merged: JwxtSnapshotV1;
-} {
-  const key = snapshotSelectionKey(incoming);
-  const cached = current.find((item) => snapshotSelectionKey(item) === key);
-  const merged = cached ? mergeSnapshots(cached, incoming) : incoming;
-  return {
-    snapshots: [...current.filter((item) => snapshotSelectionKey(item) !== key), merged],
-    merged,
-  };
+const emptyFilter: JwxtFilterOption = { id: "", label: "" };
+
+async function fetchCatalogRelations(filters: {
+  department?: string;
+  category?: string;
+}): Promise<CourseRelation[]> {
+  const items: CourseRelation[] = [];
+  for (let page = 1; page <= 2; page += 1) {
+    const params = new URLSearchParams({
+      view: "relations",
+      pageSize: "50",
+      sort: "name",
+      page: String(page),
+    });
+    if (filters.department) params.set("department", filters.department);
+    if (filters.category) params.set("category", filters.category);
+    const data = await api<Paginated<CourseRelation>>(`/api/courses?${params.toString()}`);
+    items.push(...(data.items ?? []));
+    if (page >= (data.pages || 1)) break;
+  }
+  return items;
+}
+
+async function fetchCatalogOfferings(courseId: number): Promise<CatalogOfferingRow[]> {
+  try {
+    const rows = await api<CatalogOfferingRow[]>(`/api/offerings?courseId=${courseId}`);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
 }
 
 export function SchedulePage() {
   const { viewer } = useViewer();
   const canEdit = viewer.authenticated;
-  const [plan, setPlan] = useState<SchedulePlanV2>(() => loadPlan());
-  const [snapshot, setSnapshot] = useState<JwxtSnapshotV1 | null>(null);
+  const loginHref = `${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`;
+  const terms = useMemo(() => catalogScheduleTerms(), []);
+  const grades = useMemo(() => catalogScheduleGrades(), []);
+  const defaultTerm = useMemo(
+    () => terms.find((item) => item.id === currentCatalogTermId()) ?? terms[0] ?? emptyFilter,
+    [terms],
+  );
+
+  const [plan, setPlan] = useState<SchedulePlanV2>(() => {
+    const loaded = loadPlan();
+    return loaded.activeTermId ? loaded : { ...loaded, activeTermId: defaultTerm.id };
+  });
+  const [term, setTerm] = useState<JwxtFilterOption>(defaultTerm);
+  const [grade, setGrade] = useState<JwxtFilterOption>(emptyFilter);
+  const [major, setMajor] = useState<JwxtFilterOption>(emptyFilter);
+  const [majors, setMajors] = useState<JwxtFilterOption[]>([]);
+  const [planned, setPlanned] = useState<JwxtOffering[]>([]);
+  const [publicElectives, setPublicElectives] = useState<JwxtOffering[]>([]);
   const [notice, setNotice] = useState("");
   const [joinError, setJoinError] = useState("");
-  const [cacheReady, setCacheReady] = useState(false);
-  const snapshotsRef = useRef<JwxtSnapshotV1[]>([]);
-  const interactionVersion = useRef(0);
+  const [catalogError, setCatalogError] = useState("");
+  const [loginOpen, setLoginOpen] = useState(false);
+  const enrichedCodes = useRef(new Set<string>());
 
   useEffect(() => {
     savePlan(plan);
@@ -63,75 +104,128 @@ export function SchedulePage() {
 
   useEffect(() => {
     let cancelled = false;
-    const startedAtVersion = interactionVersion.current;
-    void loadSnapshotCaches()
-      .then((cached) => {
-        if (!cancelled) {
-          let merged = snapshotsRef.current;
-          for (const item of cached) merged = upsertSnapshotList(merged, item).snapshots;
-          snapshotsRef.current = merged;
-          const first = merged[0];
-          if (interactionVersion.current === startedAtVersion && first) {
-            setSnapshot((current) => current ?? first);
-            setPlan((current) => mergeEnrolledRefresh(current, first));
-          }
-        }
+    void api<{ items: string[] }>("/api/courses/departments")
+      .then((data) => {
+        if (!cancelled) setMajors(departmentsToMajors(data.items ?? []));
       })
       .catch(() => {
-        if (!cancelled && interactionVersion.current === startedAtVersion) {
-          setNotice("无法读取 IndexedDB 教务缓存；本次仍可在当前页面导入和查看。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCacheReady(true);
+        if (!cancelled) setCatalogError("无法读取本站院系目录。");
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const termItems = itemsOf(plan, snapshot?.term.id || plan.activeTermId);
+  const filtersReady = catalogFiltersReady(grade, major);
+
+  useEffect(() => {
+    if (!filtersReady) {
+      enrichedCodes.current = new Set();
+      setPlanned([]);
+      setPublicElectives([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      fetchCatalogRelations({ department: major.id }),
+      fetchCatalogRelations({ category: "sports" }),
+    ])
+      .then(([departmentRows, sportsRows]) => {
+        if (cancelled) return;
+        setPlanned(
+          departmentRows
+            .filter((row) => !isCatalogPublicElective(row.category))
+            .map((row) => relationToOffering(row, "planned")),
+        );
+        setPublicElectives(sportsRows.map((row) => relationToOffering(row, "public")));
+        setCatalogError("");
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogError("无法读取本站课程目录。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filtersReady, major.id]);
+
+  const snapshot = useMemo(
+    () =>
+      catalogBrowseSnapshot({
+        term,
+        terms,
+        grade,
+        grades,
+        major,
+        majors,
+        planned,
+        publicElectives,
+      }),
+    [term, terms, grade, grades, major, majors, planned, publicElectives],
+  );
+
+  const termItems = itemsOf(plan, term.id || plan.activeTermId);
   const staged = useMemo(
-    () => includedItems(plan, snapshot?.term.id || plan.activeTermId).map(itemToStaged),
-    [plan, snapshot],
+    () => includedItems(plan, term.id || plan.activeTermId).map(itemToStaged),
+    [plan, term],
   );
   const conflicts = useMemo(() => listConflicts(staged), [staged]);
 
-  function applySnapshot(next: JwxtSnapshotV1) {
-    setSnapshot(next);
-    setPlan((current) => mergeEnrolledRefresh(current, next));
+  function requireEdit(): boolean {
+    if (canEdit) return true;
+    setLoginOpen(true);
+    return false;
   }
 
-  function handleFilters(patch: Partial<Pick<JwxtSnapshotV1, "term" | "educationLevel" | "grade" | "major">>) {
-    if (!snapshot) return;
-    interactionVersion.current += 1;
-    const selection = { ...snapshot, ...patch };
-    const cached = snapshotsRef.current.find(
-      (item) => snapshotSelectionKey(item) === snapshotSelectionKey(selection),
-    );
-    applySnapshot(cached ?? {
-      ...selection,
-      captured: [],
-      enrolled: [],
-      planned: [],
-      publicElectives: [],
-    });
+  function handleFilters(patch: Partial<Pick<typeof snapshot, "term" | "grade" | "major">>) {
+    if (patch.term) {
+      setTerm(patch.term);
+      setPlan((current) => ({ ...current, activeTermId: patch.term?.id || current.activeTermId }));
+    }
+    if (patch.grade) {
+      setGrade(patch.grade);
+      setMajor(emptyFilter);
+    }
+    if (patch.major) setMajor(patch.major);
   }
 
-  function handleJoin(offering: JwxtOffering, origin: "planned" | "public") {
-    if (!canEdit || !snapshot) return;
-    const result = joinOffering({ ...plan, activeTermId: snapshot.term.id }, offering, origin, snapshot.term.id);
+  async function enrichCourse(courseCode: string, seed = [...planned, ...publicElectives].filter((item) => item.courseCode === courseCode)) {
+    if (enrichedCodes.current.has(courseCode)) return seed;
+    const courseId = seed.find((item) => item.catalogCourseId)?.catalogCourseId;
+    if (!courseId || seed.length === 0) return seed;
+    const rows = await fetchCatalogOfferings(courseId);
+    enrichedCodes.current.add(courseCode);
+    return applyCatalogOfferingRows(seed, rows);
+  }
+
+  async function handleSelectCourse(courseCode: string) {
+    const seed = [...planned, ...publicElectives].filter((item) => item.courseCode === courseCode);
+    if (seed.length === 0) return;
+    const next = await enrichCourse(courseCode, seed);
+    setPlanned((current) => replaceCourseOfferings(current, courseCode, next));
+    setPublicElectives((current) => replaceCourseOfferings(current, courseCode, next));
+  }
+
+  async function handleJoin(offering: JwxtOffering, origin: "planned" | "public") {
+    if (!requireEdit()) return;
+    const nextRows = await enrichCourse(offering.courseCode);
+    const enriched =
+      nextRows.find((item) => item.catalogTeacherId === offering.catalogTeacherId && item.courseCode === offering.courseCode)
+      ?? nextRows.find((item) => item.teacherName === offering.teacherName && item.courseCode === offering.courseCode)
+      ?? offering;
+    setPlanned((current) => replaceCourseOfferings(current, offering.courseCode, nextRows));
+    setPublicElectives((current) => replaceCourseOfferings(current, offering.courseCode, nextRows));
+    const result = joinOffering({ ...plan, activeTermId: term.id }, enriched, origin, term.id);
     if (!result.ok) {
       setJoinError(`${offering.courseName}与${result.collideName}时间冲突，未加入。`);
       return;
     }
     setJoinError("");
     setPlan(result.plan);
-    setNotice(result.swapped ? `已将${offering.courseName}换到班${offering.section || "新班次"}。` : `已加入${offering.courseName}。`);
+    setNotice(result.swapped ? `已将${offering.courseName}换到新班次。` : `已加入${offering.courseName}。`);
   }
 
   function handleSave() {
-    if (!canEdit) return;
+    if (!requireEdit()) return;
     savePlan(plan);
     setNotice("课表已保存到本机。");
   }
@@ -140,29 +234,30 @@ export function SchedulePage() {
     <section>
       <ScheduleMobileNotice />
       <header aria-label="排课模拟标题" className="mb-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <Typography
-              className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
-              type="h1"
-            >
-              排课模拟
-            </Typography>
-            <p className="mb-0 mt-1 text-sm text-muted">提前处理掉早八刺客</p>
-          </div>
-          <JwxtRefreshPanel
-            canEdit={canEdit}
-            csrfToken={viewer.csrfToken || ""}
-            loginHref={`${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`}
-          />
-        </div>
+        <Typography
+          className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
+          type="h1"
+        >
+          排课模拟
+        </Typography>
+        <p className="mb-0 mt-1 text-sm text-muted">提前处理掉早八刺客</p>
       </header>
+
+      {catalogError ? (
+        <Alert className="mb-4" role="status">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>目录数据</Alert.Title>
+            <Alert.Description>{catalogError}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
 
       {notice ? (
         <Alert className="mb-4" role="status">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>教务数据</Alert.Title>
+            <Alert.Title>课表</Alert.Title>
             <Alert.Description>{notice}</Alert.Description>
           </Alert.Content>
         </Alert>
@@ -192,32 +287,62 @@ export function SchedulePage() {
 
       <div className="flex flex-col gap-8">
         <div className="min-w-0">
-          {cacheReady && !snapshot ? (
-            <p className="text-sm text-muted" role="status">
-              还没有教务数据。点「刷新教务数据」后，先选择年级和专业，再从选课列表处理课程。
-            </p>
-          ) : snapshot ? (
-            <JwxtCourseBrowser
-              snapshot={snapshot}
-              planItems={termItems}
-              canEdit={canEdit}
-              onFilters={handleFilters}
-              onJoin={handleJoin}
-              onToggle={(item, included) =>
-                setPlan(setIncluded(plan, item.key, included, item.termId))
-              }
-              onRemove={(item) => setPlan(removeItem(plan, item.key, item.termId))}
-              onSave={handleSave}
-            />
-          ) : (
-            <p className="text-sm text-muted" role="status">
-              正在读取本机缓存…
-            </p>
-          )}
+          <JwxtCourseBrowser
+            snapshot={snapshot}
+            planItems={termItems}
+            candidatesReady={filtersReady}
+            onFilters={handleFilters}
+            onSelectedCourseChange={(code) => {
+              void handleSelectCourse(code);
+            }}
+            onJoin={(offering, origin) => {
+              void handleJoin(offering, origin);
+            }}
+            onToggle={(item, included) => {
+              if (!requireEdit()) return;
+              setPlan(setIncluded(plan, item.key, included, item.termId));
+            }}
+            onRemove={(item) => {
+              if (!requireEdit()) return;
+              setPlan(removeItem(plan, item.key, item.termId));
+            }}
+            onSave={handleSave}
+          />
         </div>
 
         <ScheduleTimetable courses={staged} />
       </div>
+
+      <Modal.Backdrop isOpen={loginOpen} onOpenChange={setLoginOpen}>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Heading>加入课表需要先登录</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <p>请先登录选课志。登录后即可把目录课程加入本机课表。</p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button slot="close" variant="tertiary">
+                取消
+              </Button>
+              <Button
+                variant="primary"
+                render={(domProps) => (
+                  <RouterLink
+                    {...(domProps as object)}
+                    className={typeof domProps.className === "string" ? domProps.className : undefined}
+                    to={loginHref}
+                  />
+                )}
+              >
+                去登录
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </section>
   );
 }
