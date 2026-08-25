@@ -174,6 +174,35 @@ test("teacher detail page error uses official Alert", async ({ page }) => {
   await expect(page.getByRole("status", { name: "加载中…", exact: true })).toHaveCount(0);
 });
 
+test("course AI summary omits the generated-content disclaimer", async ({
+  page,
+}) => {
+  await page.route("**/api/courses/8", (route) =>
+    route.fulfill({
+      json: {
+        course: COURSE,
+        reviewCount: 5,
+        summaries: {
+          "9": {
+            html: "<p>这是一条自动生成的总结正文。</p>",
+            updatedAt: "2026-08-24 12:00:00",
+          },
+        },
+      },
+    }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/courses/8/reviews",
+    (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
+  );
+  await page.goto("/courses/8?teacher=9");
+  await expect(page.getByRole("heading", { name: "AI 总结" })).toBeVisible();
+  await expect(page.getByText("这是一条自动生成的总结正文。")).toBeVisible();
+  await expect(
+    page.getByText("AI 总结为根据点评内容自动生成，仅供参考"),
+  ).toHaveCount(0);
+});
+
 test("empty review stream still uses the frozen empty copy", async ({ page }) => {
   await page.route("**/api/courses/8", (route) =>
     route.fulfill({
