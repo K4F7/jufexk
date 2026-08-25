@@ -149,7 +149,7 @@ describe("review submission required scheme scores", () => {
     });
   });
 
-  it("accepts a mooc course without attendance and rejects an attendance key for it", async () => {
+  it("accepts a mooc course with the four three-tier scores and rejects leftover attendance", async () => {
     const courseId = await createBoundCourse("general", "REQ-MOOC", {
       mooc: true,
     });
