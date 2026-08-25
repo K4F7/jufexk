@@ -1,11 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import {
-  ORDINARY_USER_CSRF_COOKIE,
   ORDINARY_USER_ID_HEADER,
   ORDINARY_USER_MAC_HEADER,
   hmacHex,
   ordinaryUserTestHeaders,
-} from "../src/ordinary-user-session";
+} from "../src/ordinary-user-authentication";
+import { ORDINARY_USER_CSRF_COOKIE } from "../src/ordinary-user-write-authorization";
 
 export const WRITE_ORIGIN = "https://example.com";
 export const ORDINARY_TEST_AUTH_SECRET = "test-ordinary-user-auth";

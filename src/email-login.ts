@@ -7,11 +7,10 @@ import {
 } from "./ordinary-user-identity";
 import {
   hmacHex,
-  issueEmailSessionCookie,
-  LOGIN_PATH,
-  originOk,
-  sessionPayloadForUser,
-} from "./ordinary-user-session";
+  issueOrdinaryUserSessionCookie,
+} from "./ordinary-user-authentication";
+import { LOGIN_PATH, sessionPayloadForUser } from "./ordinary-user-session";
+import { originOk } from "./ordinary-user-write-authorization";
 import { readSecret } from "./secrets";
 import { buildVerificationEmail } from "./verification-email";
 
@@ -258,6 +257,6 @@ export async function handleEmailLoginVerify(c: Context<{ Bindings: MailEnv }>) 
     return fail(c, "验证失败，请重新获取验证信");
   }
 
-  await issueEmailSessionCookie(c, user.id, identitySecret);
+  await issueOrdinaryUserSessionCookie(c, user.id, identitySecret);
   return c.json(sessionPayloadForUser(c, user));
 }

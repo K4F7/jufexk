@@ -9,7 +9,7 @@ import {
   AUTH_PROVIDER_CAS,
   CAS_IDENTITY_ISSUER,
 } from "../src/ordinary-user-identity";
-import { hmacHex } from "../src/ordinary-user-session";
+import { hmacHex } from "../src/ordinary-user-authentication";
 import { adminAuth, adminHeaders } from "./admin-session";
 import {
   ordinaryWriteHeaders,

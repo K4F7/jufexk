@@ -1,6 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { hmacHex } from "../src/ordinary-user-session";
+import { hmacHex } from "../src/ordinary-user-authentication";
 import {
   defaultAvatarKey,
   formatPublicCode,

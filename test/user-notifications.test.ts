@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { VIRTUAL_PE_SPORTS } from "../src/lib/public-course-presentation";
-import { hmacHex } from "../src/ordinary-user-session";
+import { hmacHex } from "../src/ordinary-user-authentication";
 import {
   ORDINARY_TEST_AUTH_SECRET,
   ordinaryWriteHeaders,

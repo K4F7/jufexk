@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { adminLogin as login, adminHeaders } from "./admin-session";
-import { hmacHex } from "../src/ordinary-user-session";
+import { hmacHex } from "../src/ordinary-user-authentication";
 import {
   CURRENT_SCORES,
   CURRENT_SCORES_JSON,

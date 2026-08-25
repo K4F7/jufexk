@@ -1,11 +1,10 @@
 import type { Context } from "hono";
+import { resolveOrdinaryUser } from "./ordinary-user-authentication";
+import { ordinaryUserSessionPayload } from "./ordinary-user-session";
 import {
   canOrdinaryUserWrite,
-  ordinaryUserCsrfOk,
-  ordinaryUserSessionPayload,
-  originOk,
-  resolveOrdinaryUser,
-} from "./ordinary-user-session";
+  ordinaryUserMutationSecurityOk,
+} from "./ordinary-user-write-authorization";
 
 export const USER_DELETION_PATH = "/api/user/deletion";
 export const USER_DELETION_RESTORE_PATH = "/api/user/deletion/restore";
@@ -21,7 +20,7 @@ export async function handleRequestOrdinaryUserDeletion(c: Context) {
   if (!user) return c.json({ error: "请先登录" }, 401);
   if (!canOrdinaryUserWrite(user))
     return c.json({ error: "当前账号状态无法执行删除" }, 403);
-  if (!originOk(c) || !ordinaryUserCsrfOk(c))
+  if (!ordinaryUserMutationSecurityOk(c))
     return c.json({ error: "安全校验失败，请刷新后重试" }, 403);
 
   let confirm: unknown;
@@ -62,7 +61,7 @@ export async function handleRestoreOrdinaryUserDeletion(c: Context) {
   if (!user) return c.json({ error: "请先登录" }, 401);
   if (user.status !== "pending_deletion")
     return c.json({ error: "当前账号不在恢复期" }, 409);
-  if (!originOk(c) || !ordinaryUserCsrfOk(c))
+  if (!ordinaryUserMutationSecurityOk(c))
     return c.json({ error: "安全校验失败，请刷新后重试" }, 403);
 
   await c.env.DB.prepare(

@@ -53,10 +53,8 @@ import {
 import { handleLatestPublicReviews } from "../public-reviews-latest";
 import { decoratePublicReviews } from "../review-endorsements";
 import { loadRelationSignalPayloads } from "../relation-signals";
-import {
-  isOrdinaryUserAuthenticated,
-  resolveOrdinaryUser,
-} from "../ordinary-user-session";
+import { resolveOrdinaryUser } from "../ordinary-user-authentication";
+import { isOrdinaryUserAuthenticated } from "../ordinary-user-write-authorization";
 import {
   authoredReviewAuthorSql,
   authoredReviewJoinSql,

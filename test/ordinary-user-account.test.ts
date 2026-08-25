@@ -1,10 +1,10 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
-  ORDINARY_USER_CSRF_COOKIE,
   hmacHex,
   ordinaryUserTestHeaders,
-} from "../src/ordinary-user-session";
+} from "../src/ordinary-user-authentication";
+import { ORDINARY_USER_CSRF_COOKIE } from "../src/ordinary-user-write-authorization";
 import { adminAuth } from "./admin-session";
 
 const origin = "https://example.com";

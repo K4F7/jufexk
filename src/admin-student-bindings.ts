@@ -2,7 +2,7 @@ import {
   AUTH_PROVIDER_CAS,
   CAS_IDENTITY_ISSUER,
 } from "./ordinary-user-identity";
-import { hmacHex } from "./ordinary-user-session";
+import { hmacHex } from "./ordinary-user-authentication";
 import { normalizeCasUsername } from "./lib/jxufe-cas";
 
 export const ADMIN_STUDENT_BINDING_MAX = 20;

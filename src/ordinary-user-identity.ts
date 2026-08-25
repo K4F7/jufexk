@@ -2,7 +2,7 @@ import {
   decryptAuthBridgeAesSubject,
   type CampusJwtClaims,
 } from "./campus-jwt";
-import type { OrdinaryUser } from "./ordinary-user-session";
+import type { OrdinaryUser } from "./ordinary-user-authentication";
 import {
   AVATAR_KEY_COUNT,
   PUBLIC_CODE_MAX,
