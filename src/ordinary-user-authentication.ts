@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
+  RESERVED_USER_ID,
   ensureUserPublicHandle,
   insertUserWithPublicHandle,
 } from "./public-handle";
@@ -74,6 +75,7 @@ async function loadOrCreateUser(
   db: D1Database,
   userId: string,
 ): Promise<OrdinaryUser | null> {
+  if (userId === RESERVED_USER_ID) return null;
   const existing = await db
     .prepare(USER_SELECT)
     .bind(userId)

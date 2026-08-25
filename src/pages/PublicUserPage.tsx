@@ -1,6 +1,6 @@
 /**
  * 公开作者页 /u/:code（#493）：公开编号、官方头像与已过审点评。
- * #000000 是学长学姐匿名评价，不可关注。
+ * #000000 是学长学姐匿名评价；关注与统计与普通用户同一路径。
  */
 import { Button, Card, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
@@ -50,7 +50,7 @@ export function PublicUserPage() {
   }, [code]);
 
   const toggleFollow = async () => {
-    if (!profile || profile.reserved || profile.viewer_is_self) return;
+    if (!profile || profile.viewer_is_self) return;
     if (!viewer.authenticated) {
       const from = encodeURIComponent(`/u/${formatPublicCode(profile.public_code)}`);
       navigate(`${viewer.loginPath}?from=${from}`);
@@ -152,7 +152,7 @@ export function PublicUserPage() {
               </div>
             </dl>
           </Card.Content>
-          {profile.reserved || profile.viewer_is_self ? null : (
+          {profile.viewer_is_self ? null : (
             <Card.Footer className="flex flex-col items-center gap-2">
               <Button
                 variant={profile.viewer_followed ? "secondary" : "primary"}
