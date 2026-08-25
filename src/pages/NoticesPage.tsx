@@ -16,8 +16,13 @@ import type { UserNotification } from "../lib/types";
 function normalizeNotifications(
   data: UserNotification[] | { items?: UserNotification[] } | null,
 ): UserNotification[] {
-  if (Array.isArray(data)) return data;
-  return data?.items ?? [];
+  const items = Array.isArray(data) ? data : (data?.items ?? []);
+  return items.map((item) => ({
+    ...item,
+    text: item.text || item.message || "",
+    href: item.href ?? item.link,
+    created_at: item.created_at ?? item.createdAt,
+  }));
 }
 
 export function NoticesPage() {

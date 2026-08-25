@@ -325,6 +325,8 @@ export type UserProfile = {
   follows?: UserProfileFollow[];
   review_count?: number;
   follow_count?: number;
+  following_user_count?: number;
+  follower_count?: number;
   unread_notification_count?: number;
 };
 
@@ -339,6 +341,8 @@ export type PublicUserProfile = {
   viewer_is_self: boolean;
   note: string | null;
   review_count: number;
+  following_count: number;
+  follower_count: number;
   reviews: LatestReview[];
 };
 
@@ -348,9 +352,13 @@ export type UserNotification = {
   /** 消息类型，如关注的任课关系有新点评、我的点评被认可。 */
   type?: string;
   text: string;
+  /** Worker 列表字段；页面同时认 text / message。 */
+  message?: string;
   /** 站内链接，如 /courses/8?teacher=9#review-101；缺失时按纯文本展示。 */
   href?: string | null;
+  link?: string;
   created_at?: string | null;
+  createdAt?: string;
   read?: boolean;
 };
 

@@ -16,6 +16,7 @@ import {
   FIRST_USER_PUBLIC_CODE,
   RESERVED_PUBLIC_CODE,
   defaultAvatarKey,
+  formatPublicCode,
   formatPublicHandle,
   parsePublicCodeParam,
 } from "./public-handle";
@@ -129,6 +130,8 @@ async function loadReservedProfile(db: D1Database) {
     viewer_is_self: false,
     note: "来自以前的学长学姐的评价",
     review_count: results.length,
+    following_count: 0,
+    follower_count: 0,
     reviews: mapPublicAuthorReviews(
       results,
       RESERVED_PUBLIC_CODE,
@@ -169,6 +172,14 @@ async function loadNumberedProfile(
     viewerFollowed = Boolean(follow);
   }
   const avatarKey = author.avatar_key ?? defaultAvatarKey(publicCode);
+  const counts = await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM user_follows WHERE follower_user_id=?) AS following_count,
+         (SELECT COUNT(*) FROM user_follows WHERE followed_user_id=?) AS follower_count`,
+    )
+    .bind(author.id, author.id)
+    .first<{ following_count: number; follower_count: number }>();
   return {
     public_code: publicCode,
     handle: formatPublicHandle(publicCode),
@@ -179,6 +190,8 @@ async function loadNumberedProfile(
     viewer_is_self: viewerIsSelf,
     note: null,
     review_count: results.length,
+    following_count: Number(counts?.following_count) || 0,
+    follower_count: Number(counts?.follower_count) || 0,
     reviews: mapPublicAuthorReviews(results, publicCode, avatarKey),
   };
 }
@@ -229,6 +242,21 @@ export async function handleFollowPublicUser(c: AppContext) {
   )
     .bind(resolved.user.id, resolved.targetId)
     .run();
+  const followerCode = resolved.user.public_code;
+  if (followerCode != null && followerCode >= FIRST_USER_PUBLIC_CODE) {
+    await c.env.DB.prepare(
+      `INSERT OR IGNORE INTO user_notifications(
+         user_id,type,message,link,event_key,source_review_id
+       ) VALUES(?,'user_followed',?,?,?,NULL)`,
+    )
+      .bind(
+        resolved.targetId,
+        `${formatPublicHandle(followerCode)} 关注了你`,
+        `/u/${formatPublicCode(followerCode)}`,
+        `user-followed:${resolved.user.id}:${resolved.targetId}`,
+      )
+      .run();
+  }
   return c.json({
     ok: true,
     public_code: resolved.publicCode,

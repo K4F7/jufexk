@@ -82,7 +82,12 @@ describe("ordinary-user profile", () => {
     );
     expect(body.avatar_key).toBeGreaterThanOrEqual(0);
     expect(body.avatar_key).toBeLessThan(5);
-    expect(body).toMatchObject({ review_count: 1, follow_count: 1 });
+    expect(body).toMatchObject({
+      review_count: 1,
+      follow_count: 1,
+      following_user_count: 0,
+      follower_count: 0,
+    });
     expect(body.reviews).toHaveLength(1);
     expect(body.reviews[0]).toMatchObject({
       course_id: 1,

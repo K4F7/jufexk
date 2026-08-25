@@ -144,6 +144,8 @@ export function ProfilePage() {
   const follows = profile?.follows ?? [];
   const reviewCount = profile?.review_count ?? reviews.length;
   const followCount = profile?.follow_count ?? follows.length;
+  const followingUserCount = profile?.following_user_count ?? 0;
+  const followerCount = profile?.follower_count ?? 0;
   const handle =
     profile?.handle ||
     (profile?.public_code != null
@@ -352,15 +354,27 @@ export function ProfilePage() {
             ) : null}
             <dl className="m-0 grid gap-1.5 text-sm">
               <div className="flex justify-between gap-3">
-                <dt className="text-muted">点评</dt>
+                <dt className="text-muted">关注了</dt>
                 <dd className="m-0 tabular">
-                  {statValue ? reviewCount : "—"} 门
+                  {statValue ? followingUserCount : "—"} 人
                 </dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-muted">关注</dt>
+                <dt className="text-muted">被关注</dt>
                 <dd className="m-0 tabular">
-                  {statValue ? followCount : "—"} 门
+                  {statValue ? followerCount : "—"} 人
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">关注了</dt>
+                <dd className="m-0 tabular">
+                  {statValue ? followCount : "—"} 门课程
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">点评了</dt>
+                <dd className="m-0 tabular">
+                  {statValue ? reviewCount : "—"} 门课程
                 </dd>
               </div>
             </dl>

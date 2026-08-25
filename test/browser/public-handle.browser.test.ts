@@ -50,6 +50,8 @@ test("reserved handle page shows 学长学姐 copy and is not followable", async
         viewer_is_self: false,
         note: "来自以前的学长学姐的评价",
         review_count: 1,
+        following_count: 0,
+        follower_count: 0,
         reviews: [
           {
             id: "review:1",
@@ -110,6 +112,8 @@ test("numbered handle page can follow when logged in", async ({ page }) => {
           viewer_is_self: false,
           note: null,
           review_count: 0,
+          following_count: 0,
+          follower_count: followed ? 1 : 0,
           reviews: [],
         },
       });
@@ -157,6 +161,8 @@ test("follow error stays on the loaded profile", async ({ page }) => {
           viewer_is_self: false,
           note: null,
           review_count: 0,
+          following_count: 0,
+          follower_count: 0,
           reviews: [],
         },
       });

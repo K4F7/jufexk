@@ -78,6 +78,16 @@ export async function handleOrdinaryUserProfile(c: Context) {
     comment: commentSummary(review.comment),
   }));
   const follows = followResult.results as ProfileFollowRow[];
+  const counts = (await c.env.DB.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM user_follows WHERE follower_user_id=?) AS following_user_count,
+       (SELECT COUNT(*) FROM user_follows WHERE followed_user_id=?) AS follower_count`,
+  )
+    .bind(user.id, user.id)
+    .first()) as {
+    following_user_count: number;
+    follower_count: number;
+  } | null;
 
   return c.json({
     public_code: handleUser.public_code,
@@ -85,6 +95,8 @@ export async function handleOrdinaryUserProfile(c: Context) {
     avatar_key: handleUser.avatar_key,
     review_count: reviews.length,
     follow_count: follows.length,
+    following_user_count: Number(counts?.following_user_count) || 0,
+    follower_count: Number(counts?.follower_count) || 0,
     reviews,
     follows,
   });
