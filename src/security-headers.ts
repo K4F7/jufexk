@@ -1,3 +1,5 @@
+import { STATUS_PAGE_URL } from "./lib/site-links";
+
 const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 
 /** Official beacon host for Cloudflare Web Analytics. */
@@ -15,7 +17,7 @@ export const HEROUI_AVATAR_ASSETS_ORIGIN =
 export const ASSET_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   `script-src 'self' ${TURNSTILE_ORIGIN} ${CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN}`,
-  `frame-src ${TURNSTILE_ORIGIN}`,
+  `frame-src ${TURNSTILE_ORIGIN} ${STATUS_PAGE_URL}`,
   `connect-src 'self' ${TURNSTILE_ORIGIN} ${CLOUDFLARE_WEB_ANALYTICS_CONNECT_ORIGIN}`,
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: ${HEROUI_AVATAR_ASSETS_ORIGIN}`,

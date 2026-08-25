@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://heroui-assets.nyc3.cdn.digitaloceanspaces.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com; frame-src https://challenges.cloudflare.com https://jxufexk.betteruptime.com; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://heroui-assets.nyc3.cdn.digitaloceanspaces.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
   Referrer-Policy: same-origin

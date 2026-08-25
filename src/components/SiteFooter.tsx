@@ -1,7 +1,8 @@
 import { LogoGithub } from "@gravity-ui/icons";
-import { buttonVariants, Separator } from "@heroui/react";
-import { GITHUB_REPO_URL } from "../lib/site-links";
+import { buttonVariants, Link, Separator } from "@heroui/react";
+import { GITHUB_REPO_URL, STATUS_PAGE_URL } from "../lib/site-links";
 import { RouterAriaLink } from "./RouterAriaLink";
+import { StatusPageBadge } from "./StatusPageBadge";
 
 const INTERNAL_LINKS = [
   { to: "/contact", label: "反馈问题" },
@@ -55,7 +56,34 @@ export function SiteFooter({
               </RouterAriaLink>
             </span>
           ))}
+          <span className="inline-flex items-center gap-4 whitespace-nowrap">
+            <span aria-hidden>
+              <Separator className="h-4" orientation="vertical" />
+            </span>
+            <Link
+              className="text-muted"
+              href={STATUS_PAGE_URL}
+              rel="noreferrer"
+              render={(domProps) => (
+                <a
+                  {...(domProps as object)}
+                  className={
+                    typeof domProps.className === "string"
+                      ? domProps.className
+                      : undefined
+                  }
+                  href={STATUS_PAGE_URL}
+                  rel="noreferrer"
+                  target="_blank"
+                />
+              )}
+              target="_blank"
+            >
+              系统状态
+            </Link>
+          </span>
         </nav>
+        <StatusPageBadge />
       </div>
     </footer>
   );
