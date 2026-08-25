@@ -105,6 +105,22 @@ describe("ordinary user write authorization", () => {
     });
   });
 
+  it("lets an expired mute write and persists muted_until=NULL", async () => {
+    const expired = await hmacUser("write-expired-mute");
+    await writeGate(writeRequest(csrfHeaders(expired.auth)));
+    await env.DB.prepare("UPDATE users SET muted_until=? WHERE id=?")
+      .bind(Math.floor(Date.now() / 1000) - 10, expired.stableId)
+      .run();
+    const ok = await writeGate(writeRequest(csrfHeaders(expired.auth)));
+    expect(ok.status).toBe(200);
+    if ("user" in ok) expect(ok.user.muted_until).toBeNull();
+    expect(
+      await env.DB.prepare("SELECT muted_until FROM users WHERE id=?")
+        .bind(expired.stableId)
+        .first(),
+    ).toEqual({ muted_until: null });
+  });
+
   it("requires both exact Origin and CSRF after a writable user is resolved", async () => {
     const { auth } = await hmacUser("write-security-user");
     await writeGate(writeRequest(csrfHeaders(auth)));

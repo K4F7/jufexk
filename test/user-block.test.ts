@@ -192,11 +192,6 @@ describe("ordinary-user blocking", () => {
       .run();
     const expiredSession = await ordinaryWriteSession(userKey);
     expect(expiredSession.authenticated).toBe(true);
-    expect(
-      await env.DB.prepare("SELECT muted_until FROM users WHERE id=?")
-        .bind(stableId)
-        .first(),
-    ).toEqual({ muted_until: null });
 
     const request = await SELF.fetch(`${origin}/api/catalog-requests`, {
       method: "POST",
@@ -208,5 +203,10 @@ describe("ordinary-user blocking", () => {
       }),
     });
     expect(request.status).toBe(200);
+    expect(
+      await env.DB.prepare("SELECT muted_until FROM users WHERE id=?")
+        .bind(stableId)
+        .first(),
+    ).toEqual({ muted_until: null });
   });
 });
