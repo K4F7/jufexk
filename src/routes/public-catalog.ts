@@ -64,11 +64,11 @@ import {
   reservedAuthorSql,
 } from "../public-handle";
 import {
-  getCourseRelationSummaries,
   guestReviewBindingSql,
   publicReviewBindingSql,
   reviewNotDeletedBindingSql,
-} from "../review-summary";
+} from "../public-review-visibility";
+import { getCourseRelationSummaries } from "../review-summary";
 import { readSecret } from "../secrets";
 import { loadSiteBanner } from "../site-banner";
 import {
@@ -175,7 +175,7 @@ const loadVirtualPeSportItems = async (
   }
   return items;
 };
-// 公开评价绑定规则的唯一来源在 review-summary.ts（AI 总结收集同一集合）。
+// 任课评价公开可见性规则与全站公开投影共用。
 const publicReviewBinding = publicReviewBindingSql;
 type PublicReviewCursor =
   | { source: number; key: string }

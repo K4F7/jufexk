@@ -19,7 +19,7 @@ import {
   formatPublicHandle,
   parsePublicCodeParam,
 } from "./public-handle";
-import { publicReviewBindingSql } from "./review-summary";
+import { publicReviewBindingSql } from "./public-review-visibility";
 import type { AppContext } from "./routes/types";
 
 const fail = (c: AppContext, error: string, status = 400) =>

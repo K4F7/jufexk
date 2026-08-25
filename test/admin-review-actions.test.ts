@@ -1,8 +1,11 @@
 import { SELF, env } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { deliverReviewAuthorLookup } from "../src/admin-review-author-mail";
-import { collectRelationReviewTexts } from "../src/review-summary";
 import { refreshPublicListPrecomputes } from "../src/public-list-precompute";
+import {
+  consumeAiSummaryQueue,
+  type AiSummaryQueueMessage,
+} from "../src/review-summary";
 import { CURRENT_SCORES } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
@@ -66,6 +69,53 @@ async function publicReviewText() {
   return response.text();
 }
 
+async function summaryInputContains(
+  courseId: number,
+  teacherId: number,
+  comment: string,
+) {
+  await env.DB.prepare(
+    "UPDATE course_teachers SET ai_summary_source_hash='' WHERE course_id=? AND teacher_id=?",
+  )
+    .bind(courseId, teacherId)
+    .run();
+
+  const prompts: string[] = [];
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input, init);
+    const body = (await request.json()) as {
+      messages?: Array<{ content?: string }>;
+    };
+    const prompt = body.messages?.[1]?.content;
+    if (typeof prompt === "string") prompts.push(prompt);
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: "客观总结" } }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+
+  const message: Message<AiSummaryQueueMessage> = {
+    id: crypto.randomUUID(),
+    timestamp: new Date(),
+    body: { courseId, teacherId, immediate: true },
+    attempts: 1,
+    ack() {},
+    retry() {},
+  };
+  await consumeAiSummaryQueue(
+    { messages: [message] } as MessageBatch<AiSummaryQueueMessage>,
+    {
+      OPENAI_BASE_URL: "https://openai.example.test/v1",
+      OPENAI_API_KEY: "test-openai-key",
+      OPENAI_MODEL: "test-model",
+      DB: env.DB,
+      AI_SUMMARY_QUEUE: { async send() {} },
+    },
+    fetchImpl,
+  );
+  return prompts.some((prompt) => prompt.includes(comment));
+}
+
 type CourseReviewItem = {
   id: string;
   comment: string;
@@ -112,13 +162,17 @@ describe("admin review actions", () => {
       .first<{ id: number; author_user_id: string | null }>();
     expect(review?.author_user_id).toBe(stableUserId);
     const reviewId = review!.id;
+    for (let index = 0; index < 5; index += 1) {
+      await env.DB.prepare(
+        `INSERT INTO reviews(course_id,teacher_id,category,overall,comment,status,reviewed_at)
+         VALUES(1,1,'general',4,?,'approved',CURRENT_TIMESTAMP)`,
+      )
+        .bind(`管理员动作总结门槛填充第${index + 1}条，内容足够十个字以上`)
+        .run();
+    }
 
     expect(await publicReviewText()).toContain(comment);
-    expect(
-      (await collectRelationReviewTexts(env.DB, 1, 1)).some((item) =>
-        item.text.includes(comment),
-      ),
-    ).toBe(true);
+    expect(await summaryInputContains(1, 1, comment)).toBe(true);
     await refreshPublicListPrecomputes(env.DB);
     const visibleCount = await env.DB.prepare(
       "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",
@@ -131,11 +185,7 @@ describe("admin review actions", () => {
     const blockedAgain = await adminAction(auth, reviewId, "block");
     expect(await blockedAgain.json()).toEqual({ ok: true, changed: false });
     expect(await publicReviewText()).not.toContain(comment);
-    expect(
-      (await collectRelationReviewTexts(env.DB, 1, 1)).some((item) =>
-        item.text.includes(comment),
-      ),
-    ).toBe(false);
+    expect(await summaryInputContains(1, 1, comment)).toBe(false);
     await refreshPublicListPrecomputes(env.DB);
     const blockedCount = await env.DB.prepare(
       "SELECT review_count FROM public_review_counts WHERE course_id=1 AND teacher_id=1",
@@ -157,9 +207,11 @@ describe("admin review actions", () => {
     const unblocked = await adminAction(auth, reviewId, "unblock");
     expect(await unblocked.json()).toEqual({ ok: true, changed: true });
     expect(await publicReviewText()).toContain(comment);
+    expect(await summaryInputContains(1, 1, comment)).toBe(true);
 
     const deleted = await adminAction(auth, reviewId, "delete");
     expect(await deleted.json()).toEqual({ ok: true, changed: true });
+    expect(await summaryInputContains(1, 1, comment)).toBe(false);
     const deletedAgain = await adminAction(auth, reviewId, "delete");
     expect(await deletedAgain.json()).toEqual({ ok: true, changed: false });
     expect(await publicReviewText()).not.toContain(comment);

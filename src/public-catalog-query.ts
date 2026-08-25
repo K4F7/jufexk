@@ -34,7 +34,7 @@ import {
   type RelationSignalCounts,
   type RelationSignalViewer,
 } from "./relation-signals";
-import { publicReviewBindingSql } from "./review-summary";
+import { publicReviewBindingSql } from "./public-review-visibility";
 
 export type PublicCourseListSort = "name" | "reviews";
 export type PublicRelationListSort = "name" | "rating" | "reviews";

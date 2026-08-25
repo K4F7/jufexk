@@ -54,7 +54,10 @@ app.onError((e, c) => {
   );
   return fail(c, "服务器暂时开小差了", 500);
 });
-const worker = Object.assign(app, { queue: consumeAiSummaryQueue });
+const worker = Object.assign(app, {
+  queue: (batch: MessageBatch<AiSummaryQueueMessage>, env: Cloudflare.Env) =>
+    consumeAiSummaryQueue(batch, env),
+});
 
 export default worker satisfies ExportedHandler<
   Cloudflare.Env,
