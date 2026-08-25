@@ -41,6 +41,8 @@ export type JwxtTableParse =
       offerings: JwxtOffering[];
       pagination: JwxtPagination | null;
       filters: JwxtTableFilters;
+      termSelect: JwxtSelectParse;
+      educationLevelSelect: JwxtSelectParse;
       gradeSelect: JwxtSelectParse;
       majorSelect: JwxtSelectParse;
     }
@@ -297,11 +299,13 @@ export function parseJwxtTableHtml(html: string): JwxtTableParse {
       return { ok: false, kind: "login-expired", message: "教务登录已失效" };
     }
   }
+  const termSelect = parseSelect(html, ["xnxq", "xq", "term"]);
+  const educationLevelSelect = parseSelect(html, ["pycc", "xslb", "level"]);
   const gradeSelect = parseSelect(html, ["nj", "grade"]);
   const majorSelect = parseSelect(html, ["zy", "major"]);
   const filters: JwxtTableFilters = {
-    terms: optionList(html, ["xnxq", "xq", "term"]),
-    educationLevels: optionList(html, ["pycc", "xslb", "level"]),
+    terms: termSelect.options,
+    educationLevels: educationLevelSelect.options,
     grades: gradeSelect.options,
     majors: majorSelect.options,
     categories: categoryOptions(html),
@@ -328,6 +332,8 @@ export function parseJwxtTableHtml(html: string): JwxtTableParse {
     offerings,
     pagination: parsePagination(html),
     filters,
+    termSelect,
+    educationLevelSelect,
     gradeSelect,
     majorSelect,
   };
