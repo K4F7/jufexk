@@ -2,7 +2,7 @@
  * Teacher detail — icourse two-column IA.
  *
  * Left: 课程（共 N 门） stacked list.
- * Right: identity Card (avatar / name / department / course & review counts).
+ * Right: identity Card (avatar / name / department / course, review, scores).
  *
  * 教师页不展示跨课程评价流；评价只在课程页按任课关系查看。
  *
@@ -20,6 +20,7 @@ import {
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { api } from "../lib/api";
+import { formatSidebarScore } from "../lib/labels";
 import type { Course, Teacher } from "../lib/types";
 
 type Detail = {
@@ -27,6 +28,15 @@ type Detail = {
   courses: Course[];
   reviewCount: number;
 };
+
+function IdentityStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted">{label}</dt>
+      <dd className="m-0 tabular">{value}</dd>
+    </div>
+  );
+}
 
 function TeacherIdentityCard({
   teacher,
@@ -57,14 +67,14 @@ function TeacherIdentityCard({
       </Card.Header>
       <Card.Content>
         <dl className="m-0 grid gap-1.5 text-sm">
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">任课课程</dt>
-            <dd className="m-0 tabular">{courseCount} 门</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">公开评价</dt>
-            <dd className="m-0 tabular">{reviewCount} 条</dd>
-          </div>
+          <IdentityStat label="任课课程" value={`${courseCount} 门`} />
+          <IdentityStat label="得到的评价" value={`${reviewCount} 条`} />
+          <IdentityStat
+            label="平均分"
+            value={formatSidebarScore(teacher.rating)}
+          />
+          {/* 仓库没有 Bayesian / 站点先验等归一化投影；有现成字段前固定为 -。 */}
+          <IdentityStat label="归一化平均分" value="-" />
         </dl>
         {teacher.bio ? (
           <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
