@@ -1,4 +1,4 @@
-import { Button, Card, Label, ListBox, Modal, Select, Table, Tabs, Typography } from "@heroui/react";
+import { Button, Card, ComboBox, Input, Label, ListBox, Modal, Select, Table, Tabs, Typography } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { relationDetailHref } from "./CourseRelationRow";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -60,6 +60,57 @@ function FilterSelect({
         </ListBox>
       </Select.Popover>
     </Select>
+  );
+}
+
+function FilterCombo({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+  isDisabled,
+}: {
+  label: string;
+  value: string;
+  options: JwxtFilterOption[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+  isDisabled?: boolean;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <ComboBox
+      allowsEmptyCollection
+      className="min-w-56"
+      variant="secondary"
+      isDisabled={isDisabled}
+      selectedKey={value || null}
+      onSelectionChange={(next) => {
+        if (typeof next === "string") onChange(next);
+        else if (next == null) onChange("");
+      }}
+    >
+      <Label>{label}</Label>
+      <ComboBox.InputGroup>
+        <Input placeholder={placeholder} />
+        <ComboBox.Trigger />
+      </ComboBox.InputGroup>
+      <ComboBox.Popover>
+        <ListBox
+          renderEmptyState={() => (
+            <div className="py-4 text-center text-sm text-muted">没有匹配项</div>
+          )}
+        >
+          {options.map((option) => (
+            <ListBox.Item key={option.id} id={option.id} textValue={option.label}>
+              {option.label}
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </ComboBox.Popover>
+    </ComboBox>
   );
 }
 
@@ -349,15 +400,15 @@ export function JwxtCourseBrowser({
             if (grade) onFilters({ grade, major: { id: "", label: "" } });
           }}
         />
-        <FilterSelect
+        <FilterCombo
           label="专业"
           value={snapshot.major.id}
           options={snapshot.majors}
-          placeholder="请选择专业"
+          placeholder="搜索或选择专业"
           isDisabled={!gradeReady}
           onChange={(id) => {
             const major = snapshot.majors.find((item) => item.id === id);
-            if (major) onFilters({ major });
+            onFilters({ major: major ?? { id: "", label: "" } });
           }}
         />
         </div>

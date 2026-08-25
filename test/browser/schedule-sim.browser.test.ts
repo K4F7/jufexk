@@ -136,10 +136,18 @@ async function chooseFilter(page: Page, label: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 
-async function selectMajor(page: Page, major = "数学学院") {
-  await expect(page.getByRole("button", { name: /专业/ })).toBeVisible();
+async function chooseMajor(page: Page, major: string) {
+  const combo = page.getByRole("combobox", { name: "专业" });
+  await expect(combo).toBeEnabled();
+  await combo.click();
+  await combo.fill(major);
+  await page.getByRole("option", { name: major, exact: true }).click();
+}
+
+async function selectMajor(page: Page, major = "数学与应用数学") {
+  await expect(page.getByRole("combobox", { name: "专业" })).toBeVisible();
   await chooseFilter(page, "年级", firstGrade);
-  await chooseFilter(page, "专业", major);
+  await chooseMajor(page, major);
 }
 
 async function openCoursePicker(page: Page) {
@@ -224,7 +232,7 @@ test("catalog filters, two candidate kinds, place, persist @mobile-smoke", async
 test("switches candidate data when the catalog major changes", async ({ page }) => {
   await mockScheduleApi(page);
   await page.goto("/schedule");
-  await selectMajor(page, "信息管理学院");
+  await selectMajor(page, "信息管理与信息系统");
 
   const picker = await openCoursePicker(page);
   await picker.getByRole("tab", { name: "计划内" }).click();
@@ -232,14 +240,37 @@ test("switches candidate data when the catalog major changes", async ({ page }) 
   await expect(picker.getByLabel("计划内课程")).not.toContainText("高等数学");
   await picker.getByRole("button", { name: "完成" }).click();
 
-  await chooseFilter(page, "年级", catalogScheduleGrades()[1].label);
-  await expect(page.getByText("请先选择年级和专业")).toBeVisible();
-  await expect(page.getByRole("button", { name: "选择课程" })).toBeDisabled();
-  await chooseFilter(page, "专业", "数学学院");
+  await chooseMajor(page, "数学与应用数学");
   const mathPicker = await openCoursePicker(page);
   await mathPicker.getByRole("tab", { name: "计划内" }).click();
   await expect(mathPicker.getByLabel("计划内课程")).toContainText("高等数学");
   await expect(mathPicker.getByLabel("计划内课程")).not.toContainText("数据结构");
+  await mathPicker.getByRole("button", { name: "完成" }).click();
+
+  await chooseFilter(page, "年级", catalogScheduleGrades()[1].label);
+  await expect(page.getByText("请先选择年级和专业")).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择课程" })).toBeDisabled();
+  await chooseMajor(page, "数学与应用数学");
+  const again = await openCoursePicker(page);
+  await again.getByRole("tab", { name: "计划内" }).click();
+  await expect(again.getByLabel("计划内课程")).toContainText("高等数学");
+});
+
+test("major combobox searches undergraduate majors instead of teaching units", async ({ page }) => {
+  await mockScheduleApi(page);
+  await page.goto("/schedule");
+  const combo = page.getByRole("combobox", { name: "专业" });
+  await expect(combo).toBeDisabled();
+  await chooseFilter(page, "年级", firstGrade);
+  await expect(combo).toBeEnabled();
+  await combo.click();
+  await combo.fill("宣传");
+  await expect(page.getByRole("option", { name: /宣传部|教务处|保卫处|医院|会计学/ })).toHaveCount(0);
+  await combo.fill("会计");
+  await expect(page.getByRole("option", { name: "会计学", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: /宣传部|教务处|保卫处|医院/ })).toHaveCount(0);
+  await page.getByRole("option", { name: "会计学", exact: true }).click();
+  await expect(combo).toHaveValue("会计学");
 });
 
 test("hides planned and public tables until a major is selected", async ({ page }) => {
