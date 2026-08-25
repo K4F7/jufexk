@@ -78,6 +78,7 @@ pnpm run dev
 | `pnpm run check` | 类型生成 + tsc + 全部测试 + 构建 + 部署 dry-run |
 | `pnpm run build` / `pnpm run deploy` | 构建 / 构建并部署到 Cloudflare |
 | `pnpm run db:local` | 应用本地 D1 迁移 |
+| `pnpm run db:seed-preview` | 本地 D1 灌入预览假数据；再打开 `/prototype#page-atlas` 进出各页 |
 | `pnpm run catalog-baseline` | 目录基线采集 CLI |
 
 ## 配置
