@@ -360,7 +360,7 @@ test("notices page shows the empty state and survives a missing API", async ({
   await expect(page.getByText("请稍后再试。")).toBeVisible();
 });
 
-test("account menu links to 我的主页 and 消息 with an unread badge", async ({
+test("account menu links to 主页 and 消息 with an unread badge", async ({
   page,
 }) => {
   await mockApi(page, state({ unreadCount: 3 }));
@@ -369,13 +369,16 @@ test("account menu links to 我的主页 and 消息 with an unread badge", async
   await expect(page.getByLabel("3 条未读消息")).toBeVisible();
   await page.getByRole("button", { name: "账号" }).click();
   await expect(
-    page.getByRole("menuitem", { name: "我的主页" }),
+    page.getByRole("menuitem", { name: "主页" }),
   ).toBeVisible();
   await expect(
     page.getByRole("menuitem", { name: /消息/ }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "账号管理" }),
+  ).toHaveCount(0);
 
-  await page.getByRole("menuitem", { name: "我的主页" }).click();
+  await page.getByRole("menuitem", { name: "主页" }).click();
   await expect(page).toHaveURL(/\/profile$/);
 
   await page.getByRole("button", { name: "账号" }).click();
