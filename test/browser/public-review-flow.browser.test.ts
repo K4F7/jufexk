@@ -315,6 +315,7 @@ test("course detail defaults to the most-reviewed relation", async ({
   const otherTeacherCount = otherTeachersCard.getByText("（2）");
   await expect(otherTeacherLink).toBeVisible();
   await expect(otherTeacherCount).toBeVisible();
+  await expect(otherTeacherCount).toHaveText("（2）");
   await expect(otherTeachersCard.getByText("4.6")).toHaveCount(0);
   const otherTeacherNameBox = await otherTeacherLink.boundingBox();
   const otherTeacherCountBox = await otherTeacherCount.boundingBox();
@@ -325,7 +326,7 @@ test("course detail defaults to the most-reviewed relation", async ({
   expect(
     otherTeacherCountBox!.x -
       (otherTeacherNameBox!.x + otherTeacherNameBox!.width),
-  ).toBeLessThan(16);
+  ).toBeLessThan(4);
   expect(
     otherTeacherCountBox!.x -
       (otherTeacherNameBox!.x + otherTeacherNameBox!.width),
@@ -355,6 +356,7 @@ test("course detail defaults to the most-reviewed relation", async ({
     otherCourseStatsBox!.x -
       (otherCourseNameBox!.x + otherCourseNameBox!.width),
   ).toBeLessThan(16);
+  expect(await otherCourseStats.textContent()).toBe(" 4.2（3）");
   expect(
     otherCoursesCardBox!.x +
       otherCoursesCardBox!.width -

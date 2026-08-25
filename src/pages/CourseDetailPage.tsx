@@ -145,7 +145,7 @@ function formatSideRelationStats(
     : "";
   const numericCount = Number(count) || 0;
   const countText = numericCount > 0 ? `（${numericCount}）` : "";
-  return `${ratingText}${countText}`;
+  return ratingText ? ` ${ratingText}${countText}` : countText;
 }
 
 function SideRelationRow({
@@ -173,7 +173,7 @@ function SideRelationRow({
         </RouterAriaLink>
         {stats ? (
           <span className="whitespace-nowrap tabular text-xs text-muted">
-            {` ${stats}`}
+            {stats}
           </span>
         ) : null}
       </span>
