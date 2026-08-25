@@ -18,8 +18,13 @@ import {
   publicCategoryFilterSql,
   publicCourseCategory,
   publicCourseDisplayName,
+  publicCourseDisplayNameSql,
   publicCourseVisibleSql,
+  publicRelationNameSortKey,
+  publicRelationNameSortKeySql,
+  publicRelationNameSortSql,
   VIRTUAL_PE_SPORTS,
+  virtualPeSportDisplayName,
   virtualPeSportMatchesQuery,
 } from "./lib/public-course-presentation";
 import { relationDimensionKey } from "./lib/relation-four-dims";
@@ -154,7 +159,7 @@ const virtualPeSportItem = (
 ) => ({
   id: sport.id,
   code: "",
-  name: sport.label,
+  name: virtualPeSportDisplayName(sport),
   category: "sports" as const,
   department: "",
   teachers: teachers.map((teacher) => teacher.name).join(","),
@@ -310,7 +315,9 @@ async function loadVirtualPeRelations(
           ? teachers.filter((teacher) =>
               courseSearchTerms.every(
                 (term) =>
-                  sport.label.includes(term) || teacher.name.includes(term),
+                  sport.label.includes(term) ||
+                  virtualPeSportDisplayName(sport).includes(term) ||
+                  teacher.name.includes(term),
               ),
             )
           : teachers;
@@ -318,7 +325,7 @@ async function loadVirtualPeRelations(
       items.push({
         course_id: sport.id,
         code: "",
-        name: sport.label,
+        name: virtualPeSportDisplayName(sport),
         category: "sports",
         department: "",
         teacher_id: teacher.id,
@@ -345,18 +352,21 @@ function byNameCodeId(
 }
 
 function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
-  const nameA = String(a.name ?? "");
-  const nameB = String(b.name ?? "");
-  if (nameA !== nameB) return nameA < nameB ? -1 : 1;
-  const codeA = String(a.code ?? "");
-  const codeB = String(b.code ?? "");
-  if (codeA !== codeB) return codeA < codeB ? -1 : 1;
-  const course = Number(a.course_id ?? 0) - Number(b.course_id ?? 0);
-  if (course) return course;
-  const teacherA = String(a.teacher_name ?? "");
-  const teacherB = String(b.teacher_name ?? "");
-  if (teacherA !== teacherB) return teacherA < teacherB ? -1 : 1;
-  return Number(a.teacher_id ?? 0) - Number(b.teacher_id ?? 0);
+  const keyA = publicRelationNameSortKey({
+    name: String(a.name ?? ""),
+    code: String(a.code ?? ""),
+    course_id: Number(a.course_id ?? 0),
+    teacher_name: a.teacher_name,
+    teacher_id: a.teacher_id,
+  });
+  const keyB = publicRelationNameSortKey({
+    name: String(b.name ?? ""),
+    code: String(b.code ?? ""),
+    course_id: Number(b.course_id ?? 0),
+    teacher_name: b.teacher_name,
+    teacher_id: b.teacher_id,
+  });
+  return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
 }
 
 function emptyRelationSignals(
@@ -456,10 +466,11 @@ export async function queryPublicCourses(
           `${likeSql("c.name")} OR ${likeSql("c.code")}`,
         )
       : { sql: "", args: [] };
+  const displayNameSql = publicCourseDisplayNameSql("c");
   const relevanceOrder = `CASE
        WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? THEN 0
-       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} THEN 1
+       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? OR (${displayNameSql})=? THEN 0
+       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql(`(${displayNameSql})`)} THEN 1
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
        WHEN ${likeSql("c.department")} THEN 4
@@ -473,6 +484,8 @@ export async function queryPublicCourses(
     search,
     search,
     search,
+    search,
+    prefixPattern(search),
     prefixPattern(search),
     prefixPattern(search),
     ...allTermsInTitle.args,
@@ -591,22 +604,26 @@ export async function queryPublicCourseRelations(
       ? andSearchTerms(searchTerms, `${likeSql("c.name")} OR ${likeSql("c.code")}`)
       : { sql: "", args: [] };
   const teacherRank = teacherRelevanceClauses(searchTerms);
+  const displayNameSql = publicCourseDisplayNameSql("c");
+  const nameSortSql = publicRelationNameSortSql("c", "t");
   const relevanceOrder = `CASE
        WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? THEN 0
-       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} THEN 1
+       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? OR (${displayNameSql})=? THEN 0
+       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql(`(${displayNameSql})`)} THEN 1
        ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
        WHEN c.department=? THEN 3
        WHEN ${likeSql("c.department")} THEN 4
        ${teacherRank.sql}
        WHEN ${likeSql("pcc.pinyin_text")} THEN 8
        ELSE 9
-     END,review_count DESC,c.name,c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)`;
+     END,review_count DESC,${nameSortSql}`;
   const searchRankArgs = [
     search,
     search,
     search,
     search,
+    search,
+    prefixPattern(search),
     prefixPattern(search),
     prefixPattern(search),
     ...allTermsInTitle.args,
@@ -617,9 +634,9 @@ export async function queryPublicCourseRelations(
   ];
   const orderBy =
     sort === "name"
-      ? "c.name,c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)"
+      ? nameSortSql
       : sort === "rating"
-        ? "(rel_rating.rating IS NULL),rel_rating.rating DESC,review_count DESC,c.name,c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)"
+        ? `(rel_rating.rating IS NULL),rel_rating.rating DESC,review_count DESC,${nameSortSql}`
         : relevanceOrder;
   const virtualItems =
     !query.category || query.category === "sports"
@@ -633,9 +650,7 @@ export async function queryPublicCourseRelations(
         )
       : [];
   const mergeName = virtualItems.length > 0 && sort === "name";
-  const displayNameSql = `COALESCE(${publicBrowseFamilySql("c")}, c.name)`;
-  const mergeNameOrder = `${displayNameSql},c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)`;
-  const queryOrderBy = mergeName ? mergeNameOrder : orderBy;
+  const queryOrderBy = mergeName ? nameSortSql : orderBy;
   const start = (page - 1) * size;
   let extrasAll = virtualItems;
   let pageExtras: RelationRow[] = [];
@@ -676,41 +691,17 @@ export async function queryPublicCourseRelations(
       );
     }
     extrasAll = [...extrasAll].sort(byNameCodeTeacher);
+    const sortKeySql = publicRelationNameSortKeySql("c", "t");
     const realBefore: number[] = [];
     for (const extra of extrasAll) {
-      const teacher = extra.teacher_name ?? "";
-      const extraTeacherId = extra.teacher_id ?? 0;
       const row = await db
         .prepare(
           `SELECT COUNT(*) n
          ${relationFrom}
          WHERE ${where}
-           AND (
-             ${displayNameSql} < ?
-             OR (${displayNameSql} = ? AND c.code < ?)
-             OR (${displayNameSql} = ? AND c.code = ? AND c.id < ?)
-             OR (${displayNameSql} = ? AND c.code = ? AND c.id = ? AND COALESCE(t.name,'') < ?)
-             OR (${displayNameSql} = ? AND c.code = ? AND c.id = ? AND COALESCE(t.name,'') = ? AND COALESCE(t.id,0) < ?)
-           )`,
+           AND ${sortKeySql} < ?`,
         )
-        .bind(
-          ...args,
-          extra.name,
-          extra.name,
-          extra.code,
-          extra.name,
-          extra.code,
-          extra.course_id,
-          extra.name,
-          extra.code,
-          extra.course_id,
-          teacher,
-          extra.name,
-          extra.code,
-          extra.course_id,
-          teacher,
-          extraTeacherId,
-        )
+        .bind(...args, publicRelationNameSortKey(extra))
         .first();
       realBefore.push(Number((row as { n?: number } | null)?.n) || 0);
     }

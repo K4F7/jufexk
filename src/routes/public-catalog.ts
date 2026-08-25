@@ -9,6 +9,7 @@ import {
   prefixPattern,
 } from "../lib/catalog-search";
 import {
+  groupEnglishLevelItems,
   isPublicListCategoryFilter,
   isVirtualPeSportId,
   publicCategoryFilterError,
@@ -16,6 +17,7 @@ import {
   publicCourseVisibleSql,
   VIRTUAL_PE_SPORTS,
   virtualPeSportById,
+  virtualPeSportDisplayName,
   virtualPeSportForTeacherName,
   virtualPeSportMatchesQuery,
 } from "../lib/public-course-presentation";
@@ -137,7 +139,7 @@ const virtualPeSportItem = (
 ) => ({
   id: sport.id,
   code: "",
-  name: sport.label,
+  name: virtualPeSportDisplayName(sport),
   category: "sports" as const,
   department: "",
   teachers: teachers.map((teacher) => teacher.name).join(","),
@@ -638,7 +640,12 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
     null,
   );
   const courses = coursesResult.results;
-  const publicCourses = courses.map(withPublicCourseCategory);
+  const publicCourses = groupEnglishLevelItems(
+    courses.map(withPublicCourseCategory) as Array<{
+      name: string;
+      [key: string]: unknown;
+    }>,
+  );
   const visibleSport = virtualPeSportForTeacherName(
     typeof (teacher as { name?: string }).name === "string"
       ? (teacher as { name: string }).name
@@ -646,7 +653,9 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
   );
   if (
     visibleSport &&
-    !publicCourses.some((course) => course.name === visibleSport.label)
+    !publicCourses.some(
+      (course) => course.name === virtualPeSportDisplayName(visibleSport),
+    )
   ) {
     publicCourses.push(
       virtualPeSportItem(visibleSport, [
@@ -772,7 +781,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
       course: {
         id: virtual.id,
         code: "",
-        name: virtual.label,
+        name: virtualPeSportDisplayName(virtual),
         category: "sports",
         department: "",
         teachers: typedTeachers.map((teacher) => ({

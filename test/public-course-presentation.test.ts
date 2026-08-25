@@ -5,12 +5,16 @@ import {
   isVirtualPeSportId,
   publicBrowseFamilySql,
   publicCourseCategory,
+  formatPeSkillDisplayName,
+  groupEnglishLevelItems,
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicEnglishFamilyLabel,
   publicEnglishFamilySql,
   publicOptionDisplayName,
+  publicPeSkillDisplayName,
   publicPeSkillLabel,
+  virtualPeSportDisplayName,
   isPublicListCategoryFilter,
   publicCategoryFilterError,
   publicCategoryFilterSql,
@@ -64,12 +68,17 @@ describe("public PE course presentation", () => {
     expect(publicPeSkillLabel("健身教练")).toBe("健美操");
     expect(publicPeSkillLabel("健身教练2")).toBe("健美操");
     expect(publicPeSkillLabel("竞技网球发展概论")).toBe(null);
-    expect(publicCourseDisplayName("击剑专项理论与实践1")).toBe("击剑");
-    expect(publicCourseDisplayName("健身教练")).toBe("健美操");
+    expect(publicPeSkillDisplayName("击剑专项理论与实践1")).toBe(
+      "体育1-4 [击剑]",
+    );
+    expect(publicCourseDisplayName("击剑专项理论与实践1")).toBe("体育1-4 [击剑]");
+    expect(publicCourseDisplayName("健身教练")).toBe("体育1-4 [健美操]");
+    expect(publicCourseDisplayName("乒乓球")).toBe("体育1-4 [乒乓球]");
     expect(publicCourseDisplayName("线性代数")).toBe("线性代数");
+    expect(formatPeSkillDisplayName("乒乓球")).toBe("体育1-4 [乒乓球]");
   });
 
-  it("collapses exact 大学英语 1–4 / I–IV onto 大学英语", () => {
+  it("keeps 大学英语 1–4 / I–IV as distinct 公开展示课名", () => {
     expect(publicEnglishFamilyLabel("大学英语1")).toBe("大学英语");
     expect(publicEnglishFamilyLabel("大学英语4")).toBe("大学英语");
     expect(publicEnglishFamilyLabel("大学英语I")).toBe("大学英语");
@@ -81,13 +90,32 @@ describe("public PE course presentation", () => {
     expect(publicEnglishFamilyLabel("大学英语I(艺体）")).toBe(null);
     expect(publicEnglishFamilyLabel("大学英语I（运训）")).toBe(null);
     expect(publicEnglishFamilyLabel("大学英语预备级")).toBe(null);
-    expect(publicCourseDisplayName("大学英语II")).toBe("大学英语");
+    expect(publicCourseDisplayName("大学英语II")).toBe("大学英语II");
+    expect(publicCourseDisplayName("大学英语1")).toBe("大学英语1");
     expect(publicCourseDisplayName("大学英语I(涉外)")).toBe("大学英语I(涉外)");
     expect(publicOptionDisplayName("大学英语II")).toBe("大学英语II");
-    expect(publicOptionDisplayName("击剑专项理论与实践1")).toBe("击剑");
+    expect(publicOptionDisplayName("击剑专项理论与实践1")).toBe("体育1-4 [击剑]");
     expect(publicEnglishFamilySql("c")).toContain("'大学英语I'");
     expect(publicEnglishFamilySql("c")).not.toContain("大学英语I(涉外)");
-    expect(publicBrowseFamilySql("c")).toContain("大学英语");
+    expect(publicBrowseFamilySql("c")).not.toContain("大学英语");
+    expect(publicBrowseFamilySql("c")).toContain("乒乓球");
+  });
+
+  it("groups one teacher’s 大学英语 1–4 together without folding them", () => {
+    const grouped = groupEnglishLevelItems([
+      { name: "大学英语II", teacher_id: 1, teacher_name: "甲" },
+      { name: "线性代数", teacher_id: 1, teacher_name: "甲" },
+      { name: "大学英语I", teacher_id: 2, teacher_name: "乙" },
+      { name: "大学英语I", teacher_id: 1, teacher_name: "甲" },
+      { name: "大学英语II", teacher_id: 2, teacher_name: "乙" },
+    ]);
+    expect(grouped.map((item) => `${item.name}:${item.teacher_name}`)).toEqual([
+      "大学英语I:甲",
+      "大学英语II:甲",
+      "大学英语I:乙",
+      "大学英语II:乙",
+      "线性代数:甲",
+    ]);
   });
 
   it("keeps sports SQL inside the public visibility gate", () => {
@@ -143,6 +171,12 @@ describe("public PE course presentation", () => {
   it("maps umbrella-only PE teachers onto visible sport names", () => {
     expect(virtualPeSportForTeacherName("黄丽萍")?.label).toBe("瑜伽");
     expect(virtualPeSportForTeacherName("刘春来")?.label).toBe("武术");
+    expect(
+      virtualPeSportDisplayName(virtualPeSportForTeacherName("黄丽萍")!),
+    ).toBe("体育1-4 [瑜伽]");
+    expect(
+      virtualPeSportDisplayName(virtualPeSportForTeacherName("刘春来")!),
+    ).toBe("体育1-4 [武术]");
     expect(isVirtualPeSportId(800001)).toBe(true);
     expect(isVirtualPeSportId(18101)).toBe(false);
     expect(publicCourseDisplayName("体育1")).toBe("体育1");
