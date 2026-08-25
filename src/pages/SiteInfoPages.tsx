@@ -78,7 +78,7 @@ export function AboutPage() {
 
 export function ContactPage() {
   return (
-    <SiteInfoPage title="联系我们">
+    <SiteInfoPage title="反馈问题">
       <p>
         功能建议、缺陷和站点问题，请优先在 GitHub 开
         issue，也可以发邮件。请走这些公开渠道，不要另找未公开的联系方式。
