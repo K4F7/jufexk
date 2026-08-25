@@ -1,6 +1,7 @@
 /**
  * 排课模拟 /schedule：教务驱动选课流程。
  * 协议闸门失败：只导入/导出版本化 DTO，页面加载不访问教务（Issue #540）。
+ * 只做电脑端；窄屏进入弹一次告示（Issue #565）。
  */
 import { Alert, Button, Card, Typography } from "@heroui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import { relationDetailHref } from "../components/CourseRelationRow";
 import { JwxtCourseBrowser } from "../components/JwxtCourseBrowser";
 import { JwxtSnapshotPanel } from "../components/JwxtSnapshotPanel";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { ScheduleMobileNotice } from "../components/ScheduleMobileNotice";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
@@ -236,6 +238,7 @@ export function SchedulePage() {
 
   return (
     <section>
+      <ScheduleMobileNotice />
       <header aria-label="排课模拟标题" className="mb-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

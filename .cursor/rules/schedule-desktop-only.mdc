@@ -1,0 +1,19 @@
+---
+description: 排课模拟只做电脑端，不要再适配手机
+alwaysApply: true
+---
+
+# 排课模拟：电脑端
+
+`/schedule` 只按电脑端布局交付。窄屏进入时沿用现有的一次 AlertDialog 告示，不要再为排课模拟做手机 UI。
+
+```tsx
+// ❌ 不要为周课表再做一套手机专用布局
+<ScheduleTimetable className="md:hidden" />
+
+// ✅ 保持电脑端课表；窄屏只弹一次「只支持电脑端」告示
+<ScheduleMobileNotice />
+<ScheduleTimetable courses={staged} />
+```
+
+现有窄屏防溢出可以保留。全站移动端优化不包含排课模拟。详见 `docs/adr/0030-schedule-desktop-only.md`。
