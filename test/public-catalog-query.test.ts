@@ -3,34 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   queryPublicCourseRelations,
   queryPublicCourses,
+  type PublicCatalogPage,
+  type PublicCourseListItem,
+  type PublicCourseListQuery,
+  type PublicRelationListItem,
+  type PublicRelationListQuery,
 } from "../src/public-catalog-query";
 import { CURRENT_SCORES } from "./review-score-fixtures";
 
 const department = "目录查询学院";
-
-type CourseRow = {
-  id: number;
-  name: string;
-  teachers?: string | null;
-  teacher_refs?: string | null;
-  review_count: number;
-};
-
-type RelationRow = {
-  course_id: number;
-  name: string;
-  teacher_id: number | null;
-  teacher_name: string | null;
-  rating: number | null;
-  review_count: number;
-  dimensionLabels: Array<{ id: string; label: string; option: string }> | null;
-  follow_count: number;
-  recommend_count: number;
-  not_recommend_count: number;
-  viewer_followed?: boolean;
-  viewer_recommended?: boolean;
-  viewer_not_recommended?: boolean;
-};
 
 async function insertTeacher(name: string, sourceLabel = name) {
   const result = await env.DB.prepare(
@@ -88,7 +69,9 @@ async function insertApprovedReview(input: {
     .run();
 }
 
-function courseQuery(overrides: Partial<Parameters<typeof queryPublicCourses>[1]> = {}) {
+function courseQuery(
+  overrides: Partial<PublicCourseListQuery> = {},
+): PublicCourseListQuery {
   return {
     page: 1,
     pageSize: 50,
@@ -96,14 +79,14 @@ function courseQuery(overrides: Partial<Parameters<typeof queryPublicCourses>[1]
     category: "",
     department: "",
     teacherId: null,
-    sort: "reviews" as const,
+    sort: "reviews",
     ...overrides,
   };
 }
 
 function relationQuery(
-  overrides: Partial<Parameters<typeof queryPublicCourseRelations>[1]> = {},
-) {
+  overrides: Partial<PublicRelationListQuery> = {},
+): PublicRelationListQuery {
   return {
     page: 1,
     pageSize: 50,
@@ -111,7 +94,7 @@ function relationQuery(
     category: "",
     department: "",
     teacherId: null,
-    sort: "reviews" as const,
+    sort: "reviews",
     ...overrides,
   };
 }
@@ -128,10 +111,11 @@ describe("公开目录查询 module", () => {
     await bindTeacher(courseId, firstId);
     await bindTeacher(courseId, secondId);
 
-    const page = await queryPublicCourses(
-      env.DB,
-      courseQuery({ q: secondTeacher, department }),
-    );
+    const page: PublicCatalogPage<PublicCourseListItem> =
+      await queryPublicCourses(
+        env.DB,
+        courseQuery({ q: secondTeacher, department }),
+      );
 
     expect(page).toMatchObject({
       page: 1,
@@ -139,14 +123,25 @@ describe("公开目录查询 module", () => {
       total: 1,
       pages: 1,
     });
-    const row = page.items.find((item) => item.name === courseName) as
-      | CourseRow
-      | undefined;
+    const row = page.items.find((item) => item.name === courseName);
     expect(row?.id).toBe(courseId);
     expect(row?.teachers?.split(",")).toEqual(
       expect.arrayContaining([firstTeacher, secondTeacher]),
     );
     expect(row).not.toHaveProperty("rating");
+
+    const byName = await queryPublicCourses(
+      env.DB,
+      courseQuery({ q: courseName, department, sort: "name" }),
+    );
+    expect(byName.items.map((item) => item.name)).toEqual([courseName]);
+
+    const sportsOnly = await queryPublicCourses(
+      env.DB,
+      courseQuery({ q: courseName, department, category: "sports" }),
+    );
+    expect(sportsOnly.items).toEqual([]);
+    expect(sportsOnly.total).toBe(0);
   });
 
   it("查询课程列表时，多词 AND 与通配符字面量保持原语义", async () => {
@@ -209,7 +204,7 @@ describe("公开目录查询 module", () => {
       viewerId,
     );
     expect(byTeacher.total).toBe(1);
-    const row = byTeacher.items[0] as RelationRow;
+    const row: PublicRelationListItem | undefined = byTeacher.items[0];
     expect(row).toMatchObject({
       course_id: courseId,
       name: courseName,

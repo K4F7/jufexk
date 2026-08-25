@@ -47,6 +47,8 @@ import {
 import {
   queryPublicCourseRelations,
   queryPublicCourses,
+  type PublicCourseListQuery,
+  type PublicRelationListQuery,
 } from "../public-catalog-query";
 import { handleLatestPublicReviews } from "../public-reviews-latest";
 import { decoratePublicReviews } from "../review-endorsements";
@@ -489,36 +491,32 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
   const teacherId = integer(c.req.query("teacherId"));
   if (cat && !isPublicListCategoryFilter(cat))
     return fail(c, publicCategoryFilterError());
-  if (clean(c.req.query("view"), 20) === "relations") {
-    const viewerId = await publicReviewViewerId(c);
-    const sortRaw = clean(c.req.query("sort"), 20);
-    const result = await queryPublicCourseRelations(
-      c.env.DB,
-      {
-        page,
-        pageSize: size,
-        q: search,
-        category: cat,
-        department,
-        teacherId,
-        sort:
-          sortRaw === "name" ? "name" : sortRaw === "rating" ? "rating" : "reviews",
-      },
-      viewerId,
-    );
-    if (!viewerId) setPublicCatalogCacheHeaders(c);
-    return c.json(result);
-  }
-  // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
-  const result = await queryPublicCourses(c.env.DB, {
+  const listQuery = {
     page,
     pageSize: size,
     q: search,
     category: cat,
     department,
     teacherId,
+  };
+  if (clean(c.req.query("view"), 20) === "relations") {
+    const viewerId = await publicReviewViewerId(c);
+    const sortRaw = clean(c.req.query("sort"), 20);
+    const query: PublicRelationListQuery = {
+      ...listQuery,
+      sort:
+        sortRaw === "name" ? "name" : sortRaw === "rating" ? "rating" : "reviews",
+    };
+    const result = await queryPublicCourseRelations(c.env.DB, query, viewerId);
+    if (!viewerId) setPublicCatalogCacheHeaders(c);
+    return c.json(result);
+  }
+  // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
+  const query: PublicCourseListQuery = {
+    ...listQuery,
     sort: clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews",
-  });
+  };
+  const result = await queryPublicCourses(c.env.DB, query);
   setPublicCatalogCacheHeaders(c);
   return c.json(result);
 });

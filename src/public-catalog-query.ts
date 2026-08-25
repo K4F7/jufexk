@@ -24,6 +24,7 @@ import {
 } from "./lib/public-course-presentation";
 import { relationDimensionKey } from "./lib/relation-four-dims";
 import { loadRelationDimensionLabels } from "./lib/relation-projections";
+import type { PublicDimensionLabel } from "./lib/review-schemes";
 import {
   ensurePublicListPrecomputes,
   publicCourseCanonicalJoin,
@@ -38,25 +39,19 @@ import { publicReviewBindingSql } from "./review-summary";
 export type PublicCourseListSort = "name" | "reviews";
 export type PublicRelationListSort = "name" | "rating" | "reviews";
 
-export type PublicCourseListQuery = {
+export type PublicCatalogListQuery<Sort extends string> = {
   page: number;
   pageSize: number;
   q: string;
   category: string;
   department: string;
   teacherId: number | null;
-  sort: PublicCourseListSort;
+  sort: Sort;
 };
 
-export type PublicRelationListQuery = {
-  page: number;
-  pageSize: number;
-  q: string;
-  category: string;
-  department: string;
-  teacherId: number | null;
-  sort: PublicRelationListSort;
-};
+export type PublicCourseListQuery = PublicCatalogListQuery<PublicCourseListSort>;
+export type PublicRelationListQuery =
+  PublicCatalogListQuery<PublicRelationListSort>;
 
 export type PublicCatalogPage<T> = {
   items: T[];
@@ -72,10 +67,9 @@ export type PublicCourseListItem = {
   name: string;
   category: string;
   department: string;
-  teachers: string;
-  teacher_refs: string;
+  teachers: string | null;
+  teacher_refs: string | null;
   review_count: number;
-  [key: string]: unknown;
 };
 
 export type PublicRelationListItem = {
@@ -88,7 +82,7 @@ export type PublicRelationListItem = {
   teacher_name: string | null;
   rating: number | null;
   review_count: number;
-  dimensionLabels: unknown;
+  dimensionLabels: PublicDimensionLabel[] | null;
 } & RelationSignalCounts &
   Partial<RelationSignalViewer>;
 
@@ -523,7 +517,9 @@ export async function queryPublicCourses(
     !query.category || query.category === "sports"
       ? await loadVirtualPeSportItems(db, searchTerms, teacherId, department)
       : [];
-  const listed = pageRows.items.map(withPublicCourseItem);
+  const listed = pageRows.items.map((row) =>
+    withPublicCourseItem(row as PublicCourseListItem),
+  );
   const extras = virtualItems.filter(
     (item) => !listed.some((row) => row.name === item.name),
   );
@@ -533,7 +529,7 @@ export async function queryPublicCourses(
       ? [...listed, ...extras].sort(byNameCodeId)
       : [...listed, ...extras];
   return {
-    items: (page === 1 ? firstPage : listed) as PublicCourseListItem[],
+    items: page === 1 ? firstPage : listed,
     page,
     pageSize: size,
     total: totalCount,
