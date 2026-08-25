@@ -15,13 +15,18 @@ export function CourseAiSummary({ summary }: { summary: RelationSummary }) {
   const [expanded, setExpanded] = useState(!collapsible);
   return (
     <section className="mb-6" aria-labelledby="course-ai-summary-heading">
-      <Typography
-        className="m-0 mb-2 text-[calc(17/15*1rem)] font-bold leading-snug"
-        id="course-ai-summary-heading"
-        type="h2"
-      >
-        AI 总结
-      </Typography>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <Typography
+          className="m-0 text-[calc(17/15*1rem)] font-bold leading-snug"
+          id="course-ai-summary-heading"
+          type="h2"
+        >
+          AI 总结
+        </Typography>
+        <Typography color="muted" type="body-xs">
+          AI 总结为根据点评内容自动生成，仅供参考
+        </Typography>
+      </div>
       <Surface variant="secondary" className="rounded-xl px-4 py-3">
         <div
           className={
