@@ -371,23 +371,34 @@ test("course detail defaults to the most-reviewed relation", async ({
     const style = getComputedStyle(el);
     const rect = el.getBoundingClientRect();
     const cardRect = card?.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const lineRects = [...range.getClientRects()];
+    const lastLine = lineRects.at(-1);
+    const statsRect = el.nextElementSibling?.getBoundingClientRect();
     return {
       text: el.textContent?.replace(/\s+/g, "") ?? "",
-      overflow: style.overflow,
-      overflowX: style.overflowX,
       whiteSpace: style.whiteSpace,
-      scrollWidth: el.scrollWidth,
-      clientWidth: el.clientWidth,
+      display: style.display,
       right: rect.right,
       cardRight: cardRect?.right ?? 0,
+      lastLineRight: lastLine?.right ?? 0,
+      lastLineBottom: lastLine?.bottom ?? 0,
+      statsLeft: statsRect?.left ?? 0,
+      statsBottom: statsRect?.bottom ?? 0,
     };
   });
   expect(longCourseBox.text).toBe(longCourseName);
   expect(longCourseBox.whiteSpace).not.toBe("nowrap");
-  expect(longCourseBox.scrollWidth).toBeLessThanOrEqual(
-    longCourseBox.clientWidth + 1,
-  );
+  expect(longCourseBox.display).toBe("inline");
   expect(longCourseBox.right).toBeLessThanOrEqual(longCourseBox.cardRight + 1);
+  expect(longCourseBox.statsLeft - longCourseBox.lastLineRight).toBeLessThan(16);
+  expect(
+    longCourseBox.statsLeft - longCourseBox.lastLineRight,
+  ).toBeGreaterThan(-2);
+  expect(
+    Math.abs(longCourseBox.statsBottom - longCourseBox.lastLineBottom),
+  ).toBeLessThan(6);
   await expect(
     aside.getByRole("link", { name: "← 返回课程目录" }),
   ).toHaveAttribute("href", "/courses");

@@ -164,15 +164,17 @@ function SideRelationRow({
   const stats = formatSideRelationStats(rating, count);
   return (
     <li className="min-w-0">
-      <span className="flex w-fit min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5">
+      <span className="min-w-0">
         <RouterAriaLink
-          className="h-auto max-w-full min-w-0 shrink-0 whitespace-normal break-words rounded-none!"
+          className="inline! whitespace-normal break-words rounded-none!"
           to={href}
         >
           {label}
         </RouterAriaLink>
         {stats ? (
-          <span className="tabular shrink-0 text-xs text-muted">{stats}</span>
+          <span className="whitespace-nowrap tabular text-xs text-muted">
+            {` ${stats}`}
+          </span>
         ) : null}
       </span>
       {code ? (
