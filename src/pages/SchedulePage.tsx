@@ -3,12 +3,10 @@
  * 协议闸门失败：只导入/导出版本化 DTO，页面加载不访问教务（Issue #540）。
  * 只做电脑端；窄屏进入弹一次告示（Issue #565）。
  */
-import { Alert, Button, Card, Typography } from "@heroui/react";
+import { Alert, Typography } from "@heroui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { relationDetailHref } from "../components/CourseRelationRow";
 import { JwxtCourseBrowser } from "../components/JwxtCourseBrowser";
 import { JwxtRefreshPanel } from "../components/JwxtRefreshPanel";
-import { RouterAriaLink } from "../components/RouterAriaLink";
 import { ScheduleMobileNotice } from "../components/ScheduleMobileNotice";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
 import { useViewer } from "../hooks/useViewer";
@@ -22,10 +20,10 @@ import {
   itemsOf,
   joinOffering,
   loadPlan,
+  mergeEnrolledRefresh,
   removeItem,
   savePlan,
   setIncluded,
-  type PlannedItem,
   type SchedulePlanV2,
 } from "../lib/jwxt-plan";
 import {
@@ -46,53 +44,6 @@ function upsertSnapshotList(current: JwxtSnapshotV1[], incoming: JwxtSnapshotV1)
     snapshots: [...current.filter((item) => snapshotSelectionKey(item) !== key), merged],
     merged,
   };
-}
-
-function PlanCard({
-  item,
-  canEdit,
-  onExclude,
-  onRemove,
-}: {
-  item: PlannedItem;
-  canEdit: boolean;
-  onExclude: () => void;
-  onRemove: () => void;
-}) {
-  const title = item.teacherName ? `${item.courseName}（${item.teacherName}）` : item.courseName;
-  const href = item.courseId > 0 ? relationDetailHref({ course_id: item.courseId, teacher_id: item.teacherId }) : "";
-  return (
-    <Card className="mb-3">
-      <Card.Header>
-        <Card.Title className="text-base">
-          {href ? (
-            <RouterAriaLink className="text-accent" to={href}>
-              {title}
-            </RouterAriaLink>
-          ) : (
-            title
-          )}
-        </Card.Title>
-        <Card.Description>
-          {item.courseCode || "无课号"}
-          {item.section ? ` · 班${item.section}` : ""}
-          {item.origin === "enrolled" ? " · 已选" : item.origin === "public" ? " · 公选" : item.origin === "legacy" ? " · 旧计划" : " · 计划内"}
-          {item.included ? "" : " · 已排除"}
-        </Card.Description>
-      </Card.Header>
-      <Card.Footer className="flex flex-wrap gap-2">
-        {item.origin === "enrolled" ? (
-          <Button size="sm" variant="ghost" onPress={() => canEdit && onExclude()}>
-            {item.included ? "排除" : "恢复"}
-          </Button>
-        ) : (
-          <Button size="sm" variant="danger" onPress={() => canEdit && onRemove()}>
-            移出课表
-          </Button>
-        )}
-      </Card.Footer>
-    </Card>
-  );
 }
 
 export function SchedulePage() {
@@ -119,8 +70,10 @@ export function SchedulePage() {
           let merged = snapshotsRef.current;
           for (const item of cached) merged = upsertSnapshotList(merged, item).snapshots;
           snapshotsRef.current = merged;
-          if (interactionVersion.current === startedAtVersion) {
-            setSnapshot((current) => current ?? merged[0] ?? null);
+          const first = merged[0];
+          if (interactionVersion.current === startedAtVersion && first) {
+            setSnapshot((current) => current ?? first);
+            setPlan((current) => mergeEnrolledRefresh(current, first));
           }
         }
       })
@@ -144,6 +97,11 @@ export function SchedulePage() {
   );
   const conflicts = useMemo(() => listConflicts(staged), [staged]);
 
+  function applySnapshot(next: JwxtSnapshotV1) {
+    setSnapshot(next);
+    setPlan((current) => mergeEnrolledRefresh(current, next));
+  }
+
   function handleFilters(patch: Partial<Pick<JwxtSnapshotV1, "term" | "educationLevel" | "grade" | "major">>) {
     if (!snapshot) return;
     interactionVersion.current += 1;
@@ -151,7 +109,7 @@ export function SchedulePage() {
     const cached = snapshotsRef.current.find(
       (item) => snapshotSelectionKey(item) === snapshotSelectionKey(selection),
     );
-    setSnapshot(cached ?? {
+    applySnapshot(cached ?? {
       ...selection,
       captured: [],
       enrolled: [],
@@ -170,6 +128,12 @@ export function SchedulePage() {
     setJoinError("");
     setPlan(result.plan);
     setNotice(result.swapped ? `已将${offering.courseName}换到班${offering.section || "新班次"}。` : `已加入${offering.courseName}。`);
+  }
+
+  function handleSave() {
+    if (!canEdit) return;
+    savePlan(plan);
+    setNotice("课表已保存到本机。");
   }
 
   return (
@@ -226,11 +190,11 @@ export function SchedulePage() {
         </Alert>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+      <div className="flex flex-col gap-8">
         <div className="min-w-0">
           {cacheReady && !snapshot ? (
             <p className="text-sm text-muted" role="status">
-              还没有教务数据。点「刷新教务数据」后，再按年级、专业浏览已选、计划内和公共选修。
+              还没有教务数据。点「刷新教务数据」后，先选择年级和专业，再从选课列表处理课程。
             </p>
           ) : snapshot ? (
             <JwxtCourseBrowser
@@ -242,32 +206,13 @@ export function SchedulePage() {
               onToggle={(item, included) =>
                 setPlan(setIncluded(plan, item.key, included, item.termId))
               }
+              onRemove={(item) => setPlan(removeItem(plan, item.key, item.termId))}
+              onSave={handleSave}
             />
           ) : (
             <p className="text-sm text-muted" role="status">
               正在读取本机缓存…
             </p>
-          )}
-
-          <Typography className="mb-2 mt-6 text-sm font-semibold" type="h2">
-            本学期计划
-          </Typography>
-          {termItems.length === 0 ? (
-            <p className="text-sm text-muted" role="status">
-              计划还是空的。从已选或候选里加入开课班。
-            </p>
-          ) : (
-            <div aria-label="本学期计划" role="region">
-              {termItems.map((item) => (
-                <PlanCard
-                  key={item.key}
-                  item={item}
-                  canEdit={canEdit}
-                  onExclude={() => setPlan(setIncluded(plan, item.key, !item.included, item.termId))}
-                  onRemove={() => setPlan(removeItem(plan, item.key, item.termId))}
-                />
-              ))}
-            </div>
           )}
         </div>
 

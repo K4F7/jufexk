@@ -3,15 +3,26 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import iconv from "iconv-lite";
 import { describe, expect, it } from "vitest";
-import { offeringKey } from "../src/lib/jwxt-offering";
+import {
+  isJwxtPlaceholderOption,
+  JWXT_MAJOR_REQUIRED_MESSAGE,
+  offeringKey,
+} from "../src/lib/jwxt-offering";
 import {
   jwxtSnapshotBookmarkletSource,
   parseJwxtBookmarkletMeetings,
 } from "../src/lib/jwxt-import-bookmarklet";
 import {
+  planStatusLabel,
+  requiredElectiveLabel,
+  snapshotSectionsForCourse,
+  uniquePlanCourses,
+} from "../src/lib/jwxt-course-rows";
+import {
   emptyPlan,
   joinOffering,
   mergeEnrolledRefresh,
+  offeringToItem,
   parsePlan,
   setIncluded,
 } from "../src/lib/jwxt-plan";
@@ -80,6 +91,8 @@ describe("jwxt table fixtures", () => {
       majors: [],
       categories: [],
     });
+    expect(parsed.gradeSelect.present).toBe(false);
+    expect(parsed.majorSelect.present).toBe(false);
     expect(parsed.pagination).toMatchObject({ tableId: "S2020302", total: 1 });
     expect(parsed.offerings).toHaveLength(1);
     expect(parsed.offerings[0]).toMatchObject({
@@ -151,6 +164,23 @@ describe("jwxt table fixtures", () => {
       const pageTwo = snapshotFromHtml(readFixture("pagination-page2.html"), "planned", pageOne.snapshot);
       expect(pageTwo.ok && pageTwo.snapshot.planned).toHaveLength(3);
     }
+  });
+
+  it("drops 请选择 placeholders and refuses unselected planned HTML", () => {
+    expect(isJwxtPlaceholderOption("", "请选择专业")).toBe(true);
+    expect(isJwxtPlaceholderOption("MA", "数学与应用数学")).toBe(false);
+    const parsed = parseJwxtTableHtml(readFixture("s2020103-unselected.html"));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.filters.grades.map((item) => item.id)).toEqual(["2024"]);
+    expect(parsed.filters.majors.map((item) => item.id)).toEqual(["MA"]);
+    expect(parsed.gradeSelect.selected).toBeNull();
+    expect(parsed.majorSelect.selected).toBeNull();
+    expect(snapshotFromHtml(readFixture("s2020103-unselected.html"), "planned")).toMatchObject({
+      ok: false,
+      kind: "malformed",
+      message: JWXT_MAJOR_REQUIRED_MESSAGE,
+    });
   });
 
   it("round-trips fixtures through GBK without replacement characters", () => {
@@ -274,6 +304,8 @@ describe("snapshot import/export", () => {
     expect(source).toContain('if (planned.length) captured.push("planned")');
     expect(source).toContain('if (publicElectives.length) captured.push("public")');
     expect(source).toContain("2*1024*1024");
+    expect(source).toContain(JWXT_MAJOR_REQUIRED_MESSAGE);
+    expect(source).toContain("selectedReal");
   });
 
   it("recognizes S2020302 bracket schedules in the browser exporter", () => {
@@ -426,5 +458,39 @@ describe("plan v2", () => {
       termId,
     );
     expect(blocked.ok).toBe(false);
+  });
+});
+
+describe("jwxt course rows", () => {
+  it("dedupes plan courses and lists snapshot sections", () => {
+    const termId = "2025-2026-2";
+    const enrolled = offeringToItem(offering({
+      courseCode: "10100001",
+      courseName: "高等数学",
+      section: "01",
+      categoryPath: "公共必修/高等数学",
+    }), termId, "enrolled", false);
+    const planned = offeringToItem(offering({
+      courseCode: "10100001",
+      courseName: "高等数学",
+      section: "03",
+    }), termId, "planned", true);
+    const publicItem = offeringToItem(offering({
+      courseCode: "30100001",
+      courseName: "书法鉴赏",
+      section: "01",
+      categoryPath: "公共选修/艺术",
+    }), termId, "public", true);
+    expect(requiredElectiveLabel(enrolled.categoryPath, enrolled.origin)).toBe("必");
+    expect(requiredElectiveLabel(publicItem.categoryPath, publicItem.origin)).toBe("选");
+    expect(planStatusLabel(enrolled)).toBe("已排除");
+    expect(uniquePlanCourses([enrolled, planned]).map((item) => item.section)).toEqual(["03"]);
+    const snapshot = {
+      ...emptySnapshot(),
+      enrolled: [offering({ courseCode: "10100001", courseName: "高等数学", section: "01" })],
+      planned: [offering({ courseCode: "10100001", courseName: "高等数学", section: "03" })],
+    };
+    expect(snapshotSectionsForCourse(snapshot, "10100001", false)).toHaveLength(1);
+    expect(snapshotSectionsForCourse(snapshot, "10100001", true).map((item) => item.section)).toEqual(["01", "03"]);
   });
 });

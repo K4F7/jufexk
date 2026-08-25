@@ -3,6 +3,7 @@
  * 动态表头、rowspan、分页与登录失效全部失败关闭；不读 Cookie。
  */
 import {
+  isJwxtPlaceholderOption,
   looksLikeForbidden,
   normalizeOffering,
   parseCount,
@@ -27,12 +28,21 @@ export type JwxtTableFilters = {
   categories: JwxtCategoryOption[];
 };
 
+export type JwxtSelectParse = {
+  present: boolean;
+  hasPlaceholder: boolean;
+  options: JwxtFilterOption[];
+  selected: JwxtFilterOption | null;
+};
+
 export type JwxtTableParse =
   | {
       ok: true;
       offerings: JwxtOffering[];
       pagination: JwxtPagination | null;
       filters: JwxtTableFilters;
+      gradeSelect: JwxtSelectParse;
+      majorSelect: JwxtSelectParse;
     }
   | { ok: false; kind: "login-expired"; message: string }
   | { ok: false; kind: "malformed"; message: string };
@@ -149,11 +159,11 @@ function cell(row: string[], index: number) {
   return index >= 0 ? row[index] || "" : "";
 }
 
-function emptyFilters(): JwxtTableFilters {
-  return { terms: [], educationLevels: [], grades: [], majors: [], categories: [] };
+function emptySelect(): JwxtSelectParse {
+  return { present: false, hasPlaceholder: false, options: [], selected: null };
 }
 
-function optionList(html: string, names: string[]): JwxtFilterOption[] {
+function parseSelect(html: string, names: string[]): JwxtSelectParse {
   const select = names
     .map((name) => {
       const named = new RegExp(
@@ -162,17 +172,37 @@ function optionList(html: string, names: string[]): JwxtFilterOption[] {
       ).exec(html);
       return named?.[1];
     })
-    .find(Boolean);
-  if (!select) return [];
+    .find((inner) => inner != null);
+  if (select == null) return emptySelect();
   const options: JwxtFilterOption[] = [];
+  let implicit: JwxtFilterOption | null = null;
+  let explicit: JwxtFilterOption | null = null;
+  let hasPlaceholder = false;
   for (const match of select.matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/gi)) {
     const value = /value\s*=\s*["']([^"']*)["']/i.exec(match[1])?.[1] ?? textOf(match[2]);
     const label = textOf(match[2]);
-    if (!value && !label) continue;
+    const markedSelected = /\bselected\b/i.test(match[1]);
     if (looksLikeForbidden(value) || looksLikeForbidden(label)) continue;
-    options.push({ id: value || label, label: label || value });
+    if (isJwxtPlaceholderOption(value, label)) {
+      hasPlaceholder = true;
+      continue;
+    }
+    if (!value && !label) continue;
+    const option = { id: value || label, label: label || value };
+    options.push(option);
+    if (!implicit) implicit = option;
+    if (markedSelected) explicit = option;
   }
-  return options;
+  return {
+    present: true,
+    hasPlaceholder,
+    options,
+    selected: explicit ?? (hasPlaceholder ? null : implicit),
+  };
+}
+
+function optionList(html: string, names: string[]): JwxtFilterOption[] {
+  return parseSelect(html, names).options;
 }
 
 function categoryOptions(html: string): JwxtCategoryOption[] {
@@ -267,11 +297,13 @@ export function parseJwxtTableHtml(html: string): JwxtTableParse {
       return { ok: false, kind: "login-expired", message: "教务登录已失效" };
     }
   }
+  const gradeSelect = parseSelect(html, ["nj", "grade"]);
+  const majorSelect = parseSelect(html, ["zy", "major"]);
   const filters: JwxtTableFilters = {
     terms: optionList(html, ["xnxq", "xq", "term"]),
     educationLevels: optionList(html, ["pycc", "xslb", "level"]),
-    grades: optionList(html, ["nj", "grade"]),
-    majors: optionList(html, ["zy", "major"]),
+    grades: gradeSelect.options,
+    majors: majorSelect.options,
     categories: categoryOptions(html),
   };
   const tables = html.match(/<table\b[\s\S]*?<\/table>/gi) ?? [];
@@ -296,5 +328,7 @@ export function parseJwxtTableHtml(html: string): JwxtTableParse {
     offerings,
     pagination: parsePagination(html),
     filters,
+    gradeSelect,
+    majorSelect,
   };
 }
