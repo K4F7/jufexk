@@ -4,6 +4,8 @@ import {
   GITHUB_ISSUES_URL,
   GITHUB_REPO_URL,
   SITE_OFFICIAL_CHANNELS,
+  STATUS_PAGE_URL,
+  statusBadgeUrl,
 } from "../../src/lib/site-links";
 
 async function mockPublicApi(page: Page) {
@@ -74,8 +76,19 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "使用条款" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "公告" })).toBeVisible();
   await expect(footerNav.getByRole("link", { name: "管理" })).toBeVisible();
+  const status = footerNav.getByRole("link", { name: "系统状态" });
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute("href", STATUS_PAGE_URL);
+  await expect(status).toHaveAttribute("target", "_blank");
+  await expect(status).toHaveAttribute("rel", /noreferrer/);
+  const badge = footer.getByTitle("系统运行状态");
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveAttribute("src", /\/badge\?theme=(light|dark)$/);
+  expect([statusBadgeUrl("light"), statusBadgeUrl("dark")]).toContain(
+    await badge.getAttribute("src"),
+  );
   const separators = footerNav.locator('[data-slot="separator"]');
-  await expect(separators).toHaveCount(6);
+  await expect(separators).toHaveCount(7);
   for (const separator of await separators.all()) {
     await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
   }

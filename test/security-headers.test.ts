@@ -7,6 +7,7 @@ import {
   CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN,
   HEROUI_AVATAR_ASSETS_ORIGIN,
 } from "../src/security-headers";
+import { STATUS_PAGE_URL } from "../src/lib/site-links";
 import assetHeaders from "../public/_headers?raw";
 
 const origin = "https://example.com";
@@ -44,6 +45,7 @@ describe("public asset CSP", () => {
     ]);
     expect(cspDirectiveSources(policy, "frame-src")).toEqual([
       "https://challenges.cloudflare.com",
+      STATUS_PAGE_URL,
     ]);
     expect(cspDirectiveSources(policy, "img-src")).toEqual([
       "'self'",
