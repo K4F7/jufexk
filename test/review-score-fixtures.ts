@@ -73,7 +73,7 @@ export const V3_QUESTIONS = [...TIER3_QUESTIONS, ATTENDANCE_QUESTION] as const;
 
 export const V3_IDS = V3_QUESTIONS.map((question) => question.id);
 
-/** Latest-version scores for an offline course: v3, attendance included. */
+/** Historical v3 offline snapshot: four three-tier scores plus 考勤松紧. New submits use CURRENT_SCORES. */
 export const V3_OFFLINE_SCORES = {
   ...CURRENT_SCORES,
   attendance: 2,

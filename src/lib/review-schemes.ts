@@ -182,6 +182,11 @@ const scheme = (key: SchemeKey, label: string): SchemeDef => ({
       dimensions: V3_CORE_DIMENSIONS,
       averagesDimensions: false,
     },
+    {
+      version: 4,
+      dimensions: TIER3_CORE_DIMENSIONS,
+      averagesDimensions: false,
+    },
   ],
 });
 
@@ -465,7 +470,7 @@ export function dimensionAverage(scores: Record<string, number>): number | null 
 /**
  * Public-feed average: only rows with a stored scheme snapshot whose
  * published version still averages its dimensions. The current
- * three-tier questions (v2 四维、v3 四维加考勤) are not averaged.
+ * three-tier questions (v2/v4 四维、v3 四维加考勤) are not averaged.
  */
 export function publicDimensionAverage(input: {
   schemeKey?: unknown;

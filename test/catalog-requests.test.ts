@@ -4,10 +4,9 @@ import { adminLogin as login, adminHeaders } from "./admin-session";
 import { hmacHex } from "../src/ordinary-user-session";
 import {
   CURRENT_SCORES,
+  CURRENT_SCORES_JSON,
   REQUIRED_NOTE,
   V1_OFFLINE_SCORES,
-  V3_OFFLINE_SCORES,
-  V3_OFFLINE_SCORES_JSON,
 } from "./review-score-fixtures";
 import {
   ordinaryWriteHeaders,
@@ -230,7 +229,7 @@ describe("catalog addition requests", () => {
         overall: 5,
         comment: "随申请一起提交的评价",
         term: "2025 秋",
-        scores: V3_OFFLINE_SCORES,
+        scores: CURRENT_SCORES,
         schemeKey: "pe",
       },
     });
@@ -275,8 +274,8 @@ describe("catalog addition requests", () => {
       course_id: catalogBody.items[0].id,
       term: "2025 秋",
       scheme_key: "major",
-      scheme_version: 3,
-      scores: V3_OFFLINE_SCORES_JSON,
+      scheme_version: 4,
+      scores: CURRENT_SCORES_JSON,
       author_user_id: await hmacHex(
         "ordinary-test-user:catalog-request-writer",
         ORDINARY_TEST_AUTH_SECRET,
@@ -311,7 +310,7 @@ describe("catalog addition requests", () => {
       review: {
         overall: 5,
         comment: "123456789",
-        scores: V3_OFFLINE_SCORES,
+        scores: CURRENT_SCORES,
       },
     });
     expect(response.status).toBe(400);
@@ -534,7 +533,7 @@ describe("catalog addition requests", () => {
       review: {
         overall: 5,
         comment: "并发审批只应创建一次",
-        scores: V3_OFFLINE_SCORES,
+        scores: CURRENT_SCORES,
       },
     });
     const { id } = await submitted.json<{ id: number }>();
