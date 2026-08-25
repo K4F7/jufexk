@@ -98,7 +98,7 @@ export function ContactPage() {
 
 export function ResourcesPage() {
   return (
-    <SiteInfoPage title="资源">
+    <SiteInfoPage title="友情链接">
       <p>本站源码与 issue 在 GitHub 公开：</p>
       <p>
         <ExternalLink href={GITHUB_REPO_URL}>{GITHUB_REPO_URL}</ExternalLink>
