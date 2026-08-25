@@ -11,11 +11,39 @@ const USER_AGENT = "jufexk-jwxt-collector/1.0 (+https://github.com/K4F7/jufexk)"
 
 export class UnsupportedJwxtAuthenticationError extends Error {}
 export class JwxtAuthenticationError extends Error {}
+export class JwxtCookieExpiredError extends UnsupportedJwxtAuthenticationError {}
 
 type FetchLike = typeof fetch;
 
 function cookieHeader(cookies: Map<string, string>) {
   return [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
+const COOKIE_NAME = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+const MAX_COOKIE_HEADER_LENGTH = 4_096;
+
+export function parseJwxtCookieHeader(raw: string) {
+  const value = raw.trim();
+  if (!value || value.length > MAX_COOKIE_HEADER_LENGTH || /[\r\n]/.test(value)) {
+    throw new JwxtAuthenticationError("jwxt_cookie_invalid");
+  }
+  const cookies = new Map<string, string>();
+  for (const part of value.split(";")) {
+    const item = part.trim();
+    if (!item) continue;
+    const equals = item.indexOf("=");
+    if (equals <= 0) throw new JwxtAuthenticationError("jwxt_cookie_invalid");
+    const name = item.slice(0, equals).trim();
+    const cookieValue = item.slice(equals + 1).trim();
+    if (!COOKIE_NAME.test(name) || !cookieValue || /[\r\n]/.test(cookieValue)) {
+      throw new JwxtAuthenticationError("jwxt_cookie_invalid");
+    }
+    cookies.set(name, cookieValue);
+  }
+  if (!cookies.has("JSESSIONID")) {
+    throw new JwxtAuthenticationError("jwxt_cookie_missing_jsessionid");
+  }
+  return cookies;
 }
 
 function captureCookies(cookies: Map<string, string>, response: Response) {
@@ -38,15 +66,16 @@ function fixedJwxtUrl(raw: string, base = JWXT_ORIGIN) {
   return url.toString();
 }
 
-export class JwxtAuthAdapter {
-  private cookies = new Map<string, string>();
+abstract class JwxtSessionAdapter {
+  protected constructor(
+    protected readonly cookies: Map<string, string>,
+    protected readonly fetchImpl: FetchLike,
+    private readonly canRelogin: boolean,
+  ) {}
+
   private loginPromise: Promise<void> | null = null;
 
-  constructor(
-    private readonly username: string,
-    private readonly password: string,
-    private readonly fetchImpl: FetchLike = fetch,
-  ) {}
+  protected abstract establishSession(): Promise<void>;
 
   private async followTicket(location: string) {
     let url = fixedJwxtUrl(location);
@@ -70,12 +99,12 @@ export class JwxtAuthAdapter {
     }
   }
 
-  private async loginOnce() {
+  protected async establishPasswordSession(username: string, password: string) {
     const preparation = await prepareEhallLogin();
     if (!preparation) throw new JwxtAuthenticationError("ehall_protocol_changed");
     const result = await startCasPasswordLogin(
-      this.username,
-      this.password,
+      username,
+      password,
       preparation.casServiceUrl,
     );
     if (!result.ok) {
@@ -102,7 +131,7 @@ export class JwxtAuthAdapter {
 
   async login() {
     if (!this.loginPromise) {
-      this.loginPromise = this.loginOnce().finally(() => {
+      this.loginPromise = this.establishSession().finally(() => {
         this.loginPromise = null;
       });
     }
@@ -126,6 +155,9 @@ export class JwxtAuthAdapter {
     const expired =
       response.status === 401 ||
       /ssl\.jxufe\.edu\.cn\/cas\/login|\/cas\/login\.action/i.test(location);
+    if (expired && !this.canRelogin) {
+      throw new JwxtCookieExpiredError("jwxt_cookie_expired");
+    }
     if (expired && allowRelogin) {
       this.cookies.clear();
       await this.login();
@@ -135,3 +167,30 @@ export class JwxtAuthAdapter {
   }
 }
 
+export class JwxtAuthAdapter extends JwxtSessionAdapter {
+  constructor(
+    private readonly username: string,
+    private readonly password: string,
+    fetchImpl: FetchLike = fetch,
+  ) {
+    super(new Map(), fetchImpl, true);
+  }
+
+  protected establishSession() {
+    return this.establishPasswordSession(this.username, this.password);
+  }
+}
+
+/**
+ * Uses a browser-exported Cookie header for manual or scheduled collection.
+ * It deliberately cannot perform a password login or refresh an expired cookie.
+ */
+export class JwxtCookieAuthAdapter extends JwxtSessionAdapter {
+  constructor(rawCookie: string, fetchImpl: FetchLike = fetch) {
+    super(parseJwxtCookieHeader(rawCookie), fetchImpl, false);
+  }
+
+  protected establishSession(): Promise<void> {
+    return Promise.reject(new JwxtCookieExpiredError("jwxt_cookie_expired"));
+  }
+}

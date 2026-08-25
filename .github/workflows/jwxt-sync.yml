@@ -76,6 +76,8 @@ jobs:
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
       - name: Collect and redact JWXT capture
+        env:
+          JWXT_COOKIE: ${{ secrets.JWXT_COOKIE }}
         run: |
           mkdir -p .local-data/jwxt-sync
           if [[ "${{ steps.mode.outputs.mode }}" == "resume" ]]; then
