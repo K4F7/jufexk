@@ -2,6 +2,7 @@ import { Button, Card, Label, ListBox, Modal, Select, Table, Tabs, Typography } 
 import { useEffect, useMemo, useState } from "react";
 import { relationDetailHref } from "./CourseRelationRow";
 import { RouterAriaLink } from "./RouterAriaLink";
+import { displaySection } from "../lib/catalog-schedule";
 import {
   planStatusLabel,
   requiredElectiveLabel,
@@ -68,14 +69,12 @@ function OfferingTable({
   offerings,
   termId,
   planItems,
-  canEdit,
   onJoin,
 }: {
   label: string;
   offerings: JwxtOffering[];
   termId: string;
   planItems: PlannedItem[];
-  canEdit: boolean;
   onJoin: (offering: JwxtOffering) => void;
 }) {
   const [sourceCategory, setSourceCategory] = useState("");
@@ -140,10 +139,10 @@ function OfferingTable({
                     <Table.Cell>
                       {offering.teacherName || "—"}
                     </Table.Cell>
-                    <Table.Cell>{offering.section || "—"}</Table.Cell>
+                    <Table.Cell>{displaySection(offering.section)}</Table.Cell>
                     <Table.Cell>{offering.weekText || "—"}</Table.Cell>
                     <Table.Cell>
-                      <div>{offering.timeText || "无固定时间"}</div>
+                      <div>{offering.timeText || "暂无上课时间"}</div>
                     </Table.Cell>
                     <Table.Cell>
                       <div>{offering.place || "—"}</div>
@@ -177,10 +176,7 @@ function OfferingTable({
                         <Button
                           size="sm"
                           variant="secondary"
-                          onPress={() => {
-                            if (!canEdit) return;
-                            onJoin(offering);
-                          }}
+                          onPress={() => onJoin(offering)}
                         >
                           {sameCourse ? "换班" : "加入课表"}
                         </Button>
@@ -202,13 +198,11 @@ function SectionTable({
   offerings,
   termId,
   planItems,
-  canEdit,
   onJoin,
 }: {
   offerings: JwxtOffering[];
   termId: string;
   planItems: PlannedItem[];
-  canEdit: boolean;
   onJoin: (offering: JwxtOffering) => void;
 }) {
   if (offerings.length === 0) {
@@ -238,11 +232,11 @@ function SectionTable({
               const sameCourse = findSameCourse(planItems, offering.courseCode);
               return (
                 <Table.Row key={key || `section-${index}`} id={key || `section-${index}`}>
-                  <Table.Cell>{offering.section || "—"}</Table.Cell>
+                  <Table.Cell>{displaySection(offering.section)}</Table.Cell>
                   <Table.Cell>{offering.teacherName || "—"}</Table.Cell>
                   <Table.Cell>{offering.campus || "—"}</Table.Cell>
                   <Table.Cell>
-                    {[offering.weekText, offering.timeText, offering.place].filter(Boolean).join(" ") || "无固定时间"}
+                    {[offering.weekText, offering.timeText, offering.place].filter(Boolean).join(" ") || "暂无上课时间"}
                   </Table.Cell>
                   <Table.Cell>{offering.enrollStatus || (existing ? "已加入" : "未选")}</Table.Cell>
                   <Table.Cell>
@@ -269,10 +263,7 @@ function SectionTable({
                       <Button
                         size="sm"
                         variant="secondary"
-                        onPress={() => {
-                          if (!canEdit) return;
-                          onJoin(offering);
-                        }}
+                        onPress={() => onJoin(offering)}
                       >
                         {sameCourse ? "换班" : "加入课表"}
                       </Button>
@@ -291,8 +282,9 @@ function SectionTable({
 export function JwxtCourseBrowser({
   snapshot,
   planItems,
-  canEdit,
+  candidatesReady,
   onFilters,
+  onSelectedCourseChange,
   onJoin,
   onToggle,
   onRemove,
@@ -300,8 +292,9 @@ export function JwxtCourseBrowser({
 }: {
   snapshot: JwxtSnapshotV1;
   planItems: PlannedItem[];
-  canEdit: boolean;
+  candidatesReady?: boolean;
   onFilters: (patch: Partial<Pick<JwxtSnapshotV1, "term" | "educationLevel" | "grade" | "major">>) => void;
+  onSelectedCourseChange?: (courseCode: string) => void;
   onJoin: (offering: JwxtOffering, origin: "planned" | "public") => void;
   onToggle: (item: PlannedItem, included: boolean) => void;
   onRemove: (item: PlannedItem) => void;
@@ -309,7 +302,7 @@ export function JwxtCourseBrowser({
 }) {
   const termId = snapshot.term.id;
   const gradeReady = snapshot.grades.length === 0 || isJwxtFilterSelected(snapshot.grade);
-  const canBrowseCandidates = jwxtCandidateFiltersReady(snapshot);
+  const canBrowseCandidates = candidatesReady ?? jwxtCandidateFiltersReady(snapshot);
   const courseRows = uniquePlanCourses(planItems);
   const [selectedCode, setSelectedCode] = useState(courseRows[0]?.courseCode ?? "");
   const [pickOpen, setPickOpen] = useState(false);
@@ -319,12 +312,14 @@ export function JwxtCourseBrowser({
     setSelectedCode(courseRows[0]?.courseCode ?? "");
   }, [courseRows, selectedCode]);
 
+  useEffect(() => {
+    if (selectedCode) onSelectedCourseChange?.(selectedCode);
+  }, [selectedCode]);
+
   const selectedCourse = courseRows.find((item) => item.courseCode === selectedCode);
   const selectedSections = snapshotSectionsForCourse(snapshot, selectedCode, canBrowseCandidates);
   const joinOrigin = (offering: JwxtOffering): "planned" | "public" => (
-    snapshot.publicElectives.some((item) => (
-      item.courseCode === offering.courseCode && item.section === offering.section
-    ))
+    snapshot.publicElectives.some((item) => item.courseCode === offering.courseCode)
       ? "public"
       : "planned"
   );
@@ -379,7 +374,7 @@ export function JwxtCourseBrowser({
       </div>
       {!canBrowseCandidates ? (
         <p className="text-sm text-muted" role="status">
-          请先选择专业，再浏览计划内和公共选修。已选结果可先查看。
+          请先选择年级和专业，再浏览计划内和公共选修。已加入的课可先查看。
         </p>
       ) : null}
       <div aria-label="课程与开课班" className="flex flex-col gap-4 lg:flex-row" role="region">
@@ -398,7 +393,6 @@ export function JwxtCourseBrowser({
               <Button
                 size="sm"
                 variant="primary"
-                isDisabled={!canEdit}
                 onPress={onSave}
               >
                 保存课表
@@ -435,7 +429,7 @@ export function JwxtCourseBrowser({
                             </Button>
                             <div className="text-sm text-muted">
                               {item.courseCode}
-                              {item.section ? ` · 班${item.section}` : ""}
+                              {item.section && displaySection(item.section) !== "—" ? ` · 班${displaySection(item.section)}` : ""}
                             </div>
                           </Table.Cell>
                           <Table.Cell>{item.credits ?? "—"}</Table.Cell>
@@ -447,7 +441,7 @@ export function JwxtCourseBrowser({
                               <Button
                                 size="sm"
                                 variant={item.included ? "ghost" : "secondary"}
-                                onPress={() => canEdit && onToggle(item, !item.included)}
+                                onPress={() => onToggle(item, !item.included)}
                               >
                                 {item.included ? "排除" : "恢复"}
                               </Button>
@@ -455,7 +449,7 @@ export function JwxtCourseBrowser({
                               <Button
                                 size="sm"
                                 variant="danger"
-                                onPress={() => canEdit && onRemove(item)}
+                                onPress={() => onRemove(item)}
                               >
                                 移出课表
                               </Button>
@@ -481,7 +475,6 @@ export function JwxtCourseBrowser({
               offerings={selectedSections}
               termId={termId}
               planItems={planItems}
-              canEdit={canEdit}
               onJoin={(offering) => onJoin(offering, joinOrigin(offering))}
             />
           </Card.Content>
@@ -515,7 +508,6 @@ export function JwxtCourseBrowser({
                     offerings={snapshot.planned}
                     termId={termId}
                     planItems={planItems}
-                    canEdit={canEdit}
                     onJoin={(offering) => onJoin(offering, "planned")}
                   />
                 </Tabs.Panel>
@@ -525,7 +517,6 @@ export function JwxtCourseBrowser({
                     offerings={snapshot.publicElectives}
                     termId={termId}
                     planItems={planItems}
-                    canEdit={canEdit}
                     onJoin={(offering) => onJoin(offering, "public")}
                   />
                 </Tabs.Panel>

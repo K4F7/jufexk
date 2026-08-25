@@ -79,7 +79,7 @@ _Avoid_: 实时镜像、常驻爬虫
 _Avoid_: 公开开课班列表、教学班、全校课表
 
 **教务快照（Jwxt snapshot）**：
-版本化、可导入导出的本机 JSON，包含学期/培养层次/年级/专业/课程类别字典、已选开课班、计划内候选与公共选修。协议闸门未通过前，这是排课模拟的唯一教务数据入口；来源教师名属于开课班字段，JSON 不得含 Cookie、学生学号或学生姓名。
+版本化、可导入导出的本机 JSON，包含学期/培养层次/年级/专业/课程类别字典、已选开课班、计划内候选与公共选修。`/schedule` 的默认路径改走本站公开目录，不再要求导入快照或刷新教务；快照代码仍保留，但不挡住空页。来源教师名属于开课班字段，JSON 不得含 Cookie、学生学号或学生姓名。
 _Avoid_: Worker 半可用代理、凭据表、Cookie 导出
 
 **校园教务代理会话（Campus JWXT proxy session）**：
@@ -95,11 +95,11 @@ _Avoid_: 本站已收藏、本地候选、退课记录
 _Avoid_: 退课、删除教务已选、隐藏公开课程
 
 **排课模拟（Schedule simulation）**：
-`/schedule` 上的本机周课表编排。只按电脑端交付，不另做手机布局；窄屏进入时弹一次「只支持电脑端」告示。
+`/schedule` 上的本机周课表编排。专业选择和选课列表默认用本站公开目录（院系、课程×教师、可选开课班 schedule）；没有上课时间就诚实留空。只按电脑端交付，不另做手机布局；窄屏进入时弹一次「只支持电脑端」告示。
 _Avoid_: 手机课表、第二套移动端排课 UI
 
 **本地课表计划（Local schedule plan）**：
-排课模拟在本机保存的学期分桶计划（v2）。条目带 `origin=enrolled|planned|public|legacy`、`included` 与稳定键 `term+courseCode+section`。小型计划放 localStorage，候选与教务快照放 IndexedDB。v1 手填计划自动迁成 `legacy`。
+排课模拟在本机保存的学期分桶计划（v2）。条目带 `origin=enrolled|planned|public|legacy`、`included` 与稳定键 `term+courseCode+section`。小型计划放 localStorage。默认候选来自公开目录；教务快照若仍在 IndexedDB 也不再挡住空页。v1 手填计划自动迁成 `legacy`。
 _Avoid_: 服务器课表、公开课表镜像
 
 **教务浏览器导入（Jwxt browser import）**：
