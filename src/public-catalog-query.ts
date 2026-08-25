@@ -1,18 +1,20 @@
-import type { Context } from "hono";
 import { isAsciiLetterTerm } from "./lib/catalog-pinyin";
+import {
+  extraMergedIndexes,
+  mergedNameRealWindow,
+} from "./lib/catalog-merge-page";
 import {
   andSearchTerms,
   andSearchTermsWithPinyin,
   containsPattern,
+  delimitedExactSql,
   likeSql,
   parseSearchTerms,
   prefixPattern,
   type SearchFilter,
 } from "./lib/catalog-search";
 import {
-  isPublicListCategoryFilter,
   publicBrowseFamilySql,
-  publicCategoryFilterError,
   publicCategoryFilterSql,
   publicCourseCategory,
   publicCourseDisplayName,
@@ -22,32 +24,69 @@ import {
 } from "./lib/public-course-presentation";
 import { relationDimensionKey } from "./lib/relation-four-dims";
 import { loadRelationDimensionLabels } from "./lib/relation-projections";
+import type { PublicDimensionLabel } from "./lib/review-schemes";
+import {
+  ensurePublicListPrecomputes,
+  publicCourseCanonicalJoin,
+} from "./public-list-precompute";
 import {
   loadRelationSignalPayloads,
   type RelationSignalCounts,
   type RelationSignalViewer,
 } from "./relation-signals";
-import { extraMergedIndexes, mergedNameRealWindow } from "./lib/catalog-merge-page";
-import { publicCourseCanonicalJoin } from "./public-list-precompute";
 import { publicReviewBindingSql } from "./review-summary";
 
-const clean = (v: unknown, n = 500) =>
-  typeof v === "string" ? v.trim().slice(0, n) : "";
-const integer = (v: unknown) => {
-  if (typeof v === "number") return Number.isSafeInteger(v) ? v : null;
-  if (typeof v !== "string" || !/^-?(?:0|[1-9]\d*)$/.test(v)) return null;
-  const n = Number(v);
-  return Number.isSafeInteger(n) ? n : null;
+export type PublicCourseListSort = "name" | "reviews";
+export type PublicRelationListSort = "name" | "rating" | "reviews";
+
+export type PublicCatalogListQuery<Sort extends string> = {
+  page: number;
+  pageSize: number;
+  q: string;
+  category: string;
+  department: string;
+  teacherId: number | null;
+  sort: Sort;
 };
-const fail = (c: Context, error: string, status = 400) =>
-  c.json({ error }, status as 400);
+
+export type PublicCourseListQuery = PublicCatalogListQuery<PublicCourseListSort>;
+export type PublicRelationListQuery =
+  PublicCatalogListQuery<PublicRelationListSort>;
+
+export type PublicCatalogPage<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+};
+
+export type PublicCourseListItem = {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  department: string;
+  teachers: string | null;
+  teacher_refs: string | null;
+  review_count: number;
+};
+
+export type PublicRelationListItem = {
+  course_id: number;
+  code: string;
+  name: string;
+  category: string;
+  department: string;
+  teacher_id: number | null;
+  teacher_name: string | null;
+  rating: number | null;
+  review_count: number;
+  dimensionLabels: PublicDimensionLabel[] | null;
+} & RelationSignalCounts &
+  Partial<RelationSignalViewer>;
 
 type WindowedRow = { window_total?: number };
-const stripWindowTotal = <T extends WindowedRow>(row: T) => {
-  const { window_total: _total, ...rest } = row;
-  return rest;
-};
-
 type RelationRow = {
   course_id: number;
   code: string;
@@ -59,8 +98,47 @@ type RelationRow = {
   rating: number | null;
   review_count: number;
 };
+type ExactTeacherHits = {
+  ids: number[];
+  matchedTerms: Set<string>;
+  active: boolean;
+};
 
-function withPublicNames(row: RelationRow): RelationRow {
+const stripWindowTotal = <T extends WindowedRow>(row: T) => {
+  const { window_total: _total, ...rest } = row;
+  return rest;
+};
+
+const windowedPage = async <T extends WindowedRow>(
+  rows: T[],
+  page: number,
+  fallbackTotal: () => Promise<number>,
+) => ({
+  items: rows.map(stripWindowTotal),
+  total: rows.length
+    ? Number(rows[0].window_total) || 0
+    : page > 1
+      ? await fallbackTotal()
+      : 0,
+});
+
+const withPublicCourseItem = <
+  T extends { name?: unknown; category?: unknown },
+>(
+  row: T,
+) => {
+  const rawName = typeof row.name === "string" ? row.name : "";
+  return {
+    ...row,
+    name: publicCourseDisplayName(rawName),
+    category: publicCourseCategory(
+      rawName,
+      typeof row.category === "string" ? row.category : "",
+    ),
+  };
+};
+
+const withPublicRelationNames = (row: RelationRow): RelationRow => {
   const rawName = row.name || "";
   return {
     ...row,
@@ -70,12 +148,56 @@ function withPublicNames(row: RelationRow): RelationRow {
     review_count: Number(row.review_count) || 0,
     teacher_id: row.teacher_id == null ? null : Number(row.teacher_id),
   };
-}
+};
 
-type ExactTeacherHits = {
-  ids: number[];
-  matchedTerms: Set<string>;
-  active: boolean;
+const virtualPeSportItem = (
+  sport: (typeof VIRTUAL_PE_SPORTS)[number],
+  teachers: Array<{ id: number; name: string }>,
+) => ({
+  id: sport.id,
+  code: "",
+  name: sport.label,
+  category: "sports" as const,
+  department: "",
+  teachers: teachers.map((teacher) => teacher.name).join(","),
+  teacher_refs: teachers
+    .map((teacher) => `${teacher.id}:${teacher.name}`)
+    .join(","),
+  review_count: 0,
+});
+
+const loadVirtualPeTeachers = async (
+  db: D1Database,
+  teacherNames: readonly string[],
+) => {
+  const placeholders = teacherNames.map(() => "?").join(",");
+  return (
+    await db
+      .prepare(
+        `SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`,
+      )
+      .bind(...teacherNames)
+      .all<{ id: number; name: string }>()
+  ).results;
+};
+
+const loadVirtualPeSportItems = async (
+  db: D1Database,
+  searchTerms: string[],
+  teacherId: number | null,
+  department: string,
+) => {
+  if (department) return [];
+  const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
+  for (const sport of VIRTUAL_PE_SPORTS) {
+    if (!virtualPeSportMatchesQuery(sport, searchTerms)) continue;
+    const teachers = await loadVirtualPeTeachers(db, sport.teacherNames);
+    if (!teachers.length) continue;
+    if (teacherId && !teachers.some((teacher) => teacher.id === teacherId))
+      continue;
+    items.push(virtualPeSportItem(sport, teachers));
+  }
+  return items;
 };
 
 async function loadExactTeacherHits(
@@ -180,15 +302,7 @@ async function loadVirtualPeRelations(
   const items: RelationRow[] = [];
   for (const sport of VIRTUAL_PE_SPORTS) {
     if (!virtualPeSportMatchesQuery(sport, searchTerms)) continue;
-    const placeholders = sport.teacherNames.map(() => "?").join(",");
-    const teachers = (
-      await db
-        .prepare(
-          `SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`,
-        )
-        .bind(...sport.teacherNames)
-        .all()
-    ).results as Array<{ id: number; name: string }>;
+    const teachers = await loadVirtualPeTeachers(db, sport.teacherNames);
     if (!teachers.length) continue;
     const filtered = teacherId
       ? teachers.filter((teacher) => teacher.id === teacherId)
@@ -219,6 +333,19 @@ async function loadVirtualPeRelations(
   return items;
 }
 
+function byNameCodeId(
+  a: { id?: unknown; code?: unknown; name?: unknown },
+  b: { id?: unknown; code?: unknown; name?: unknown },
+) {
+  const nameA = String(a.name ?? "");
+  const nameB = String(b.name ?? "");
+  if (nameA !== nameB) return nameA < nameB ? -1 : 1;
+  const codeA = String(a.code ?? "");
+  const codeB = String(b.code ?? "");
+  if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+  return Number(a.id ?? 0) - Number(b.id ?? 0);
+}
+
 function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
   const nameA = String(a.name ?? "");
   const nameB = String(b.name ?? "");
@@ -234,26 +361,194 @@ function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
   return Number(a.teacher_id ?? 0) - Number(b.teacher_id ?? 0);
 }
 
-export async function listCourseRelations(
-  c: Context,
+function emptyRelationSignals(
   viewerUserId: string | null,
-) {
-  const page = Math.max(1, integer(c.req.query("page")) || 1);
-  const size = Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
-  const search = clean(c.req.query("q"), 80);
-  const searchTerms = parseSearchTerms(search);
-  const cat = clean(c.req.query("category"), 20);
-  const department = clean(c.req.query("department"), 80);
-  const teacherId = integer(c.req.query("teacherId"));
-  const sortRaw = clean(c.req.query("sort"), 20);
-  const sort =
-    sortRaw === "name" ? "name" : sortRaw === "rating" ? "rating" : "reviews";
-  if (cat && !isPublicListCategoryFilter(cat))
-    return fail(c, publicCategoryFilterError());
+): RelationSignalCounts & Partial<RelationSignalViewer> {
+  return {
+    follow_count: 0,
+    recommend_count: 0,
+    not_recommend_count: 0,
+    ...(viewerUserId
+      ? {
+          viewer_followed: false,
+          viewer_recommended: false,
+          viewer_not_recommended: false,
+        }
+      : {}),
+  };
+}
 
-  const categoryFilter = publicCategoryFilterSql(cat, "c");
+async function attachRelationProjection(
+  db: D1Database,
+  items: RelationRow[],
+  viewerUserId: string | null,
+): Promise<PublicRelationListItem[]> {
+  const dimMap = await loadRelationDimensionLabels(
+    db,
+    items.map((item) => ({
+      courseId: item.course_id,
+      teacherId: item.teacher_id,
+    })),
+  );
+  const signalMap = await loadRelationSignalPayloads(
+    db,
+    items
+      .filter(
+        (item): item is RelationRow & { teacher_id: number } =>
+          item.teacher_id != null,
+      )
+      .map((item) => ({ courseId: item.course_id, teacherId: item.teacher_id })),
+    viewerUserId,
+  );
+  return items.map((item) => {
+    const signals =
+      item.teacher_id != null
+        ? signalMap.get(`${item.course_id}:${item.teacher_id}`)
+        : undefined;
+    return {
+      ...item,
+      dimensionLabels:
+        dimMap.get(relationDimensionKey(item.course_id, item.teacher_id)) ??
+        null,
+      ...(signals ?? emptyRelationSignals(viewerUserId)),
+    };
+  });
+}
+
+export async function queryPublicCourses(
+  db: D1Database,
+  query: PublicCourseListQuery,
+): Promise<PublicCatalogPage<PublicCourseListItem>> {
+  await ensurePublicListPrecomputes(db);
+  const { page, pageSize: size, department, teacherId, sort } = query;
+  const search = query.q;
+  const searchTerms = parseSearchTerms(search);
+  const categoryFilter = publicCategoryFilterSql(query.category, "c");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  const exactTeachers = await loadExactTeacherHits(c.env.DB, searchTerms);
+  const searchGroup = andSearchTermsWithPinyin(
+    searchTerms,
+    likeSql("pcc.match_text"),
+    likeSql("pcc.pinyin_text"),
+    isAsciiLetterTerm,
+  );
+  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const args = [
+    ...categoryFilter.args,
+    department,
+    department,
+    ...(teacherId === null ? [] : [teacherId]),
+    ...searchGroup.args,
+  ];
+  const countJoins =
+    teacherId === null
+      ? publicCourseCanonicalJoin
+      : `${publicCourseCanonicalJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id`;
+  const courseCount = () =>
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT c.id) n FROM courses c ${countJoins} WHERE ${where}`,
+      )
+      .bind(...args)
+      .first<{ n: number }>()
+      .then((row) => row?.n || 0);
+  const allTermsInTitle =
+    searchTerms.length > 1
+      ? andSearchTerms(
+          searchTerms,
+          `${likeSql("c.name")} OR ${likeSql("c.code")}`,
+        )
+      : { sql: "", args: [] };
+  const relevanceOrder = `CASE
+       WHEN ?='' THEN 0
+       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? THEN 0
+       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} THEN 1
+       ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
+       WHEN c.department=? THEN 3
+       WHEN ${likeSql("c.department")} THEN 4
+       WHEN ${delimitedExactSql("pcc.teacher_variant_text")} THEN 5
+       WHEN ${likeSql("pcc.teacher_variant_text")} THEN 6
+       WHEN ${likeSql("pcc.pinyin_text")} THEN 7
+       ELSE 8
+     END,review_count DESC,c.name,c.code,c.id`;
+  const searchRankArgs = [
+    search,
+    search,
+    search,
+    search,
+    prefixPattern(search),
+    prefixPattern(search),
+    ...allTermsInTitle.args,
+    search,
+    prefixPattern(search),
+    search,
+    prefixPattern(search),
+    containsPattern(search),
+  ];
+  const { results } = await db
+    .prepare(
+      `SELECT c.*,
+       GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
+       GROUP_CONCAT(DISTINCT t.name) teachers,
+       COALESCE(course_review_counts.review_count,0) review_count,
+       COUNT(*) OVER() window_total
+      FROM courses c
+      ${publicCourseCanonicalJoin}
+      LEFT JOIN course_teachers ct ON ct.course_id=c.id
+      LEFT JOIN teachers t ON t.id=ct.teacher_id
+      LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM public_review_counts GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id
+     WHERE ${where}
+     GROUP BY c.id
+     ORDER BY ${sort === "name" ? "c.name,c.code,c.id" : relevanceOrder}
+     LIMIT ? OFFSET ?`,
+    )
+    .bind(
+      ...args,
+      ...(sort === "name" ? [] : searchRankArgs),
+      size,
+      (page - 1) * size,
+    )
+    .all();
+  const pageRows = await windowedPage(
+    results as WindowedRow[],
+    page,
+    courseCount,
+  );
+  const virtualItems =
+    !query.category || query.category === "sports"
+      ? await loadVirtualPeSportItems(db, searchTerms, teacherId, department)
+      : [];
+  const listed = pageRows.items.map((row) =>
+    withPublicCourseItem(row as PublicCourseListItem),
+  );
+  const extras = virtualItems.filter(
+    (item) => !listed.some((row) => row.name === item.name),
+  );
+  const totalCount = pageRows.total + extras.length;
+  const firstPage =
+    sort === "name"
+      ? [...listed, ...extras].sort(byNameCodeId)
+      : [...listed, ...extras];
+  return {
+    items: page === 1 ? firstPage : listed,
+    page,
+    pageSize: size,
+    total: totalCount,
+    pages: Math.ceil(totalCount / size),
+  };
+}
+
+export async function queryPublicCourseRelations(
+  db: D1Database,
+  query: PublicRelationListQuery,
+  viewerUserId: string | null,
+): Promise<PublicCatalogPage<PublicRelationListItem>> {
+  await ensurePublicListPrecomputes(db);
+  const { page, pageSize: size, department, teacherId, sort } = query;
+  const search = query.q;
+  const searchTerms = parseSearchTerms(search);
+  const categoryFilter = publicCategoryFilterSql(query.category, "c");
+  const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
+  const exactTeachers = await loadExactTeacherHits(db, searchTerms);
   const exactTeacherFilter = !exactTeachers.active
     ? ""
     : exactTeachers.ids.length === 0
@@ -280,14 +575,15 @@ export async function listCourseRelations(
     ...exactTeachers.ids,
   ];
   const relationCount = () =>
-    c.env.DB.prepare(
-      `SELECT COUNT(*) n
+    db
+      .prepare(
+        `SELECT COUNT(*) n
        FROM courses c
        ${publicCourseCanonicalJoin}
        LEFT JOIN course_teachers ct ON ct.course_id=c.id
        LEFT JOIN teachers t ON t.id=ct.teacher_id
        WHERE ${where}`,
-    )
+      )
       .bind(...args)
       .first()
       .then((row) => Number((row as { n?: number } | null)?.n) || 0);
@@ -328,9 +624,9 @@ export async function listCourseRelations(
         ? "(rel_rating.rating IS NULL),rel_rating.rating DESC,review_count DESC,c.name,c.code,c.id,COALESCE(t.name,''),COALESCE(t.id,0)"
         : relevanceOrder;
   const virtualItems =
-    !cat || cat === "sports"
+    !query.category || query.category === "sports"
       ? await loadVirtualPeRelations(
-          c.env.DB,
+          db,
           searchTerms,
           teacherId,
           department,
@@ -358,11 +654,12 @@ export async function listCourseRelations(
       const pairSql = virtualItems
         .map(() => "(c.id=? AND t.id=?)")
         .join(" OR ");
-      const found = await c.env.DB.prepare(
-        `SELECT c.id course_id, t.id teacher_id
+      const found = await db
+        .prepare(
+          `SELECT c.id course_id, t.id teacher_id
          ${relationFrom}
          WHERE ${where} AND (${pairSql})`,
-      )
+        )
         .bind(
           ...args,
           ...virtualItems.flatMap((item) => [item.course_id, item.teacher_id]),
@@ -384,9 +681,10 @@ export async function listCourseRelations(
     const realBefore: number[] = [];
     for (const extra of extrasAll) {
       const teacher = extra.teacher_name ?? "";
-      const teacherId = extra.teacher_id ?? 0;
-      const row = await c.env.DB.prepare(
-        `SELECT COUNT(*) n
+      const extraTeacherId = extra.teacher_id ?? 0;
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) n
          ${relationFrom}
          WHERE ${where}
            AND (
@@ -396,7 +694,7 @@ export async function listCourseRelations(
              OR (${displayNameSql} = ? AND c.code = ? AND c.id = ? AND COALESCE(t.name,'') < ?)
              OR (${displayNameSql} = ? AND c.code = ? AND c.id = ? AND COALESCE(t.name,'') = ? AND COALESCE(t.id,0) < ?)
            )`,
-      )
+        )
         .bind(
           ...args,
           extra.name,
@@ -413,7 +711,7 @@ export async function listCourseRelations(
           extra.code,
           extra.course_id,
           teacher,
-          teacherId,
+          extraTeacherId,
         )
         .first();
       realBefore.push(Number((row as { n?: number } | null)?.n) || 0);
@@ -430,8 +728,9 @@ export async function listCourseRelations(
   const { results } =
     realLimit === 0
       ? { results: [] }
-      : await c.env.DB.prepare(
-          `SELECT c.id course_id,c.code,c.name,c.category,c.department,
+      : await db
+          .prepare(
+            `SELECT c.id course_id,c.code,c.name,c.category,c.department,
        t.id teacher_id,t.name teacher_name,
        rel_rating.rating,
        COALESCE(rel_counts.review_count,0) review_count
@@ -451,7 +750,7 @@ export async function listCourseRelations(
      WHERE ${where}
      ORDER BY ${queryOrderBy}
      LIMIT ? OFFSET ?`,
-        )
+          )
           .bind(
             ...args,
             ...(sort === "name" || sort === "rating" ? [] : searchRankArgs),
@@ -461,14 +760,15 @@ export async function listCourseRelations(
           .all();
 
   const rows = results as Array<RelationRow & WindowedRow>;
-  const listed = rows.map((row) => withPublicNames(stripWindowTotal(row)));
+  const listed = rows.map((row) => withPublicRelationNames(stripWindowTotal(row)));
   const extras = mergeName
     ? pageExtras
     : virtualItems.filter(
         (item) =>
           !listed.some(
             (row) =>
-              row.course_id === item.course_id && row.teacher_id === item.teacher_id,
+              row.course_id === item.course_id &&
+              row.teacher_id === item.teacher_id,
           ),
       );
   const extrasTotal = mergeName ? extrasAll.length : extras.length;
@@ -494,54 +794,11 @@ export async function listCourseRelations(
     items = listed;
   }
 
-  const dimMap = await loadRelationDimensionLabels(
-    c.env.DB,
-    items.map((item) => ({
-      courseId: item.course_id,
-      teacherId: item.teacher_id,
-    })),
-  );
-  const signalMap = await loadRelationSignalPayloads(
-    c.env.DB,
-    items
-      .filter(
-        (item): item is RelationRow & { teacher_id: number } =>
-          item.teacher_id != null,
-      )
-      .map((item) => ({ courseId: item.course_id, teacherId: item.teacher_id })),
-    viewerUserId,
-  );
-
-  return c.json({
-    items: items.map((item) => {
-      const signals =
-        item.teacher_id != null
-          ? signalMap.get(`${item.course_id}:${item.teacher_id}`)
-          : undefined;
-      const emptySignals: RelationSignalCounts & Partial<RelationSignalViewer> =
-        {
-          follow_count: 0,
-          recommend_count: 0,
-          not_recommend_count: 0,
-          ...(viewerUserId
-            ? {
-                viewer_followed: false,
-                viewer_recommended: false,
-                viewer_not_recommended: false,
-              }
-            : {}),
-        };
-      return {
-        ...item,
-        dimensionLabels:
-          dimMap.get(relationDimensionKey(item.course_id, item.teacher_id)) ??
-          null,
-        ...(signals ?? emptySignals),
-      };
-    }),
+  return {
+    items: await attachRelationProjection(db, items, viewerUserId),
     page,
     pageSize: size,
     total: totalCount,
     pages,
-  });
+  };
 }

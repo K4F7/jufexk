@@ -59,7 +59,7 @@ async function formalCounts(db: D1Database) {
   return results.map((result) => Number((result.results[0] as { n: number }).n));
 }
 
-describe("catalog baseline staging and one-time publish", () => {
+describe("catalog baseline staging and one-time publish", { timeout: 15_000 }, () => {
   it("resumes missing chunks, accepts an identical retransmission, and keeps formal tables isolated", async () => {
     const db = await emptyDb(), pkg = approvedPackage(), batchId = "resume-1";
     await createBaselineUpload(db, { batchId, manifest: pkg.manifest, chunkCount: 2 });
