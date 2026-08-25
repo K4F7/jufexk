@@ -215,6 +215,7 @@ export class JwxtCookieAuthAdapter extends JwxtSessionAdapter {
 const CAS_ORIGIN = "https://ssl.jxufe.edu.cn";
 const CAS_COOKIE_NAMES = new Set(["TGC", "SESSION", "CASTGC", "CASSTOC"]);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const EHALL_FETCH_RETRY_DELAYS_MS = [0, 500, 1_500];
 
 function fixedBrowserRedirect(raw: string, base: string) {
   const url = new URL(raw, base);
@@ -257,18 +258,28 @@ export class EhallCookieAuthAdapter extends JwxtSessionAdapter {
         throw new EhallCookieExpiredError("ehall_cookie_expired");
       }
       seen.add(url.toString());
-      let response: Response;
-      try {
-        response = await this.fetchImpl(url.toString(), {
-          redirect: "manual",
-          headers: {
-            accept: "text/html,*/*;q=0.8",
-            cookie: cookieHeader(this.cookiesFor(url)),
-            "user-agent": USER_AGENT,
-          },
-          signal: AbortSignal.timeout(15_000),
-        });
-      } catch (error) {
+      let response: Response | undefined;
+      let fetchError: unknown;
+      for (const [attempt, delay] of EHALL_FETCH_RETRY_DELAYS_MS.entries()) {
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        try {
+          response = await this.fetchImpl(url.toString(), {
+            redirect: "manual",
+            headers: {
+              accept: "text/html,*/*;q=0.8",
+              cookie: cookieHeader(this.cookiesFor(url)),
+              "user-agent": USER_AGENT,
+            },
+            signal: AbortSignal.timeout(15_000),
+          });
+          break;
+        } catch (error) {
+          fetchError = error;
+          if (attempt === EHALL_FETCH_RETRY_DELAYS_MS.length - 1) break;
+        }
+      }
+      if (!response) {
+        const error = fetchError;
         const errorName = error instanceof Error ? error.name : "unknown";
         const cause =
           typeof error === "object" && error !== null && "cause" in error

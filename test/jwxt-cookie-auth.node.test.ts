@@ -55,12 +55,17 @@ describe("JWXT cookie authentication", () => {
 
   it("replays an eHall cookie before establishing a JWXT session", async () => {
     const calls: Array<{ url: string; cookie: string }> = [];
+    let transientFailure = true;
     const adapter = new EhallCookieAuthAdapter(
       "JSESSIONID=ehall-session",
       async (input, init) => {
         const url = String(input);
         calls.push({ url, cookie: new Headers(init?.headers).get("cookie") || "" });
         if (url.startsWith("http://ehall.jxufe.edu.cn/appShow")) {
+          if (transientFailure) {
+            transientFailure = false;
+            throw new TypeError("temporary network failure");
+          }
           return new Response(null, {
             status: 302,
             headers: {
