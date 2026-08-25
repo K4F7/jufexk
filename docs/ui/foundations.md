@@ -114,7 +114,7 @@ Prototype 用可操作、可丢弃的代码快速回答一个明确的 UI 问题
    - `pnpm db:export-remote` — 从远端 D1 导出到 `.local-data/remote-export.sql`（需已 `wrangler login`，文件 gitignore，约数百 MB）
    - `pnpm db:import-remote-local` — 只导入公开目录表到本地 miniflare D1（跳过 staging/provenance）
    - 备选：Windows 本机历史库在 `/mnt/d/19016/Documents/Workload/jufexk/.wrangler/state/v3/d1/`（体量远小于远端）
-   - 无远端权限时才用 `pnpm db:seed-preview` 假数据
+   - 无远端权限时才用 `pnpm db:seed-preview` 假数据。灌库后打开 `/prototype#page-atlas`，每个真实界面可进可出；左下角返回图集。
 3. `pnpm dev` — Wrangler + 本地 D1/API（`http://localhost:8787`）
 4. `pnpm prototype` — Vite HMR 前端（`http://localhost:5173`），`/api` 代理到 8787
 

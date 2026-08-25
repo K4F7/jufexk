@@ -17,6 +17,7 @@ import {
   statusLabel,
   type PrototypeModuleDef,
 } from "./modules";
+import { PageAtlas } from "./PageAtlas";
 import { SkyTokenPreview } from "./SkyTokenPreview";
 import { usePrototypeNavigation } from "./usePrototypeNavigation";
 
@@ -116,10 +117,7 @@ function PrototypeGalleryContent() {
         </p>
         <h1 className="m-0 text-2xl font-bold">非官方课评@JUFE · UI 模块</h1>
         <p className="m-0 max-w-3xl text-sm text-muted">
-          一次只回答一个视觉问题。主要模块挂在真实路由与真实数据上；Sky
-          token 等小组件在 Gallery 并排验证。变体通过 URL{" "}
-          <code className="rounded bg-default px-1">?module=&variant=</code>{" "}
-          切换，可复制、可刷新。
+          先用下方页面图集进出每个真实界面，对照现行 UI。模块变体仍一次只回答一个视觉问题，挂在真实路由上。
         </p>
         <p className="m-0 text-xs text-muted">
           顺序见 docs/ui/foundations.md · 当前优先：目录后续收藏/条件密度（issue
@@ -129,6 +127,8 @@ function PrototypeGalleryContent() {
           <code className="rounded bg-default px-1">pnpm dev</code>）
         </p>
       </header>
+
+      <PageAtlas />
 
       <section aria-label="模块列表" className="grid gap-3 lg:grid-cols-2">
         {PROTOTYPE_MODULES.map((mod) => (
