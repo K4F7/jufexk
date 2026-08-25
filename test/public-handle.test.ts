@@ -5,6 +5,7 @@ import {
   FIRST_USER_PUBLIC_CODE,
   PUBLIC_CODE_MAX,
   RESERVED_PUBLIC_CODE,
+  RESERVED_USER_ID,
   formatPublicHandle,
   takeNextPublicCode,
 } from "../src/public-handle";
@@ -36,6 +37,15 @@ describe("public handle assignment", () => {
     );
     expect(rows.results[1].public_code).toBe(rows.results[0].public_code + 1);
     expect(rows.results.every((row) => row.public_code !== RESERVED_PUBLIC_CODE)).toBe(
+      true,
+    );
+    const reserved = await env.DB.prepare(
+      "SELECT id,public_code FROM users WHERE id=?",
+    )
+      .bind(RESERVED_USER_ID)
+      .first<{ id: string; public_code: number | null }>();
+    expect(reserved?.id).toBe(RESERVED_USER_ID);
+    expect(reserved?.public_code == null || reserved.public_code === 0).toBe(
       true,
     );
 

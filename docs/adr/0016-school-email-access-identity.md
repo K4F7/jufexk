@@ -1,6 +1,8 @@
 # 普通用户通过校学生邮箱验证接入，游客只读
 
-_2026-08-24：[#493](https://github.com/K4F7/jufexk/issues/493) 增加公开编号。每个普通用户在首次创建时顺序分配 `users.public_code`（从 1 起，展示为 `匿名用户#000001`），并可在五张官方 HeroUI 头像中选择 `avatar_key`。公开 API 与页面只下发公开编号，永不返回 `users.id`、邮箱或学号。整数 0 / `匿名用户#000000` 保留给 `author_user_id IS NULL` 的历史、旧评与上线前匿名任课评价，不回填作者，也不可关注。_
+_2026-08-26：[#612](https://github.com/K4F7/jufexk/issues/612) 学长学姐保留号 `#000000` 与普通用户共用公开主页关注与统计。仍不回填历史 / 旧评 / 上线前匿名评价的作者。保留号写入一行不可登录的 `users` 占位（稳定 `id`，`public_code` 仍不分配 0 以免改 CHECK），只作关注目标；公开 API 仍不返回 `users.id`、邮箱或学号。_
+
+_2026-08-24：[#493](https://github.com/K4F7/jufexk/issues/493) 增加公开编号。每个普通用户在首次创建时顺序分配 `users.public_code`（从 1 起，展示为 `匿名用户#000001`），并可在五张官方 HeroUI 头像中选择 `avatar_key`。公开 API 与页面只下发公开编号，永不返回 `users.id`、邮箱或学号。整数 0 / `匿名用户#000000` 保留给 `author_user_id IS NULL` 的历史、旧评与上线前匿名任课评价，不回填作者。_
 
 _2026-08-24：#500 再次从 Worker 解绑 `MAIL_*` 与 `REVIEW_AUTHOR_LOOKUP_TO`。#478 曾为点评作者查询把这些变量绑回，但 Secrets Store 没有对应条目，阻塞 `main` 部署。_
 
@@ -40,7 +42,7 @@ Worker 必须核销 CAS 代登成功或校学生邮箱挑战（或测试 HMAC �
 ## 普通用户与身份绑定
 
 - `users.id` 是随机生成且永久稳定的站内标识。任课评价、认可、封禁和账号状态只引用该标识；公开 API 和页面永不返回它。对外识别作者只使用公开编号（`users.public_code`，展示为 `匿名用户#xxxxxx`）。
-- 公开编号按首次登录顺序递增，从 1 起；`0` 永不写入 `users`。既有用户按 `created_at`、`id` 回填。头像只允许五张官方 HeroUI 占位图。
+- 公开编号按首次登录顺序递增，从 1 起。`0` 只作为学长学姐保留号展示，不写入可登录普通用户的 `public_code`。既有用户按 `created_at`、`id` 回填。头像只允许五张官方 HeroUI 占位图。
 - 认证身份以 `(provider, issuer, subject)` 唯一。生产 CAS 代登：`provider` 为 `cas`，`issuer` 为 `ssl.jxufe.edu.cn`，`subject` 是规范化学号的 HMAC（密钥为 `CAMPUS_IDENTITY_SECRET`），不是学号明文。邮箱登录：`provider` 为 `email`，`issuer` 为 `stu.jxufe.edu.cn`，`subject` 是规范化邮箱的 HMAC。已废弃的 AuthBridge 身份若仍出现在库里，不与 CAS / 邮箱自动合并。
 - 同一认证主体重复登录复用原普通用户。邮箱按规范化地址哈希；AuthBridge 每次加密会换 IV，因此必须解密后再哈希，不能把密文 `sub` 当主键。
 - 明文邮箱不当主键，不进公开响应或日志。多个认证主体默认是不同普通用户。

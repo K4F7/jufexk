@@ -2,6 +2,8 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { hmacHex } from "../src/ordinary-user-authentication";
 import {
+  RESERVED_PUBLIC_CODE,
+  RESERVED_USER_ID,
   defaultAvatarKey,
   formatPublicCode,
   formatPublicHandle,
@@ -27,8 +29,32 @@ async function publicCodeFor(userId: string) {
   return { id, public_code: Number(row?.public_code) };
 }
 
+async function createBoundCourse(code: string) {
+  const inserted = await env.DB.prepare(
+    "INSERT INTO courses(code,name,category,department) VALUES(?,?,'general','测试学院')",
+  )
+    .bind(code, `公开主页课 ${code}`)
+    .run();
+  const courseId = Number(inserted.meta.last_row_id);
+  await env.DB.prepare(
+    "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,1)",
+  )
+    .bind(courseId)
+    .run();
+  return courseId;
+}
+
 describe("public user profile and follow", () => {
-  it("exposes reserved #000000 for unattributed reviews and rejects follow", async () => {
+  it("exposes reserved #000000 for unattributed reviews and allows follow", async () => {
+    const reserved = await env.DB.prepare(
+      "SELECT id,public_code FROM users WHERE id=?",
+    )
+      .bind(RESERVED_USER_ID)
+      .first<{ id: string; public_code: number | null }>();
+    expect(reserved?.id).toBe(RESERVED_USER_ID);
+    expect(reserved?.public_code == null || reserved.public_code === 0).toBe(
+      true,
+    );
     await env.DB.prepare(
       `INSERT INTO reviews(
          course_id,teacher_id,category,overall,comment,status,submitter_hash
@@ -41,6 +67,7 @@ describe("public user profile and follow", () => {
       handle: string;
       reserved: boolean;
       followable: boolean;
+      viewer_followed: boolean;
       note: string;
       reviews: Array<{
         author_public_code: number;
@@ -53,6 +80,7 @@ describe("public user profile and follow", () => {
       handle: "匿名用户#000000",
       reserved: true,
       followable: false,
+      viewer_followed: false,
       note: "来自以前的学长学姐的评价",
     });
     expect(
@@ -65,13 +93,141 @@ describe("public user profile and follow", () => {
       body.reviews.every((review) => review.author_avatar_key === 0),
     ).toBe(true);
     expect(JSON.stringify(body)).not.toMatch(/"id":"[0-9a-f]{32}"/);
+    expect(JSON.stringify(body)).not.toContain(RESERVED_USER_ID);
 
     const session = await ordinaryWriteSession("follow-reserved");
     const follow = await SELF.fetch(`${WRITE_ORIGIN}/api/u/000000/follow`, {
       method: "PUT",
       headers: ordinaryWriteHeaders(session),
     });
-    expect(follow.status).toBe(400);
+    expect(follow.status).toBe(200);
+    expect(await follow.json()).toMatchObject({ viewer_followed: true });
+    const viewing = await SELF.fetch(`${WRITE_ORIGIN}/api/u/000000`, {
+      headers: session.auth,
+    });
+    const viewingBody = await viewing.json<{
+      followable: boolean;
+      viewer_followed: boolean;
+      follower_count: number;
+      following_count: number;
+    }>();
+    expect(viewingBody).toMatchObject({
+      followable: true,
+      viewer_followed: true,
+      follower_count: 1,
+      following_count: 0,
+    });
+    expect(JSON.stringify(viewingBody)).not.toContain(RESERVED_USER_ID);
+
+    const unfollowed = await SELF.fetch(`${WRITE_ORIGIN}/api/u/000000/follow`, {
+      method: "DELETE",
+      headers: ordinaryWriteHeaders(session),
+    });
+    expect(await unfollowed.json()).toMatchObject({ viewer_followed: false });
+    const after = await SELF.fetch(`${WRITE_ORIGIN}/api/u/000000`, {
+      headers: session.auth,
+    });
+    expect(await after.json()).toMatchObject({
+      viewer_followed: false,
+      follower_count: 0,
+    });
+  });
+
+  it("counts distinct public courses for reserved and numbered handles", async () => {
+    const first = await createBoundCourse("U612A");
+    const second = await createBoundCourse("U612B");
+    const statements = [];
+    for (let index = 0; index < 51; index += 1) {
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO reviews(
+             course_id,teacher_id,category,overall,comment,status,submitter_hash
+           ) VALUES(?,1,'general',4,?,'approved',?)`,
+        ).bind(first, `保留号重复课点评 ${index}`, `u612-reserved-${index}`),
+      );
+    }
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,overall,comment,status,submitter_hash
+         ) VALUES(?,1,'general',4,'保留号第二门课','approved','u612-reserved-other')`,
+      ).bind(second),
+      env.DB.prepare(
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,overall,comment,status,submitter_hash
+         ) VALUES(?,1,'general',4,'待审不计入','pending','u612-reserved-pending')`,
+      ).bind(first),
+      env.DB.prepare(
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,overall,comment,status,submitter_hash
+         ) VALUES(?,1,'general',4,'驳回不计入','rejected','u612-reserved-rejected')`,
+      ).bind(second),
+    );
+    await env.DB.batch(statements);
+    await env.DB.prepare(
+      `INSERT INTO legacy_import_batches(id,source_type,source_label,status,row_count,imported_at)
+       VALUES('u612-legacy','legacy_ocr','腾讯表格历史资料','imported',1,CURRENT_TIMESTAMP)`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO legacy_reviews(
+         import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,
+         course_id,teacher_id,category,comment,status
+       ) VALUES('u612-legacy','s.png','主要课程','1','原文',0.9,? ,1,'general','旧评同一门课','approved')`,
+    )
+      .bind(first)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO public_historical_reviews(
+         id,course_id,teacher_id,comment,package_contract,
+         approved_package_manifest_sha256,approved_catalog_content_sha256
+       ) VALUES('u612-hist',?,1,'历史同一门课','contract','manifest','catalog')`,
+    )
+      .bind(first)
+      .run();
+
+    const reserved = await SELF.fetch(`${WRITE_ORIGIN}/api/u/000000`);
+    const reservedBody = await reserved.json<{
+      review_count: number;
+      reviews: Array<{ course_id: number }>;
+    }>();
+    expect(reservedBody.reviews).toHaveLength(50);
+    expect(reservedBody.review_count).not.toBe(50);
+    expect(reservedBody.review_count).toBeGreaterThanOrEqual(2);
+    expect(reservedBody.review_count).toBeLessThan(reservedBody.reviews.length);
+
+    const author = await ordinaryWriteSession("count-author");
+    const { id: authorId, public_code } = await publicCodeFor(author.userId);
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,overall,comment,status,
+           submitter_hash,author_user_id
+         ) VALUES(?,1,'general',5,'作者第一门','approved','u612-author-a',?)`,
+      ).bind(first, authorId),
+      env.DB.prepare(
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,overall,comment,status,
+           submitter_hash,author_user_id
+         ) VALUES(?,1,'general',4,'作者同一门第二篇','approved','u612-author-a2',?)`,
+      ).bind(first, authorId),
+      env.DB.prepare(
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,overall,comment,status,
+           submitter_hash,author_user_id
+         ) VALUES(?,1,'general',5,'作者第二门','approved','u612-author-b',?)`,
+      ).bind(second, authorId),
+      env.DB.prepare(
+        `INSERT INTO reviews(
+           course_id,teacher_id,category,overall,comment,status,
+           submitter_hash,author_user_id
+         ) VALUES(?,1,'general',3,'作者待审','pending','u612-author-p',?)`,
+      ).bind(first, authorId),
+    ]);
+    const numbered = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/u/${formatPublicCode(public_code)}`,
+    );
+    const numberedBody = await numbered.json<{ review_count: number }>();
+    expect(numberedBody.review_count).toBe(2);
   });
 
   it("shows authored reviews under a real handle and allows follow", async () => {

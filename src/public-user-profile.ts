@@ -16,6 +16,7 @@ import {
   FIRST_USER_PUBLIC_CODE,
   RESERVED_PUBLIC_CODE,
   defaultAvatarKey,
+  findUserByPublicCode,
   formatPublicCode,
   formatPublicHandle,
   parsePublicCodeParam,
@@ -25,6 +26,8 @@ import type { AppContext } from "./routes/types";
 
 const fail = (c: AppContext, error: string, status = 400) =>
   c.json({ error }, status as 400);
+
+const PROFILE_REVIEW_PAGE_SIZE = 50;
 
 const reservedReviewsUnion = `
   SELECT 'historical:' || phr.id id, phr.course_id, phr.teacher_id, phr.comment,
@@ -110,56 +113,54 @@ function mapPublicAuthorReviews(
   });
 }
 
-async function loadReservedProfile(db: D1Database) {
-  const { results } = await db
-    .prepare(
-      `SELECT id,course_id,teacher_id,comment,comment_format,headline,grade,
-              course_name,course_code,teacher_name,created_at
-       FROM (${reservedReviewsUnion}) reserved_reviews
-       ORDER BY created_at DESC, id DESC
-       LIMIT 50`,
-    )
-    .all<PublicAuthorReviewRow>();
-  return {
-    public_code: RESERVED_PUBLIC_CODE,
-    handle: formatPublicHandle(RESERVED_PUBLIC_CODE),
-    avatar_key: defaultAvatarKey(RESERVED_PUBLIC_CODE),
-    reserved: true,
-    followable: false,
-    viewer_followed: false,
-    viewer_is_self: false,
-    note: "来自以前的学长学姐的评价",
-    review_count: results.length,
-    following_count: 0,
-    follower_count: 0,
-    reviews: mapPublicAuthorReviews(
-      results,
-      RESERVED_PUBLIC_CODE,
-      defaultAvatarKey(RESERVED_PUBLIC_CODE),
-    ),
-  };
+function profileReviewSourceSql(reserved: boolean) {
+  return reserved ? reservedReviewsUnion : authoredReviewsSql;
 }
 
-async function loadNumberedProfile(
+async function loadPublicProfile(
   db: D1Database,
   publicCode: number,
   viewerId: string | null,
 ) {
-  const author = await db
-    .prepare(
-      "SELECT id,public_code,avatar_key FROM users WHERE public_code=?",
-    )
-    .bind(publicCode)
-    .first<{ id: string; public_code: number; avatar_key: number | null }>();
+  const author = await findUserByPublicCode(db, publicCode);
   if (!author) return null;
-  const { results } = await db
+  const reserved = publicCode === RESERVED_PUBLIC_CODE;
+  const reviewsSql = profileReviewSourceSql(reserved);
+  const prepareListedReviews = (sql: string) => {
+    const statement = db.prepare(sql);
+    return reserved ? statement : statement.bind(author.id);
+  };
+  const countStmt = prepareListedReviews(
+    `SELECT COUNT(DISTINCT course_id) AS review_count
+     FROM (${reviewsSql}) profile_reviews`,
+  );
+  const listStmt = prepareListedReviews(
+    `SELECT id,course_id,teacher_id,comment,comment_format,headline,grade,
+            course_name,course_code,teacher_name,created_at
+     FROM (${reviewsSql}) profile_reviews
+     ORDER BY created_at DESC, id DESC
+     LIMIT ${PROFILE_REVIEW_PAGE_SIZE}`,
+  );
+  const countsStmt = db
     .prepare(
-      `${authoredReviewsSql}
-       ORDER BY r.created_at DESC, r.id DESC
-       LIMIT 50`,
+      `SELECT
+         (SELECT COUNT(*) FROM user_follows WHERE follower_user_id=?) AS following_count,
+         (SELECT COUNT(*) FROM user_follows WHERE followed_user_id=?) AS follower_count`,
     )
-    .bind(author.id)
-    .all<PublicAuthorReviewRow>();
+    .bind(author.id, author.id);
+  const [countResult, listResult, countsResult] = await db.batch([
+    countStmt,
+    listStmt,
+    countsStmt,
+  ]);
+  const reviewCount = Number(
+    (countResult.results[0] as { review_count?: number } | undefined)
+      ?.review_count,
+  );
+  const results = (listResult.results || []) as PublicAuthorReviewRow[];
+  const counts = countsResult.results[0] as
+    | { following_count: number; follower_count: number }
+    | undefined;
   const viewerIsSelf = Boolean(viewerId && viewerId === author.id);
   let viewerFollowed = false;
   if (viewerId && !viewerIsSelf) {
@@ -172,24 +173,16 @@ async function loadNumberedProfile(
     viewerFollowed = Boolean(follow);
   }
   const avatarKey = author.avatar_key ?? defaultAvatarKey(publicCode);
-  const counts = await db
-    .prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM user_follows WHERE follower_user_id=?) AS following_count,
-         (SELECT COUNT(*) FROM user_follows WHERE followed_user_id=?) AS follower_count`,
-    )
-    .bind(author.id, author.id)
-    .first<{ following_count: number; follower_count: number }>();
   return {
     public_code: publicCode,
     handle: formatPublicHandle(publicCode),
     avatar_key: avatarKey,
-    reserved: false,
+    reserved,
     followable: Boolean(viewerId && !viewerIsSelf),
     viewer_followed: viewerFollowed,
     viewer_is_self: viewerIsSelf,
-    note: null,
-    review_count: results.length,
+    note: reserved ? "来自以前的学长学姐的评价" : null,
+    review_count: Number.isFinite(reviewCount) ? reviewCount : 0,
     following_count: Number(counts?.following_count) || 0,
     follower_count: Number(counts?.follower_count) || 0,
     reviews: mapPublicAuthorReviews(results, publicCode, avatarKey),
@@ -202,10 +195,7 @@ export async function handlePublicUserProfile(c: AppContext) {
   const viewer = await resolveOrdinaryUser(c);
   const viewerId =
     viewer && isOrdinaryUserAuthenticated(viewer) ? viewer.id : null;
-  if (publicCode === RESERVED_PUBLIC_CODE) {
-    return c.json(await loadReservedProfile(c.env.DB));
-  }
-  const profile = await loadNumberedProfile(c.env.DB, publicCode, viewerId);
+  const profile = await loadPublicProfile(c.env.DB, publicCode, viewerId);
   if (!profile) return fail(c, "公开编号不存在", 404);
   return c.json(profile);
 }
@@ -213,20 +203,13 @@ export async function handlePublicUserProfile(c: AppContext) {
 async function resolveFollowTarget(c: AppContext) {
   const publicCode = parsePublicCodeParam(c.req.param("code"));
   if (publicCode == null) return { error: fail(c, "公开编号无效", 404) };
-  if (publicCode < FIRST_USER_PUBLIC_CODE) {
-    return { error: fail(c, "不能关注学长学姐匿名评价", 400) };
-  }
   const auth = await requireOrdinaryWriteUser(
     c,
     "请先登录后再关注",
     "当前账号无法关注用户",
   );
   if ("error" in auth) return { error: auth.error };
-  const target = await c.env.DB.prepare(
-    "SELECT id FROM users WHERE public_code=?",
-  )
-    .bind(publicCode)
-    .first<{ id: string }>();
+  const target = await findUserByPublicCode(c.env.DB, publicCode);
   if (!target) return { error: fail(c, "公开编号不存在", 404) };
   if (target.id === auth.user.id) {
     return { error: fail(c, "不能关注自己", 400) };

@@ -1,10 +1,14 @@
 /**
- * 公开编号 helpers (#493).
- * 0 / #000000 is reserved for unattributed reviews and is never stored on users.
- * Real users get sequential integers starting at 1, displayed zero-padded.
+ * 公开编号 helpers (#493 / #612).
+ * 0 / #000000 is reserved for unattributed 学长学姐 reviews. Ordinary users
+ * get sequential integers starting at 1. Follow and public-profile counts
+ * use one non-login users row (stable id; public_code stays unset because
+ * the column CHECK still forbids 0). Historical / legacy / pre-launch
+ * anonymous reviews are not backfilled.
  */
 
 export const RESERVED_PUBLIC_CODE = 0;
+export const RESERVED_USER_ID = "00000000000000000000000000000000";
 export const FIRST_USER_PUBLIC_CODE = 1;
 export const PUBLIC_CODE_MAX = 999999;
 export const AVATAR_KEY_COUNT = 5;
@@ -20,6 +24,19 @@ export function formatPublicCode(code: number): string {
 
 export function formatPublicHandle(code: number): string {
   return `匿名用户#${formatPublicCode(code)}`;
+}
+
+export async function findUserByPublicCode(
+  db: D1Database,
+  publicCode: number,
+) {
+  return db
+    .prepare(
+      `SELECT id,public_code,avatar_key FROM users
+       WHERE public_code=? OR (?=${RESERVED_PUBLIC_CODE} AND id=?)`,
+    )
+    .bind(publicCode, publicCode, RESERVED_USER_ID)
+    .first<{ id: string; public_code: number | null; avatar_key: number | null }>();
 }
 
 export function parsePublicCodeParam(value: string | undefined): number | null {
@@ -150,6 +167,13 @@ export async function insertUserWithPublicHandle(
 export async function ensureUserPublicHandle<
   T extends { id: string; public_code?: number | null; avatar_key?: number | null },
 >(db: D1Database, user: T): Promise<T & PublicHandleFields> {
+  if (user.id === RESERVED_USER_ID || user.public_code === RESERVED_PUBLIC_CODE) {
+    return {
+      ...user,
+      public_code: RESERVED_PUBLIC_CODE,
+      avatar_key: user.avatar_key ?? defaultAvatarKey(RESERVED_PUBLIC_CODE),
+    };
+  }
   if (
     user.public_code != null &&
     user.public_code >= FIRST_USER_PUBLIC_CODE &&
