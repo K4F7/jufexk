@@ -6,12 +6,14 @@ import {
 } from "./ordinary-user-identity";
 import {
   hmacHex,
-  isLoopbackWorkerRequest,
-  issueEmailSessionCookie,
+  issueOrdinaryUserSessionCookie,
   ordinaryUserIdentitySecret,
+} from "./ordinary-user-authentication";
+import { sessionPayloadForUser } from "./ordinary-user-session";
+import {
+  isLoopbackWorkerRequest,
   originOk,
-  sessionPayloadForUser,
-} from "./ordinary-user-session";
+} from "./ordinary-user-write-authorization";
 import {
   completeCasPasswordLogin,
   CAS_SERVICE_URL,
@@ -272,7 +274,7 @@ async function issueOrdinarySession(
   if (!user || user.status === "banned" || user.status === "deleted") {
     return fail(c, "登录失败，请稍后重试", 401);
   }
-  const siteSession = await issueEmailSessionCookie(c, user.id, identitySecret);
+  const siteSession = await issueOrdinaryUserSessionCookie(c, user.id, identitySecret);
   if (sso && ehall) {
     await issueEhallSessionCookie(c, user.id, siteSession, sso, ehall).catch(() => {});
   }

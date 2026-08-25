@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
-import { requireOrdinaryWriteUser } from "../ordinary-user-session";
+import { requireOrdinaryWriteUser } from "../ordinary-user-write-authorization";
 import {
   handleCreateEndorsement,
   handleWithdrawEndorsement,

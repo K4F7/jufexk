@@ -4,10 +4,8 @@ import {
   AUTH_PROVIDER_EMAIL,
   EMAIL_IDENTITY_ISSUER,
 } from "../src/ordinary-user-identity";
-import {
-  EMAIL_LOGIN_COOKIE,
-  ORDINARY_USER_CSRF_COOKIE,
-} from "../src/ordinary-user-session";
+import { EMAIL_LOGIN_COOKIE } from "../src/ordinary-user-authentication";
+import { ORDINARY_USER_CSRF_COOKIE } from "../src/ordinary-user-write-authorization";
 
 const origin = "https://example.com";
 const mailOrigin = "https://mail.example.test";

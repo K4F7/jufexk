@@ -3,7 +3,7 @@ import {
   isVirtualPeSportId,
   virtualPeSportById,
 } from "./lib/public-course-presentation";
-import { requireOrdinaryWriteUser } from "./ordinary-user-session";
+import { requireOrdinaryWriteUser } from "./ordinary-user-write-authorization";
 
 const fail = (
   c: Context,

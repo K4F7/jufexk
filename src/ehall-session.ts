@@ -2,16 +2,20 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   EMAIL_LOGIN_COOKIE,
+  ORDINARY_USER_SESSION_TTL_SECONDS,
+  hmacHex,
+  resolveOrdinaryUser,
+} from "./ordinary-user-authentication";
+import {
   EHALL_SESSION_COOKIE,
   EHALL_SESSION_COOKIE_PATH,
-  ORDINARY_USER_SESSION_TTL_SECONDS,
+} from "./ordinary-user-session";
+import {
   ORDINARY_USER_CSRF_COOKIE,
-  hmacHex,
   isOrdinaryUserAuthenticated,
   ordinaryUserCsrfOk,
   originOk,
-  resolveOrdinaryUser,
-} from "./ordinary-user-session";
+} from "./ordinary-user-write-authorization";
 import {
   completePreparedEhallLogin,
   establishEhallSession,

@@ -10,9 +10,9 @@ import {
 } from "../src/cas-login";
 import {
   EMAIL_LOGIN_COOKIE,
-  ORDINARY_USER_CSRF_COOKIE,
   hmacHex,
-} from "../src/ordinary-user-session";
+} from "../src/ordinary-user-authentication";
+import { ORDINARY_USER_CSRF_COOKIE } from "../src/ordinary-user-write-authorization";
 
 const productionOrigin = "https://example.com";
 

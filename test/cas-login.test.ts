@@ -9,9 +9,9 @@ import {
 } from "../src/ordinary-user-identity";
 import {
   EMAIL_LOGIN_COOKIE,
-  ORDINARY_USER_CSRF_COOKIE,
   hmacHex,
-} from "../src/ordinary-user-session";
+} from "../src/ordinary-user-authentication";
+import { ORDINARY_USER_CSRF_COOKIE } from "../src/ordinary-user-write-authorization";
 import {
   CAS_MFA_CONSUMED_LOGIN_FAILED,
   CAS_SERVICE_URL,

@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { requireOrdinaryWriteUser } from "./ordinary-user-session";
+import { requireOrdinaryWriteUser } from "./ordinary-user-write-authorization";
 
 const fail = (
   c: Context,

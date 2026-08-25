@@ -29,10 +29,8 @@ import {
   loadUserCasSubject,
   parseBindingUsernames,
 } from "../admin-student-bindings";
-import {
-  isOrdinaryUserAuthenticated,
-  resolveOrdinaryUser,
-} from "../ordinary-user-session";
+import { resolveOrdinaryUser } from "../ordinary-user-authentication";
+import { isOrdinaryUserAuthenticated } from "../ordinary-user-write-authorization";
 import { readSecret } from "../secrets";
 import {
   listQualifyingSummaryRelations,

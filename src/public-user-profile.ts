@@ -7,11 +7,11 @@ import {
   publicGrade,
   publicHeadline,
 } from "./lib/public-review-fields";
+import { resolveOrdinaryUser } from "./ordinary-user-authentication";
 import {
   isOrdinaryUserAuthenticated,
   requireOrdinaryWriteUser,
-  resolveOrdinaryUser,
-} from "./ordinary-user-session";
+} from "./ordinary-user-write-authorization";
 import {
   FIRST_USER_PUBLIC_CODE,
   RESERVED_PUBLIC_CODE,

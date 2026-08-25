@@ -1,9 +1,9 @@
 import type { Context } from "hono";
+import { resolveOrdinaryUser } from "./ordinary-user-authentication";
 import {
   canOrdinaryUserWrite,
   requireOrdinaryWriteUser,
-  resolveOrdinaryUser,
-} from "./ordinary-user-session";
+} from "./ordinary-user-write-authorization";
 import {
   AVATAR_KEY_COUNT,
   ensureUserPublicHandle,
