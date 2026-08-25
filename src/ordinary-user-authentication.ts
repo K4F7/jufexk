@@ -79,22 +79,10 @@ async function loadOrCreateUser(
     .bind(userId)
     .first<OrdinaryUser>();
   if (existing) {
-    const cleared = await clearExpiredMute(db, existing);
-    return ensureUserPublicHandle(db, cleared);
+    return ensureUserPublicHandle(db, existing);
   }
   const handle = await insertUserWithPublicHandle(db, userId);
   return { id: userId, status: "active", ...handle };
-}
-
-async function clearExpiredMute(db: D1Database, user: OrdinaryUser) {
-  if (user.muted_until == null || user.muted_until > Date.now() / 1000) return user;
-  await db
-    .prepare(
-      "UPDATE users SET muted_until=NULL WHERE id=? AND muted_until IS NOT NULL AND muted_until<=unixepoch()",
-    )
-    .bind(user.id)
-    .run();
-  return { ...user, muted_until: null };
 }
 
 export async function resolveTestHmacCredential(
@@ -173,7 +161,7 @@ export async function resolveOrdinaryUserSessionCredential(
     .first<OrdinaryUser>()
     .then(async (user) => {
       if (!user) return null;
-      return ensureUserPublicHandle(db, await clearExpiredMute(db, user));
+      return ensureUserPublicHandle(db, user);
     });
 }
 

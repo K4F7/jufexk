@@ -94,6 +94,19 @@ export function canOrdinaryUserWrite(user: OrdinaryUser) {
   );
 }
 
+async function clearExpiredMute(db: D1Database, user: OrdinaryUser) {
+  if (user.muted_until == null || user.muted_until > Date.now() / 1000) {
+    return user;
+  }
+  await db
+    .prepare(
+      "UPDATE users SET muted_until=NULL WHERE id=? AND muted_until IS NOT NULL AND muted_until<=unixepoch()",
+    )
+    .bind(user.id)
+    .run();
+  return { ...user, muted_until: null };
+}
+
 /**
  * Shared write gate for ordinary-user mutations (reviews, catalog requests,
  * endorsements). Guests 401; muted / banned / pending_deletion / deleted 403;
@@ -105,8 +118,9 @@ export async function requireOrdinaryWriteUser(
   loginError: string,
   forbiddenError: string,
 ): Promise<{ user: OrdinaryUser } | { error: Response }> {
-  const user = await resolveOrdinaryUser(c);
-  if (!user) return { error: c.json({ error: loginError }, 401) };
+  const resolved = await resolveOrdinaryUser(c);
+  if (!resolved) return { error: c.json({ error: loginError }, 401) };
+  const user = await clearExpiredMute(c.env.DB, resolved);
   if (!canOrdinaryUserWrite(user))
     return { error: c.json({ error: forbiddenError }, 403) };
   if (!ordinaryUserMutationSecurityOk(c))

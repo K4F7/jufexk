@@ -175,9 +175,14 @@ describe("ordinary user authentication adapters", () => {
     );
     const { value: unknownUser } = await sessionCookieValue("unknownuser1");
 
+    const tampered = (cookie: string) => {
+      const last = cookie.slice(-1);
+      return `${cookie.slice(0, -1)}${last === "0" ? "1" : "0"}`;
+    };
+
     const cases = [
       ordinaryUserRequest("/auth", {
-        Cookie: `${EMAIL_LOGIN_COOKIE}=${valid.slice(0, -2)}ff`,
+        Cookie: `${EMAIL_LOGIN_COOKIE}=${tampered(valid)}`,
       }),
       ordinaryUserRequest("/auth", {
         Cookie: `${EMAIL_LOGIN_COOKIE}=${expired}`,
@@ -205,6 +210,28 @@ describe("ordinary user authentication adapters", () => {
       withBinding("CAMPUS_IDENTITY_SECRET", ""),
     );
     expect(unsigned).toBeNull();
+  });
+
+  it("does not persist expired mute while resolving credentials", async () => {
+    const userId = "muteexpired1";
+    await insertUser(userId, "active");
+    const expiredUntil = Math.floor(Date.now() / 1000) - 10;
+    await env.DB.prepare("UPDATE users SET muted_until=? WHERE id=?")
+      .bind(expiredUntil, userId)
+      .run();
+    const { value: cookie } = await sessionCookieValue(userId);
+    const user = await resolveFrom(
+      ordinaryUserRequest("/auth", {
+        Cookie: `${EMAIL_LOGIN_COOKIE}=${cookie}`,
+      }),
+    );
+    expect(user).toMatchObject({ id: userId, status: "active" });
+    expect(user?.muted_until).toBe(expiredUntil);
+    expect(
+      await env.DB.prepare("SELECT muted_until FROM users WHERE id=?")
+        .bind(userId)
+        .first(),
+    ).toEqual({ muted_until: expiredUntil });
   });
 
   it("issues the same v1.userId.exp.mac site cookie that the cookie adapter accepts", async () => {
