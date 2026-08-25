@@ -3,7 +3,8 @@ type TestableSecretBinding =
   | "IP_HASH_SECRET"
   | "TURNSTILE_SECRET"
   | "CAMPUS_IDENTITY_SECRET"
-  | "CAS_CHALLENGE_SECRET";
+  | "CAS_CHALLENGE_SECRET"
+  | "EHALL_SESSION_SECRET";
 
 // Production bindings come from `wrangler types`; the overrides allow Miniflare
 // tests to inject plain strings in place of Secrets Store bindings.
@@ -17,6 +18,7 @@ export type Bindings = Omit<Cloudflare.Env, TestableSecretBinding> & {
   MAIL_DELIVERY_TOKEN?: RuntimeSecret;
   REVIEW_AUTHOR_LOOKUP_TO?: RuntimeSecret;
   CAS_CHALLENGE_SECRET?: RuntimeSecret;
+  EHALL_SESSION_SECRET?: RuntimeSecret;
   OPENAI_BASE_URL?: string;
   OPENAI_API_KEY?: RuntimeSecret;
   OPENAI_MODEL?: string;

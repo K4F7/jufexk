@@ -112,6 +112,7 @@ const SESSION_LOADING_STATUS = (
 export function LoginPage() {
   const [searchParams] = useSearchParams();
   const backTarget = backTargetFrom(searchParams.get("from"));
+  const campusReauth = searchParams.get("reauth") === "campus";
   const magicToken = searchParams.get("token") || "";
   const { viewer, ready, refresh, applySession } = useViewer();
   const navigate = useNavigate();
@@ -319,13 +320,13 @@ export function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
       if (requestId !== loginRequestId.current) return;
-      setPassword("");
       if (body.needsMfa) {
         setError("");
         setChallenge(body.challenge);
         setMaskedPhone(body.maskedPhone || "");
         return;
       }
+      setPassword("");
       await finishLogin(body);
     } catch (err: unknown) {
       if (requestId !== loginRequestId.current) return;
@@ -343,9 +344,10 @@ export function LoginPage() {
     try {
       const session = await api<CasStart>("/api/auth/cas/mfa", {
         method: "POST",
-        body: JSON.stringify({ challenge, code: mfaCode }),
+        body: JSON.stringify({ challenge, code: mfaCode, password }),
       });
       if (requestId !== loginRequestId.current) return;
+      setPassword("");
       finishLogin(session);
     } catch (err: unknown) {
       if (requestId !== loginRequestId.current) return;
@@ -353,6 +355,7 @@ export function LoginPage() {
         err instanceof ApiError ? err.message : "验证码不正确";
       setError(message);
       if (shouldReturnToCredentials(message)) {
+        setPassword("");
         setChallenge("");
         setMfaCode("");
         setMaskedPhone("");
@@ -381,10 +384,10 @@ export function LoginPage() {
       >
         <Card.Header>
           <Card.Title id="login-heading">
-            登录
+            {campusReauth ? "重新验证校园身份" : "登录"}
           </Card.Title>
         </Card.Header>
-        {ready && viewer.authenticated ? (
+        {ready && viewer.authenticated && !campusReauth ? (
           <Card.Content>
             <AlreadyLoggedInAlert />
           </Card.Content>

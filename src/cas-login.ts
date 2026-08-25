@@ -14,6 +14,7 @@ import {
 } from "./ordinary-user-session";
 import {
   completeCasPasswordLogin,
+  CAS_SERVICE_URL,
   normalizeCasPassword,
   normalizeCasUsername,
   pollCasQrLogin,
@@ -22,6 +23,12 @@ import {
   type CasMfaHold,
   type CasQrHold,
 } from "./lib/jxufe-cas";
+import type { CasSsoGrant } from "./lib/jxufe-cas";
+import { issueEhallSessionCookie } from "./ehall-session";
+import {
+  prepareEhallLogin,
+  type EhallLoginPreparation,
+} from "./lib/jxufe-ehall";
 import { readSecret } from "./secrets";
 
 export const CAS_LOGIN_PATH = "/api/auth/cas";
@@ -41,13 +48,24 @@ const QR_STATUS_RATE_LIMIT = 200;
 /** Looser than per-challenge 200: blocks fabricated status ids on one IP. */
 const QR_STATUS_IP_RATE_LIMIT = 2000;
 
-type CasChallengeHold = CasMfaHold | CasQrHold;
+type PreparedMfaHold = {
+  kind: "mfa";
+  cas: CasMfaHold;
+  ehall: EhallLoginPreparation | null;
+};
+type PreparedQrHold = {
+  kind: "qr";
+  cas: CasQrHold;
+  ehall: EhallLoginPreparation | null;
+};
+type CasChallengeHold = PreparedMfaHold | PreparedQrHold;
 
 type CasEnv = {
   DB: D1Database;
   IP_HASH_SECRET?: string | { get(): Promise<string> };
   CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
   CAS_CHALLENGE_SECRET?: string | { get(): Promise<string> };
+  EHALL_SESSION_SECRET?: string | { get(): Promise<string> };
 };
 
 const fail = (
@@ -136,25 +154,46 @@ async function encryptHold(secret: string, hold: CasChallengeHold) {
   return `${bytesToHex(iv)}.${bytesToHex(cipher)}`;
 }
 
-function isQrHold(parsed: unknown): parsed is CasQrHold {
-  if (!parsed || typeof parsed !== "object") return false;
-  const hold = parsed as Record<string, unknown>;
+function isEhallPreparation(value: unknown): value is EhallLoginPreparation {
+  if (!value || typeof value !== "object") return false;
+  const preparation = value as Record<string, unknown>;
   return (
-    hold.kind === "qr" &&
-    hold.cookies != null &&
-    typeof hold.cookies === "object" &&
-    !Array.isArray(hold.cookies) &&
-    typeof hold.fpVisitorId === "string" &&
-    hold.fpVisitorId.length >= 8 &&
-    hold.fpVisitorId.length <= 64
+    typeof preparation.casLoginUrl === "string" &&
+    typeof preparation.casServiceUrl === "string" &&
+    Array.isArray(preparation.ehallCookies)
   );
 }
 
-function isMfaHold(parsed: unknown): parsed is CasMfaHold {
+function isQrHold(parsed: unknown): parsed is PreparedQrHold {
   if (!parsed || typeof parsed !== "object") return false;
   const hold = parsed as Record<string, unknown>;
-  if (hold.kind === "qr") return false;
-  return Boolean(hold.username && hold.password && hold.gid);
+  const cas = hold.cas as Record<string, unknown> | undefined;
+  return (
+    hold.kind === "qr" &&
+    cas?.kind === "qr" &&
+    cas.cookies != null &&
+    typeof cas.cookies === "object" &&
+    !Array.isArray(cas.cookies) &&
+    typeof cas.serviceUrl === "string" &&
+    typeof cas.fpVisitorId === "string" &&
+    cas.fpVisitorId.length >= 8 &&
+    cas.fpVisitorId.length <= 64 &&
+    (hold.ehall === null || isEhallPreparation(hold.ehall))
+  );
+}
+
+function isMfaHold(parsed: unknown): parsed is PreparedMfaHold {
+  if (!parsed || typeof parsed !== "object") return false;
+  const hold = parsed as Record<string, unknown>;
+  const cas = hold.cas as Record<string, unknown> | undefined;
+  return Boolean(
+    hold.kind === "mfa" &&
+      cas?.username &&
+      typeof cas.encryptEnabled === "boolean" &&
+      cas.gid &&
+      cas.serviceUrl &&
+      (hold.ehall === null || isEhallPreparation(hold.ehall)),
+  );
 }
 
 async function decryptHold(secret: string, blob: string): Promise<CasChallengeHold | null> {
@@ -221,6 +260,8 @@ async function issueOrdinarySession(
   c: Context<{ Bindings: CasEnv }>,
   username: string,
   identitySecret: string,
+  sso?: CasSsoGrant,
+  ehall?: EhallLoginPreparation | null,
 ) {
   const subject = await hmacHex(`cas-username:${username}`, identitySecret);
   const user = await resolveOrCreateIdentityUser(c.env.DB, {
@@ -231,7 +272,10 @@ async function issueOrdinarySession(
   if (!user || user.status === "banned" || user.status === "deleted") {
     return fail(c, "登录失败，请稍后重试", 401);
   }
-  await issueEmailSessionCookie(c, user.id, identitySecret);
+  const siteSession = await issueEmailSessionCookie(c, user.id, identitySecret);
+  if (sso && ehall) {
+    await issueEhallSessionCookie(c, user.id, siteSession, sso, ehall).catch(() => {});
+  }
   return c.json(sessionPayloadForUser(c, user));
 }
 
@@ -262,9 +306,14 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
     return fail(c, "学号或密码不正确", 401);
   }
 
-  const result = await startCasPasswordLogin(username, password);
+  const ehall = await prepareEhallLogin().catch(() => null);
+  const result = await startCasPasswordLogin(
+    username,
+    password,
+    ehall?.casServiceUrl || CAS_SERVICE_URL,
+  );
   if (result.ok) {
-    return issueOrdinarySession(c, username, identitySecret);
+    return issueOrdinarySession(c, username, identitySecret, result.sso, ehall);
   }
   if (result.needsMfa) {
     if (!secret) return fail(c, "登录失败，请稍后重试", 503);
@@ -272,7 +321,11 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
     await c.env.DB.prepare(
       `INSERT INTO cas_login_challenges(id,blob,expires_at) VALUES(?,?,unixepoch()+?)`,
     )
-      .bind(id, await encryptHold(secret, result.hold), CHALLENGE_TTL_SECONDS)
+      .bind(
+        id,
+        await encryptHold(secret, { kind: "mfa", cas: result.hold, ehall }),
+        CHALLENGE_TTL_SECONDS,
+      )
       .run();
     return c.json({
       needsMfa: true,
@@ -306,7 +359,8 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
 
   const challenge = typeof body?.challenge === "string" ? body.challenge.trim() : "";
   const code = typeof body?.code === "string" ? body.code.trim() : "";
-  if (!challenge || !/^\d{4}$/.test(code) || !identitySecret || !secret) {
+  const password = normalizeCasPassword(body?.password);
+  if (!challenge || !/^\d{4}$/.test(code) || !password || !identitySecret || !secret) {
     return fail(c, "验证码不正确", 401);
   }
 
@@ -317,7 +371,7 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
   const hold = await decryptHold(secret, row.blob);
   if (!isMfaHold(hold)) return fail(c, "验证已过期，请重新登录", 401);
 
-  const result = await completeCasPasswordLogin(hold, code);
+  const result = await completeCasPasswordLogin(hold.cas, code, password);
   if (!result.ok) {
     if (result.needsMfa) return fail(c, "登录失败，请稍后重试");
     return fail(c, result.error, result.status);
@@ -328,7 +382,13 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
   )
     .bind(challenge)
     .run();
-  return issueOrdinarySession(c, hold.username, identitySecret);
+  return issueOrdinarySession(
+    c,
+    hold.cas.username,
+    identitySecret,
+    result.sso,
+    hold.ehall,
+  );
 }
 
 export async function handleCasQrStart(c: Context<{ Bindings: CasEnv }>) {
@@ -352,14 +412,19 @@ export async function handleCasQrStart(c: Context<{ Bindings: CasEnv }>) {
   }
   if (!identitySecret || !secret) return fail(c, "登录失败，请稍后重试", 503);
 
-  const result = await startCasQrLogin();
+  const ehall = await prepareEhallLogin().catch(() => null);
+  const result = await startCasQrLogin(ehall?.casServiceUrl || CAS_SERVICE_URL);
   if (!result.ok) return fail(c, result.error, result.status);
 
   const id = newChallengeId();
   await c.env.DB.prepare(
     `INSERT INTO cas_login_challenges(id,blob,expires_at) VALUES(?,?,unixepoch()+?)`,
   )
-    .bind(id, await encryptHold(secret, result.hold), CHALLENGE_TTL_SECONDS)
+    .bind(
+      id,
+      await encryptHold(secret, { kind: "qr", cas: result.hold, ehall }),
+      CHALLENGE_TTL_SECONDS,
+    )
     .run();
   return c.json({
     challenge: id,
@@ -409,14 +474,20 @@ export async function handleCasQrStatus(c: Context<{ Bindings: CasEnv }>) {
   const hold = await decryptHold(secret, row.blob);
   if (!isQrHold(hold)) return c.json({ status: "expired" });
 
-  const result = await pollCasQrLogin(hold);
+  const result = await pollCasQrLogin(hold.cas);
   if (!result.ok) return fail(c, result.error, result.status);
   if (result.status !== "authorized") return c.json({ status: result.status });
 
   await c.env.DB.prepare(`DELETE FROM cas_login_challenges WHERE id=?`)
     .bind(challenge)
     .run();
-  return issueOrdinarySession(c, result.username, identitySecret);
+  return issueOrdinarySession(
+    c,
+    result.username,
+    identitySecret,
+    result.sso,
+    hold.ehall,
+  );
 }
 
 /**

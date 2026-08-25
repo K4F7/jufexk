@@ -8,6 +8,8 @@ import {
 import { readSecret } from "./secrets";
 
 export const ORDINARY_USER_CSRF_COOKIE = "jufexk_user_csrf";
+export const EHALL_SESSION_COOKIE = "jufexk_ehall_session";
+export const EHALL_SESSION_COOKIE_PATH = "/api/ehall";
 export const ORDINARY_USER_ID_HEADER = "X-Jufexk-Ordinary-User";
 export const ORDINARY_USER_MAC_HEADER = "X-Jufexk-Ordinary-User-Mac";
 export const EMAIL_LOGIN_COOKIE = "jufexk_user_session";
@@ -15,7 +17,7 @@ export const LOGIN_PATH = "/login";
 export const LOGOUT_PATH = "/logout";
 export const USER_SESSION_PATH = "/api/user/session";
 export const USER_LOGOUT_PATH = "/api/user/logout";
-const EMAIL_SESSION_TTL_SECONDS = 86400;
+export const ORDINARY_USER_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Used only when wrangler is HTTP-local and CAMPUS_IDENTITY_SECRET is unset. */
 const LOCAL_DEV_IDENTITY_FALLBACK = "jufexk-local-dev-identity";
 
@@ -226,15 +228,17 @@ export async function issueEmailSessionCookie(
   userId: string,
   identitySecret: string,
 ) {
-  const exp = Math.floor(Date.now() / 1000) + EMAIL_SESSION_TTL_SECONDS;
+  const exp = Math.floor(Date.now() / 1000) + ORDINARY_USER_SESSION_TTL_SECONDS;
   const mac = await hmacHex(`email-session:v1:${userId}:${exp}`, identitySecret);
-  setCookie(c, EMAIL_LOGIN_COOKIE, `v1.${userId}.${exp}.${mac}`, {
+  const token = `v1.${userId}.${exp}.${mac}`;
+  setCookie(c, EMAIL_LOGIN_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: "Lax",
     path: "/",
-    maxAge: EMAIL_SESSION_TTL_SECONDS,
+    maxAge: ORDINARY_USER_SESSION_TTL_SECONDS,
   });
+  return token;
 }
 
 async function resolveEmailSessionUser(c: Context): Promise<OrdinaryUser | null> {
@@ -290,7 +294,7 @@ export function issueOrdinaryUserCsrf(c: Context, token: string) {
       secure: true,
       sameSite: "Lax",
       path: "/",
-      maxAge: 86400,
+      maxAge: ORDINARY_USER_SESSION_TTL_SECONDS,
     });
   }
   return csrf;
@@ -300,6 +304,7 @@ export function clearOrdinaryUserCookies(c: Context) {
   deleteCookie(c, CAMPUS_JWT_COOKIE, { path: "/" });
   deleteCookie(c, EMAIL_LOGIN_COOKIE, { path: "/" });
   deleteCookie(c, ORDINARY_USER_CSRF_COOKIE, { path: "/" });
+  deleteCookie(c, EHALL_SESSION_COOKIE, { path: EHALL_SESSION_COOKIE_PATH });
 }
 
 export function isOrdinaryUserAuthenticated(user: OrdinaryUser) {

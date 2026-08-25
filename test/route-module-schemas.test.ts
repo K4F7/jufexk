@@ -45,6 +45,13 @@ describe("domain route composition", () => {
     );
     expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/cas");
     expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/dev");
+    expect(authRoutes.routes.map(routeKey)).toEqual(
+      expect.arrayContaining([
+        "GET /api/ehall/session",
+        "DELETE /api/ehall/session",
+        "POST /api/ehall/launch",
+      ]),
+    );
     expect(ordinaryUserRoutes.routes.map(routeKey)).toContain(
       "POST /api/reviews",
     );
