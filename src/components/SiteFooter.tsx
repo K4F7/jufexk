@@ -9,7 +9,6 @@ const INTERNAL_LINKS = [
   { to: "/about", label: "关于我们" },
   { to: "/resources", label: "友情链接" },
   { to: "/terms", label: "使用条款" },
-  { to: "/admin", label: "管理" },
 ] as const;
 
 export function SiteFooter({
