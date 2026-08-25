@@ -173,7 +173,13 @@ async function mockApi(page: Page) {
     if (url.pathname === "/api/teachers/9")
       return route.fulfill({
         json: {
-          teacher: { id: 9, name: "测试教师", department: "人文学院", title: "讲师" },
+          teacher: {
+            id: 9,
+            name: "测试教师",
+            department: "人文学院",
+            title: "讲师",
+            rating: 4.6,
+          },
           courses: [
             {
               id: 8,
@@ -762,7 +768,13 @@ test("teacher catalog lists teachers and detail omits the review stream", async 
     if (url.pathname === "/api/teachers/9")
       return route.fulfill({
         json: {
-          teacher: { id: 9, name: "测试教师", department: "人文学院", title: "讲师" },
+          teacher: {
+            id: 9,
+            name: "测试教师",
+            department: "人文学院",
+            title: "讲师",
+            rating: 4.6,
+          },
           courses: [
             {
               id: 8,
@@ -794,8 +806,14 @@ test("teacher catalog lists teachers and detail omits the review stream", async 
   await expect(page.getByRole("list", { name: "评价列表" })).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "课程（共 1 门）" })).toBeVisible();
-  await expect(page.getByText("公开评价")).toBeVisible();
-  await expect(page.getByText("21 条")).toBeVisible();
+  const profile = page.getByLabel("教师资料");
+  await expect(profile.getByText("得到的评价")).toBeVisible();
+  await expect(profile.getByText("21 条")).toBeVisible();
+  await expect(profile.getByText("平均分", { exact: true })).toBeVisible();
+  await expect(profile.getByText("4.6", { exact: true })).toBeVisible();
+  await expect(profile.getByText("归一化平均分", { exact: true })).toBeVisible();
+  await expect(profile.getByText("-", { exact: true })).toBeVisible();
+  await expect(page.getByText("公开评价")).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }),
   ).toBeVisible();
