@@ -31,6 +31,11 @@ export const reviewNotDeletedBindingSql = `
 export const publicReviewBindingSql = `
        AND r.blocked_at IS NULL${reviewNotDeletedBindingSql}`;
 
+/** 访客公开流再排除「仅限登录用户查看」的点评。 */
+export const guestReviewBindingSql = `
+       ${publicReviewBindingSql}
+       AND r.login_only=0`;
+
 export const SUMMARY_MIN_REVIEWS = 5;
 export const SUMMARY_MIN_TOTAL_CHARS = 3000;
 export const SUMMARY_PROMPT_MAX_CHARS = 32000;
@@ -154,7 +159,7 @@ export async function collectRelationReviewTexts(
            r.created_at created_at,r.comment
          FROM reviews r
          WHERE r.course_id=? AND r.teacher_id=? AND r.status='approved'
-           AND trim(COALESCE(r.comment,''))<>''${publicReviewBindingSql}
+           AND trim(COALESCE(r.comment,''))<>''${guestReviewBindingSql}
        ) summary_sources
        ORDER BY recognition DESC,created_at DESC,source_order,row_id`,
     )
@@ -475,7 +480,7 @@ export async function listQualifyingSummaryRelations(
          SELECT r.course_id, r.teacher_id, r.comment
          FROM reviews r
          WHERE r.status='approved' AND trim(COALESCE(r.comment,''))<>''
-           ${publicReviewBindingSql}
+           ${guestReviewBindingSql}
        )
        SELECT ct.course_id, ct.teacher_id, c.name course_name, t.name teacher_name,
          c.code course_code, COUNT(*) review_count, SUM(LENGTH(pt.comment)) raw_chars

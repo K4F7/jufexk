@@ -78,7 +78,7 @@ async function insertedReview(courseId: number) {
       scheme_key: string | null;
       scheme_version: number | null;
       scores: string | null;
-      overall: number;
+      overall: number | null;
       comment: string;
       comment_format: string | null;
       headline: string;
@@ -355,6 +355,18 @@ describe("review submission required scheme scores", () => {
     });
   });
 
+  it("accepts a half-star overall rating", async () => {
+    const courseId = await createBoundCourse("general", "HALF01");
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4.5,
+      scores: V3_OFFLINE_SCORES,
+    });
+    expect(response.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({ overall: 4.5 });
+  });
+
   it("rejects a submission without an overall rating", async () => {
     const courseId = await createBoundCourse("general", "REQ005");
     const response = await submit({
@@ -363,6 +375,70 @@ describe("review submission required scheme scores", () => {
       scores: V3_OFFLINE_SCORES,
     });
     expect(response.status).toBe(400);
+  });
+
+  it("accepts a review-only submission without overall or scores", async () => {
+    const courseId = await createBoundCourse("general", "REVONLY1");
+    const leftover = await submit({
+      courseId,
+      teacherId: 1,
+      reviewOnly: true,
+      overall: 4,
+      scores: V3_OFFLINE_SCORES,
+    });
+    expect(leftover.status).toBe(200);
+    expect(await insertedReview(courseId)).toMatchObject({
+      overall: null,
+      scores: null,
+      comment: REQUIRED_NOTE,
+    });
+
+    const courseId2 = await createBoundCourse("general", "REVONLY2");
+    const omitted = await submit({
+      courseId: courseId2,
+      teacherId: 1,
+      reviewOnly: true,
+    });
+    expect(omitted.status).toBe(200);
+    expect(await insertedReview(courseId2)).toMatchObject({
+      overall: null,
+      scores: null,
+    });
+
+    const guest = await SELF.fetch(
+      `${origin}/api/courses/${courseId2}/reviews?teacherId=1`,
+    );
+    expect(guest.status).toBe(200);
+    const items = (
+      (await guest.json()) as {
+        items: Array<{ comment: string; overall: number | null }>;
+      }
+    ).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      comment: REQUIRED_NOTE,
+      overall: null,
+    });
+  });
+
+  it("still requires overall and scores when reviewOnly is not set", async () => {
+    const courseId = await createBoundCourse("general", "REVONLY3");
+    const missingOverall = await submit({
+      courseId,
+      teacherId: 1,
+      scores: V3_OFFLINE_SCORES,
+      reviewOnly: false,
+    });
+    expect(missingOverall.status).toBe(400);
+    const missingScores = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+    });
+    expect(missingScores.status).toBe(400);
+    expect(await missingScores.json()).toMatchObject({
+      error: "请答完本次适用的评分题",
+    });
   });
 
   it("rejects a course-teacher pair that is not in the catalog", async () => {
@@ -528,7 +604,7 @@ describe("review headline and optional grade (issue #444)", () => {
     expect(await insertedReview(courseId)).toMatchObject({ grade: null });
   });
 
-  it("stores a trimmed grade and rejects grades longer than 20 characters", async () => {
+  it("stores a numeric grade and rejects letters or oversized values", async () => {
     const courseId = await createBoundCourse("general", "HL004");
     const oversize = await submit({
       courseId,
@@ -542,15 +618,27 @@ describe("review headline and optional grade (issue #444)", () => {
       error: "成绩不能超过 20 字",
     });
 
+    const letter = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: V3_OFFLINE_SCORES,
+      grade: "A-",
+    });
+    expect(letter.status).toBe(400);
+    expect(await letter.json()).toMatchObject({
+      error: "成绩只接受数字",
+    });
+
     const accepted = await submit({
       courseId,
       teacherId: 1,
       overall: 4,
       scores: V3_OFFLINE_SCORES,
-      grade: "  A-  ",
+      grade: "  90  ",
     });
     expect(accepted.status).toBe(200);
-    expect(await insertedReview(courseId)).toMatchObject({ grade: "A-" });
+    expect(await insertedReview(courseId)).toMatchObject({ grade: "90" });
   });
 
   it("projects headline and grade into the public feed and the latest stream", async () => {
@@ -682,5 +770,47 @@ describe("course scheme reads for submit", () => {
       tags: ["mooc"],
     });
     expect(optionsBody.items[0].applicableQuestions).toEqual(TIER3_QUESTIONS);
+  });
+});
+
+describe("login-only reviews", () => {
+  it("hides login-only reviews from guests and keeps them for signed-in readers", async () => {
+    const courseId = await createBoundCourse("general", "PRIV01");
+    const response = await submit({
+      courseId,
+      teacherId: 1,
+      overall: 4,
+      scores: V3_OFFLINE_SCORES,
+      loginOnly: true,
+      headline: "仅登录可见",
+    });
+    expect(response.status).toBe(200);
+    expect(
+      await env.DB.prepare(
+        "SELECT login_only FROM reviews WHERE course_id=? ORDER BY id DESC LIMIT 1",
+      )
+        .bind(courseId)
+        .first(),
+    ).toEqual({ login_only: 1 });
+
+    const guest = await SELF.fetch(
+      `${origin}/api/courses/${courseId}/reviews?teacherId=1`,
+    );
+    expect(guest.status).toBe(200);
+    expect(
+      ((await guest.json()) as { items: unknown[] }).items,
+    ).toHaveLength(0);
+
+    writeSession ??= await ordinaryWriteSession("review-scheme-writer");
+    const signedIn = await SELF.fetch(
+      `${origin}/api/courses/${courseId}/reviews?teacherId=1`,
+      { headers: ordinaryWriteHeaders(writeSession) },
+    );
+    expect(signedIn.status).toBe(200);
+    const items = (
+      (await signedIn.json()) as { items: Array<{ headline?: string }> }
+    ).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ headline: "仅登录可见" });
   });
 });

@@ -14,7 +14,7 @@ import {
   publicAuthorFields,
   reservedAuthorSql,
 } from "./public-handle";
-import { publicReviewBindingSql } from "./review-summary";
+import { guestReviewBindingSql } from "./review-summary";
 
 const fail = (c: Context, error: string, status = 400) =>
   c.json({ error }, status as 400);
@@ -70,7 +70,7 @@ const latestUnion = `
   JOIN teachers t ON t.id=r.teacher_id
   ${authoredReviewJoinSql}
   WHERE r.status='approved'
-    AND trim(COALESCE(r.comment,''))<>''${publicReviewBindingSql}
+    AND trim(COALESCE(r.comment,''))<>''${guestReviewBindingSql}
 `;
 
 export async function handleLatestPublicReviews(c: Context) {

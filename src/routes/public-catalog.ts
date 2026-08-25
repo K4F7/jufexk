@@ -64,6 +64,7 @@ import {
 } from "../public-handle";
 import {
   getCourseRelationSummaries,
+  guestReviewBindingSql,
   publicReviewBindingSql,
   reviewNotDeletedBindingSql,
 } from "../review-summary";
@@ -238,7 +239,9 @@ const getPublicReviewPage = async (
   const cursorKey = cursor && "key" in cursor ? cursor.key : "";
   const reviewBinding = includeBlocked
     ? reviewNotDeletedBindingSql
-    : publicReviewBinding;
+    : viewerUserId
+      ? publicReviewBinding
+      : guestReviewBindingSql;
   /** 课程页评价按 课程×教师 作用域展示：选定教师时追加逐分支过滤。 */
   const teacherFilter = (alias: string) =>
     teacherId ? ` AND ${alias}.teacher_id=?` : "";

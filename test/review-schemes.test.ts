@@ -187,6 +187,20 @@ describe("submitted score validation", () => {
       schemeVersion: 3,
       scores: { ...V3_OFFLINE_SCORES },
     });
+    const reviewOnly = snapshotReviewScores({
+      schemeKey: "major",
+      category: "general",
+      tags: [],
+      scores: { difficulty: 1 },
+      comment: REQUIRED_NOTE,
+      reviewOnly: true,
+    });
+    expect(reviewOnly).toMatchObject({
+      ok: true,
+      scores: {},
+      scoresJson: null,
+      comment: REQUIRED_NOTE,
+    });
   });
 
   it("rejects a trimmed note shorter than 10 or longer than 1200 characters", () => {

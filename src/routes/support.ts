@@ -1,6 +1,7 @@
 import { getCookie } from "hono/cookie";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppContext } from "./types";
+import { parseOverallRating } from "../lib/review-overall";
 import {
   isCourseTag,
   isSchemeKey,
@@ -24,11 +25,7 @@ export const integer = (v: unknown) => {
   const n = Number(v);
   return Number.isSafeInteger(n) ? n : null;
 };
-export const rating = (v: unknown) => {
-  if (v === "" || v == null) return null;
-  const n = integer(v);
-  return n !== null && n >= 1 && n <= 5 ? n : null;
-};
+export const rating = (v: unknown) => parseOverallRating(v);
 export type StashedReview = {
   scores: unknown;
   overall: number;
