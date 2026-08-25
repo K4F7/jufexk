@@ -13,7 +13,6 @@ import {
   Spinner,
   ToggleButton,
   ToggleButtonGroup,
-  Typography,
   type Key,
 } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
@@ -212,70 +211,74 @@ export function ProfilePage() {
         ) : (
           <>
             <section aria-labelledby="profile-reviews-heading">
-              <Typography
-                className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
-                id="profile-reviews-heading"
-                type="h2"
-              >
-                点评（{reviewCount} 门）
-              </Typography>
-              {reviews.length === 0 ? (
-                <p className="mt-3 text-sm text-muted">
-                  快去写点评吧～先到
-                  <RouterAriaLink to="/courses" className="text-accent">
-                    课程列表
-                  </RouterAriaLink>
-                  找到你上过的课。
-                </p>
-              ) : (
-                <div className="mt-2" role="list" aria-label="我的点评">
-                  {reviews.map((review, index) => (
-                    <div key={review.id} role="listitem">
-                      {index > 0 ? <Separator /> : null}
-                      <div className="py-3">
-                        <ProfileReviewItem review={review} />
-                      </div>
+              <Card>
+                <Card.Header className="gap-3">
+                  <Card.Title id="profile-reviews-heading">
+                    点评（{reviewCount} 门）
+                  </Card.Title>
+                  {reviews.length === 0 ? (
+                    <Card.Description>
+                      快去写点评吧～先到
+                      <RouterAriaLink to="/courses">课程列表</RouterAriaLink>
+                      找到你上过的课。
+                    </Card.Description>
+                  ) : null}
+                </Card.Header>
+                {reviews.length > 0 ? (
+                  <Card.Content>
+                    <div role="list" aria-label="我的点评">
+                      {reviews.map((review, index) => (
+                        <div key={review.id} role="listitem">
+                          {index > 0 ? <Separator className="my-4" /> : null}
+                          <ProfileReviewItem review={review} />
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                  </Card.Content>
+                ) : null}
+              </Card>
             </section>
 
             <section aria-labelledby="profile-follows-heading">
-              <Typography
-                className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
-                id="profile-follows-heading"
-                type="h2"
-              >
-                关注（{followCount} 门）
-              </Typography>
-              {follows.length === 0 ? (
-                <p className="mt-3 text-sm text-muted">
-                  还没有关注的课程。在课程页点「关注」，有新点评时会收到消息。
-                </p>
-              ) : (
-                <div className="mt-2" role="list" aria-label="我的关注">
-                  {follows.map((follow, index) => (
-                    <div
-                      key={`${follow.course_id}:${follow.teacher_id}`}
-                      role="listitem"
-                    >
-                      {index > 0 ? <Separator /> : null}
-                      <p className="m-0 py-3 text-sm">
-                        <RouterAriaLink
-                          to={relationHref(follow.course_id, follow.teacher_id)}
-                          className="text-accent"
+              <Card>
+                <Card.Header className="gap-3">
+                  <Card.Title id="profile-follows-heading">
+                    关注（{followCount} 门）
+                  </Card.Title>
+                  {follows.length === 0 ? (
+                    <Card.Description>
+                      还没有关注的课程。在课程页点「关注」，有新点评时会收到消息。
+                    </Card.Description>
+                  ) : null}
+                </Card.Header>
+                {follows.length > 0 ? (
+                  <Card.Content>
+                    <div role="list" aria-label="我的关注">
+                      {follows.map((follow, index) => (
+                        <div
+                          key={`${follow.course_id}:${follow.teacher_id}`}
+                          role="listitem"
                         >
-                          {follow.course_name}
-                          {follow.teacher_name
-                            ? `（${follow.teacher_name}）`
-                            : ""}
-                        </RouterAriaLink>
-                      </p>
+                          {index > 0 ? <Separator className="my-4" /> : null}
+                          <p className="m-0 text-sm">
+                            <RouterAriaLink
+                              to={relationHref(
+                                follow.course_id,
+                                follow.teacher_id,
+                              )}
+                            >
+                              {follow.course_name}
+                              {follow.teacher_name
+                                ? `（${follow.teacher_name}）`
+                                : ""}
+                            </RouterAriaLink>
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                  </Card.Content>
+                ) : null}
+              </Card>
             </section>
           </>
         )}
@@ -352,7 +355,7 @@ export function ProfilePage() {
                 </Button>
               </Alert>
             ) : null}
-            <dl className="m-0 grid gap-1.5 text-sm">
+            <dl className="m-0 grid gap-3 text-sm">
               <div className="flex justify-between gap-3">
                 <dt className="text-muted">关注了</dt>
                 <dd className="m-0 tabular">

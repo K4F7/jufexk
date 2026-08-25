@@ -139,7 +139,7 @@ export function PublicUserPage() {
             </div>
           </Card.Header>
           <Card.Content>
-            <dl className="m-0 grid gap-1.5 text-sm">
+            <dl className="m-0 grid gap-3 text-sm">
               <div className="flex justify-between gap-3">
                 <dt className="text-muted">关注了</dt>
                 <dd className="m-0 tabular">{profile.following_count ?? 0} 人</dd>
