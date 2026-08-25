@@ -40,7 +40,15 @@ export function parseJwxtCookieHeader(raw: string) {
     if (equals <= 0) throw new JwxtAuthenticationError("jwxt_cookie_invalid");
     const name = item.slice(0, equals).trim();
     const cookieValue = item.slice(equals + 1).trim();
-    if (!COOKIE_NAME.test(name) || !cookieValue || /[\r\n]/.test(cookieValue)) {
+    if (
+      !COOKIE_NAME.test(name) ||
+      !cookieValue ||
+      /[\r\n]/.test(cookieValue) ||
+      [...cookieValue].some((character) => {
+        const code = character.charCodeAt(0);
+        return code < 0x21 || code > 0x7e;
+      })
+    ) {
       throw new JwxtAuthenticationError("jwxt_cookie_invalid");
     }
     cookies.set(name, cookieValue);

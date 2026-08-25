@@ -22,6 +22,9 @@ describe("JWXT cookie authentication", () => {
     expect(() => parseJwxtCookieHeader("JSESSIONID=ok\r\nX-Leak: value")).toThrowError(
       new JwxtAuthenticationError("jwxt_cookie_invalid"),
     );
+    expect(() => parseJwxtCookieHeader("JSESSIONID=ok　x")).toThrowError(
+      new JwxtAuthenticationError("jwxt_cookie_invalid"),
+    );
   });
 
   it("uses the supplied cookie", async () => {
