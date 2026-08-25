@@ -6,7 +6,7 @@ The mirror is independent from `offerings` and `reviews.offering_id`. Class numb
 
 ## Consequences
 
-- `production` Environment owns the optional JWXT Cookie header, fallback CAS credentials, and `JWXT_SYNC_ENABLED` gate. A configured cookie is used by both manual and scheduled collection, remains in the Actions process only, and is never sent to the Worker. PR/fork events cannot invoke the workflow, and it is not part of `CI / check`.
+- `production` Environment owns the optional eHall Cookie header, legacy direct-JWXT Cookie fallback, CAS credentials, and `JWXT_SYNC_ENABLED` gate. A configured cookie is used by both manual and scheduled collection, remains in the Actions process only, and is never sent to the Worker. PR/fork events cannot invoke the workflow, and it is not part of `CI / check`.
 - A `supported` pilot is operational evidence, not something fixtures can assert. GitHub egress rejection, CAPTCHA, or unsupported MFA must end as an explicit failure rather than an empty generation.
 - R2 is audit/checkpoint storage; D1 is the query model. Actions artifacts must not retain JWXT data.
 - The executable protocol and gate procedure are recorded in `docs/operations/jwxt-sync-protocol.md`; until its authorized pilot is run, the operational conclusion remains `unverified` rather than `supported`.
