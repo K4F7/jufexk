@@ -194,8 +194,15 @@ describe("ordinary user session boundary", () => {
     const body = await session.json<{
       authenticated: boolean;
       csrfToken?: string;
+      handle?: string;
+      avatar_key?: number;
     }>();
     expect(body.authenticated).toBe(true);
+    expect(body.handle).toMatch(/^匿名用户#\d{6}$/);
+    expect(body.handle).not.toBe("匿名用户#000000");
+    expect(body.avatar_key).toBeGreaterThanOrEqual(0);
+    expect(body.avatar_key).toBeLessThan(5);
+    assertNoIdentityLeak(body);
     const denied = await SELF.fetch(`${origin}/api/user/logout`, {
       method: "POST",
       headers: { ...auth, Origin: origin },

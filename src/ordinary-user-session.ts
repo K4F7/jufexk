@@ -13,6 +13,11 @@ import {
   isOrdinaryUserAuthenticated,
   ordinaryUserMutationSecurityOk,
 } from "./ordinary-user-write-authorization";
+import {
+  FIRST_USER_PUBLIC_CODE,
+  defaultAvatarKey,
+  formatPublicHandle,
+} from "./public-handle";
 
 export { ORDINARY_USER_SESSION_TTL_SECONDS };
 export const EHALL_SESSION_COOKIE = "jufexk_ehall_session";
@@ -29,6 +34,9 @@ export type OrdinaryUserSession = {
   csrfToken?: string;
   loginPath: string;
   logoutPath: string;
+  /** Public display name only — never email, student id, or users.id. */
+  handle?: string;
+  avatar_key?: number;
 };
 
 const ACCOUNT_DELETION_RECOVERY_DAYS = 30;
@@ -96,11 +104,20 @@ export function sessionPayloadForUser(
     return pendingDeletionSession(c, user.pending_deletion_at);
   }
   if (!user || !isOrdinaryUserAuthenticated(user)) return guestSession();
+  const publicCode = user.public_code;
+  const publicIdentity =
+    publicCode != null && publicCode >= FIRST_USER_PUBLIC_CODE
+      ? {
+          handle: formatPublicHandle(publicCode),
+          avatar_key: user.avatar_key ?? defaultAvatarKey(publicCode),
+        }
+      : {};
   return {
     authenticated: true,
     csrfToken: issueOrdinaryUserCsrf(c, randomToken()),
     loginPath: LOGIN_PATH,
     logoutPath: LOGOUT_PATH,
+    ...publicIdentity,
   };
 }
 

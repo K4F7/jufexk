@@ -63,6 +63,9 @@ async function mockApi(page: Page, mock: MockState) {
         csrfToken: mock.authenticated ? "csrf-user" : undefined,
         loginPath: "/login",
         logoutPath: "/logout",
+        ...(mock.authenticated
+          ? { handle: "匿名用户#000001", avatar_key: 0 }
+          : {}),
       });
     }
     if (url.pathname === "/api/auth/campus") {
@@ -169,7 +172,11 @@ test("signed-in viewer sees the account menu and the logged-in login page", asyn
 }) => {
   await mockApi(page, state({ authenticated: true }));
   await page.goto("/courses");
-  await expect(page.getByRole("button", { name: "账号" })).toBeVisible();
+  const account = page.getByRole("button", { name: "账号" });
+  await expect(account).toBeVisible();
+  await expect(account).toContainText("匿名用户#000001");
+  await expect(account.locator("img")).toBeVisible();
+  await expect(account).not.toHaveText(/^账号$/);
   await expect(page.getByRole("link", { name: "登录" })).toHaveCount(0);
 
   await page.goto("/login");

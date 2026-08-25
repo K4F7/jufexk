@@ -4,6 +4,7 @@
  * must degrade to a normal load-error alert when they 404.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { officialAvatarSrc } from "../../src/components/AnonymousAvatar";
 
 type MockState = {
   authenticated: boolean;
@@ -105,13 +106,24 @@ async function mockApi(page: Page, mock: MockState) {
         universityName: "江西财经大学",
         admin: false,
       });
-    if (url.pathname === "/api/user/session")
+    if (url.pathname === "/api/user/session") {
+      const profile = mock.profile as {
+        handle?: string;
+        avatar_key?: number;
+      };
       return fulfillJson(route, {
         authenticated: mock.authenticated,
         csrfToken: mock.authenticated ? "csrf-user" : undefined,
         loginPath: "/login",
         logoutPath: "/logout",
+        ...(mock.authenticated
+          ? {
+              handle: profile.handle ?? "匿名用户#000001",
+              avatar_key: profile.avatar_key ?? 0,
+            }
+          : {}),
       });
+    }
     if (url.pathname === "/api/auth/campus")
       return fulfillJson(route, {
         enabled: false,
@@ -132,6 +144,7 @@ async function mockApi(page: Page, mock: MockState) {
         public_code?: number;
         handle?: string;
       };
+      profile.avatar_key = 2;
       return fulfillJson(route, {
         ok: true,
         avatar_key: 2,
@@ -189,6 +202,13 @@ test("profile page renders own reviews, follows and stats", async ({
   await mockApi(page, state());
   await page.goto("/profile");
 
+  const account = page.getByRole("button", { name: "账号" });
+  await expect(account).toContainText("匿名用户#000001");
+  await expect(account.locator("img")).toHaveAttribute(
+    "src",
+    officialAvatarSrc(0),
+  );
+
   await expect(
     page.getByRole("heading", { name: "点评（2 门）" }),
   ).toBeVisible();
@@ -240,6 +260,11 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(
     page.getByRole("radio", { name: "选择官方头像 3" }),
   ).toHaveCount(0);
+  await expect(account).toContainText("匿名用户#000001");
+  await expect(account.locator("img")).toHaveAttribute(
+    "src",
+    officialAvatarSrc(2),
+  );
   await expect(profileCard.getByText("关注了", { exact: true }).first()).toBeVisible();
   await expect(profileCard.getByText("1 人", { exact: true })).toBeVisible();
   await expect(profileCard.getByText("被关注", { exact: true })).toBeVisible();

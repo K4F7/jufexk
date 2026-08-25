@@ -91,7 +91,7 @@ function ProfileReviewItem({ review }: { review: UserProfileReview }) {
 }
 
 export function ProfilePage() {
-  const { viewer, ready } = useViewer();
+  const { viewer, ready, applySession } = useViewer();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
@@ -180,6 +180,11 @@ export function ProfilePage() {
             }
           : current,
       );
+      applySession({
+        ...viewer,
+        avatar_key: updated.avatar_key,
+        handle: updated.handle ?? viewer.handle,
+      });
       setAvatarPickerOpen(false);
     } catch (reason) {
       setAvatarError((reason as Error).message || "头像保存失败");
