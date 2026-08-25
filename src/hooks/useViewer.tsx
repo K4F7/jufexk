@@ -20,6 +20,9 @@ export type ViewerSession = {
   csrfToken?: string;
   loginPath: string;
   logoutPath: string;
+  /** Public handle such as 匿名用户#000001 — never email or student id. */
+  handle?: string;
+  avatar_key?: number;
 };
 
 const GUEST: ViewerSession = {
@@ -44,11 +47,14 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
 
   const apply = useCallback((next: Partial<ViewerSession>) => {
     setCsrfToken(next.csrfToken || "");
+    const authenticated = !!next.authenticated;
     setViewer({
-      authenticated: !!next.authenticated,
+      authenticated,
       csrfToken: next.csrfToken,
       loginPath: next.loginPath || GUEST.loginPath,
       logoutPath: next.logoutPath || GUEST.logoutPath,
+      handle: authenticated ? next.handle : undefined,
+      avatar_key: authenticated ? next.avatar_key : undefined,
     });
   }, []);
 
