@@ -2,9 +2,6 @@ import { Button, Surface, Typography } from "@heroui/react";
 import { useState } from "react";
 import type { RelationSummary } from "../lib/types";
 
-export const AI_SUMMARY_DISCLAIMER =
-  "AI 总结为根据点评内容自动生成，仅供参考";
-
 /** 超过这个体量默认折叠，点「展开全文」查看（对齐 icourse 长文可折叠）。 */
 const COLLAPSE_HTML_LENGTH = 800;
 
@@ -34,12 +31,8 @@ export function CourseAiSummary({ summary }: { summary: RelationSummary }) {
           }
           dangerouslySetInnerHTML={{ __html: summary.html }}
         />
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-2">
-          <p className="m-0 text-xs text-muted">
-            {AI_SUMMARY_DISCLAIMER}
-            {summary.updatedAt ? ` · 更新于 ${summary.updatedAt.slice(0, 10)}` : null}
-          </p>
-          {collapsible ? (
+        {collapsible ? (
+          <div className="mt-2 border-t border-border pt-2">
             <Button
               variant="ghost"
               size="sm"
@@ -48,8 +41,8 @@ export function CourseAiSummary({ summary }: { summary: RelationSummary }) {
             >
               {expanded ? "收起" : "展开全文"}
             </Button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </Surface>
     </section>
   );
