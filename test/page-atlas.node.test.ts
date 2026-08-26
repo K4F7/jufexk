@@ -123,6 +123,8 @@ describe("listAtlasPages", () => {
         "/notices",
         "/notices?preview=empty",
         "/notices?preview=filled",
+        "/notices?preview=notices-badge",
+        "/notices?preview=notices-badge-zero",
         "/notices?preview=error",
         "/account?preview=guest",
         "/logout?preview=confirm",

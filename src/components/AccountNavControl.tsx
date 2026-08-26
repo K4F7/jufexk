@@ -1,11 +1,6 @@
 import { Envelope } from "@gravity-ui/icons";
 import { Badge, Button, Dropdown, Label, buttonVariants } from "@heroui/react";
-import {
-  Link as RouterLink,
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAdminSession } from "../hooks/useAdminSession";
 import { useViewer } from "../hooks/useViewer";
 import { useUnreadNotificationCount } from "../hooks/useUnreadNotifications";
@@ -54,25 +49,17 @@ export function AccountNavControl() {
   return (
     <div className="flex items-center">
       <Badge.Anchor>
-        <Button
+        <RouterAriaLink
           aria-label="消息"
-          isIconOnly
-          size="sm"
-          variant="ghost"
-          render={(domProps) => (
-            <RouterLink
-              {...(domProps as object)}
-              className={
-                typeof domProps.className === "string"
-                  ? domProps.className
-                  : undefined
-              }
-              to="/notices"
-            />
-          )}
+          className={`${buttonVariants({
+            isIconOnly: true,
+            size: "sm",
+            variant: "ghost",
+          })} no-underline`}
+          to="/notices"
         >
           <Envelope aria-hidden />
-        </Button>
+        </RouterAriaLink>
         {unreadLabel ? (
           <Badge color="danger" size="sm" aria-label={`${unread} 条未读消息`}>
             {unreadLabel}

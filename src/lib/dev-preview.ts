@@ -143,10 +143,15 @@ export function previewFilledNotices(): UserNotification[] {
 }
 
 /** Combined unread count for the header Badge. `null` = use the live API. */
+export const PREVIEW_NOTICES_BADGE = "notices-badge";
+export const PREVIEW_NOTICES_BADGE_ZERO = "notices-badge-zero";
+export const PREVIEW_NOTICES_BADGE_COUNT = 3;
+
 export function previewUnreadNotificationCount(
   preview: string | null,
 ): number | null {
-  if (preview === "empty") return 0;
+  if (preview === PREVIEW_NOTICES_BADGE) return PREVIEW_NOTICES_BADGE_COUNT;
+  if (preview === PREVIEW_NOTICES_BADGE_ZERO || preview === "empty") return 0;
   if (preview === "filled") {
     return previewFilledNotices().filter((item) => item.read === false).length;
   }

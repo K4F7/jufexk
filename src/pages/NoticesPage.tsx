@@ -12,6 +12,8 @@ import { announceNotificationsRead } from "../hooks/useUnreadNotifications";
 import { api } from "../lib/api";
 import {
   isDevAtlasSession,
+  PREVIEW_NOTICES_BADGE,
+  PREVIEW_NOTICES_BADGE_ZERO,
   previewFilledNotices,
   readDevPreview,
 } from "../lib/dev-preview";
@@ -52,8 +54,14 @@ export function NoticesPage() {
       setLoading(false);
       return;
     }
-    if (preview === "filled") {
+    if (preview === "filled" || preview === PREVIEW_NOTICES_BADGE) {
       setItems(previewFilledNotices());
+      setAvailable(true);
+      setLoading(false);
+      return;
+    }
+    if (preview === PREVIEW_NOTICES_BADGE_ZERO) {
+      setItems([]);
       setAvailable(true);
       setLoading(false);
       return;

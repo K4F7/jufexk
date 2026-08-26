@@ -518,6 +518,20 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           access: "login",
         },
         {
+          id: "notices-badge",
+          title: "消息未读",
+          description: "DEV mock：顶栏信封红点 3（关注 + 关注课评）",
+          href: "/notices?preview=notices-badge",
+          access: "login",
+        },
+        {
+          id: "notices-badge-zero",
+          title: "消息已读",
+          description: "DEV mock：顶栏信封无角标",
+          href: "/notices?preview=notices-badge-zero",
+          access: "login",
+        },
+        {
           id: "notices-error",
           title: "站内消息 · 加载失败",
           description: "DEV mock：消息暂时加载不了",

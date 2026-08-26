@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEV_ATLAS_PARAM,
   DEV_PREVIEW_PARAM,
+  PREVIEW_NOTICES_BADGE,
+  PREVIEW_NOTICES_BADGE_COUNT,
+  PREVIEW_NOTICES_BADGE_ZERO,
   previewUnreadNotificationCount,
   resolveDevAtlasSession,
   resolveDevPreview,
@@ -35,5 +38,9 @@ describe("DEV preview guards", () => {
     expect(previewUnreadNotificationCount("error")).toBeNull();
     expect(previewUnreadNotificationCount("empty")).toBe(0);
     expect(previewUnreadNotificationCount("filled")).toBe(2);
+    expect(previewUnreadNotificationCount(PREVIEW_NOTICES_BADGE)).toBe(
+      PREVIEW_NOTICES_BADGE_COUNT,
+    );
+    expect(previewUnreadNotificationCount(PREVIEW_NOTICES_BADGE_ZERO)).toBe(0);
   });
 });

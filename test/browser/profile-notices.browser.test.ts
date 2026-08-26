@@ -407,3 +407,25 @@ test("notices preview=empty hides the header unread badge", async ({
   await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
   await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
 });
+
+test("notices preview=notices-badge shows the header unread count", async ({
+  page,
+}) => {
+  await mockApi(page, state({ authenticated: false, unreadCount: null }));
+  await page.goto("/notices?preview=notices-badge&atlas=1");
+
+  await expect(page.getByRole("button", { name: "账号" })).toContainText(
+    "匿名用户#000001",
+  );
+  await expect(page.getByLabel("3 条未读消息")).toBeVisible();
+});
+
+test("notices preview=notices-badge-zero hides the header unread badge", async ({
+  page,
+}) => {
+  await mockApi(page, state({ authenticated: false, unreadCount: null }));
+  await page.goto("/notices?preview=notices-badge-zero&atlas=1");
+
+  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
+});

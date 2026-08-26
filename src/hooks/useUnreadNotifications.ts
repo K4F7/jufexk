@@ -32,7 +32,7 @@ function readUnreadCount(data: UnreadCountPayload | null | undefined): number {
  * 顶栏未读消息角标（#460）：GET /api/user/notifications/unread-count。
  * Worker 把关注（user_followed）与关注课评新点评（followed_relation_review）
  * 等未读行合成一个 unreadCount。接口未上线或请求失败时返回 null —— 隐藏角标。
- * DEV `?preview=filled|empty` 复用图集 mock，不打接口。
+ * DEV `?preview=notices-badge|notices-badge-zero|filled|empty` 复用图集 mock，不打接口。
  */
 export function useUnreadNotificationCount(authenticated: boolean) {
   const [searchParams] = useSearchParams();
