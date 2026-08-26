@@ -204,7 +204,7 @@ function CoursePickTable({
                           variant="secondary"
                           onPress={() => onStage(offering)}
                         >
-                          加入选课列表
+                          加入待选课表
                         </Button>
                       )}
                     </Table.Cell>
@@ -336,7 +336,6 @@ export function JwxtCourseBrowser({
   const canBrowseCandidates = candidatesReady ?? jwxtCandidateFiltersReady(snapshot);
   const courseRows = uniquePlanCourses(planItems);
   const [selectedCode, setSelectedCode] = useState(courseRows[0]?.courseCode ?? "");
-  const [pickOpen, setPickOpen] = useState(false);
   const [dropItem, setDropItem] = useState<PlannedItem | null>(null);
 
   useEffect(() => {
@@ -414,28 +413,57 @@ export function JwxtCourseBrowser({
         <p className="text-sm text-muted" role="status">
           请先选择年级和专业，再浏览培养方案课和公共选修。已加入的课可先查看。
         </p>
-      ) : null}
+      ) : (
+        <Card>
+          <Card.Header>
+            <Card.Title>待选的课</Card.Title>
+          </Card.Header>
+          <Card.Content>
+            <Tabs defaultSelectedKey="planned">
+              <Tabs.ListContainer>
+                <Tabs.List aria-label="教务课程分类">
+                  <Tabs.Tab id="planned">
+                    计划内
+                    <Tabs.Indicator />
+                  </Tabs.Tab>
+                  <Tabs.Tab id="public">
+                    <Tabs.Separator />
+                    公共选修
+                    <Tabs.Indicator />
+                  </Tabs.Tab>
+                </Tabs.List>
+              </Tabs.ListContainer>
+              <Tabs.Panel className="pt-3" id="planned">
+                <CoursePickTable
+                  label="计划内课程"
+                  offerings={snapshot.planned}
+                  planItems={planItems}
+                  onStage={(offering) => onStage(offering, "planned")}
+                />
+              </Tabs.Panel>
+              <Tabs.Panel className="pt-3" id="public">
+                <CoursePickTable
+                  label="公共选修"
+                  offerings={snapshot.publicElectives}
+                  planItems={planItems}
+                  onStage={(offering) => onStage(offering, "public")}
+                />
+              </Tabs.Panel>
+            </Tabs>
+          </Card.Content>
+        </Card>
+      )}
       <div aria-label="课程与开课班" className="flex flex-col gap-4 lg:flex-row" role="region">
         <Card className="min-w-0 flex-1">
           <Card.Header className="flex flex-wrap items-center justify-between gap-2">
-            <Card.Title>选课列表</Card.Title>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                isDisabled={!canBrowseCandidates}
-                onPress={() => setPickOpen(true)}
-              >
-                选择课程
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                onPress={onSave}
-              >
-                保存课表
-              </Button>
-            </div>
+            <Card.Title>待选课表</Card.Title>
+            <Button
+              size="sm"
+              variant="primary"
+              onPress={onSave}
+            >
+              保存课表
+            </Button>
           </Card.Header>
           <Card.Content>
             {courseRows.length === 0 ? (
@@ -445,7 +473,7 @@ export function JwxtCourseBrowser({
             ) : (
               <Table>
                 <Table.ScrollContainer>
-                  <Table.Content aria-label="选课列表" className="w-full min-w-[36rem]">
+                  <Table.Content aria-label="待选课表" className="w-full min-w-[36rem]">
                     <Table.Header>
                       <Table.Column isRowHeader>课程名称</Table.Column>
                       <Table.Column>学分</Table.Column>
@@ -526,54 +554,6 @@ export function JwxtCourseBrowser({
           </Card.Content>
         </Card>
       </div>
-      <Modal.Backdrop isOpen={pickOpen} onOpenChange={setPickOpen}>
-        <Modal.Container>
-          <Modal.Dialog className="sm:max-w-5xl">
-            <Modal.CloseTrigger />
-            <Modal.Header>
-              <Modal.Heading>选择课程</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              <Tabs defaultSelectedKey="planned">
-                <Tabs.ListContainer>
-                  <Tabs.List aria-label="教务课程分类">
-                    <Tabs.Tab id="planned">
-                      计划内
-                      <Tabs.Indicator />
-                    </Tabs.Tab>
-                    <Tabs.Tab id="public">
-                      <Tabs.Separator />
-                      公共选修
-                      <Tabs.Indicator />
-                    </Tabs.Tab>
-                  </Tabs.List>
-                </Tabs.ListContainer>
-                <Tabs.Panel className="pt-3" id="planned">
-                  <CoursePickTable
-                    label="计划内课程"
-                    offerings={snapshot.planned}
-                    planItems={planItems}
-                    onStage={(offering) => onStage(offering, "planned")}
-                  />
-                </Tabs.Panel>
-                <Tabs.Panel className="pt-3" id="public">
-                  <CoursePickTable
-                    label="公共选修"
-                    offerings={snapshot.publicElectives}
-                    planItems={planItems}
-                    onStage={(offering) => onStage(offering, "public")}
-                  />
-                </Tabs.Panel>
-              </Tabs>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button slot="close" variant="secondary">
-                完成
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
       <Modal.Backdrop isOpen={Boolean(dropItem)} onOpenChange={(open) => { if (!open) setDropItem(null); }}>
         <Modal.Container>
           <Modal.Dialog>

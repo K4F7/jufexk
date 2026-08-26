@@ -2,11 +2,11 @@
 
 _2026-08-26：[#637](https://github.com/K4F7/jufexk/issues/637) 采集培养方案理论课程；[#640](https://github.com/K4F7/jufexk/issues/640) 落地两步选课。本决策收窄 [ADR-0029](./0029-jwxt-driven-schedule-import.md) 里「专业所属学院的公开目录任课关系当作计划内课」的做法。_
 
-江财课号就是「课」；同课号下的老师/开课班才是「班」。`/schedule` 先把培养方案课加入选课列表（未选，不占课表），再点右栏某个班上表（备选）；「保存课表」才变成已选。刷新只恢复已选。
+江财课号就是「课」；同课号下的老师/开课班才是「班」。`/schedule` 选完年级和专业后给出待选的课；加入待选课表（未选，不占课表），再点其中一门看开课班，加入模拟课表（备选）。「保存课表」才变成已选。刷新只恢复已选。不要求登录。
 
 ## 数据
 
-- **课列表**：培养方案「理论课程」派生，键为 `年级 + 专业代码 + 课号 + 建议学期`。选择课程弹层按课号去重，一行一课。不把培养方案路径写入 `courses.enrollment_category`。
+- **课列表**：培养方案「理论课程」派生，键为 `年级 + 专业代码 + 课号 + 建议学期`。选完专业后页内按课号去重列出待选的课，一行一课。不把培养方案路径写入 `courses.enrollment_category`。
 - **班列表**：现有 `GET /api/schedule-offerings`（`jwxt_sync_offerings` 优先，目录 `offerings` 回退）。
 - **采集包**：独立 schema `program-plan-capture/v1`（`manifest.json` + `queries.jsonl` + `snapshots/`），不混进目录基线批准包。全量爬取由人工会话完成。
 - **公共选修**：本轮仍用体育/公选桶，按课号去重；不重做通识检索。
@@ -17,7 +17,7 @@ _2026-08-26：[#637](https://github.com/K4F7/jufexk/issues/637) 采集培养方�
 
 ## Consequences
 
-- `#637` 派生 JSONL 未导入时，计划内弹层为空，公共选修与已选课表仍可用。
+- `#637` 派生 JSONL 未导入时，计划内待选的课为空，公共选修与已选课表仍可用。
 - `/schedule` 仍只做电脑端（ADR-0030）。不等待 JWXT Worker 协议闸门变 `supported`。
 
 ## Considered Options
