@@ -80,6 +80,7 @@ pnpm run dev
 | `pnpm run db:local` | 应用本地 D1 迁移 |
 | `pnpm run db:seed-preview` | 本地 D1 灌入预览假数据；再打开 `/prototype#page-atlas` 进出各页 |
 | `pnpm run catalog-baseline` | 目录基线采集 CLI |
+| `pnpm run program-plan` | 培养方案理论课程离线派生 CLI |
 
 ## 配置
 
@@ -144,6 +145,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 ├── migrations/             # D1 数据库迁移
 ├── scripts/
 │   ├── catalog-baseline/   # 目录基线采集、派生、审核与发布
+│   ├── program-plan/       # 培养方案理论课程采集与离线派生
 │   └── secrets/            # 本地密钥同步
 ├── test/                   # Vitest 单元/集成测试与 Playwright 浏览器测试
 ├── docs/
@@ -159,6 +161,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 - `CONTEXT.md`：领域词汇表——课程、任课关系、评价、认可、目录基线等核心概念的唯一权威定义
 - `docs/adr/`：架构决策记录（目录身份、审核分层、密钥来源、校园身份等）
 - `docs/catalog-baseline-acquisition.md`：目录基线采集与发布全流程
+- `docs/program-plan-acquisition.md`：培养方案理论课程采集与离线派生
 - `docs/secrets.md`：密钥清单与轮换说明
 - `docs/agents/ci.md`：CI 拓扑、required gate 与防膨胀准入规范
 - `docs/agents/`：Issue 跟踪、triage 标签等协作约定
