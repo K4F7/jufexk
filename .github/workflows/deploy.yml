@@ -61,4 +61,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - name: Deploy Worker
-        run: pnpm exec wrangler deploy
+        run: pnpm exec wrangler deploy --env=""
+      - name: Deploy preview Worker
+        run: |
+          if grep -q "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" wrangler.jsonc; then
+            echo "jufexk-preview D1 id is still the placeholder; run pnpm db:create-preview"
+            exit 0
+          fi
+          pnpm exec wrangler deploy --env preview

@@ -467,8 +467,16 @@ type SummaryQueueSender = {
 
 export type AiSummaryQueueEnv = SummaryGatewayEnv & {
   DB: D1Database;
-  AI_SUMMARY_QUEUE: SummaryQueueSender;
+  AI_SUMMARY_QUEUE?: SummaryQueueSender;
 };
+
+async function sendSummaryJob(
+  env: AiSummaryQueueEnv,
+  job: AiSummaryQueueMessage,
+) {
+  if (!env.AI_SUMMARY_QUEUE) return;
+  await env.AI_SUMMARY_QUEUE.send(job);
+}
 
 type SummaryScheduleContext = {
   env: AiSummaryQueueEnv;
@@ -581,8 +589,9 @@ async function drainPersistedSummaryJobs(
   }
 
   if (!jobs.size) return 0;
+  if (!env.AI_SUMMARY_QUEUE) return 0;
   for (const job of jobs.values()) {
-    await env.AI_SUMMARY_QUEUE.send(job);
+    await sendSummaryJob(env, job);
   }
   await env.DB.batch([
     env.DB.prepare(
@@ -624,7 +633,7 @@ export async function scheduleRelationSummaryRecompute(
     );
   }
   try {
-    await c.env.AI_SUMMARY_QUEUE.send({
+    await sendSummaryJob(c.env, {
       courseId: courseId as number,
       teacherId: teacherId as number,
       immediate: options.immediate === true,
@@ -748,7 +757,7 @@ async function consumeAiSummaryMessage(
   }
   if (enqueueLatest) {
     try {
-      await env.AI_SUMMARY_QUEUE.send({
+      await sendSummaryJob(env, {
         courseId: body.courseId,
         teacherId: body.teacherId,
         immediate: true,

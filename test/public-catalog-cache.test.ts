@@ -36,6 +36,13 @@ describe("public catalog cache headers", () => {
     const response = await SELF.fetch(`${origin}/api/config`);
     expect(response.status).toBe(200);
     isNotPublicCatalogCache(response);
+    expect(await response.json()).toMatchObject({ showScheduleNav: false });
+  });
+
+  it("shows schedule nav on a loopback Worker host", async () => {
+    const response = await SELF.fetch("http://127.0.0.1:8787/api/config");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ showScheduleNav: true });
   });
 
   it("keeps admin routes uncached", async () => {

@@ -38,6 +38,7 @@
   "vars": {
     "SITE_NAME": "非官方课评@JUFE",
     "UNIVERSITY_NAME": "江西财经大学",
+    "PUBLIC_SURFACE": "production",
     "ISSUE111_RELATION_MANIFEST_SHA256": "edb9c07dc31990de02fb3d22c5a4c9141e931a7b49d68fa64eb8ae55dd0ae34b",
     "V5_IMPORT_ARTIFACT_SHA256": "4bfcf6008c2539494d4f3b4346d4c6e958144a3f0d83a06c4095ce472a1974dd",
     "V5_IMPORT_MANIFEST_SHA256": "a0889ee7ebba559af4179ff4331de5c3324ae7da89ab1d17b6c735afe0576266",
@@ -80,4 +81,57 @@
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "placement": { "mode": "smart" },
   "cache": { "enabled": true },
+  "env": {
+    "preview": {
+      "name": "jufexk-preview",
+      "workers_dev": true,
+      // Override inherited custom domain so preview stays on workers.dev.
+      "routes": [],
+      "vars": {
+        "SITE_NAME": "非官方课评@JUFE（预览）",
+        "UNIVERSITY_NAME": "江西财经大学",
+        "PUBLIC_SURFACE": "preview",
+        "ISSUE111_RELATION_MANIFEST_SHA256": "edb9c07dc31990de02fb3d22c5a4c9141e931a7b49d68fa64eb8ae55dd0ae34b",
+        "V5_IMPORT_ARTIFACT_SHA256": "4bfcf6008c2539494d4f3b4346d4c6e958144a3f0d83a06c4095ce472a1974dd",
+        "V5_IMPORT_MANIFEST_SHA256": "a0889ee7ebba559af4179ff4331de5c3324ae7da89ab1d17b6c735afe0576266",
+        "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "jufexk-preview",
+          // Filled by `pnpm db:create-preview` after `wrangler d1 create`.
+          "database_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "IP_HASH_SECRET",
+          "store_id": "323163a091874b07aacdf5500bff903e",
+          "secret_name": "IP_HASH_SECRET",
+        },
+        {
+          "binding": "TURNSTILE_SECRET",
+          "store_id": "323163a091874b07aacdf5500bff903e",
+          "secret_name": "TURNSTILE_SECRET",
+        },
+        {
+          "binding": "CAMPUS_IDENTITY_SECRET",
+          "store_id": "323163a091874b07aacdf5500bff903e",
+          "secret_name": "CAMPUS_IDENTITY_SECRET",
+        },
+        {
+          "binding": "CAS_CHALLENGE_SECRET",
+          "store_id": "323163a091874b07aacdf5500bff903e",
+          "secret_name": "CAS_CHALLENGE_SECRET",
+        },
+        {
+          "binding": "EHALL_SESSION_SECRET",
+          "store_id": "323163a091874b07aacdf5500bff903e",
+          "secret_name": "EHALL_SESSION_SECRET",
+        },
+      ],
+    },
+  },
 }

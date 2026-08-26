@@ -650,7 +650,42 @@ describe("AI summary queue consumer", () => {
     expect(item.state.acked).toBe(true);
   });
 
+  it("keeps persisted summary jobs when the preview Worker has no queue", async () => {
+    const leftover = await createBoundCourse("DRP");
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+    await env.DB.prepare(
+      `INSERT INTO summary_recompute_pending(course_id,teacher_id,immediate)
+       VALUES(?,1,1)`,
+    )
+      .bind(leftover)
+      .run();
+    const { AI_SUMMARY_QUEUE: _queue, ...previewEnv } = queueEnv();
+    await consumeAiSummaryQueue(asBatch(), previewEnv);
+    expect(
+      (await env.DB.prepare("SELECT COUNT(*) AS n FROM summary_recompute_pending").first<{
+        n: number;
+      }>())?.n,
+    ).toBe(1);
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+  });
+
+  it("skips enqueue when the preview Worker has no AI summary queue", async () => {
+    const { AI_SUMMARY_QUEUE: _queue, ...previewEnv } = queueEnv();
+    await expect(
+      scheduleRelationSummaryRecompute({ env: previewEnv }, 12, 34, {
+        immediate: true,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("enqueues only relation identifiers and the immediate flag", async () => {
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+    await env.DB.prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id=NULL, teacher_id=NULL, immediate=0,
+           locked_at=NULL, lease_until=NULL
+       WHERE id=1`,
+    ).run();
     const sent: AiSummaryQueueMessage[] = [];
     await scheduleRelationSummaryRecompute(
       { env: { ...queueEnv(sent) } },

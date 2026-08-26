@@ -26,6 +26,7 @@ export default defineConfig(async () => {
             "COURSE_EXCLUSION_CONFLICT_DB",
           ],
           bindings: {
+            PUBLIC_SURFACE: "production",
             ISSUE111_RELATION_MANIFEST_SHA256: "manifest",
             V5_IMPORT_ARTIFACT_SHA256: "manifest",
             V5_IMPORT_MANIFEST_SHA256: "manifest",
