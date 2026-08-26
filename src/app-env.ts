@@ -1,4 +1,4 @@
-export type RuntimeSecret = string | { get(): Promise<string> };
+type RuntimeSecret = string | { get(): Promise<string> };
 type TestableSecretBinding =
   | "IP_HASH_SECRET"
   | "TURNSTILE_SECRET"
@@ -19,10 +19,6 @@ export type Bindings = Omit<Cloudflare.Env, TestableSecretBinding> & {
   REVIEW_AUTHOR_LOOKUP_TO?: RuntimeSecret;
   CAS_CHALLENGE_SECRET?: RuntimeSecret;
   EHALL_SESSION_SECRET?: RuntimeSecret;
-  JWXT_EHALL_COOKIE?: RuntimeSecret;
-  JWXT_SYNC_TRIGGER_SECRET?: RuntimeSecret;
-  JWXT_SYNC_ENABLED?: string;
-  JWXT_SYNC_BUCKET?: R2Bucket;
   OPENAI_BASE_URL?: string;
   OPENAI_API_KEY?: RuntimeSecret;
   OPENAI_MODEL?: string;

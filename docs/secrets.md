@@ -15,12 +15,11 @@ Worker 运行时密钥以 Cloudflare Secrets Store 为权威来源。决策见 [
 | `CLOUDFLARE_API_TOKEN` | GitHub Environment `production` | GHA deploy / migrate / bind-admin | 部署引导凭证，不能改放到 Secrets Store 再给 Actions 用。deploy 需 Workers Scripts Edit、Account Settings Read；migrate / bind-admin 需 D1 Edit、Account Settings Read |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Environment `production` | GHA | 目标账户 `fa1d0d91a980d4e2c22ac7272f038bf8` |
 | `CAMPUS_IDENTITY_SECRET`（可选副本） | GitHub Environment `production` | GHA `Bind admin student IDs` | 必须与 Secrets Store 中的同名值一致。Secrets Store 不能回读，本机没有 `.dev.vars` 时用这条工作流写管理员学号 HMAC |
-| `JWXT_USERNAME` | GitHub Environment `production` | GHA `Periodic JWXT sync` | 获授权的只读采集账号；只进入 Actions 进程环境，不得写日志、Artifact、R2 或 D1 |
-| `JWXT_PASSWORD` | GitHub Environment `production` | GHA `Periodic JWXT sync` | 与 `JWXT_USERNAME` 成对；真实 pilot 前由维护者配置，仓库与 issue 不记录值 |
-| `EHALL_COOKIE` | GitHub Environment `production` | GHA `Periodic JWXT sync` | 优先使用的浏览器 eHall `Cookie` 请求头；GHA 先从 eHall 应用跳转到 JWXT，再仅在内存中保留 JWXT 会话；不写日志、Artifact、R2、D1 或 Worker；失效后人工轮换 |
-| `JWXT_COOKIE` | GitHub Environment `production` | GHA `Periodic JWXT sync` | 可选的浏览器 `Cookie` 请求头；优先于账号密码，可用于手动和定时同步；仅在 Actions 进程内存中使用，不写日志、Artifact、R2、D1 或 Worker；失效后人工轮换 |
+| `EHALL_COOKIE` | Louis `.env.jwxt-sync`（不入库） | Louis Docker collector | 浏览器 eHall `Cookie` 请求头；先从 eHall 跳转到 JWXT，仅在容器进程内存中保留会话；失效后人工轮换 |
+| `CLOUDFLARE_API_TOKEN` | Louis `.env.jwxt-sync`（不入库） | Louis Docker publisher | 仅用于运行时发布同步结果；不得写入镜像、日志或仓库 |
+| `CLOUDFLARE_ACCOUNT_ID` | Louis `.env.jwxt-sync`（不入库） | Louis Docker publisher | 目标 Cloudflare 账户标识；不得写入镜像、日志或仓库 |
 
-`JWXT_SYNC_ENABLED` 是 GitHub Environment `production` 的非秘密变量，默认缺失/`false`。手动 `pilot` 可在自动同步关闭时运行；只有 pilot 明确得到 `supported` 且数据质量通过后才设为 `true`，从而允许每日/月度 schedule 与手动 `incremental/full/resume`。
+Worker/GHA 的 JWXT 编排变量和凭据已移至归档分支；`main` 不再提供定时入口。Louis 任务必须由维护者显式启动，且只在当前 Cookie 已验证有效后运行。
 
 不要写入 Secrets Store：
 

@@ -29,9 +29,6 @@ importers:
       hono:
         specifier: 4.13.2
         version: 4.13.2
-      iconv-lite:
-        specifier: ^0.7.3
-        version: 0.7.3
       pinyin-pro:
         specifier: ^3.29.2
         version: 3.29.2(patch_hash=afd2038b9bdf1b02ea7b9b0607702efa791983804ffd8c3bda02f4595cb330e2)
@@ -72,6 +69,9 @@ importers:
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
+      iconv-lite:
+        specifier: ^0.7.3
+        version: 0.7.3
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
