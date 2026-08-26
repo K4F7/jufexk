@@ -12,6 +12,7 @@ import {
   Spinner,
   Tabs,
   TextField,
+  Typography,
 } from "@heroui/react";
 import { useEffect, useRef, useState, type FormEvent, type Key } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -383,9 +384,9 @@ export function LoginPage() {
         variant="secondary"
       >
         <Card.Header>
-          <Card.Title id="login-heading">
+          <Typography className="m-0 text-lg font-semibold" id="login-heading" type="h1">
             {campusReauth ? "重新验证校园身份" : "登录"}
-          </Card.Title>
+          </Typography>
         </Card.Header>
         {ready && viewer.authenticated && !campusReauth ? (
           <Card.Content>

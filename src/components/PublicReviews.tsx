@@ -48,7 +48,8 @@ export function PublicReviews({
         ) : null}
       </div>
       {rows.length ? (
-        <div role="list" aria-label="评价列表" aria-busy={isLoadingMore}>
+        <div>
+          <div role="list" aria-label="评价列表" aria-busy={isLoadingMore}>
           {rows.map((review, index) => (
             <div key={review.id} role="listitem">
               {index > 0 ? <Separator /> : null}
@@ -135,6 +136,7 @@ export function PublicReviews({
               </article>
             </div>
           ))}
+        </div>
           {hasMore ? (
             <div className="flex justify-center border-t border-border pt-4">
               <Button variant="secondary" isPending={isLoadingMore} onPress={onLoadMore}>

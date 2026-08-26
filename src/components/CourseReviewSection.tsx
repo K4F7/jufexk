@@ -325,20 +325,22 @@ export function CourseReviewSection({
           </Card.Header>
         </Card>
       ) : (
-        <div className="mt-2" role="list" aria-label="评价列表">
-          {reviews.map((review) => (
-            <div key={review.id} role="listitem">
-              <CourseReviewItem
-                review={review}
-                ready={ready}
-                authenticated={viewer.authenticated}
-                loginPath={viewer.loginPath}
-                onUnauthenticated={clear}
-                adminAuthed={adminAuthed}
-                onReviewChanged={onReviewChanged}
-              />
-            </div>
-          ))}
+        <div>
+          <div className="mt-2" role="list" aria-label="评价列表">
+            {reviews.map((review) => (
+              <div key={review.id} role="listitem">
+                <CourseReviewItem
+                  review={review}
+                  ready={ready}
+                  authenticated={viewer.authenticated}
+                  loginPath={viewer.loginPath}
+                  onUnauthenticated={clear}
+                  adminAuthed={adminAuthed}
+                  onReviewChanged={onReviewChanged}
+                />
+              </div>
+            ))}
+          </div>
           {hasMore ? (
             <div className="flex justify-center pt-4">
               <Button

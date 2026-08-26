@@ -39,7 +39,7 @@ export function SiteFooter({
             rel="noreferrer"
             target="_blank"
           >
-            <LogoGithub />
+            <LogoGithub aria-hidden />
           </a>
           {INTERNAL_LINKS.map((link) => (
             <span

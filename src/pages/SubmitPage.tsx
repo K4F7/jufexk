@@ -511,7 +511,11 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   }
 
   if (!viewerReady || !viewer.authenticated) {
-    return null;
+    return (
+      <p className="sr-only" role="status">
+        正在前往登录…
+      </p>
+    );
   }
 
   if (phase === "gate") {

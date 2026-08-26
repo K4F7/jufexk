@@ -69,6 +69,23 @@ function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
   }, [params]);
 }
 
+function SkipToMain() {
+  return (
+    <a
+      className="skip-link"
+      href="#main-content"
+      onClick={(event) => {
+        const main = document.getElementById("main-content");
+        if (!main) return;
+        event.preventDefault();
+        main.focus();
+      }}
+    >
+      跳到主内容
+    </a>
+  );
+}
+
 function navSelectedKey(pathname: string): string {
   if (pathname === "/latest") return "latest";
   if (pathname === "/schedule" || pathname.startsWith("/schedule/")) {
@@ -141,6 +158,7 @@ function DefaultShell({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <SkipToMain />
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
         {/* 堆叠到 xl；左列 min-content，避免 1280px 生产站名+导航把主导航折行撑高顶栏。 */}
         <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-5 xl:grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] xl:px-4">
@@ -203,6 +221,7 @@ function DefaultShell({
               {/* 外链用原生 <a>：HeroUI Link 会走 RouterProvider 的 useHref，
                   把绝对 URL 错当成站内路径。 */}
               <a
+                aria-label="导师（新窗口打开）"
                 className={buttonVariants({ size: "sm", variant: "ghost" })}
                 href={PI_REVIEW_URL}
                 target="_blank"
@@ -237,7 +256,11 @@ function DefaultShell({
 
       <SiteBanner banner={banner} />
 
-      <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 pb-16 pt-8 sm:px-5 xl:px-4">
+      <main
+        className="mx-auto w-full max-w-[1520px] flex-1 px-4 pb-16 pt-8 sm:px-5 xl:px-4"
+        id="main-content"
+        tabIndex={-1}
+      >
         {showGlobalSearch &&
         globalSearchVariant &&
         GlobalSearchPrototypeLazy ? (
