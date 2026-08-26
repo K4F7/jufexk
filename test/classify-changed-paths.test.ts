@@ -45,7 +45,7 @@ describe("classifyChangedPaths", () => {
       "wrangler types && tsc --noEmit && pnpm run test:static && vite build && wrangler deploy --dry-run",
     );
     expect(packageScripts["test:static"]).toBe(
-      "vitest run --config vitest.node.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.secrets.config.ts",
+      "vitest run --config vitest.node.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.program-plan.config.ts && vitest run --config vitest.secrets.config.ts",
     );
     expect(ciWorkflow.match(/shard: \["1\/2", "2\/2"\]/g)).toHaveLength(2);
     expect(ciWorkflow).toContain(
