@@ -308,6 +308,36 @@ test("logged-out /submit redirects to login with a sanitized from return", async
   expect(posted).toHaveLength(0);
 });
 
+test("pending session on /submit stays silent instead of announcing a login redirect", async ({
+  page,
+}) => {
+  await mockSubmitApi(page, { authenticated: false });
+  // 压住会话响应，让 viewerReady 一直为 false；后注册的路由先生效。
+  let releaseSession: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseSession = resolve;
+  });
+  await page.route("**/api/user/session", async (route) => {
+    await gate;
+    await route.fulfill({
+      json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
+    });
+  });
+
+  try {
+    await page.goto("/submit?courseId=8");
+    // 会话未决：可能是已登录用户在等响应，不能断言「正在前往登录」。
+    await page.waitForTimeout(500);
+    await expect(page.getByText("正在前往登录…")).toHaveCount(0);
+    expect(page.url()).toContain("/submit");
+  } finally {
+    releaseSession();
+  }
+
+  // 已确认访客才播报并跳转。
+  await expect(page).toHaveURL(/\/login\?from=/);
+});
+
 test("gate comes first and the icourse-aligned form appears after entry @mobile-smoke", async ({
   page,
 }) => {

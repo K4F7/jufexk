@@ -171,11 +171,19 @@ body {
 }
 
 /*
- * Keyboard focus: 2px accent outline. HeroUI [data-focus-visible] box-shadow
- * often computes transparent; this is the no-JS replacement for buttons,
- * fields, and anchors. Never pair with outline:none on :focus.
+ * Keyboard focus follows the HeroUI v3 mechanism: React Aria components
+ * draw their own 2px ring in --focus via [data-focus-visible=true]
+ * (button/link/tabs/pagination) or [data-focused=true] / :focus-within
+ * (text field, search field). A global :focus-visible outline would fight
+ * those rules (HeroUI sets outline-style:none on the same elements) and
+ * double-draw over the ring, so the fallback below is scoped to what
+ * React Aria never decorates: plain anchors (skip link, the
+ * buttonVariants-styled 导师/GitHub external links, in-content links) and
+ * the skip target. HeroUI Link carries data-focus-visible while keyboard
+ * focused, so :not([data-focus-visible]) keeps it on its own ring.
  */
-:focus-visible {
+a[href]:focus-visible:not([data-focus-visible]),
+#main-content:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
