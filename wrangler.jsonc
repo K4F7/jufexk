@@ -19,6 +19,12 @@
       "migrations_dir": "migrations",
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "JWXT_SYNC_BUCKET",
+      "bucket_name": "jufexk-jwxt-sync"
+    }
+  ],
   "queues": {
     "producers": [
       { "binding": "AI_SUMMARY_QUEUE", "queue": "jufexk-ai-summary" },
@@ -47,6 +53,9 @@
   },
   // Keep dashboard vars such as OPENAI_MODEL across wrangler deploy.
   "keep_vars": true,
+  "triggers": {
+    "crons": ["17 19 * * *", "37 20 1 * *"]
+  },
   "secrets_store_secrets": [
     {
       "binding": "IP_HASH_SECRET",
