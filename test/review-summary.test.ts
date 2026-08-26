@@ -666,6 +666,7 @@ describe("AI summary queue consumer", () => {
         n: number;
       }>())?.n,
     ).toBe(1);
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
   });
 
   it("skips enqueue when the preview Worker has no AI summary queue", async () => {
@@ -678,6 +679,13 @@ describe("AI summary queue consumer", () => {
   });
 
   it("enqueues only relation identifiers and the immediate flag", async () => {
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+    await env.DB.prepare(
+      `UPDATE summary_recompute_lock
+       SET course_id=NULL, teacher_id=NULL, immediate=0,
+           locked_at=NULL, lease_until=NULL
+       WHERE id=1`,
+    ).run();
     const sent: AiSummaryQueueMessage[] = [];
     await scheduleRelationSummaryRecompute(
       { env: { ...queueEnv(sent) } },
