@@ -589,6 +589,7 @@ async function drainPersistedSummaryJobs(
   }
 
   if (!jobs.size) return 0;
+  if (!env.AI_SUMMARY_QUEUE) return 0;
   for (const job of jobs.values()) {
     await sendSummaryJob(env, job);
   }

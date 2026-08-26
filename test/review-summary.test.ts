@@ -650,6 +650,24 @@ describe("AI summary queue consumer", () => {
     expect(item.state.acked).toBe(true);
   });
 
+  it("keeps persisted summary jobs when the preview Worker has no queue", async () => {
+    const leftover = await createBoundCourse("DRP");
+    await env.DB.prepare("DELETE FROM summary_recompute_pending").run();
+    await env.DB.prepare(
+      `INSERT INTO summary_recompute_pending(course_id,teacher_id,immediate)
+       VALUES(?,1,1)`,
+    )
+      .bind(leftover)
+      .run();
+    const { AI_SUMMARY_QUEUE: _queue, ...previewEnv } = queueEnv();
+    await consumeAiSummaryQueue(asBatch(), previewEnv);
+    expect(
+      (await env.DB.prepare("SELECT COUNT(*) AS n FROM summary_recompute_pending").first<{
+        n: number;
+      }>())?.n,
+    ).toBe(1);
+  });
+
   it("skips enqueue when the preview Worker has no AI summary queue", async () => {
     const { AI_SUMMARY_QUEUE: _queue, ...previewEnv } = queueEnv();
     await expect(

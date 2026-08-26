@@ -6,13 +6,38 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 
 placeholder="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+
+parse_d1_id() {
+  python3 -c '
+import json, re, sys
+text = sys.stdin.read()
+for match in re.finditer(r"\{[^{}]*\}", text, re.S):
+    try:
+        obj = json.loads(match.group())
+    except json.JSONDecodeError:
+        continue
+    for key in ("database_id", "uuid"):
+        value = obj.get(key)
+        if isinstance(value, str) and value:
+            print(value)
+            raise SystemExit(0)
+match = re.search(
+    r"(?:database_id|uuid)\s*[:=]\s*\"?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\"?",
+    text,
+)
+if match:
+    print(match.group(1))
+'
+}
+
 output=$(pnpm exec wrangler d1 create jufexk-preview 2>&1) || true
 printf '%s\n' "$output"
-if ! printf '%s\n' "$output" | grep -q '"database_id"'; then
-  output=$(pnpm exec wrangler d1 info jufexk-preview)
+id=$(printf '%s\n' "$output" | parse_d1_id)
+if [ -z "$id" ]; then
+  output=$(pnpm exec wrangler d1 info jufexk-preview --json)
   printf '%s\n' "$output"
+  id=$(printf '%s\n' "$output" | parse_d1_id)
 fi
-id=$(printf '%s\n' "$output" | sed -n 's/.*"database_id": "\([^"]*\)".*/\1/p' | head -1)
 if [ -z "$id" ]; then
   echo "Could not parse database_id for jufexk-preview" >&2
   exit 1
