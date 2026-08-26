@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { chromium, type BrowserContext } from "@playwright/test";
 import { buildEhallCookieHeader, updateEhallCookieEnv } from "./jwxt-cookie-env";
 
-const ehallUrl = "http://ehall.jxufe.edu.cn/appShow?appId=5853686007071845";
+const ehallUrl = "http://ehall.jxufe.edu.cn/new/index.html";
 const casUrl = "https://ssl.jxufe.edu.cn";
 const output = resolve(process.env.JWXT_COOKIE_ENV || ".env.jwxt-sync");
 const deadline = Date.now() + Number(process.env.JWXT_COOKIE_TIMEOUT_MS || 300_000);
