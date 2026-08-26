@@ -110,5 +110,5 @@ try {
   process.stderr.write(`${error instanceof Error ? error.message : "Cookie capture failed"}\n`);
   process.exitCode = 1;
 } finally {
-  if (owned) await context.close();
+  if (owned && process.env.JWXT_CLOSE_BROWSER === "true") await context.close();
 }
