@@ -7,3 +7,5 @@ The runner starts from `EHALL_COOKIE`, follows the fixed eHall/CAS/JWXT redirect
 Cookie authentication never falls back to password login. An expired or rejected session is an explicit failure and must be rerun with a newly exported eHall Cookie. CAPTCHA, MFA, blocked egress, protocol changes, malformed pages, or incomplete captures must never become an empty generation.
 
 Build and run the constrained Louis container with `Dockerfile.jwxt-sync` and `docker-compose.jwxt-sync.yml`. The compose limits are `cpus: 2.0`, `mem_limit: 2g`, read-only root, tmpfs scratch space, no added capabilities, and no-new-privileges. Inject `EHALL_COOKIE`, `CLOUDFLARE_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID` only at runtime through an untracked `.env.jwxt-sync`; never bake them into the image.
+
+To capture a fresh cookie locally, start Chrome/Edge with remote debugging on port 9222, log in to eHall, then run `pnpm run jwxt-cookie-capture`. The script reads the existing browser context through CDP, waits for the eHall session cookies, and atomically writes `.env.jwxt-sync` without printing the cookie. It never uploads browser state.

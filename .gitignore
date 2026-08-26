@@ -5,6 +5,7 @@ prototypes/**/.dist-prototype/
 .wrangler/
 .playwright-cli/
 .dev.vars
+.env.jwxt-sync
 worker-configuration.d.ts
 *.zip
 .venv/

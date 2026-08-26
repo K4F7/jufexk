@@ -25,6 +25,7 @@
     "catalog-baseline": "tsx scripts/catalog-baseline/cli.ts",
     "jwxt-sync": "tsx scripts/jwxt-sync/run.ts",
     "jwxt-collect": "tsx scripts/jwxt-collector/run.ts",
+    "jwxt-cookie-capture": "tsx scripts/jwxt-cookie-capture.ts",
     "deploy": "pnpm run build && wrangler deploy",
     "types": "wrangler types",
     "check:static": "wrangler types && tsc --noEmit && pnpm run test:static && vite build && wrangler deploy --dry-run",
