@@ -80,4 +80,20 @@ describe("API CSP", () => {
       ["'self'", "data:"],
     );
   });
+
+  it("keeps HSTS on API errors and preflight requests", async () => {
+    const missingResponse = await SELF.fetch(`${origin}/api/does-not-exist`);
+    expect(missingResponse.status).toBeGreaterThanOrEqual(400);
+    expect(missingResponse.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+
+    const optionsResponse = await SELF.fetch(`${origin}/api/config`, {
+      method: "OPTIONS",
+    });
+    expect(optionsResponse.status).toBeGreaterThanOrEqual(400);
+    expect(optionsResponse.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+  });
 });
