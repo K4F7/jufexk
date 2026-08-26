@@ -269,7 +269,7 @@ test("unsaved alternate classes disappear after reload", async ({ page }) => {
   await sectionList(page).getByRole("button", { name: "加入课表" }).first().click();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
   await page.reload();
-  await expect(courseList(page)).not.toContainText("高等数学");
+  await expect(page.getByRole("grid", { name: "选课列表" })).toHaveCount(0);
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
 });
 

@@ -389,7 +389,11 @@ export function loadPlan(): SchedulePlanV3 {
   }
 }
 
-export function savePlan(plan: SchedulePlanV3) {
+export function persistPlan(plan: SchedulePlanV3) {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(SCHEDULE_PLAN_STORAGE_KEY, JSON.stringify(persistedPlan(commitSave(plan))));
+  localStorage.setItem(SCHEDULE_PLAN_STORAGE_KEY, JSON.stringify(persistedPlan(plan)));
+}
+
+export function savePlan(plan: SchedulePlanV3) {
+  persistPlan(commitSave(plan));
 }

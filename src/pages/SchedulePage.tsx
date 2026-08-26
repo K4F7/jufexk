@@ -32,6 +32,7 @@ import {
   itemsOf,
   joinOffering,
   loadPlan,
+  persistPlan,
   removeCourse,
   savePlan,
   setIncluded,
@@ -346,7 +347,9 @@ export function SchedulePage() {
             }}
             onRemove={(item) => {
               if (!requireEdit()) return;
-              setPlan(removeCourse(plan, item.courseCode, item.termId));
+              const next = removeCourse(plan, item.courseCode, item.termId);
+              setPlan(next);
+              if (item.status === 2) persistPlan(next);
             }}
             onSave={handleSave}
           />

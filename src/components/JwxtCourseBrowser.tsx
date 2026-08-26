@@ -358,11 +358,9 @@ export function JwxtCourseBrowser({
     snapshot.planned.find((item) => item.courseCode === selectedCode)?.catalogCourseId
     || snapshot.publicElectives.find((item) => item.courseCode === selectedCode)?.catalogCourseId
   );
-  const sectionEmptyHint = !selectedCourse
-    ? "暂无数据"
-    : selectedHasCatalog
-      ? "暂无数据"
-      : "本站目录尚未收录该课号，暂无开课班。";
+  const sectionEmptyHint = selectedCourse && !selectedHasCatalog
+    ? "本站目录尚未收录该课号，暂无开课班。"
+    : "暂无数据";
 
   return (
     <div className="flex flex-col gap-4">

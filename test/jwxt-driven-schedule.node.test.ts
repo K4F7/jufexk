@@ -472,6 +472,7 @@ describe("plan v3", () => {
     const math = offering({ courseCode: "C1", courseName: "高等数学", section: "01" });
     const staged = stageCourse(emptyPlan(termId), math, "planned", termId);
     expect(itemsOf(staged, termId)[0]).toMatchObject({ status: 0, included: false, section: "" });
+    expect(planStatusLabel(itemsOf(staged, termId)[0])).toBe("未选");
     expect(includedItems(staged, termId)).toEqual([]);
     const joined = joinOffering(staged, math, "planned", termId);
     expect(joined.ok).toBe(true);

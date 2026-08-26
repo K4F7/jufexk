@@ -13,8 +13,9 @@ export function requiredElectiveLabel(categoryPath: string, origin: PlanOrigin):
 
 export function planStatusLabel(item: PlannedItem | undefined): string {
   if (!item) return "未选";
-  if (!item.included) return "已排除";
+  if (item.origin === "enrolled" && !item.included) return "已排除";
   if (item.status === 0) return "未选";
+  if (!item.included) return "已排除";
   if (item.status === 1) return "备选";
   return "已选";
 }
