@@ -1,4 +1,6 @@
-import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { lstat, mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { chromium, type BrowserContext } from "@playwright/test";
 import { buildEhallCookieHeader, updateEhallCookieEnv } from "./jwxt-cookie-env";
@@ -7,6 +9,7 @@ const ehallUrl = "http://ehall.jxufe.edu.cn/new/index.html";
 const casUrl = "https://ssl.jxufe.edu.cn";
 const output = resolve(process.env.JWXT_COOKIE_ENV || ".env.jwxt-sync");
 const deadline = Date.now() + Number(process.env.JWXT_COOKIE_TIMEOUT_MS || 300_000);
+const execFileAsync = promisify(execFile);
 
 async function existingContext() {
   const endpoint = new URL(process.env.JWXT_CDP_URL || "http://127.0.0.1:9222");
@@ -52,6 +55,29 @@ async function writeEnv(cookieHeader: string) {
   await rename(temporary, output);
 }
 
+async function smokeTest(cookieHeader: string) {
+  const directory = await mkdtemp(resolve(".local-data", "jwxt-cookie-smoke-"));
+  const output = resolve(directory, "capture.json");
+  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  try {
+    const result = await execFileAsync(
+      pnpm,
+      ["exec", "tsx", "scripts/jwxt-collector/run.ts", "--mode", "pilot", "--output", output],
+      { cwd: process.cwd(), env: { ...process.env, EHALL_COOKIE: cookieHeader }, timeout: 120_000, windowsHide: true },
+    );
+    const report = JSON.parse(result.stdout.trim()) as { status?: string; rowCount?: number };
+    const rowCount = typeof report.rowCount === "number" ? report.rowCount : 0;
+    if (report.status !== "captured" || !Number.isInteger(rowCount) || rowCount < 1) {
+      throw new Error("Cookie smoke test returned no usable offerings");
+    }
+    return rowCount;
+  } catch {
+    throw new Error("Cookie smoke test failed; the browser session was not saved");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 const { context, owned } = await acquireContext();
 try {
   const page = context.pages()[0] || (await context.newPage());
@@ -60,8 +86,9 @@ try {
   while (Date.now() < deadline) {
     const header = buildEhallCookieHeader(await context.cookies(ehallUrl), await context.cookies(casUrl));
     if (header) {
+      const rowCount = await smokeTest(header);
       await writeEnv(header);
-      process.stdout.write(`已安全更新 ${output}（Cookie 未打印）。\n`);
+      process.stdout.write(`smoke test 通过（${rowCount} 行）；已安全更新 ${output}（Cookie 未打印）。\n`);
       process.exitCode = 0;
       break;
     }
