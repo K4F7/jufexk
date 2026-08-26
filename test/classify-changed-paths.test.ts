@@ -101,10 +101,10 @@ describe("classifyChangedPaths", () => {
     expect(migrateWorkflow).toContain("wrangler d1 migrations list jufexk --remote");
     expect(migrateWorkflow).toContain("wrangler d1 migrations apply jufexk --remote");
     expect(migrateWorkflow).toContain(
-      "wrangler d1 migrations list jufexk-preview --remote",
+      "wrangler d1 migrations list jufexk-preview --env preview --remote",
     );
     expect(migrateWorkflow).toContain(
-      "wrangler d1 migrations apply jufexk-preview --remote",
+      "wrangler d1 migrations apply jufexk-preview --env preview --remote",
     );
     expect(deployWorkflow).not.toContain("migrations apply");
   });

@@ -1,6 +1,4 @@
-/** Runtime public surface for nav and docs. Vite DEV is a separate compile-time gate. */
-export type PublicSurface = "production" | "preview";
-
+/** Runtime public surface for nav. Vite DEV is a separate compile-time gate. */
 export function shouldShowScheduleNav(input: {
   publicSurface?: string | null;
   loopback: boolean;

@@ -123,7 +123,7 @@ pnpm run deploy
 - `CLOUDFLARE_API_TOKEN`：Workers Scripts Edit（deploy）、D1 Edit（migrate）、Account Settings Read
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID
 
-`main` 部署还会 `wrangler deploy --env preview`，把同一构建发到 `jufexk-preview.<account>.workers.dev`。预览用独立 D1 `jufexk-preview`，不绑生产 AI 摘要队列。首次需要 `pnpm db:create-preview` 写入 `database_id`，再 `pnpm exec wrangler d1 migrations apply jufexk-preview --remote`。要让预览看起来像生产目录，运维在本机执行 `pnpm db:clone-preview`（体积可能很大，失败可重试）。Turnstile widget 需允许该预览主机名。
+`main` 部署还会 `wrangler deploy --env preview`，把同一构建发到 `jufexk-preview.<account>.workers.dev`。预览用独立 D1 `jufexk-preview`，不绑生产 AI 摘要队列。首次需要 `pnpm db:create-preview` 写入 `database_id`，再 `pnpm exec wrangler d1 migrations apply jufexk-preview --env preview --remote`。要让预览看起来像生产目录，运维在本机执行 `pnpm db:clone-preview`（体积可能很大，失败可重试）。Turnstile widget 需允许该预览主机名。
 
 CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `pnpm exec wrangler d1 export`，并将备份保存到受限存储。`pnpm db:clone-preview` 同样只走本机，不要放进 Actions。
 

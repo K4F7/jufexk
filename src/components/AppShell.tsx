@@ -130,11 +130,11 @@ function DefaultShell({
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);
 
-  const showSchedule = import.meta.env.DEV || config?.showScheduleNav === true;
+  const showScheduleNav = import.meta.env.DEV || config?.showScheduleNav === true;
   const links = [
     { id: "courses", to: "/courses", label: "课程" },
     { id: "latest", to: "/latest", label: "课评" },
-    ...(showSchedule
+    ...(showScheduleNav
       ? [{ id: "schedule", to: "/schedule", label: "排课模拟" }]
       : []),
   ];
