@@ -33,27 +33,12 @@ describe("domain route composition", () => {
       importRoutes,
     ].flatMap((router) => router.routes.map(routeKey));
 
-    expect(appKeys).toEqual(["POST /internal/jwxt-sync/:mode", "ALL /api/*", ...domainRoutes]);
+    expect(appKeys).toEqual(["ALL /api/*", ...domainRoutes]);
     const adminGuard = appKeys.indexOf("ALL /api/admin/*");
     expect(adminGuard).toBeGreaterThan(-1);
     for (const route of importRoutes.routes) {
       expect(appKeys.indexOf(routeKey(route))).toBeGreaterThan(adminGuard);
     }
-  });
-
-  it("keeps the Worker JWXT trigger private and fails closed without a configured cookie", async () => {
-    const hidden = await SELF.fetch("https://jufexk.test/internal/jwxt-sync/pilot", { method: "POST" });
-    expect(hidden.status).toBe(404);
-
-    const authorized = await SELF.fetch("https://jufexk.test/internal/jwxt-sync/pilot", {
-      method: "POST",
-      headers: { authorization: "Bearer test-jwxt-sync-trigger" },
-    });
-    expect(authorized.status).toBe(502);
-    await expect(authorized.json()).resolves.toEqual({
-      status: "failed",
-      reason: "jwxt_cookie_missing",
-    });
   });
 
   it("keeps representative routes in their owning domains", () => {

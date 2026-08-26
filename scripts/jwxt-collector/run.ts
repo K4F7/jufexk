@@ -2,8 +2,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { collectJwxt, type CollectorCheckpoint } from "./collector";
 import {
-  JwxtAuthAdapter,
-  JwxtCookieAuthAdapter,
   EhallCookieAuthAdapter,
   UnsupportedJwxtAuthenticationError,
 } from "./auth-adapter";
@@ -19,12 +17,9 @@ const checkpointPath = argument("--checkpoint") || ".local-data/jwxt-sync/collec
 if (!mode || !["pilot", "incremental", "full", "resume"].includes(mode) || !output) {
   throw new Error("usage: run.ts --mode pilot|incremental|full|resume --output PATH");
 }
-const username = process.env.JWXT_USERNAME;
-const password = process.env.JWXT_PASSWORD;
 const ehallCookie = process.env.EHALL_COOKIE;
-const cookie = process.env.JWXT_COOKIE;
-if (!ehallCookie && !cookie && (!username || !password)) {
-  throw new Error("JWXT credentials are not configured");
+if (!ehallCookie) {
+  throw new Error("EHALL_COOKIE is not configured");
 }
 
 try {
@@ -38,11 +33,7 @@ try {
     await writeFile(target, `${JSON.stringify(checkpoint)}\n`, { mode: 0o600 });
   };
   const capture = await collectJwxt(
-    ehallCookie
-      ? new EhallCookieAuthAdapter(ehallCookie)
-      : cookie
-      ? new JwxtCookieAuthAdapter(cookie)
-      : new JwxtAuthAdapter(username!, password!),
+    new EhallCookieAuthAdapter(ehallCookie),
     mode as "pilot" | "incremental" | "full" | "resume",
     undefined,
     { resume, save: saveCheckpoint },

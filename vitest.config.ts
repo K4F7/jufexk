@@ -40,7 +40,6 @@ export default defineConfig(async () => {
             REVIEW_AUTHOR_LOOKUP_TO: "admin@example.test",
             CAS_CHALLENGE_SECRET: "test-cas-challenge",
             EHALL_SESSION_SECRET: "test-ehall-session",
-            JWXT_SYNC_TRIGGER_SECRET: "test-jwxt-sync-trigger",
           },
         },
       }),
