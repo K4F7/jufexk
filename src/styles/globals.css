@@ -67,6 +67,8 @@
   --separator: oklch(25% 0.006 286.033);
   --default: oklch(27.4% 0.006 286.033);
   --default-foreground: var(--snow);
+  /* Re-apply HeroUI dark muted so the light-canvas AA nudge does not leak. */
+  --muted: oklch(70.5% 0.015 286.067);
 }
 
 html {
@@ -169,18 +171,11 @@ body {
 }
 
 /*
- * Links: 2px accent focus indicator aligned with form controls.
- * HeroUI `.link` already draws a box-shadow ring via [data-focus-visible];
- * the native outline coincides with it (same color/offset) and stays as a
- * no-JS fallback, while plain anchors (brand wordmark, router links) get a
- * real indicator instead of the thin browser default.
+ * Keyboard focus: 2px accent outline. HeroUI [data-focus-visible] box-shadow
+ * often computes transparent; this is the no-JS replacement for buttons,
+ * fields, and anchors. Never pair with outline:none on :focus.
  */
 :focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
-a:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
