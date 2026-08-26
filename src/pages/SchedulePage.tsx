@@ -3,13 +3,11 @@
  * 未选不占课表；点班上表为备选；保存课表才变成已选。
  * 只做电脑端；窄屏进入弹一次告示（Issue #565）。
  */
-import { Alert, Button, Modal, Typography } from "@heroui/react";
+import { Alert, Typography } from "@heroui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import { JwxtCourseBrowser } from "../components/JwxtCourseBrowser";
 import { ScheduleMobileNotice } from "../components/ScheduleMobileNotice";
 import { ScheduleTimetable } from "../components/ScheduleTimetable";
-import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import {
   catalogBrowseSnapshot,
@@ -116,9 +114,6 @@ async function fetchScheduleOfferings(courseId: number, termId: string): Promise
 }
 
 export function SchedulePage() {
-  const { viewer } = useViewer();
-  const canEdit = viewer.authenticated;
-  const loginHref = `${viewer.loginPath}?from=${encodeURIComponent("/schedule")}`;
   const terms = useMemo(() => catalogScheduleTerms(), []);
   const grades = useMemo(() => catalogScheduleGrades(), []);
   const defaultTerm = useMemo(
@@ -141,7 +136,6 @@ export function SchedulePage() {
   const [notice, setNotice] = useState("");
   const [joinError, setJoinError] = useState("");
   const [catalogError, setCatalogError] = useState("");
-  const [loginOpen, setLoginOpen] = useState(false);
   const enrichedCodes = useRef(new Set<string>());
 
   const filtersReady = catalogFiltersReady(grade, major);
@@ -199,12 +193,6 @@ export function SchedulePage() {
   const conflicts = useMemo(() => listConflicts(staged), [staged]);
   const selectedOfferings = offeringsByCode[selectedCode] ?? [];
 
-  function requireEdit(): boolean {
-    if (canEdit) return true;
-    setLoginOpen(true);
-    return false;
-  }
-
   function handleFilters(patch: Partial<Pick<typeof snapshot, "term" | "grade" | "major">>) {
     if (patch.term) {
       setTerm(patch.term);
@@ -240,14 +228,12 @@ export function SchedulePage() {
   }
 
   function handleStage(offering: JwxtOffering, origin: "planned" | "public") {
-    if (!requireEdit()) return;
     setJoinError("");
     setPlan(stageCourse({ ...plan, activeTermId: term.id }, offering, origin, term.id));
-    setNotice(`已将${offering.courseName}加入选课列表。`);
+    setNotice(`已将${offering.courseName}加入待选课表。`);
   }
 
   async function handleJoin(offering: JwxtOffering, origin: "planned" | "public") {
-    if (!requireEdit()) return;
     const nextRows = await enrichCourse(offering.courseCode);
     const enriched =
       nextRows.find((item) => item.catalogTeacherId === offering.catalogTeacherId && item.courseCode === offering.courseCode)
@@ -264,7 +250,6 @@ export function SchedulePage() {
   }
 
   function handleSave() {
-    if (!requireEdit()) return;
     const committed = commitSave(plan);
     savePlan(committed);
     setPlan(committed);
@@ -342,11 +327,9 @@ export function SchedulePage() {
               void handleJoin(offering, origin);
             }}
             onToggle={(item, included) => {
-              if (!requireEdit()) return;
               setPlan(setIncluded(plan, item.key, included, item.termId));
             }}
             onRemove={(item) => {
-              if (!requireEdit()) return;
               const next = removeCourse(plan, item.courseCode, item.termId);
               setPlan(next);
               if (item.status === 2) persistPlan(next);
@@ -355,39 +338,13 @@ export function SchedulePage() {
           />
         </div>
 
-        <ScheduleTimetable courses={staged} />
+        <div>
+          <Typography className="m-0 mb-2 text-sm font-semibold" type="h2">
+            模拟课表
+          </Typography>
+          <ScheduleTimetable courses={staged} />
+        </div>
       </div>
-
-      <Modal.Backdrop isOpen={loginOpen} onOpenChange={setLoginOpen}>
-        <Modal.Container>
-          <Modal.Dialog>
-            <Modal.CloseTrigger />
-            <Modal.Header>
-              <Modal.Heading>加入课表需要先登录</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              <p>请先登录选课志。登录后即可把培养方案课加入本机课表。</p>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button slot="close" variant="tertiary">
-                取消
-              </Button>
-              <Button
-                variant="primary"
-                render={(domProps) => (
-                  <RouterLink
-                    {...(domProps as object)}
-                    className={typeof domProps.className === "string" ? domProps.className : undefined}
-                    to={loginHref}
-                  />
-                )}
-              >
-                去登录
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
     </section>
   );
 }

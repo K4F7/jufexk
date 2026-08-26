@@ -6,7 +6,6 @@ import { catalogScheduleGrades, currentCatalogTermId } from "../../src/lib/catal
 import { jwxtSnapshotBookmarkletSource } from "../../src/lib/jwxt-import-bookmarklet";
 import { JWXT_MAJOR_REQUIRED_MESSAGE } from "../../src/lib/jwxt-offering";
 import { SCHEDULE_MOBILE_NOTICE_KEY } from "../../src/lib/schedule-mobile-notice";
-import { SCHEDULE_PLAN_STORAGE_KEY } from "../../src/lib/schedule-plan";
 
 const unselectedHtml = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../fixtures/jwxt/s2020103-unselected.html"),
@@ -162,17 +161,25 @@ async function selectMajor(page: Page, major = "数学与应用数学") {
   await chooseMajor(page, major);
 }
 
-async function openCoursePicker(page: Page) {
-  await page.getByRole("button", { name: "选择课程" }).click();
-  return page.getByRole("dialog", { name: "选择课程" });
+function plannedCourses(page: Page) {
+  return page.getByRole("grid", { name: "计划内课程" });
+}
+
+function publicCourses(page: Page) {
+  return page.getByRole("grid", { name: "公共选修" });
 }
 
 function courseList(page: Page) {
-  return page.getByRole("grid", { name: "选课列表" });
+  return page.getByRole("grid", { name: "待选课表" });
 }
 
 function sectionList(page: Page) {
   return page.getByRole("grid", { name: "开课班" });
+}
+
+async function stagePlannedCourse(page: Page, name: string) {
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await plannedCourses(page).getByRole("row", { name: new RegExp(name) }).getByRole("button", { name: "加入待选课表" }).click();
 }
 
 test("program-plan courses, two-step pick, place, persist @mobile-smoke", async ({
@@ -188,35 +195,33 @@ test("program-plan courses, two-step pick, place, persist @mobile-smoke", async 
   await page.goto("/schedule");
 
   await expect(page.getByText("专业选择", { exact: true })).toBeVisible();
-  await expect(page.getByText("选课列表", { exact: true })).toBeVisible();
+  await expect(page.getByText("待选课表", { exact: true })).toBeVisible();
   await expect(page.getByText("开课班", { exact: true })).toBeVisible();
+  await expect(page.getByText("模拟课表", { exact: true })).toBeVisible();
   await expect(page.getByText("暂无数据").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "刷新教务数据" })).toHaveCount(0);
   await expect(page.getByText(/快照|JSON|书签|还没有教务数据/)).toHaveCount(0);
   expect(ehallRequests).toEqual([]);
 
-  await expect(page.getByRole("button", { name: "选择课程" })).toBeDisabled();
+  await expect(page.getByRole("tab", { name: "计划内" })).toHaveCount(0);
   await selectMajor(page);
-  await expect(page.getByRole("button", { name: "选择课程" })).toBeEnabled();
-
-  const picker = await openCoursePicker(page);
-  await picker.getByRole("tab", { name: "计划内" }).click();
-  const planned = picker.getByLabel("计划内课程");
+  await expect(page.getByText("待选的课", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "计划内" }).click();
+  const planned = plannedCourses(page);
   await expect(planned).toContainText("高等数学");
   await expect(planned).toContainText("微观经济学");
   await expect(planned).not.toContainText(/班号|容量|A-01|教师甲|教师乙/);
-  await planned.getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入选课列表" }).click();
+  await planned.getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入待选课表" }).click();
   await expect(courseList(page)).toContainText("高等数学");
   await expect(courseList(page)).toContainText("未选");
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
 
-  await planned.getByRole("row", { name: /微观经济学/ }).getByRole("button", { name: "加入选课列表" }).click();
+  await planned.getByRole("row", { name: /微观经济学/ }).getByRole("button", { name: "加入待选课表" }).click();
   await expect(courseList(page)).toContainText("微观经济学");
 
-  await picker.getByRole("tab", { name: "公共选修" }).click();
-  await picker.getByLabel("公共选修").getByRole("button", { name: "加入选课列表" }).click();
+  await page.getByRole("tab", { name: "公共选修" }).click();
+  await publicCourses(page).getByRole("button", { name: "加入待选课表" }).click();
   await expect(courseList(page)).toContainText("羽毛球");
-  await picker.getByRole("button", { name: "完成" }).click();
 
   await courseList(page).getByRole("button", { name: "高等数学" }).click();
   await expect(sectionList(page)).toContainText("教师甲");
@@ -232,10 +237,7 @@ test("program-plan courses, two-step pick, place, persist @mobile-smoke", async 
   await expect(timetable.getByText("羽毛球（教师巳）").first()).toBeVisible();
   await expect(courseList(page)).toContainText("备选");
 
-  const conflictPicker = await openCoursePicker(page);
-  await conflictPicker.getByRole("tab", { name: "计划内" }).click();
-  await conflictPicker.getByLabel("计划内课程").getByRole("row", { name: /冲突课/ }).getByRole("button", { name: "加入选课列表" }).click();
-  await conflictPicker.getByRole("button", { name: "完成" }).click();
+  await stagePlannedCourse(page, "冲突课");
   await courseList(page).getByRole("button", { name: "冲突课" }).click();
   await sectionList(page).getByRole("button", { name: "加入课表" }).click();
   await expect(page.getByRole("alert")).toContainText("冲突课");
@@ -261,15 +263,12 @@ test("unsaved alternate classes disappear after reload", async ({ page }) => {
   await mockScheduleApi(page);
   await page.goto("/schedule");
   await selectMajor(page);
-  const picker = await openCoursePicker(page);
-  await picker.getByRole("tab", { name: "计划内" }).click();
-  await picker.getByLabel("计划内课程").getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入选课列表" }).click();
-  await picker.getByRole("button", { name: "完成" }).click();
+  await stagePlannedCourse(page, "高等数学");
   await courseList(page).getByRole("button", { name: "高等数学" }).click();
   await sectionList(page).getByRole("button", { name: "加入课表" }).first().click();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("grid", { name: "选课列表" })).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "待选课表" })).toHaveCount(0);
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
 });
 
@@ -278,26 +277,21 @@ test("switches candidate data when the catalog major changes", async ({ page }) 
   await page.goto("/schedule");
   await selectMajor(page, "信息管理与信息系统");
 
-  const picker = await openCoursePicker(page);
-  await picker.getByRole("tab", { name: "计划内" }).click();
-  await expect(picker.getByLabel("计划内课程")).toContainText("数据结构");
-  await expect(picker.getByLabel("计划内课程")).not.toContainText("高等数学");
-  await picker.getByRole("button", { name: "完成" }).click();
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await expect(plannedCourses(page)).toContainText("数据结构");
+  await expect(plannedCourses(page)).not.toContainText("高等数学");
 
   await chooseMajor(page, "数学与应用数学");
-  const mathPicker = await openCoursePicker(page);
-  await mathPicker.getByRole("tab", { name: "计划内" }).click();
-  await expect(mathPicker.getByLabel("计划内课程")).toContainText("高等数学");
-  await expect(mathPicker.getByLabel("计划内课程")).not.toContainText("数据结构");
-  await mathPicker.getByRole("button", { name: "完成" }).click();
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await expect(plannedCourses(page)).toContainText("高等数学");
+  await expect(plannedCourses(page)).not.toContainText("数据结构");
 
   await chooseFilter(page, "年级", catalogScheduleGrades()[1].label);
   await expect(page.getByText("请先选择年级和专业")).toBeVisible();
-  await expect(page.getByRole("button", { name: "选择课程" })).toBeDisabled();
+  await expect(page.getByRole("tab", { name: "计划内" })).toHaveCount(0);
   await chooseMajor(page, "数学与应用数学");
-  const again = await openCoursePicker(page);
-  await again.getByRole("tab", { name: "计划内" }).click();
-  await expect(again.getByLabel("计划内课程")).toContainText("高等数学");
+  await page.getByRole("tab", { name: "计划内" }).click();
+  await expect(plannedCourses(page)).toContainText("高等数学");
 });
 
 test("major combobox searches undergraduate majors instead of teaching units", async ({ page }) => {
@@ -321,7 +315,7 @@ test("hides planned and public tables until a major is selected", async ({ page 
   await mockScheduleApi(page);
   await page.goto("/schedule");
   await expect(page.getByText("请先选择年级和专业")).toBeVisible();
-  await expect(page.getByRole("button", { name: "选择课程" })).toBeDisabled();
+  await expect(page.getByText("待选的课", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "计划内" })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "公共选修" })).toHaveCount(0);
   await expect(page.getByText("暂无数据").first()).toBeVisible();
@@ -348,70 +342,27 @@ test("bookmarklet refuses S2020103 until grade and major are selected", async ({
   expect(downloads).toEqual([]);
 });
 
-test("guest can browse catalog but must log in to add or save", async ({ page }) => {
+test("guest can stage, join, and save without logging in", async ({ page }) => {
   await mockScheduleApi(page, false);
-  await page.addInitScript(
-    ([key, value]) => {
-      localStorage.setItem(key, value);
-    },
-    [
-      SCHEDULE_PLAN_STORAGE_KEY,
-      JSON.stringify({
-        version: 2,
-        activeTermId: currentCatalogTermId(),
-        terms: {
-          [currentCatalogTermId()]: [
-            {
-              key: `${currentCatalogTermId()}+10100001+01`,
-              termId: currentCatalogTermId(),
-              courseCode: "10100001",
-              courseName: "高等数学",
-              section: "01",
-              teacherName: "教师甲",
-              origin: "planned",
-              included: true,
-              slots: [
-                {
-                  id: "s",
-                  weekday: 1,
-                  startPeriod: 1,
-                  endPeriod: 2,
-                  weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-                },
-              ],
-              credits: 4,
-              categoryPath: "",
-              campus: "",
-              place: "",
-              courseId: 8,
-              teacherId: 9,
-              rating: null,
-              reviewCount: 0,
-            },
-          ],
-        },
-      }),
-    ],
-  );
   await page.goto("/schedule");
-  await expect(page.getByText("专业选择", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "刷新教务数据" })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await selectMajor(page);
+  await stagePlannedCourse(page, "高等数学");
+  await courseList(page).getByRole("button", { name: "高等数学" }).click();
+  await sectionList(page).getByRole("button", { name: "加入课表" }).first().click();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
   await page.getByRole("button", { name: "保存课表" }).click();
-  const loginDialog = page.getByRole("dialog");
-  await expect(loginDialog).toContainText("加入课表需要先登录");
-  await loginDialog.getByRole("link", { name: "去登录" }).click();
-  await expect(page).toHaveURL(/\/login\?from=%2Fschedule/);
+  await expect(page.getByText("课表已保存到本机")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
 });
 
 test("same-course swap is atomic after selecting a catalog section", async ({ page }) => {
   await mockScheduleApi(page);
   await page.goto("/schedule");
   await selectMajor(page);
-  const picker = await openCoursePicker(page);
-  await picker.getByRole("tab", { name: "计划内" }).click();
-  await picker.getByLabel("计划内课程").getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入选课列表" }).click();
-  await picker.getByRole("button", { name: "完成" }).click();
+  await stagePlannedCourse(page, "高等数学");
   await expect(courseList(page)).toContainText("高等数学");
   await courseList(page).getByRole("button", { name: "高等数学" }).click();
   await expect(sectionList(page)).toContainText("教师乙");

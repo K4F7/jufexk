@@ -1,5 +1,5 @@
 /**
- * 把教务开课班收成选课列表用的课程行，以及某课的全部班次。
+ * 把教务开课班收成待选课表用的课程行，以及某课的全部班次。
  */
 import type { JwxtOffering } from "./jwxt-offering";
 import type { PlannedItem, PlanOrigin } from "./jwxt-plan";
