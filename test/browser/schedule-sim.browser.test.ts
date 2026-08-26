@@ -104,17 +104,6 @@ async function mockScheduleApi(
         },
       });
     }
-    if (url.pathname === "/api/auth/campus") {
-      return route.fulfill({
-        json: {
-          enabled: false,
-          reason: "not_whitelisted",
-          loginPath: "/login",
-          logoutPath: "/logout",
-          callbackPath: "/api/auth/callback",
-        },
-      });
-    }
     if (url.pathname.startsWith("/api/jwxt") || url.pathname.startsWith("/api/ehall")) {
       return route.fulfill({ status: 404, json: { error: "jwxt proxy disabled" } });
     }

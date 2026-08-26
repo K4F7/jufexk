@@ -4,9 +4,9 @@ _2026-08-24：#508 把微信/企业微信扫码加为同一套 CAS 探针，不�
 
 _2026-08-24：#500 再次解绑 #478 为作者查询重新加入的 `MAIL_*` / `REVIEW_AUTHOR_LOOKUP_TO`。生产部署不得依赖这些 Secrets Store 条目。_
 
-_2026-08-24：#483 从 Worker 配置淘汰 AuthBridge / 校园 JWT / 邮件投递变量（`AUTHBRIDGE_BASE_URL`、`CAMPUS_APP_ID`、`CAMPUS_JWT_AUD`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`MAIL_*`）。登录页只保留 CAS 代登；邮箱验证代码仍可用测试夹具，生产不再绑定投递端点。_
+_2026-08-26：#654 从仓库删除已废弃的校园 JWT 运行时代码、路由、前端探测、测试和配置遗留。登录页只保留 CAS 代登；邮箱验证代码仍可用测试夹具，生产不再绑定投递端点。_
 
-_2026-08-22：[#389](https://github.com/K4F7/jufexk/issues/389) 把生产校园登录定为 [SeRazon/jufe_cas](https://github.com/SeRazon/jufe_cas) 协议代登。标准 CAS 跳转与 AuthBridge 校园 JWT 全部废弃，不再作为可开通路径。校学生邮箱验证仍是非 CAS 次要入口。_
+_2026-08-22：[#389](https://github.com/K4F7/jufexk/issues/389) 把生产校园登录定为 [SeRazon/jufe_cas](https://github.com/SeRazon/jufe_cas) 协议代登。标准 CAS 跳转与旧校园 JWT 不再作为可开通路径。校学生邮箱验证仍是非 CAS 次要入口。_
 
 _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到出现有问题的投稿再实现」提前为实现校学生邮箱验证。该路径仍保留，但不再是校园统一身份方案。_
 
@@ -18,7 +18,7 @@ _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到�
 - 禁止跟随 302 去 ehall，禁止用 ST / `CASTGC` 拉教务或持久化 TGT。MFA 核销后同域 `reAuthCheck` 302 视为口令探针成功，不跟进。未完成 MFA 时 `reAuthCheck` 不得签发本站会话。排课模拟的教务数据路径见 [ADR-0029](./0029-jwxt-driven-schedule-import.md)：协议闸门失败前不代持教务 Cookie，只接受浏览器同源 JSON 快照。
 - 口令、`CASTGC`、`JSESSIONID`、MFA `gid` 不得进日志、公开响应或长期表。MFA 两步中间态只存 AES-GCM 密文，TTL 约 5 分钟。
 - 出站只允许 `ssl.jxufe.edu.cn` 以及 host 以 `.jxufe.edu.cn` 结尾的 attest。
-- 成功后认证身份为 `provider=cas`，`issuer=ssl.jxufe.edu.cn`，`subject=HMAC(规范化学号)`。学号不当业务主键。不与 email / 已废弃的 authbridge 自动合并。
+- 成功后认证身份为 `provider=cas`，`issuer=ssl.jxufe.edu.cn`，`subject=HMAC(规范化学号)`。学号不当业务主键。不与 email / 历史 provider 行自动合并。
 - 扫码登录是同一套 CAS 探针：`GET /cas/qr/qrcode` 取图，`POST /cas/qr/comet` 轮询；`code=1` 必须作为独立 `expired` 状态返回供刷新。授权后 `POST /cas/login`（`qrCodeKey`、`currentMenu=3`、无 `execution`）。学号优先解析 comet `accounts`，否则用同域 `GET /cas/p3/serviceValidate` 取 `cas:user`；取不到规范化学号则失败关闭。不要走 `federatedRedirect` / `openweixin`。中间态仍复用 `cas_login_challenges` AES-GCM，TTL 约 5 分钟；Cookie / `qrCodeKey` / `stateKey` / `CASTGC` 不得进日志或公开响应。
 - 图形验证码失败关闭。本版不做 OCR。
 - 学校 CAS 对失败口令可能回 200 登录页而不是 401；客户端把「仍停在登录页」当作口令失败。
@@ -33,7 +33,7 @@ _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到�
 
 ## 与 ADR-0016 的关系
 
-与 [ADR-0016](./0016-school-email-access-identity.md) 原先「AuthBridge 为生产认证方」冲突——本决策废弃 AuthBridge 与标准 CAS，校园统一身份只认 jufe_cas 代登。0016 的会话与账号生命周期契约仍有效。`CAMPUS_JWT_ENABLED` 不再能打开 callback：`POST /api/auth/callback` 与 `GET /api/auth/campus` 固定关闭。
+本决策取代 [ADR-0016](./0016-school-email-access-identity.md) 早期校园 JWT 方案：校园统一身份只认 jufe_cas 代登，0016 的会话与账号生命周期契约仍有效。#654 已删除旧 JWT 状态与回调 API。
 
 ## Consequences
 
@@ -43,7 +43,6 @@ _2026-08-21：[#324](https://github.com/K4F7/jufexk/issues/324) 曾把「等到�
 ## Considered Options
 
 - **jufe_cas 协议代登（采纳，唯一校园 CAS 方案）**：本站收集学号/口令/MFA，Worker 代打学校 CAS。形态接近钓鱼，因此必须失败关闭图形验证码、禁止持久化 TGT、禁止跟 ehall ticket、密文短 TTL 中间态，并保留邮箱次要入口。
-- **AuthBridge 校园 JWT**：废弃。不再用 `CAMPUS_JWT_ENABLED` 开通；callback 固定 503。
 - **自建标准 CAS client（`service=` 本站回调）**：废弃。2026-08-19 / 2026-08-22 实测 `GET /cas/login?service=https://xk.sein.moe/...` 返回「Unauthorized Service Access ... not found in service registry」。
 - **Cloudflare Access OTP**：按席位计费，免费档约 50 人，已在 ADR-0016 否决。
 - **邀请码、人工材料审核、校园网 IP 判定**：均不能独立证明校内身份，最多作反滥用辅助信号，否决。

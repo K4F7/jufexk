@@ -2,9 +2,7 @@
 
 研究日期：2026-08-17。结论基于仓库现状、ADR-0016、GitHub Issues、Cloudflare / better-auth 一手文档，以及后续对「全校投稿门 / 自托管邮件」的澄清。外部产品条款可能变更，正式上线前应复核。
 
-**2026-08-22 废止校园 JWT / 标准 CAS：** 生产校园登录只走 jufe_cas 代登（#389 / ADR-0022）。AuthBridge callback 与未注册 service 的标准 CAS 不再作为可开通方案。下文保留为历史研究，不要再按「生产只适配校园 JWT」实现。
-
-**2026-08-17 第三次修订：** 不再做邮箱验证或 Access OTP。生产只适配江财校园 JWT。公开可核对的发行方是 [Mine-JUFE/AuthBridge](https://github.com/Mine-JUFE/AuthBridge)：CAS 验票后按应用签发 JWT（默认 HS256，`token` 经 callback POST 交给应用）。本仓库没有 AuthBridge 源码与验签密钥，因此 `resolveCampusJwt` 只留占位、一律返回 null；测试仍走 HMAC 头。拿到 `iss`/`aud`/密钥后再接线。这与 ADR-0016 的 Access-only 条款冲突，实现验签前须改 ADR。
+**2026-08-26 更新：** 生产校园登录只走 jufe_cas 代登（#389 / ADR-0022）；#654 已从仓库删除旧校园 JWT 接入。下文的邮件与 Access 比较只作历史研究。
 
 **2026-08-17 修订：** 初稿建议继续走 Cloudflare Access OTP。随后核对 Zero Trust 免费席位，并确认本站要的是「证明访问者控制本校邮箱、才有投稿资格」，不是团队 ZTNA。项目已有自托管邮件服务器。该邮件方案已被第三次修订否决。
 
@@ -51,7 +49,7 @@
 
 ## 明确建议
 
-当前实现只适配校园 JWT（AuthBridge 形状的占位），不发邮件，不配 Access。进校方白名单之前，`POST /api/auth/callback` 保持关闭，Worker 不跳转、不请求 AuthBridge。
+当前生产校园登录只走 CAS 代登；站内会话与写入授权以 ADR-0016 / ADR-0022 为准。
 
 **conflicts with ADR-0016 because** ADR 正文要求 Access OTP。免费席位不适合全校投稿门，邮箱方案也已否决。实现验签前须修订 ADR，不要把 Access 或邮件重新当成现行方案。
 

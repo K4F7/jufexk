@@ -61,7 +61,7 @@ const courseDetail = {
 
 async function mockSubmitApi(
   page: Page,
-  options: { campusEnabled?: boolean; authenticated?: boolean } = {},
+  options: { authenticated?: boolean } = {},
 ) {
   const posted: Record<string, unknown>[] = [];
   const authenticated = options.authenticated ?? true;
@@ -79,10 +79,6 @@ async function mockSubmitApi(
           loginPath: "/login",
           logoutPath: "/logout",
         },
-      });
-    if (url.pathname === "/api/auth/campus")
-      return route.fulfill({
-        json: { enabled: Boolean(options.campusEnabled) },
       });
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers")
       return route.fulfill({

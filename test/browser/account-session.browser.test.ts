@@ -6,15 +6,12 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 type MockState = {
   authenticated: boolean;
-  campusEnabled: boolean;
   sessionFails: boolean;
   logoutFails: boolean;
   endorsement401: boolean;
   logoutCalls: number;
   deleteCalls: number;
 };
-
-const AUTHBRIDGE_BASE = "https://authbridge.example";
 
 const ENDORSABLE_REVIEW = {
   id: "review:101",
@@ -31,7 +28,6 @@ const ENDORSABLE_REVIEW = {
 function state(overrides: Partial<MockState> = {}): MockState {
   return {
     authenticated: false,
-    campusEnabled: false,
     sessionFails: false,
     logoutFails: false,
     endorsement401: false,
@@ -66,25 +62,6 @@ async function mockApi(page: Page, mock: MockState) {
         ...(mock.authenticated
           ? { handle: "匿名用户#000001", avatar_key: 0 }
           : {}),
-      });
-    }
-    if (url.pathname === "/api/auth/campus") {
-      if (mock.campusEnabled)
-        return fulfillJson(route, {
-          enabled: true,
-          reason: "live",
-          loginPath: "/login",
-          logoutPath: "/logout",
-          callbackPath: "/api/auth/callback",
-          appId: "jufexk",
-          authBridgeBaseUrl: AUTHBRIDGE_BASE,
-        });
-      return fulfillJson(route, {
-        enabled: false,
-        reason: "not_whitelisted",
-        loginPath: "/login",
-        logoutPath: "/logout",
-        callbackPath: "/api/auth/callback",
       });
     }
     if (url.pathname === "/api/user/logout" && request.method() === "POST") {
@@ -240,7 +217,7 @@ test("a 401 on a write clears the viewer state and shows the login guide", async
 }) => {
   await mockApi(
     page,
-    state({ authenticated: true, endorsement401: true, campusEnabled: true }),
+    state({ authenticated: true, endorsement401: true }),
   );
   await page.goto("/courses/8?teacher=9");
   await expect(page.getByRole("button", { name: "账号" })).toBeVisible();

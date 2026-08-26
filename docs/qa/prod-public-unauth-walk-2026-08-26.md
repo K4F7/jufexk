@@ -2,7 +2,7 @@
 
 Unauthenticated first-visit walk of **https://courses.sein.moe**.
 Headless Chromium via `node scripts/prod-public-smoke.mjs` (Playwright 1.62.1).
-Viewport 1280×800. No login, no review POST, no AuthBridge, no 导师 / Tencent sheets.
+Viewport 1280×800. No login, no review POST, no 导师 / Tencent sheets.
 
 Reconnaissance-then-action: `networkidle` → wait for catalog idle copy
 （`正在更新课程目录…` / `课程加载中…`）→ screenshot → inspect roles → act.
@@ -12,7 +12,7 @@ Raw machine report: `output/playwright/prod-public-smoke/report.json`
 subdirectory by default; set `PROD_PUBLIC_SMOKE_ARTIFACTS` to override it.
 Re-run: `node scripts/prod-public-smoke.mjs`.
 
-The runner blocks and fails on login/AuthBridge/review write requests. It also
+The runner blocks and fails on login/review write requests. It also
 fails when a browser `pageerror` occurs, even if all page assertions passed.
 
 ## Summary

@@ -17,16 +17,6 @@ async function mockShell(page: Page, extra: (url: URL) => unknown | null) {
       return route.fulfill({
         json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
       });
-    if (url.pathname === "/api/auth/campus")
-      return route.fulfill({
-        json: {
-          enabled: false,
-          reason: "not_whitelisted",
-          loginPath: "/login",
-          logoutPath: "/logout",
-          callbackPath: "/api/auth/callback",
-        },
-      });
     if (url.pathname === "/api/courses")
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },

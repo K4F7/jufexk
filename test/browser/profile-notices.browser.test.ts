@@ -123,14 +123,6 @@ async function mockApi(page: Page, mock: MockState) {
           : {}),
       });
     }
-    if (url.pathname === "/api/auth/campus")
-      return fulfillJson(route, {
-        enabled: false,
-        reason: "not_whitelisted",
-        loginPath: "/login",
-        logoutPath: "/logout",
-        callbackPath: "/api/auth/callback",
-      });
     if (url.pathname === "/api/user/profile")
       return fulfillJson(route, mock.profile, mock.profileStatus);
     if (url.pathname === "/api/user/profile/avatar") {

@@ -318,7 +318,7 @@ describe("school-email login", () => {
     expect(after?.n).toBe((before?.n || 0) + 1);
   });
 
-  it("does not leak tokens when delivery is unconfigured and keeps callback closed", async () => {
+  it("does not leak tokens when delivery is unconfigured", async () => {
     const previousUrl = (env as { MAIL_DELIVERY_URL?: string }).MAIL_DELIVERY_URL;
     (env as { MAIL_DELIVERY_URL?: string }).MAIL_DELIVERY_URL = "";
     installMailMock();
@@ -332,12 +332,5 @@ describe("school-email login", () => {
     } finally {
       (env as { MAIL_DELIVERY_URL?: string }).MAIL_DELIVERY_URL = previousUrl;
     }
-
-    const callback = await SELF.fetch(`${origin}/api/auth/callback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Origin: origin },
-      body: JSON.stringify({ token: "anything" }),
-    });
-    expect(callback.status).toBe(503);
   });
 });

@@ -19,16 +19,6 @@ async function mockBase(page: Page) {
         json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
       });
     }
-    if (url.pathname === "/api/auth/campus") {
-      return route.fulfill({
-        json: {
-          enabled: false,
-          reason: "not_whitelisted",
-          loginPath: "/login",
-          logoutPath: "/logout",
-        },
-      });
-    }
     if (url.pathname === "/api/user/session") {
       return route.fulfill({
         json: {

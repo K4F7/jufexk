@@ -41,15 +41,6 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
         logoutPath: "/logout",
       });
     }
-    if (url.pathname === "/api/auth/campus") {
-      return fulfillOk(route, {
-        enabled: false,
-        reason: "not_whitelisted",
-        loginPath: "/login",
-        logoutPath: "/logout",
-        callbackPath: "/api/auth/callback",
-      });
-    }
     if (url.pathname === "/api/courses") {
       if (isRescueList(url, "1")) {
         if (options.failCoursesRescue) {

@@ -38,17 +38,6 @@ async function mockAdminApi(page: Page, mock: AdminMock) {
         },
       });
     }
-    if (url.pathname === "/api/auth/campus") {
-      return route.fulfill({
-        json: {
-          enabled: false,
-          reason: "not_whitelisted",
-          loginPath: "/login",
-          logoutPath: "/logout",
-          callbackPath: "/api/auth/callback",
-        },
-      });
-    }
     if (url.pathname === "/api/site/banner") {
       return route.fulfill({
         json: {

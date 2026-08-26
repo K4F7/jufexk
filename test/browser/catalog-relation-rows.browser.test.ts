@@ -109,16 +109,6 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
       return route.fulfill({
         json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
       });
-    if (url.pathname === "/api/auth/campus")
-      return route.fulfill({
-        json: {
-          enabled: false,
-          reason: "not_whitelisted",
-          loginPath: "/login",
-          logoutPath: "/logout",
-          callbackPath: "/api/auth/callback",
-        },
-      });
     if (url.pathname === "/api/courses") {
       const category = url.searchParams.get("category") || "";
       const query = url.searchParams.get("q") || "";

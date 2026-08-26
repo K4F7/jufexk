@@ -29,17 +29,6 @@ async function mockCatalogApi(page: Page) {
         },
       });
     }
-    if (url.pathname === "/api/auth/campus") {
-      return route.fulfill({
-        json: {
-          enabled: false,
-          reason: "not_whitelisted",
-          loginPath: "/login",
-          logoutPath: "/logout",
-          callbackPath: "/api/auth/callback",
-        },
-      });
-    }
     if (url.pathname === "/api/teachers") {
       const query = url.searchParams.get("q") || "";
       const items = query && TEACHER.name.includes(query) ? [TEACHER] : [];

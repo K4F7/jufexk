@@ -91,7 +91,7 @@ pnpm run dev
 | `SITE_NAME` / `UNIVERSITY_NAME` | 站点与学校显示名 |
 | `TURNSTILE_SITE_KEY` | Turnstile 公开 Site Key |
 
-AuthBridge 校园 JWT（`CAMPUS_JWT_*` / `CAMPUS_APP_ID` / `AUTHBRIDGE_BASE_URL`）与校学生邮箱投递（`MAIL_*`）已从 Worker 配置淘汰，不能再作为登录路径。
+旧校园 JWT 与校学生邮箱投递（`MAIL_*`）已从 Worker 配置淘汰，不能再作为登录路径。
 
 ### 密钥（Cloudflare Secrets Store）
 

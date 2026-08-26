@@ -40,16 +40,6 @@ async function mockShellApi(page: Page) {
       return route.fulfill({
         json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
       });
-    if (url.pathname === "/api/auth/campus")
-      return route.fulfill({
-        json: {
-          enabled: false,
-          reason: "not_whitelisted",
-          loginPath: "/login",
-          logoutPath: "/logout",
-          callbackPath: "/api/auth/callback",
-        },
-      });
     if (url.pathname === "/api/reviews/latest") {
       const cursor = url.searchParams.get("cursor");
       if (cursor) {
