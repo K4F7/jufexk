@@ -16,5 +16,6 @@ handoff/
 # Local D1 dumps / preview data (never commit)
 .local-data/
 scripts/catalog-baseline/captures/
+scripts/program-plan/captures/
 test-results/
 output/playwright/
