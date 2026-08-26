@@ -1,4 +1,4 @@
-name: Periodic JWXT sync
+name: Legacy JWXT sync
 
 on:
   workflow_dispatch:
@@ -12,11 +12,6 @@ on:
           - incremental
           - full
           - resume
-  schedule:
-    # Beijing 03:17 every day (UTC 19:17 on the previous date).
-    - cron: "17 19 * * *"
-    # Beijing 04:37 on day 2 (UTC 20:37 on day 1).
-    - cron: "37 20 1 * *"
 
 concurrency:
   group: production-jwxt-sync
@@ -28,7 +23,7 @@ permissions:
 jobs:
   sync:
     name: sync
-    if: github.event_name == 'workflow_dispatch' || vars.JWXT_SYNC_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch'
     environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 330

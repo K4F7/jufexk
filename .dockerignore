@@ -1,0 +1,12 @@
+.git
+.worktree
+node_modules
+dist
+.local-data
+.wrangler
+coverage
+playwright-report
+test-results
+*.log
+*.zip
+*.tar

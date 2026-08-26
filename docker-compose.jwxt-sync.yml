@@ -1,0 +1,22 @@
+services:
+  jwxt-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.jwxt-sync
+    image: jufexk/jwxt-sync:local
+    env_file:
+      - .env.jwxt-sync
+    environment:
+      JWXT_MODE: ${JWXT_MODE:-pilot}
+      JWXT_STAGE_ONLY: ${JWXT_STAGE_ONLY:-true}
+      JWXT_SYNC_BUCKET: ${JWXT_SYNC_BUCKET:-jufexk-jwxt-sync}
+    cpus: 2.0
+    mem_limit: 2g
+    read_only: true
+    tmpfs:
+      - /app/.local-data:rw,noexec,nosuid,size=1g
+      - /tmp:rw,noexec,nosuid,size=256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

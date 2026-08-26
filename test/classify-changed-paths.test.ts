@@ -6,6 +6,7 @@ import playwrightConfig from "../playwright.config.ts?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
 import migrateWorkflow from "../.github/workflows/migrate.yml?raw";
 import jwxtSyncWorkflow from "../.github/workflows/jwxt-sync.yml?raw";
+import wranglerConfig from "../wrangler.jsonc?raw";
 import packageJsonRaw from "../package.json?raw";
 
 const packageScripts = (JSON.parse(packageJsonRaw) as { scripts: Record<string, string> }).scripts;
@@ -114,10 +115,10 @@ describe("classifyChangedPaths", () => {
     );
   });
 
-  it("keeps periodic JWXT sync isolated, least-privileged, and disabled by default", () => {
+  it("keeps legacy JWXT sync isolated while the Worker owns the schedule", () => {
     expect(jwxtSyncWorkflow).toContain("workflow_dispatch:");
-    expect(jwxtSyncWorkflow).toContain('17 19 * * *');
-    expect(jwxtSyncWorkflow).toContain('37 20 1 * *');
+    expect(wranglerConfig).toContain('"17 19 * * *"');
+    expect(wranglerConfig).toContain('"37 20 1 * *"');
     expect(jwxtSyncWorkflow).not.toContain("pull_request:");
     expect(jwxtSyncWorkflow).not.toContain("push:");
     expect(jwxtSyncWorkflow).toContain("production-jwxt-sync");

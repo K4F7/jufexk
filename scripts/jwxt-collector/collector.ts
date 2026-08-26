@@ -40,6 +40,8 @@ export type CollectorCheckpointOptions = {
   save?: (checkpoint: CollectorCheckpoint) => Promise<void>;
 };
 
+export type JwxtTextDecoder = (bytes: Uint8Array) => string;
+
 function selectedId(items: { id: string; label: string }[], selected?: { id: string } | null) {
   return selected?.id || items[0]?.id || "";
 }
@@ -80,9 +82,10 @@ export async function collectJwxt(
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
   checkpointOptions: CollectorCheckpointOptions = {},
+  decode: JwxtTextDecoder = (bytes) => new TextDecoder("gbk").decode(bytes),
 ): Promise<RedactedJwxtCapture> {
   const entry = await adapter.request(ENTRY_PATH, { headers: { accept: "text/html" } });
-  const entryHtml = new TextDecoder("gbk").decode(await responseBytes(entry));
+  const entryHtml = decode(await responseBytes(entry));
   const discovery = parseJwxtTableHtml(entryHtml);
   if (!discovery.ok) throw new Error(`jwxt_discovery_${discovery.kind}`);
   const selectedTerm = selectedId(discovery.filters.terms, discovery.termSelect.selected);
@@ -149,7 +152,7 @@ export async function collectJwxt(
         if (attempt === 4) throw new Error(`jwxt_http_${response.status}`);
         await sleep([2_000, 5_000, 15_000][attempt - 1]);
       }
-      const html = new TextDecoder("gbk").decode(await responseBytes(response!));
+      const html = decode(await responseBytes(response!));
       const parsed = parseJwxtTableHtml(html);
       if (!parsed.ok) throw new Error(`jwxt_page_${parsed.kind}`);
       if (!parsed.pagination) throw new Error("jwxt_pagination_missing");

@@ -161,8 +161,11 @@ export function publishJwxtSyncQueries(input: JwxtSyncGenerationInput): D1BatchQ
 }
 
 async function executeBatch(db: D1Database, queries: D1BatchQuery[]): Promise<void> {
-  if (queries.length === 0) return;
-  await db.batch(queries.map((query) => db.prepare(query.sql).bind(...query.params)));
+  for (let offset = 0; offset < queries.length; offset += 50) {
+    await db.batch(
+      queries.slice(offset, offset + 50).map((query) => db.prepare(query.sql).bind(...query.params)),
+    );
+  }
 }
 
 export async function stageJwxtSyncGeneration(
