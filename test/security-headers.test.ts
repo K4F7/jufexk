@@ -30,6 +30,12 @@ function headerValue(file: string, name: string): string {
 }
 
 describe("public asset CSP", () => {
+  it("pins HSTS on static assets", () => {
+    expect(headerValue(assetHeaders, "Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+  });
+
   it("allows the Cloudflare Web Analytics beacon without extra script hosts", () => {
     const policy = headerValue(assetHeaders, "Content-Security-Policy");
     expect(policy).toBe(ASSET_CONTENT_SECURITY_POLICY);
@@ -61,6 +67,9 @@ describe("API CSP", () => {
     expect(response.headers.get("Content-Security-Policy")).toBe(
       API_CONTENT_SECURITY_POLICY,
     );
+    expect(response.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
     expect(
       cspDirectiveSources(API_CONTENT_SECURITY_POLICY, "script-src"),
     ).toEqual(["'self'", "https://challenges.cloudflare.com"]);
@@ -69,6 +78,22 @@ describe("API CSP", () => {
     ).toEqual(["'self'", "https://challenges.cloudflare.com"]);
     expect(cspDirectiveSources(API_CONTENT_SECURITY_POLICY, "img-src")).toEqual(
       ["'self'", "data:"],
+    );
+  });
+
+  it("keeps HSTS on API errors and preflight requests", async () => {
+    const missingResponse = await SELF.fetch(`${origin}/api/does-not-exist`);
+    expect(missingResponse.status).toBeGreaterThanOrEqual(400);
+    expect(missingResponse.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+
+    const optionsResponse = await SELF.fetch(`${origin}/api/config`, {
+      method: "OPTIONS",
+    });
+    expect(optionsResponse.status).toBeGreaterThanOrEqual(400);
+    expect(optionsResponse.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
     );
   });
 });

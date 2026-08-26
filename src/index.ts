@@ -37,6 +37,7 @@ app.use("/api/*", async (c, next) => {
   c.header("Referrer-Policy", "same-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   c.header("Content-Security-Policy", API_CONTENT_SECURITY_POLICY);
+  c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 });
 
 app.route("/", publicCatalogRoutes);
