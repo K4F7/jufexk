@@ -39,7 +39,7 @@ describe("review template kind API contract", () => {
     const sportsNames = sportsAfterBody.items.map((item) => item.name);
     expect(sportsNames).toContain("测试体育课");
     expect(sportsNames).toContain("大学体育理论");
-    expect(sportsNames).not.toContain("大学英语1");
+    expect(sportsNames).not.toContain("大学英语");
     expect(sportsNames).not.toContain("思想道德与法治");
     expect(sportsNames).not.toContain("高等数学A");
     expect(sportsNames).not.toContain("计量经济学");
@@ -50,7 +50,7 @@ describe("review template kind API contract", () => {
     ).toBe("general");
 
     for (const [category, name] of [
-      ["english", "大学英语1"],
+      ["english", "大学英语"],
       ["ideology", "思想道德与法治"],
       ["math", "高等数学A"],
     ] as const) {
@@ -85,7 +85,7 @@ describe("review template kind API contract", () => {
       expect(names).toContain("计量经济学");
       expect(names).toContain("公共基础导论");
       expect(names).not.toContain("测试体育课");
-      expect(names).not.toContain("大学英语1");
+      expect(names).not.toContain("大学英语");
       expect(names).not.toContain("思想道德与法治");
       expect(names).not.toContain("高等数学A");
       expect(names).not.toContain("大学体育理论");
@@ -658,10 +658,10 @@ describe("review template kind API contract", () => {
     expect(stored?.name).toBe("体育1");
   });
 
-  it("keeps 大学英语 I–IV as distinct 公开展示课名 and groups one teacher’s levels", async () => {
+  it("collapses 大学英语 I–IV in public browse but keeps option and catalog names", async () => {
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(36701,'英语教师','英语教师'),(36702,'乙英语','乙英语')",
+        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(36701,'英语教师','英语教师')",
       ),
       env.DB.prepare(
         `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
@@ -675,7 +675,7 @@ describe("review template kind API contract", () => {
           (36708,'1004600502','大学英语预备级','general','外国语学院','english')`,
       ),
       env.DB.prepare(
-        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(36701,36701),(36702,36701),(36703,36701),(36704,36701),(36705,36701),(36706,36701),(36707,36701),(36708,36701),(36701,36702),(36702,36702)",
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(36701,36701),(36702,36701),(36703,36701),(36704,36701),(36705,36701),(36706,36701),(36707,36701),(36708,36701)",
       ),
     ]);
 
@@ -685,19 +685,15 @@ describe("review template kind API contract", () => {
     const listedBody = await listed.json<{ items: Array<{ name: string }> }>();
     expect(listed.status).toBe(200);
     const listedNames = listedBody.items.map((item) => item.name);
-    expect(listedNames.filter((name) => name === "大学英语")).toHaveLength(0);
-    expect(listedNames).toEqual(
-      expect.arrayContaining([
-        "大学英语I",
-        "大学英语II",
-        "大学英语III",
-        "大学英语IV",
-        "大学英语I(涉外)",
-        "大学英语I(艺体）",
-        "大学英语I（运训）",
-        "大学英语预备级",
-      ]),
-    );
+    expect(listedNames.filter((name) => name === "大学英语")).toHaveLength(1);
+    expect(listedNames).not.toContain("大学英语I");
+    expect(listedNames).not.toContain("大学英语II");
+    expect(listedNames).not.toContain("大学英语III");
+    expect(listedNames).not.toContain("大学英语IV");
+    expect(listedNames).toContain("大学英语I(涉外)");
+    expect(listedNames).toContain("大学英语I(艺体）");
+    expect(listedNames).toContain("大学英语I（运训）");
+    expect(listedNames).toContain("大学英语预备级");
 
     const searchTwo = await SELF.fetch(
       `${origin}/api/courses?q=${encodeURIComponent("大学英语II")}`,
@@ -706,9 +702,9 @@ describe("review template kind API contract", () => {
       items: Array<{ name: string }>;
     }>();
     expect(searchTwo.status).toBe(200);
-    expect(searchTwoBody.items.map((item) => item.name)).toContain("大学英语II");
+    expect(searchTwoBody.items.map((item) => item.name)).toContain("大学英语");
     expect(searchTwoBody.items.map((item) => item.name)).not.toContain(
-      "大学英语",
+      "大学英语II",
     );
 
     const options = await SELF.fetch(
@@ -732,68 +728,19 @@ describe("review template kind API contract", () => {
       courses: Array<{ name: string }>;
     }>();
     expect(teacher.status).toBe(200);
-    const teacherEnglish = teacherBody.courses
-      .map((course) => course.name)
-      .filter((name) =>
-        ["大学英语I", "大学英语II", "大学英语III", "大学英语IV"].includes(name),
-      );
-    expect(teacherEnglish).toEqual([
-      "大学英语I",
-      "大学英语II",
-      "大学英语III",
-      "大学英语IV",
-    ]);
+    expect(
+      teacherBody.courses.filter((course) => course.name === "大学英语"),
+    ).toHaveLength(1);
     expect(teacherBody.courses.map((course) => course.name)).toEqual(
       expect.arrayContaining([
-        "大学英语I",
-        "大学英语II",
-        "大学英语III",
-        "大学英语IV",
+        "大学英语",
         "大学英语I(涉外)",
         "大学英语I(艺体）",
         "大学英语I（运训）",
         "大学英语预备级",
       ]),
     );
-    expect(teacherBody.teacher.course_count).toBe(8);
-
-    const relations = await SELF.fetch(
-      `${origin}/api/courses?view=relations&q=${encodeURIComponent("大学英语")}&category=english&sort=name&pageSize=50`,
-    );
-    const relationsBody = await relations.json<{
-      items: Array<{ name: string; teacher_name: string | null }>;
-    }>();
-    expect(relations.status).toBe(200);
-    const levelRows = relationsBody.items.filter((item) =>
-      ["大学英语I", "大学英语II", "大学英语III", "大学英语IV"].includes(
-        item.name,
-      ),
-    );
-    const teacherA = levelRows
-      .filter((item) => item.teacher_name === "英语教师")
-      .map((item) => item.name);
-    const teacherB = levelRows
-      .filter((item) => item.teacher_name === "乙英语")
-      .map((item) => item.name);
-    expect(teacherA).toEqual([
-      "大学英语I",
-      "大学英语II",
-      "大学英语III",
-      "大学英语IV",
-    ]);
-    expect(teacherB).toEqual(["大学英语I", "大学英语II"]);
-    const firstA = levelRows.findIndex(
-      (item) => item.teacher_name === "英语教师",
-    );
-    const lastA = levelRows.findLastIndex(
-      (item) => item.teacher_name === "英语教师",
-    );
-    expect(lastA - firstA).toBe(3);
-    expect(
-      levelRows
-        .slice(firstA, lastA + 1)
-        .every((item) => item.teacher_name === "英语教师"),
-    ).toBe(true);
+    expect(teacherBody.teacher.course_count).toBe(5);
 
     const detail = await SELF.fetch(`${origin}/api/courses/36702`);
     const detailBody = await detail.json<{
@@ -803,7 +750,7 @@ describe("review template kind API contract", () => {
       };
     }>();
     expect(detail.status).toBe(200);
-    expect(detailBody.course.name).toBe("大学英语II");
+    expect(detailBody.course.name).toBe("大学英语");
     expect(detailBody.course.teachers.map((teacher) => teacher.name)).toContain(
       "英语教师",
     );

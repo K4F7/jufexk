@@ -175,7 +175,7 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
         {
           id: "courses-english",
           title: "课程目录 · 英语",
-          description: "大学英语 I/II 各为独立公开展示课名",
+          description: "大学英语 I/II 归并为「大学英语」",
           href: "/courses?category=english",
           access: "public",
         },

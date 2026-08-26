@@ -9,7 +9,6 @@ import {
   prefixPattern,
 } from "../lib/catalog-search";
 import {
-  groupEnglishLevelItems,
   isPublicListCategoryFilter,
   isVirtualPeSportId,
   publicCategoryFilterError,
@@ -640,12 +639,7 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
     null,
   );
   const courses = coursesResult.results;
-  const publicCourses = groupEnglishLevelItems(
-    courses.map(withPublicCourseCategory) as Array<{
-      name: string;
-      [key: string]: unknown;
-    }>,
-  );
+  const publicCourses = courses.map(withPublicCourseCategory);
   const visibleSport = virtualPeSportForTeacherName(
     typeof (teacher as { name?: string }).name === "string"
       ? (teacher as { name: string }).name

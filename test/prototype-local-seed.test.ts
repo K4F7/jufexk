@@ -292,7 +292,7 @@ describe("pnpm db:seed-preview 灌进公开目录", () => {
       `${origin}/api/courses?q=${encodeURIComponent("大学英语")}`,
     ).then((response) => response.json<{ items: Array<{ name: string }> }>());
     expect(english.items.map((item) => item.name)).toEqual(
-      expect.arrayContaining(["大学英语I", "大学英语II"]),
+      expect.arrayContaining(["大学英语"]),
     );
 
     const mooc = await SELF.fetch(`${origin}/api/courses?category=mooc&pageSize=50`).then(

@@ -79,10 +79,11 @@ describe("public list projection plan", () => {
         canonical_course_id: 1,
         family_label: null,
       });
-      expect(byId[57401].family_label).toBeNull();
-      expect(byId[57402].family_label).toBeNull();
-      expect(byId[57401].canonical_course_id).toBe(57401);
-      expect(byId[57402].canonical_course_id).toBe(57402);
+      expect(byId[57401].family_label).toBe("大学英语");
+      expect(byId[57402].family_label).toBe("大学英语");
+      expect(byId[57401].canonical_course_id).toBe(
+        byId[57402].canonical_course_id,
+      );
       expect(byId[57405].family_label).toBe("篮球");
       expect(byId[57406].canonical_course_id).toBe(57405);
       expect(byId[57407]).toMatchObject({
@@ -96,8 +97,7 @@ describe("public list projection plan", () => {
          ORDER BY c.id`,
       ).all<{ id: number }>();
       expect(browse.results.map((row) => row.id)).toEqual([
-        57401,
-        57402,
+        byId[57401].canonical_course_id,
         57405,
       ]);
 
@@ -113,7 +113,7 @@ describe("public list projection plan", () => {
     }
   });
 
-  it("keeps 大学英语 I–IV as distinct browse and 投稿选项 rows", async () => {
+  it("keeps 大学英语 I–IV as 投稿选项 while collapsing the 公开展示课名", async () => {
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO courses(id,code,name,category,department)
@@ -151,7 +151,7 @@ describe("public list projection plan", () => {
         "大学英语III",
         "大学英语IV",
       ]);
-      expect(browse.results).toHaveLength(4);
+      expect(browse.results).toHaveLength(1);
     } finally {
       await env.DB.prepare(
         "DELETE FROM courses WHERE id IN (57411,57412,57413,57414)",
@@ -359,8 +359,8 @@ describe("public list projection plan", () => {
       const count = await env.DB.prepare(
         "SELECT course_count FROM public_teacher_course_counts WHERE teacher_id=57441",
       ).first<{ course_count: number }>();
-      // 大学英语 I/II 各计一门；教务伞形课名「体育1」不计入公开浏览。
-      expect(count?.course_count).toBe(3);
+      // 大学英语 I/II 归并为一个公开展示课名；教务伞形课名「体育1」不计入公开浏览。
+      expect(count?.course_count).toBe(2);
     } finally {
       await env.DB.prepare(
         "DELETE FROM course_teachers WHERE teacher_id=57441",

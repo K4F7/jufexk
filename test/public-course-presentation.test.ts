@@ -6,7 +6,6 @@ import {
   publicBrowseFamilySql,
   publicCourseCategory,
   formatPeSkillDisplayName,
-  groupEnglishLevelItems,
   publicCourseDisplayName,
   publicCourseVisibleSql,
   publicEnglishFamilyLabel,
@@ -78,7 +77,7 @@ describe("public PE course presentation", () => {
     expect(formatPeSkillDisplayName("乒乓球")).toBe("体育1-4 [乒乓球]");
   });
 
-  it("keeps 大学英语 1–4 / I–IV as distinct 公开展示课名", () => {
+  it("collapses exact 大学英语 1–4 / I–IV onto 大学英语", () => {
     expect(publicEnglishFamilyLabel("大学英语1")).toBe("大学英语");
     expect(publicEnglishFamilyLabel("大学英语4")).toBe("大学英语");
     expect(publicEnglishFamilyLabel("大学英语I")).toBe("大学英语");
@@ -90,32 +89,15 @@ describe("public PE course presentation", () => {
     expect(publicEnglishFamilyLabel("大学英语I(艺体）")).toBe(null);
     expect(publicEnglishFamilyLabel("大学英语I（运训）")).toBe(null);
     expect(publicEnglishFamilyLabel("大学英语预备级")).toBe(null);
-    expect(publicCourseDisplayName("大学英语II")).toBe("大学英语II");
-    expect(publicCourseDisplayName("大学英语1")).toBe("大学英语1");
+    expect(publicCourseDisplayName("大学英语II")).toBe("大学英语");
+    expect(publicCourseDisplayName("大学英语1")).toBe("大学英语");
     expect(publicCourseDisplayName("大学英语I(涉外)")).toBe("大学英语I(涉外)");
     expect(publicOptionDisplayName("大学英语II")).toBe("大学英语II");
     expect(publicOptionDisplayName("击剑专项理论与实践1")).toBe("体育1-4 [击剑]");
     expect(publicEnglishFamilySql("c")).toContain("'大学英语I'");
     expect(publicEnglishFamilySql("c")).not.toContain("大学英语I(涉外)");
-    expect(publicBrowseFamilySql("c")).not.toContain("大学英语");
+    expect(publicBrowseFamilySql("c")).toContain("大学英语");
     expect(publicBrowseFamilySql("c")).toContain("乒乓球");
-  });
-
-  it("groups one teacher’s 大学英语 1–4 together without folding them", () => {
-    const grouped = groupEnglishLevelItems([
-      { name: "大学英语II", teacher_id: 1, teacher_name: "甲" },
-      { name: "线性代数", teacher_id: 1, teacher_name: "甲" },
-      { name: "大学英语I", teacher_id: 2, teacher_name: "乙" },
-      { name: "大学英语I", teacher_id: 1, teacher_name: "甲" },
-      { name: "大学英语II", teacher_id: 2, teacher_name: "乙" },
-    ]);
-    expect(grouped.map((item) => `${item.name}:${item.teacher_name}`)).toEqual([
-      "大学英语I:甲",
-      "大学英语II:甲",
-      "大学英语I:乙",
-      "大学英语II:乙",
-      "线性代数:甲",
-    ]);
   });
 
   it("keeps sports SQL inside the public visibility gate", () => {
