@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import indexHtml from "../index.html?raw";
+import robotsTxt from "../public/robots.txt?raw";
 import readme from "../README.md?raw";
 
 describe("site and repository icon", () => {
@@ -16,7 +17,17 @@ describe("site and repository icon", () => {
     expect(indexHtml).toContain(
       'property="og:url" content="https://courses.sein.moe/"',
     );
+    expect(indexHtml).toContain(
+      'rel="canonical" href="https://courses.sein.moe/"',
+    );
     expect(indexHtml).not.toContain("xk.sein.moe");
+  });
+
+  it("ships a real robots.txt instead of the SPA HTML shell", () => {
+    expect(robotsTxt).toContain("User-agent: *");
+    expect(robotsTxt).toContain("Allow: /");
+    expect(robotsTxt).not.toContain("<!doctype html>");
+    expect(robotsTxt).not.toContain("<html");
   });
 
   it("shows the public site name on the document and README icon", () => {
