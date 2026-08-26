@@ -8,7 +8,12 @@ Reconnaissance-then-action: `networkidle` → wait for catalog idle copy
 （`正在更新课程目录…` / `课程加载中…`）→ screenshot → inspect roles → act.
 
 Raw machine report: `output/playwright/prod-public-smoke/report.json`
-(gitignored). Re-run: `node scripts/prod-public-smoke.mjs`.
+(gitignored). Screenshots are written under that directory's `artifacts/`
+subdirectory by default; set `PROD_PUBLIC_SMOKE_ARTIFACTS` to override it.
+Re-run: `node scripts/prod-public-smoke.mjs`.
+
+The runner blocks and fails on login/AuthBridge/review write requests. It also
+fails when a browser `pageerror` occurs, even if all page assertions passed.
 
 ## Summary
 
@@ -18,7 +23,7 @@ Raw machine report: `output/playwright/prod-public-smoke/report.json`
 | failed | 0 |
 | skipped | 2 |
 
-No product defects found in this public scope.
+No product defects were observed on the exercised public paths.
 
 ## Passed
 
@@ -46,7 +51,7 @@ No product defects found in this public scope.
 
 | Id | Why |
 | --- | --- |
-| `nav-hides-schedule` | Production nav omits 排课模拟 (ADR-0036). Confirmed. `/schedule` still passed via direct URL. |
+| `nav-hides-schedule` | Production nav omits 排课模拟 ([ADR-0030](../adr/0030-schedule-desktop-only.md)). Confirmed. `/schedule` still passed via direct URL. |
 | `path-最新` | `GET /最新` is a SPA soft 404 (HTTP 200, 页面不存在). 课评 lives at `/latest`. Not an alias. |
 
 ## Console / page errors
@@ -94,7 +99,8 @@ surfaces against the local Vite prototype with mocked APIs:
 - guest `/submit` → `/login?from=` — `submit-review.browser.test.ts`
 - SPA 404 — `not-found.browser.test.ts`
 - `/about` footer — `site-footer.browser.test.ts`
-- schedule nav visibility — `test/public-surface.node.test.ts` + ADR-0036
+- schedule nav visibility — `test/public-surface.node.test.ts` +
+  `docs/adr/0030-schedule-desktop-only.md`
 
 Those tests must not hit production. `import.meta.env.DEV` always shows 排课模拟
 in the Playwright prototype, so a production-nav hide assertion does not fit

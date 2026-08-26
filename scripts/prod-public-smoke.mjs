@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 const ORIGIN = "https://courses.sein.moe";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "output/playwright/prod-public-smoke");
-const ARTIFACTS = "/opt/cursor/artifacts";
+const ARTIFACTS =
+  process.env.PROD_PUBLIC_SMOKE_ARTIFACTS ?? join(OUT, "artifacts");
 
 const FILTERS = ["全部", "体育", "英语", "思政", "数学"];
 const KNOWN_PRODUCT = [
@@ -128,7 +129,7 @@ async function inspect(page) {
         name: text(el).slice(0, 80),
         href: el.getAttribute("href") || "",
       })),
-      bodySnippet: text(document.body).slice(0, 400),
+      bodySnippet: text(document.body).slice(0, 2000),
     };
   });
 }
@@ -150,6 +151,33 @@ function navHas(snapshot, name) {
   return snapshot.navLinks.some((l) => l.name === name);
 }
 
+function forbiddenRequest(request) {
+  const method = request.method().toUpperCase();
+  const url = new URL(request.url());
+  const isWrite = method !== "GET" && method !== "HEAD";
+  const isSameOrigin = url.origin === ORIGIN;
+  const isAuthOrReviewWrite =
+    isSameOrigin &&
+    isWrite &&
+    (url.pathname === "/login" ||
+      /^\/api\/auth(?:\/|$)/.test(url.pathname) ||
+      /^\/api\/reviews?(?:\/|$)/.test(url.pathname) ||
+      /^\/reviews?(?:\/|$)/.test(url.pathname) ||
+      url.pathname === "/api/user/logout" ||
+      url.pathname === "/submit");
+  const isAuthBridgeRequest =
+    url.origin !== ORIGIN &&
+    (/authbridge/i.test(`${url.hostname}${url.pathname}`) ||
+      (url.pathname === "/login" &&
+        (url.searchParams.get("mode") === "callback" ||
+          url.searchParams.has("appid") ||
+          url.searchParams.has("callback"))));
+
+  return isAuthOrReviewWrite || isAuthBridgeRequest
+    ? { method, url: url.href }
+    : null;
+}
+
 async function gotoRecon(page, path, shotName) {
   const response = await page.goto(`${ORIGIN}${path}`, {
     waitUntil: "domcontentloaded",
@@ -165,13 +193,26 @@ async function gotoRecon(page, path, shotName) {
   };
 }
 
-async function main() {
-  const browser = await chromium.launch({ headless: true });
+async function runWalk(browser) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     locale: "zh-CN",
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 jufexk-prod-public-smoke",
+  });
+  await context.route("**/*", async (route) => {
+    const violation = forbiddenRequest(route.request());
+    if (violation) {
+      const detail = `Blocked forbidden request: ${violation.method} ${violation.url}`;
+      record(
+        "security-gate",
+        "failed",
+        detail,
+      );
+      await route.abort("blockedbyclient");
+      throw new Error(detail);
+    }
+    await route.continue();
   });
   const page = await context.newPage();
 
@@ -228,7 +269,7 @@ async function main() {
       "skipped",
       hiddenSchedule
         ? "Confirmed product: 排课模拟 is absent from production nav."
-        : "排课模拟 is visible in production nav (unexpected vs ADR-0036; not treated as a walk failure).",
+        : "排课模拟 is visible in production nav (unexpected vs ADR-0030; not treated as a walk failure).",
     );
 
     for (const label of FILTERS) {
@@ -284,9 +325,7 @@ async function main() {
       const hit = snap.links.some((l) => /线性代数/.test(l.name));
       record(
         "search-线性代数",
-        q.includes("线性代数") && (hit || hasText(snap, /线性代数|没有找到/))
-          ? "passed"
-          : "failed",
+        q.includes("线性代数") && hit ? "passed" : "failed",
         `q=${q}; first hits: ${snap.links
           .filter((l) => l.href.includes("/courses/"))
           .slice(0, 3)
@@ -327,9 +366,18 @@ async function main() {
       const snap = await inspect(page);
       const file = await shot(page, "course-detail");
       const onDetail = /\/courses\/\d+/.test(snap.pathname);
+      const hasReviewAction =
+        snap.buttons.some((name) => /写点评/.test(name)) ||
+        snap.links.some((link) => /写点评/.test(link.name));
+      const hasCourseMetadata = hasText(
+        snap,
+        /课程代码|任课教师|其他老师的这门课|教师信息/,
+      );
       const looksLikeDetail =
         onDetail &&
-        (hasText(snap, /写点评|课评|任课|教师/) || snap.headings.length > 0);
+        !hasText(snap, /页面不存在/) &&
+        hasReviewAction &&
+        hasCourseMetadata;
       record(
         "course-detail",
         looksLikeDetail ? "passed" : "failed",
@@ -404,14 +452,22 @@ async function main() {
     );
 
     const submit = await gotoRecon(page, "/submit", "submit-gate");
-    const gated =
-      submit.snapshot.pathname.startsWith("/login") ||
-      hasText(submit.snapshot, /登录/);
-    const noFormPosted = !hasText(submit.snapshot, /评价已发布/);
+    const submitUrl = new URL(submit.snapshot.url);
+    const redirectedFromSubmit =
+      submitUrl.pathname === "/login" &&
+      submitUrl.searchParams.get("from") === "/submit";
+    const hasLoginForm =
+      /学号/.test(submit.snapshot.bodySnippet) &&
+      /校园密码/.test(submit.snapshot.bodySnippet) &&
+      submit.snapshot.buttons.some((button) => /登录/.test(button));
+    const noReviewForm = !hasText(
+      submit.snapshot,
+      /写点评|发布评价|评价已发布/,
+    );
     record(
       "submit-login-gate",
-      gated && noFormPosted ? "passed" : "failed",
-      `GET /submit → ${submit.snapshot.pathname}; login gate=${gated}`,
+      redirectedFromSubmit && hasLoginForm && noReviewForm ? "passed" : "failed",
+      `GET /submit → ${submit.snapshot.pathname}; expected redirect=${redirectedFromSubmit}; login form=${hasLoginForm}; review form absent=${noReviewForm}`,
       { screenshot: submit.screenshot },
     );
   }
@@ -455,11 +511,14 @@ async function main() {
       catalog.footerLinks.some((l) => l.href.includes("/teachers")) ||
       catalog.links.some((l) => /\/teachers(\/|$|\?)/.test(l.href));
     const teachers = await gotoRecon(page, "/teachers", "teachers");
+    const teachersOk =
+      teachers.httpStatus === 200 &&
+      teachers.snapshot.pathname === "/teachers" &&
+      hasText(teachers.snapshot, /教师资料|\d+\s*位教师/) &&
+      !hasText(teachers.snapshot, /页面不存在/);
     record(
       "teachers",
-      hasText(teachers.snapshot, /教师|老师/) || teachers.snapshot.pathname.startsWith("/teachers")
-        ? "passed"
-        : "failed",
+      teachersOk ? "passed" : "failed",
       teacherLinked
         ? ` /teachers is linked from the public surface; heading=${teachers.snapshot.heading}`
         : ` /teachers is not in production nav/footer (visited by URL); heading=${teachers.snapshot.heading}`,
@@ -475,9 +534,7 @@ async function main() {
       missing.httpStatus === 200 && hasText(missing.snapshot, /页面不存在/);
     record(
       "soft-404",
-      soft404 || hasText(missing.snapshot, /页面不存在/)
-        ? "passed"
-        : "failed",
+      soft404 ? "passed" : "failed",
       `GET /this-page-should-not-exist HTTP ${missing.httpStatus} → ${missing.snapshot.pathname}; heading=${missing.snapshot.heading}`,
       { screenshot: missing.screenshot, httpStatus: missing.httpStatus },
     );
@@ -486,6 +543,14 @@ async function main() {
   const consoleErrors = consoleLog.filter(
     (e) => e.type === "error" || e.type === "assert",
   );
+  if (pageErrors.length > 0) {
+    record(
+      "page-errors",
+      "failed",
+      `${pageErrors.length} unhandled browser page error(s)`,
+      { errors: pageErrors },
+    );
+  }
   const report = {
     origin: ORIGIN,
     ranAt: new Date().toISOString(),
@@ -505,13 +570,21 @@ async function main() {
   writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));
   writeFileSync(join(ARTIFACTS, "prod-public-smoke-report.json"), JSON.stringify(report, null, 2));
 
-  await browser.close();
   console.log(
     `\nDone. passed=${report.counts.passed} failed=${report.counts.failed} skipped=${report.counts.skipped}`,
   );
   console.log(`Console errors: ${consoleErrors.length}; page errors: ${pageErrors.length}`);
   console.log(`Output: ${OUT}`);
   if (report.counts.failed > 0) process.exitCode = 1;
+}
+
+async function main() {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    await runWalk(browser);
+  } finally {
+    await browser.close();
+  }
 }
 
 await main();
