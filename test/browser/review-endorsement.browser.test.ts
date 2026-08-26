@@ -79,7 +79,7 @@ async function mockApi(page: Page, store: Store) {
     const url = new URL(request.url());
     if (url.pathname === "/api/config") {
       return fulfillJson(route, {
-        siteName: "选课志",
+        siteName: "非官方课评@JUFE",
         universityName: "江西财经大学",
         admin: false,
       });

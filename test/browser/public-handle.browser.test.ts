@@ -11,7 +11,7 @@ async function mockShell(page: Page, extra: (url: URL) => unknown | null) {
     if (custom) return route.fulfill({ json: custom });
     if (url.pathname === "/api/config")
       return route.fulfill({
-        json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
       });
     if (url.pathname === "/api/user/session")
       return route.fulfill({
@@ -104,7 +104,7 @@ test("reserved handle page can follow when logged in", async ({ page }) => {
     const request = route.request();
     if (url.pathname === "/api/config")
       return route.fulfill({
-        json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
       });
     if (url.pathname === "/api/user/session")
       return route.fulfill({
@@ -154,7 +154,7 @@ test("numbered handle page can follow when logged in", async ({ page }) => {
     const request = route.request();
     if (url.pathname === "/api/config")
       return route.fulfill({
-        json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
       });
     if (url.pathname === "/api/user/session")
       return route.fulfill({
@@ -203,7 +203,7 @@ test("follow error stays on the loaded profile", async ({ page }) => {
     const request = route.request();
     if (url.pathname === "/api/config")
       return route.fulfill({
-        json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
       });
     if (url.pathname === "/api/user/session")
       return route.fulfill({

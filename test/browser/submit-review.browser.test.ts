@@ -69,7 +69,7 @@ async function mockSubmitApi(
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config")
       return route.fulfill({
-        json: { siteName: "选课志", universityName: "江西财经大学" },
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学" },
       });
     if (url.pathname === "/api/user/session")
       return route.fulfill({

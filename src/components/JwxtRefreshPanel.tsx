@@ -47,7 +47,7 @@ export function JwxtRefreshPanel({
               <Modal.Heading>刷新需要先登录</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
-              <p>请先登录选课志。登录后再刷新教务数据。</p>
+              <p>请先登录本站。登录后再刷新教务数据。</p>
             </Modal.Body>
             <Modal.Footer>
               <Button slot="close" variant="tertiary">

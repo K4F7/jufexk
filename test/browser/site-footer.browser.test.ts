@@ -12,7 +12,7 @@ async function mockPublicApi(page: Page) {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
       return route.fulfill({
-        json: { siteName: "选课志", universityName: "江西财经大学", admin: false },
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
       });
     }
     if (url.pathname === "/api/user/session") {
@@ -50,7 +50,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
 
   const footer = page.getByRole("contentinfo");
   const footerNav = footer.getByRole("navigation", { name: "页脚" });
-  await expect(footer.getByText("选课志 · 江西财经大学")).toBeVisible();
+  await expect(footer.getByText("非官方课评@JUFE · 江西财经大学")).toBeVisible();
 
   const repo = footerNav.getByRole("link", { name: "GitHub 仓库" });
   await expect(repo).toBeVisible();

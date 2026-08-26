@@ -9,7 +9,7 @@ async function mockShellApi(
     if (url.pathname === "/api/config") {
       return route.fulfill({
         json: {
-          siteName: options.siteName ?? "选课志",
+          siteName: options.siteName ?? "非官方课评@JUFE",
           universityName: "江西财经大学",
           admin: false,
         },
@@ -184,7 +184,7 @@ test("brand link uses the site name and goes to /courses", async ({ page }) => {
   await mockShellApi(page);
   await page.goto("/latest");
 
-  const brand = page.getByRole("banner").getByRole("link", { name: "选课志" });
+  const brand = page.getByRole("banner").getByRole("link", { name: "非官方课评@JUFE" });
   await expect(brand).toBeVisible();
   await expect(brand).toHaveAttribute("href", "/courses");
   const brandLabel = brand.locator("span");
