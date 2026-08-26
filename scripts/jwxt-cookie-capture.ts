@@ -16,6 +16,7 @@ async function existingContext() {
   if (!["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)) throw new Error("JWXT_CDP_URL must use a loopback address");
   try {
     const browser = await chromium.connectOverCDP(endpoint.toString());
+    process.stderr.write("[cookie] connected to local CDP\n");
     return browser.contexts()[0] || null;
   } catch {
     return null;
@@ -60,6 +61,7 @@ async function smokeTest(cookieHeader: string) {
   const output = resolve(directory, "capture.json");
   const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   try {
+    process.stderr.write("[cookie] smoke test: starting local JWXT pilot\n");
     const result = await execFileAsync(
       pnpm,
       ["exec", "tsx", "scripts/jwxt-collector/run.ts", "--mode", "pilot", "--output", output],
@@ -70,8 +72,12 @@ async function smokeTest(cookieHeader: string) {
     if (report.status !== "captured" || !Number.isInteger(rowCount) || rowCount < 1) {
       throw new Error("Cookie smoke test returned no usable offerings");
     }
+    process.stderr.write(`[cookie] smoke test: captured ${rowCount} offering rows\n`);
     return rowCount;
-  } catch {
+  } catch (error) {
+    const detail = error as { stderr?: string; code?: string | number };
+    const safeStderr = (detail.stderr || "").match(/\{"status":"(?:unsupported|failed)","reason":"([a-z0-9_:.-]+)"\}/)?.[1];
+    process.stderr.write(`[cookie] smoke test failed: ${safeStderr || `exit=${String(detail.code || "unknown")}`}\n`);
     throw new Error("Cookie smoke test failed; the browser session was not saved");
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -82,9 +88,14 @@ const { context, owned } = await acquireContext();
 try {
   const page = context.pages()[0] || (await context.newPage());
   await page.goto(ehallUrl, { waitUntil: "domcontentloaded" });
+  process.stderr.write(`[cookie] opened ${new URL(page.url()).hostname}${new URL(page.url()).pathname}\n`);
   process.stderr.write("请在打开的浏览器中完成 eHall 登录；脚本会自动保存登录态，不会输出 Cookie。\n");
   while (Date.now() < deadline) {
     const header = buildEhallCookieHeader(await context.cookies(ehallUrl), await context.cookies(casUrl));
+    if (Date.now() % 10_000 < 2_000) {
+      const names = (await context.cookies([ehallUrl, casUrl])).map((cookie) => cookie.name).sort();
+      process.stderr.write(`[cookie] observed cookie names: ${names.join(",") || "none"}\n`);
+    }
     if (header) {
       const rowCount = await smokeTest(header);
       await writeEnv(header);
