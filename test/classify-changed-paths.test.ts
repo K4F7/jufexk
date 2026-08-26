@@ -119,6 +119,7 @@ describe("classifyChangedPaths", () => {
     expect(jwxtSyncWorkflow).toContain("workflow_dispatch:");
     expect(wranglerConfig).toContain('"17 19 * * *"');
     expect(wranglerConfig).toContain('"37 20 1 * *"');
+    expect(wranglerConfig).toContain('"/internal/*"');
     expect(jwxtSyncWorkflow).not.toContain("pull_request:");
     expect(jwxtSyncWorkflow).not.toContain("push:");
     expect(jwxtSyncWorkflow).toContain("production-jwxt-sync");
