@@ -22,8 +22,8 @@ import { SiteBanner } from "./SiteBanner";
 
 /**
  * Production shell — USTC 评课社区对齐（Issue #402）：
- * 左簇品牌 + 课程/课评/排课模拟/导师导航 · 居中课程搜索（提交到 /courses?q=）·
- * 右侧登录（AccountNavControl）+ 主题切换。
+ * 左簇品牌 + 课程/课评/导师导航（排课模拟只在 DEV 与预览站出现）·
+ * 居中课程搜索（提交到 /courses?q=）· 右侧登录 + 主题切换。
  * 顶栏与页面同底色、无硬分割线；写评价只从课程页「写点评」进入。
  */
 
@@ -130,16 +130,19 @@ function DefaultShell({
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);
 
+  const showSchedule = import.meta.env.DEV || config?.showScheduleNav === true;
   const links = [
     { id: "courses", to: "/courses", label: "课程" },
     { id: "latest", to: "/latest", label: "课评" },
-    { id: "schedule", to: "/schedule", label: "排课模拟" },
-  ] as const;
+    ...(showSchedule
+      ? [{ id: "schedule", to: "/schedule", label: "排课模拟" }]
+      : []),
+  ];
 
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
-        {/* 堆叠到 xl；左列 min-content，避免 1280px 生产站名+四链把主导航折行撑高顶栏。 */}
+        {/* 堆叠到 xl；左列 min-content，避免 1280px 生产站名+导航把主导航折行撑高顶栏。 */}
         <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-5 xl:grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] xl:px-4">
           {/* contents 让品牌与导航在窄屏直接成为 grid 项;xl+ 还原为左簇 flex 容器。 */}
           <div className="contents xl:flex xl:items-center xl:gap-2">

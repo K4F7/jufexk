@@ -34,7 +34,7 @@
 - 📝 **目录补充申请**：找不到课程或教师时可提交申请，管理员审核通过后才创建目录对象
 - 🕰️ **历史评价**：已审核的历史文字作为匿名资料进入统一公开流，不参与评分统计
 - 🧠 **任课关系 AI 总结**：根据已公开点评异步生成参考摘要，不参与评分或排序
-- 📅 **排课模拟**：选完专业后从培养方案加入待选课表，再选开课班编排本机模拟课表，标出时间冲突
+- 📅 **排课模拟**：选完专业后从培养方案加入待选课表，再选开课班编排本机模拟课表，标出时间冲突。生产导航不挂；预览站 `jufexk-preview` 与本机 DEV 才展示入口
 - 🛡️ **反滥用**：Turnstile 人机验证、蜜罐、同源校验、IP HMAC 假名化限流与重复投稿控制
 - 🔐 **校园身份**：普通用户主登录走江财 CAS 代登，校学生邮箱验证为次要入口；身份不公开，只承载评价与认可的唯一性
 - 🎨 **现代 UI**：HeroUI v3 + Tailwind CSS v4，支持暗色 / 亮色主题
@@ -123,7 +123,9 @@ pnpm run deploy
 - `CLOUDFLARE_API_TOKEN`：Workers Scripts Edit（deploy）、D1 Edit（migrate）、Account Settings Read
 - `CLOUDFLARE_ACCOUNT_ID`：目标 Cloudflare Account ID
 
-CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `pnpm exec wrangler d1 export`，并将备份保存到受限存储。
+`main` 部署还会 `wrangler deploy --env preview`，把同一构建发到 `jufexk-preview.<account>.workers.dev`。预览用独立 D1 `jufexk-preview`，不绑生产 AI 摘要队列。首次需要 `pnpm db:create-preview` 写入 `database_id`，再 `pnpm exec wrangler d1 migrations apply jufexk-preview --remote`。要让预览看起来像生产目录，运维在本机执行 `pnpm db:clone-preview`（体积可能很大，失败可重试）。Turnstile widget 需允许该预览主机名。
+
+CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artifact。重大迁移前应由运维人员在受控终端执行 `pnpm exec wrangler d1 export`，并将备份保存到受限存储。`pnpm db:clone-preview` 同样只走本机，不要放进 Actions。
 
 ### 投稿问卷
 

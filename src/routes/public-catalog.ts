@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
 import { isAsciiLetterTerm } from "../lib/catalog-pinyin";
+import { shouldShowScheduleNav } from "../lib/public-surface";
 import {
   andSearchTermsWithPinyin,
   containsPattern,
@@ -56,7 +57,10 @@ import { handleLatestPublicReviews } from "../public-reviews-latest";
 import { decoratePublicReviews } from "../review-endorsements";
 import { loadRelationSignalPayloads } from "../relation-signals";
 import { resolveOrdinaryUser } from "../ordinary-user-authentication";
-import { isOrdinaryUserAuthenticated } from "../ordinary-user-write-authorization";
+import {
+  isLoopbackWorkerRequest,
+  isOrdinaryUserAuthenticated,
+} from "../ordinary-user-write-authorization";
 import {
   authoredReviewAuthorSql,
   authoredReviewJoinSql,
@@ -472,6 +476,10 @@ publicCatalogRoutes.get("/api/config", async (c) => {
     siteName: c.env.SITE_NAME,
     universityName: c.env.UNIVERSITY_NAME,
     admin: false,
+    showScheduleNav: shouldShowScheduleNav({
+      publicSurface: c.env.PUBLIC_SURFACE,
+      loopback: isLoopbackWorkerRequest(c),
+    }),
     turnstileSiteKey:
       !skipTurnstile(turnstileSecret) &&
       c.env.TURNSTILE_SITE_KEY &&

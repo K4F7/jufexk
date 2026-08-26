@@ -104,6 +104,7 @@ export function App() {
         setConfig({
           siteName: "非官方课评@JUFE",
           universityName: "江西财经大学",
+          showScheduleNav: import.meta.env.DEV,
         });
       });
   }, []);

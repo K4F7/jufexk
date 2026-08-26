@@ -243,6 +243,8 @@ export type SiteConfig = {
   siteName: string;
   universityName: string;
   turnstileSiteKey?: string;
+  /** Preview / loopback surfaces show 排课模拟 in the main nav. */
+  showScheduleNav?: boolean;
 };
 
 /** Banner 设置历史行（`GET /api/admin/banners`，最新在前）。不回显会话标识。 */
