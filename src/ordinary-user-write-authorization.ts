@@ -60,6 +60,10 @@ export const originOk = (c: Context) => {
   );
 };
 
+/** Local `wrangler dev` / Vitest only. Production and preview stay `"0"`. */
+export const isDevLoginEnabled = (env: { ALLOW_DEV_LOGIN?: string }) =>
+  env.ALLOW_DEV_LOGIN === "1";
+
 /**
  * wrangler / Vite loopback only — production Worker hostnames never match.
  * wrangler remaps both Host and URL to the custom domain over HTTP; production

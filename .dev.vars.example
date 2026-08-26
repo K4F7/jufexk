@@ -1,5 +1,7 @@
 # Local Secrets Store seed. Do not commit.
 # pnpm run secrets:sync-local
+# Local-only: enable POST /api/auth/dev. Production and preview stay 0.
+ALLOW_DEV_LOGIN=1
 IP_HASH_SECRET=
 TURNSTILE_SECRET=
 CAMPUS_IDENTITY_SECRET=

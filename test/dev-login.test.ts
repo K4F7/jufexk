@@ -24,6 +24,29 @@ function cookieHeader(response: Response) {
 }
 
 describe("local-only dev login", () => {
+  it("is absent when ALLOW_DEV_LOGIN is not enabled", async () => {
+    const previous = env.ALLOW_DEV_LOGIN;
+    env.ALLOW_DEV_LOGIN = "0";
+    try {
+      const response = await SELF.fetch(
+        `http://courses.sein.moe${DEV_LOGIN_PATH}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: "http://127.0.0.1:5173",
+          },
+          body: "{}",
+        },
+      );
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({ error: "Not Found" });
+      expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+    } finally {
+      env.ALLOW_DEV_LOGIN = previous;
+    }
+  });
+
   it("is absent on a production-like Worker hostname", async () => {
     const response = await SELF.fetch(`${productionOrigin}${DEV_LOGIN_PATH}`, {
       method: "POST",

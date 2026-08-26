@@ -11,6 +11,7 @@ import {
 } from "./ordinary-user-authentication";
 import { sessionPayloadForUser } from "./ordinary-user-session";
 import {
+  isDevLoginEnabled,
   isLoopbackWorkerRequest,
   originOk,
 } from "./ordinary-user-write-authorization";
@@ -68,6 +69,7 @@ type CasEnv = {
   CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
   CAS_CHALLENGE_SECRET?: string | { get(): Promise<string> };
   EHALL_SESSION_SECRET?: string | { get(): Promise<string> };
+  ALLOW_DEV_LOGIN?: string;
 };
 
 const fail = (
@@ -497,7 +499,8 @@ export async function handleCasQrStatus(c: Context<{ Bindings: CasEnv }>) {
  * Allowed only when the Worker request itself is loopback.
  */
 export async function handleDevLogin(c: Context<{ Bindings: CasEnv }>) {
-  if (!isLoopbackWorkerRequest(c)) return fail(c, "Not Found", 404);
+  if (!isDevLoginEnabled(c.env) || !isLoopbackWorkerRequest(c))
+    return fail(c, "Not Found", 404);
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
   const identitySecret = await ordinaryUserIdentitySecret(c);
   if (!identitySecret) return fail(c, "登录失败，请稍后重试", 503);

@@ -8,6 +8,8 @@ describe("preview Worker configuration", () => {
 
   it("pins a workers.dev preview Worker with an isolated D1 and no production queue", () => {
     expect(source).toMatch(/"PUBLIC_SURFACE"\s*:\s*"production"/);
+    expect(source).toMatch(/"ALLOW_DEV_LOGIN"\s*:\s*"0"/);
+    expect(source).not.toMatch(/"ALLOW_DEV_LOGIN"\s*:\s*"1"/);
     expect(preview).toMatch(/"name"\s*:\s*"jufexk-preview"/);
     expect(preview).toMatch(/"workers_dev"\s*:\s*true/);
     expect(preview).toMatch(/"PUBLIC_SURFACE"\s*:\s*"preview"/);
