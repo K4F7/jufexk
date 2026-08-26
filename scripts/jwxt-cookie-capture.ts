@@ -59,12 +59,12 @@ async function writeEnv(cookieHeader: string) {
 async function smokeTest(cookieHeader: string) {
   const directory = await mkdtemp(resolve(".local-data", "jwxt-cookie-smoke-"));
   const output = resolve(directory, "capture.json");
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const tsxCli = resolve("node_modules/tsx/dist/cli.mjs");
   try {
     process.stderr.write("[cookie] smoke test: starting local JWXT pilot\n");
     const result = await execFileAsync(
-      pnpm,
-      ["exec", "tsx", "scripts/jwxt-collector/run.ts", "--mode", "pilot", "--output", output],
+      process.execPath,
+      [tsxCli, "scripts/jwxt-collector/run.ts", "--mode", "pilot", "--output", output],
       { cwd: process.cwd(), env: { ...process.env, EHALL_COOKIE: cookieHeader }, timeout: 120_000, windowsHide: true },
     );
     const report = JSON.parse(result.stdout.trim()) as { status?: string; rowCount?: number };
