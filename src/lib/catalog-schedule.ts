@@ -1,6 +1,6 @@
 /**
  * 排课模拟的本站目录适配：学期/年级是本机筛选，专业用本科专业名单，
- * 候选课按专业所属学院匹配公开开课单位后取课程×教师任课关系。
+ * 计划内课来自培养方案课号去重；开课班仍走 schedule-offerings。
  */
 import { JWXT_SNAPSHOT_SOURCE, JWXT_SNAPSHOT_VERSION, type JwxtSnapshotV1 } from "./jwxt-snapshot";
 import {
@@ -9,6 +9,7 @@ import {
   type JwxtFilterOption,
   type JwxtOffering,
 } from "./jwxt-offering";
+import type { ProgramPlanCourse } from "./program-plan";
 import type { CourseRelation } from "./types";
 
 export { catalogScheduleMajors, matchDepartmentForMajor } from "./catalog-majors";
@@ -143,6 +144,68 @@ export function applyScheduleOfferingRows(
       }),
     );
   return [...patched, ...extras];
+}
+
+export function uniqueOfferingsByCourseCode(offerings: JwxtOffering[]): JwxtOffering[] {
+  const seen = new Map<string, JwxtOffering>();
+  for (const offering of offerings) {
+    if (!offering.courseCode || seen.has(offering.courseCode)) continue;
+    seen.set(offering.courseCode, {
+      ...offering,
+      section: "",
+      teacherName: "",
+      campus: "",
+      weekText: "",
+      timeText: "",
+      place: "",
+      meetings: [],
+      catalogTeacherId: null,
+    });
+  }
+  return [...seen.values()];
+}
+
+export function programPlanCourseToOffering(
+  row: Pick<
+    ProgramPlanCourse,
+    "courseCode" | "courseName" | "credits" | "categoryPath" | "suggestedTerm" | "catalogCourseId"
+  >,
+): JwxtOffering {
+  return normalizeOffering({
+    courseCode: row.courseCode,
+    courseName: row.courseName,
+    credits: row.credits,
+    categoryPath: row.categoryPath,
+    catalogCourseId: row.catalogCourseId,
+    suggestedTerm: row.suggestedTerm,
+  });
+}
+
+export function offeringsFromScheduleRows(
+  seed: JwxtOffering,
+  rows: ScheduleOfferingRow[],
+): JwxtOffering[] {
+  return rows
+    .filter((row) => row.timeText.trim() || row.teacherName.trim())
+    .map((row) =>
+      normalizeOffering({
+        courseCode: row.courseCode || seed.courseCode,
+        courseName: row.courseName || seed.courseName,
+        credits: seed.credits,
+        categoryPath: seed.categoryPath,
+        section: row.key,
+        teacherName: row.teacherName,
+        campus: row.campus.trim(),
+        weekText: row.weekText.trim(),
+        timeText: row.timeText.trim(),
+        place: row.place.trim(),
+        catalogCourseId: row.catalogCourseId || seed.catalogCourseId,
+        catalogTeacherId: row.catalogTeacherId,
+        catalogRating: seed.catalogRating,
+        catalogReviewCount: seed.catalogReviewCount,
+        suggestedTerm: seed.suggestedTerm,
+      }),
+    );
 }
 
 export function replaceCourseOfferings(

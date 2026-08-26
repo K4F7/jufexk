@@ -14,6 +14,7 @@ import adminRoutes from "./routes/admin";
 import authRoutes from "./routes/auth";
 import importRoutes from "./routes/imports";
 import ordinaryUserRoutes from "./routes/ordinary-user";
+import programPlanRoutes from "./routes/program-plan";
 import publicCatalogRoutes from "./routes/public-catalog";
 import scheduleOfferingRoutes from "./routes/schedule-offerings";
 import { fail } from "./routes/support";
@@ -40,6 +41,7 @@ app.use("/api/*", async (c, next) => {
 
 app.route("/", publicCatalogRoutes);
 app.route("/", scheduleOfferingRoutes);
+app.route("/", programPlanRoutes);
 app.route("/", authRoutes);
 app.route("/", ordinaryUserRoutes);
 app.route("/", adminRoutes);

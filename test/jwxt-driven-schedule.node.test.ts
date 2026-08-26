@@ -24,6 +24,11 @@ import {
   mergeEnrolledRefresh,
   offeringToItem,
   parsePlan,
+  persistedPlan,
+  commitSave,
+  includedItems,
+  itemsOf,
+  stageCourse,
   setIncluded,
 } from "../src/lib/jwxt-plan";
 import {
@@ -329,7 +334,7 @@ describe("snapshot import/export", () => {
   });
 });
 
-describe("plan v2", () => {
+describe("plan v3", () => {
   it("migrates v1 courses to legacy origin", () => {
     const v1 = JSON.stringify({
       version: 1,
@@ -348,12 +353,13 @@ describe("plan v2", () => {
       ],
     });
     const plan = parsePlan(v1);
-    expect(plan.version).toBe(2);
+    expect(plan.version).toBe(3);
     expect(plan.activeTermId).toBe("legacy");
     expect(plan.terms.legacy[0]).toMatchObject({
       origin: "legacy",
       courseName: "高等数学",
       included: true,
+      status: 2,
     });
   });
 
@@ -417,6 +423,7 @@ describe("plan v2", () => {
     expect(joined.ok).toBe(true);
     if (!joined.ok) return;
     const persisted = structuredClone(joined.plan);
+    persisted.version = 2;
     persisted.terms.T1[0].key = "T1+C1+01";
     const migrated = parsePlan(JSON.stringify(persisted));
     expect(migrated.terms.T1[0].key).toBe("T1|C1|01");
@@ -459,6 +466,26 @@ describe("plan v2", () => {
     );
     expect(blocked.ok).toBe(false);
   });
+
+  it("stages a course without occupying and persists only selected classes", () => {
+    const termId = "2025-2026-2";
+    const math = offering({ courseCode: "C1", courseName: "高等数学", section: "01" });
+    const staged = stageCourse(emptyPlan(termId), math, "planned", termId);
+    expect(itemsOf(staged, termId)[0]).toMatchObject({ status: 0, included: false, section: "" });
+    expect(planStatusLabel(itemsOf(staged, termId)[0])).toBe("未选");
+    expect(includedItems(staged, termId)).toEqual([]);
+    const joined = joinOffering(staged, math, "planned", termId);
+    expect(joined.ok).toBe(true);
+    if (!joined.ok) return;
+    expect(joined.swapped).toBe(false);
+    expect(itemsOf(joined.plan, termId)[0]?.status).toBe(1);
+    expect(includedItems(joined.plan, termId)).toHaveLength(1);
+    expect(persistedPlan(joined.plan).terms[termId]).toBeUndefined();
+    const committed = commitSave(joined.plan);
+    expect(itemsOf(committed, termId)[0]?.status).toBe(2);
+    expect(persistedPlan(committed).terms[termId]).toHaveLength(1);
+    expect(itemsOf(parsePlan(JSON.stringify(joined.plan)), termId)).toEqual([]);
+  });
 });
 
 describe("jwxt course rows", () => {
@@ -484,6 +511,7 @@ describe("jwxt course rows", () => {
     expect(requiredElectiveLabel(enrolled.categoryPath, enrolled.origin)).toBe("必");
     expect(requiredElectiveLabel(publicItem.categoryPath, publicItem.origin)).toBe("选");
     expect(planStatusLabel(enrolled)).toBe("已排除");
+    expect(planStatusLabel(planned)).toBe("备选");
     expect(uniquePlanCourses([enrolled, planned]).map((item) => item.section)).toEqual(["03"]);
     const snapshot = {
       ...emptySnapshot(),

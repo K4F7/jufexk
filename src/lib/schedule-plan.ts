@@ -1,7 +1,7 @@
 /**
  * 排课模拟：本机课表计划与冲突检测。
  * 冲突算法参考 tongji-course-scheduler 的 occupy / 周次相交，
- * 对象是本站课程×教师任课关系，不是开课班目录。
+ * 对象是培养方案课号与同课号下的开课班。
  */
 
 export const PERIOD_COUNT = 11;

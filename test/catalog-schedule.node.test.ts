@@ -11,8 +11,11 @@ import {
   displaySection,
   matchDepartmentForMajor,
   isCatalogPublicElective,
+  offeringsFromScheduleRows,
+  programPlanCourseToOffering,
   relationToOffering,
   replaceCourseOfferings,
+  uniqueOfferingsByCourseCode,
 } from "../src/lib/catalog-schedule";
 import type { CourseRelation } from "../src/lib/types";
 
@@ -128,5 +131,44 @@ describe("catalog schedule helpers", () => {
     expect(snapshot.educationLevels).toEqual([]);
     expect(snapshot.enrolled).toEqual([]);
     expect(snapshot.majors.map((item) => item.label)).toContain("会计学");
+  });
+
+  it("dedupes picker rows by course code and maps program-plan plus offering rows", () => {
+    const mathA = relationToOffering(relation({ course_id: 8, code: "10100001", name: "高等数学", teacher_id: 9, teacher_name: "教师甲" }));
+    const mathB = relationToOffering(relation({ course_id: 8, code: "10100001", name: "高等数学", teacher_id: 12, teacher_name: "教师乙" }));
+    const unique = uniqueOfferingsByCourseCode([mathA, mathB]);
+    expect(unique).toHaveLength(1);
+    expect(unique[0]).toMatchObject({ courseCode: "10100001", teacherName: "", section: "" });
+
+    const planned = programPlanCourseToOffering({
+      courseCode: "10100001",
+      courseName: "高等数学",
+      credits: 4,
+      categoryPath: "专业计划内",
+      suggestedTerm: "2026-2027学年第一学期",
+      catalogCourseId: 8,
+    });
+    expect(planned).toMatchObject({
+      courseCode: "10100001",
+      suggestedTerm: "2026-2027学年第一学期",
+      catalogCourseId: 8,
+      meetings: [],
+    });
+    const sections = offeringsFromScheduleRows(planned, [{
+      key: "jwxt-8-a",
+      courseCode: "10100001",
+      courseName: "高等数学",
+      termId: "2026-2027-1",
+      campus: "麦庐园",
+      weekText: "1-16周",
+      timeText: "星期一 第1-2节",
+      place: "一教101",
+      teacherName: "教师甲",
+      catalogCourseId: 8,
+      catalogTeacherId: 9,
+    }]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toMatchObject({ teacherName: "教师甲", section: "jwxt-8-a" });
+    expect(sections[0].meetings[0]).toMatchObject({ weekday: 1, startPeriod: 1, endPeriod: 2 });
   });
 });

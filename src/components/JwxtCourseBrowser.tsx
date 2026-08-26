@@ -5,7 +5,6 @@ import { RouterAriaLink } from "./RouterAriaLink";
 import {
   planStatusLabel,
   requiredElectiveLabel,
-  snapshotSectionsForCourse,
   uniquePlanCourses,
 } from "../lib/jwxt-course-rows";
 import type { JwxtFilterOption, JwxtOffering } from "../lib/jwxt-offering";
@@ -114,18 +113,16 @@ function FilterCombo({
   );
 }
 
-function OfferingTable({
+function CoursePickTable({
   label,
   offerings,
-  termId,
   planItems,
-  onJoin,
+  onStage,
 }: {
   label: string;
   offerings: JwxtOffering[];
-  termId: string;
   planItems: PlannedItem[];
-  onJoin: (offering: JwxtOffering) => void;
+  onStage: (offering: JwxtOffering) => void;
 }) {
   const [sourceCategory, setSourceCategory] = useState("");
   const sourceOptions = useMemo(() => (
@@ -159,42 +156,28 @@ function OfferingTable({
       ) : (
     <Table>
       <Table.ScrollContainer>
-        <Table.Content aria-label={label} className="w-full min-w-[56rem]">
+        <Table.Content aria-label={label} className="w-full min-w-[48rem]">
           <Table.Header>
             <Table.Column isRowHeader>课程</Table.Column>
-            <Table.Column>教师</Table.Column>
-            <Table.Column>周次</Table.Column>
-            <Table.Column>时间</Table.Column>
-            <Table.Column>地点 / 校区</Table.Column>
+            <Table.Column>学分</Table.Column>
+            <Table.Column>建议学期</Table.Column>
             <Table.Column>本站评价</Table.Column>
             <Table.Column>操作</Table.Column>
           </Table.Header>
           <Table.Body>
             {visibleOfferings.map((offering, index) => {
-                const key = offeringKey(termId, offering.courseCode, offering.section, offering.courseName);
-                const existing = planItems.find((item) => item.key === key);
-                const sameCourse = findSameCourse(planItems, offering.courseCode);
+                const staged = findSameCourse(planItems, offering.courseCode);
                 return (
-                  <Table.Row key={key || `${label}-${index}`} id={key || `${label}-${index}`}>
+                  <Table.Row key={offering.courseCode || `${label}-${index}`} id={offering.courseCode || `${label}-${index}`}>
                     <Table.Cell>
                       <div className="font-medium">{offering.courseName}</div>
                       <div className="text-sm text-muted">
                         {offering.courseCode}
-                        {offering.credits != null ? ` · ${offering.credits} 学分` : ""}
                         {offering.categoryPath ? ` · ${offering.categoryPath}` : ""}
                       </div>
                     </Table.Cell>
-                    <Table.Cell>
-                      {offering.teacherName || "—"}
-                    </Table.Cell>
-                    <Table.Cell>{offering.weekText || "—"}</Table.Cell>
-                    <Table.Cell>
-                      <div>{offering.timeText || "暂无上课时间"}</div>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <div>{offering.place || "—"}</div>
-                      <div className="text-sm text-muted">{offering.campus || "—"}</div>
-                    </Table.Cell>
+                    <Table.Cell>{offering.credits ?? "—"}</Table.Cell>
+                    <Table.Cell>{offering.suggestedTerm || "—"}</Table.Cell>
                     <Table.Cell>
                       {offering.catalogCourseId ? (
                         <RouterAriaLink
@@ -211,7 +194,7 @@ function OfferingTable({
                       ) : "未匹配"}
                     </Table.Cell>
                     <Table.Cell>
-                      {existing ? (
+                      {staged ? (
                         <Button size="sm" variant="secondary" isDisabled>
                           已加入
                         </Button>
@@ -219,9 +202,9 @@ function OfferingTable({
                         <Button
                           size="sm"
                           variant="secondary"
-                          onPress={() => onJoin(offering)}
+                          onPress={() => onStage(offering)}
                         >
-                          {sameCourse ? "换班" : "加入课表"}
+                          加入选课列表
                         </Button>
                       )}
                     </Table.Cell>
@@ -241,17 +224,19 @@ function SectionTable({
   offerings,
   termId,
   planItems,
+  emptyHint,
   onJoin,
 }: {
   offerings: JwxtOffering[];
   termId: string;
   planItems: PlannedItem[];
+  emptyHint: string;
   onJoin: (offering: JwxtOffering) => void;
 }) {
   if (offerings.length === 0) {
     return (
       <p className="text-sm text-muted" role="status">
-        暂无数据
+        {emptyHint}
       </p>
     );
   }
@@ -270,8 +255,9 @@ function SectionTable({
           <Table.Body>
             {offerings.map((offering, index) => {
               const key = offeringKey(termId, offering.courseCode, offering.section, offering.courseName);
-              const existing = planItems.find((item) => item.key === key);
+              const existing = planItems.find((item) => item.key === key && item.status >= 1);
               const sameCourse = findSameCourse(planItems, offering.courseCode);
+              const canSwap = Boolean(sameCourse && sameCourse.status >= 1 && sameCourse.section);
               return (
                 <Table.Row key={key || `section-${index}`} id={key || `section-${index}`}>
                   <Table.Cell>{offering.teacherName || "—"}</Table.Cell>
@@ -306,7 +292,7 @@ function SectionTable({
                         variant="secondary"
                         onPress={() => onJoin(offering)}
                       >
-                        {sameCourse ? "换班" : "加入课表"}
+                        {canSwap ? "换班" : "加入课表"}
                       </Button>
                     )}
                   </Table.Cell>
@@ -323,9 +309,11 @@ function SectionTable({
 export function JwxtCourseBrowser({
   snapshot,
   planItems,
+  courseOfferings,
   candidatesReady,
   onFilters,
   onSelectedCourseChange,
+  onStage,
   onJoin,
   onToggle,
   onRemove,
@@ -333,9 +321,11 @@ export function JwxtCourseBrowser({
 }: {
   snapshot: JwxtSnapshotV1;
   planItems: PlannedItem[];
+  courseOfferings: JwxtOffering[];
   candidatesReady?: boolean;
   onFilters: (patch: Partial<Pick<JwxtSnapshotV1, "term" | "educationLevel" | "grade" | "major">>) => void;
   onSelectedCourseChange?: (courseCode: string) => void;
+  onStage: (offering: JwxtOffering, origin: "planned" | "public") => void;
   onJoin: (offering: JwxtOffering, origin: "planned" | "public") => void;
   onToggle: (item: PlannedItem, included: boolean) => void;
   onRemove: (item: PlannedItem) => void;
@@ -347,6 +337,7 @@ export function JwxtCourseBrowser({
   const courseRows = uniquePlanCourses(planItems);
   const [selectedCode, setSelectedCode] = useState(courseRows[0]?.courseCode ?? "");
   const [pickOpen, setPickOpen] = useState(false);
+  const [dropItem, setDropItem] = useState<PlannedItem | null>(null);
 
   useEffect(() => {
     if (selectedCode && courseRows.some((item) => item.courseCode === selectedCode)) return;
@@ -358,12 +349,18 @@ export function JwxtCourseBrowser({
   }, [selectedCode]);
 
   const selectedCourse = courseRows.find((item) => item.courseCode === selectedCode);
-  const selectedSections = snapshotSectionsForCourse(snapshot, selectedCode, canBrowseCandidates);
   const joinOrigin = (offering: JwxtOffering): "planned" | "public" => (
     snapshot.publicElectives.some((item) => item.courseCode === offering.courseCode)
       ? "public"
       : "planned"
   );
+  const selectedHasCatalog = Boolean(
+    snapshot.planned.find((item) => item.courseCode === selectedCode)?.catalogCourseId
+    || snapshot.publicElectives.find((item) => item.courseCode === selectedCode)?.catalogCourseId
+  );
+  const sectionEmptyHint = selectedCourse && !selectedHasCatalog
+    ? "本站目录尚未收录该课号，暂无开课班。"
+    : "暂无数据";
 
   return (
     <div className="flex flex-col gap-4">
@@ -415,7 +412,7 @@ export function JwxtCourseBrowser({
       </div>
       {!canBrowseCandidates ? (
         <p className="text-sm text-muted" role="status">
-          请先选择年级和专业，再浏览计划内和公共选修。已加入的课可先查看。
+          请先选择年级和专业，再浏览培养方案课和公共选修。已加入的课可先查看。
         </p>
       ) : null}
       <div aria-label="课程与开课班" className="flex flex-col gap-4 lg:flex-row" role="region">
@@ -485,13 +482,21 @@ export function JwxtCourseBrowser({
                               >
                                 {item.included ? "排除" : "恢复"}
                               </Button>
+                            ) : item.status === 2 ? (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onPress={() => setDropItem(item)}
+                              >
+                                退课
+                              </Button>
                             ) : (
                               <Button
                                 size="sm"
                                 variant="danger"
                                 onPress={() => onRemove(item)}
                               >
-                                移出课表
+                                清除
                               </Button>
                             )}
                           </Table.Cell>
@@ -512,9 +517,10 @@ export function JwxtCourseBrowser({
           </Card.Header>
           <Card.Content>
             <SectionTable
-              offerings={selectedSections}
+              offerings={courseOfferings}
               termId={termId}
               planItems={planItems}
+              emptyHint={sectionEmptyHint}
               onJoin={(offering) => onJoin(offering, joinOrigin(offering))}
             />
           </Card.Content>
@@ -543,21 +549,19 @@ export function JwxtCourseBrowser({
                   </Tabs.List>
                 </Tabs.ListContainer>
                 <Tabs.Panel className="pt-3" id="planned">
-                  <OfferingTable
+                  <CoursePickTable
                     label="计划内课程"
                     offerings={snapshot.planned}
-                    termId={termId}
                     planItems={planItems}
-                    onJoin={(offering) => onJoin(offering, "planned")}
+                    onStage={(offering) => onStage(offering, "planned")}
                   />
                 </Tabs.Panel>
                 <Tabs.Panel className="pt-3" id="public">
-                  <OfferingTable
+                  <CoursePickTable
                     label="公共选修"
                     offerings={snapshot.publicElectives}
-                    termId={termId}
                     planItems={planItems}
-                    onJoin={(offering) => onJoin(offering, "public")}
+                    onStage={(offering) => onStage(offering, "public")}
                   />
                 </Tabs.Panel>
               </Tabs>
@@ -565,6 +569,33 @@ export function JwxtCourseBrowser({
             <Modal.Footer>
               <Button slot="close" variant="secondary">
                 完成
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+      <Modal.Backdrop isOpen={Boolean(dropItem)} onOpenChange={(open) => { if (!open) setDropItem(null); }}>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Heading>退课</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <p>确定把{dropItem?.courseName}从已选课表中移除？未保存的备选请用清除。</p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button slot="close" variant="tertiary">
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                onPress={() => {
+                  if (dropItem) onRemove(dropItem);
+                  setDropItem(null);
+                }}
+              >
+                退课
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

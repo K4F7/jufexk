@@ -15,14 +15,24 @@ const unselectedHtml = readFileSync(
 
 const firstGrade = catalogScheduleGrades()[0].label;
 
-const catalogRelations = [
-  { course_id: 8, code: "10100001", name: "高等数学", category: "general", department: "数学学院", teacher_id: 9, teacher_name: "教师甲", rating: 4.2, review_count: 6 },
-  { course_id: 8, code: "10100001", name: "高等数学", category: "general", department: "数学学院", teacher_id: 12, teacher_name: "教师乙", rating: 4.0, review_count: 3 },
-  { course_id: 10, code: "10200001", name: "微观经济学", category: "general", department: "数学学院", teacher_id: 11, teacher_name: "教师辰", rating: 4.3, review_count: 7 },
-  { course_id: 14, code: "20100001", name: "冲突课", category: "general", department: "数学学院", teacher_id: 15, teacher_name: "教师丁", rating: 3.8, review_count: 2 },
-  { course_id: 16, code: "20200001", name: "数据结构", category: "general", department: "信息管理学院", teacher_id: 17, teacher_name: "教师戊", rating: 4.1, review_count: 4 },
-  { course_id: 20, code: "30100001", name: "羽毛球", category: "sports", department: "体育学院", teacher_id: 21, teacher_name: "教师巳", rating: 4.5, review_count: 9 },
-];
+const programPlanByMajor: Record<string, Array<{
+  courseCode: string;
+  courseName: string;
+  credits: number;
+  categoryPath: string;
+  courseStanding: string;
+  suggestedTerm: string;
+  catalogCourseId: number;
+}>> = {
+  数学与应用数学: [
+    { courseCode: "10100001", courseName: "高等数学", credits: 4, categoryPath: "专业计划内", courseStanding: "", suggestedTerm: "建议学期", catalogCourseId: 8 },
+    { courseCode: "10200001", courseName: "微观经济学", credits: 3, categoryPath: "专业计划内", courseStanding: "", suggestedTerm: "建议学期", catalogCourseId: 10 },
+    { courseCode: "20100001", courseName: "冲突课", credits: 2, categoryPath: "专业计划内", courseStanding: "", suggestedTerm: "建议学期", catalogCourseId: 14 },
+  ],
+  信息管理与信息系统: [
+    { courseCode: "20200001", courseName: "数据结构", credits: 3, categoryPath: "专业计划内", courseStanding: "", suggestedTerm: "建议学期", catalogCourseId: 16 },
+  ],
+};
 
 const offeringSchedules: Record<string, Array<{
   key: string;
@@ -112,14 +122,16 @@ async function mockScheduleApi(
     if (url.pathname === "/api/courses/departments") {
       return route.fulfill({ json: { items: ["数学学院", "信息管理学院", "体育学院"] } });
     }
+    if (url.pathname === "/api/program-plan") {
+      const major = url.searchParams.get("major") || "";
+      expect(url.searchParams.get("grade")).toBeTruthy();
+      return route.fulfill({ json: { items: programPlanByMajor[major] ?? [] } });
+    }
     if (url.pathname === "/api/courses") {
-      const department = url.searchParams.get("department") || "";
       const category = url.searchParams.get("category") || "";
-      const items = catalogRelations.filter((relation) => {
-        if (department) return relation.department === department;
-        if (category) return relation.category === category;
-        return false;
-      });
+      const items = category === "sports"
+        ? [{ course_id: 20, code: "30100001", name: "羽毛球", category: "sports", department: "体育学院", teacher_id: 21, teacher_name: "教师巳", rating: 4.5, review_count: 9 }]
+        : [];
       return route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 50, pages: 1 } });
     }
     if (url.pathname === "/api/schedule-offerings") {
@@ -163,7 +175,7 @@ function sectionList(page: Page) {
   return page.getByRole("grid", { name: "开课班" });
 }
 
-test("catalog filters, two candidate kinds, place, persist @mobile-smoke", async ({
+test("program-plan courses, two-step pick, place, persist @mobile-smoke", async ({
   page,
 }) => {
   const ehallRequests: string[] = [];
@@ -192,41 +204,73 @@ test("catalog filters, two candidate kinds, place, persist @mobile-smoke", async
   const planned = picker.getByLabel("计划内课程");
   await expect(planned).toContainText("高等数学");
   await expect(planned).toContainText("微观经济学");
-  await expect(planned).not.toContainText(/班号|容量|A-01/);
-  await expect(planned.getByRole("link", { name: "4.2 · 6 条" }).first()).toBeVisible();
-  await planned.getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入课表" }).first().click();
+  await expect(planned).not.toContainText(/班号|容量|A-01|教师甲|教师乙/);
+  await planned.getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入选课列表" }).click();
   await expect(courseList(page)).toContainText("高等数学");
+  await expect(courseList(page)).toContainText("未选");
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
 
-  await planned.getByRole("row", { name: /微观经济学/ }).getByRole("button", { name: "加入课表" }).click();
+  await planned.getByRole("row", { name: /微观经济学/ }).getByRole("button", { name: "加入选课列表" }).click();
   await expect(courseList(page)).toContainText("微观经济学");
 
   await picker.getByRole("tab", { name: "公共选修" }).click();
-  await picker.getByLabel("公共选修").getByRole("button", { name: "加入课表" }).click();
+  await picker.getByLabel("公共选修").getByRole("button", { name: "加入选课列表" }).click();
   await expect(courseList(page)).toContainText("羽毛球");
+  await picker.getByRole("button", { name: "完成" }).click();
+
+  await courseList(page).getByRole("button", { name: "高等数学" }).click();
+  await expect(sectionList(page)).toContainText("教师甲");
+  await sectionList(page).getByRole("button", { name: "加入课表" }).first().click();
+  await courseList(page).getByRole("button", { name: "微观经济学" }).click();
+  await sectionList(page).getByRole("button", { name: "加入课表" }).click();
+  await courseList(page).getByRole("button", { name: "羽毛球" }).click();
+  await sectionList(page).getByRole("button", { name: "加入课表" }).click();
 
   const timetable = page.getByRole("grid", { name: "周课表" });
   await expect(timetable.getByText("高等数学（教师甲）").first()).toBeVisible();
   await expect(timetable.getByText("微观经济学（教师辰）").first()).toBeVisible();
   await expect(timetable.getByText("羽毛球（教师巳）").first()).toBeVisible();
+  await expect(courseList(page)).toContainText("备选");
 
-  await picker.getByRole("tab", { name: "计划内" }).click();
-  await picker.getByLabel("计划内课程").getByRole("row", { name: /冲突课/ }).getByRole("button", { name: "加入课表" }).click();
+  const conflictPicker = await openCoursePicker(page);
+  await conflictPicker.getByRole("tab", { name: "计划内" }).click();
+  await conflictPicker.getByLabel("计划内课程").getByRole("row", { name: /冲突课/ }).getByRole("button", { name: "加入选课列表" }).click();
+  await conflictPicker.getByRole("button", { name: "完成" }).click();
+  await courseList(page).getByRole("button", { name: "冲突课" }).click();
+  await sectionList(page).getByRole("button", { name: "加入课表" }).click();
   await expect(page.getByRole("alert")).toContainText("冲突课");
   await expect(page.getByRole("alert")).toContainText("未加入");
 
-  await picker.getByRole("button", { name: "完成" }).click();
   await page.getByRole("button", { name: "保存课表" }).click();
   await expect(page.getByText("课表已保存到本机")).toBeVisible();
+  await expect(courseList(page)).toContainText("已选");
 
   await page.reload();
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
   await expect(courseList(page)).toContainText("微观经济学");
   await expect(courseList(page)).toContainText("羽毛球");
+  await expect(courseList(page)).not.toContainText("冲突课");
 
   await page.setViewportSize({ width: 320, height: 720 });
   await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
   const direction = await page.getByRole("region", { name: "课程与开课班" }).evaluate((el) => getComputedStyle(el).flexDirection);
   expect(direction).toBe("column");
+});
+
+test("unsaved alternate classes disappear after reload", async ({ page }) => {
+  await mockScheduleApi(page);
+  await page.goto("/schedule");
+  await selectMajor(page);
+  const picker = await openCoursePicker(page);
+  await picker.getByRole("tab", { name: "计划内" }).click();
+  await picker.getByLabel("计划内课程").getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入选课列表" }).click();
+  await picker.getByRole("button", { name: "完成" }).click();
+  await courseList(page).getByRole("button", { name: "高等数学" }).click();
+  await sectionList(page).getByRole("button", { name: "加入课表" }).first().click();
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("grid", { name: "选课列表" })).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学")).toHaveCount(0);
 });
 
 test("switches candidate data when the catalog major changes", async ({ page }) => {
@@ -366,12 +410,16 @@ test("same-course swap is atomic after selecting a catalog section", async ({ pa
   await selectMajor(page);
   const picker = await openCoursePicker(page);
   await picker.getByRole("tab", { name: "计划内" }).click();
-  await picker.getByLabel("计划内课程").getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入课表" }).first().click();
+  await picker.getByLabel("计划内课程").getByRole("row", { name: /高等数学/ }).getByRole("button", { name: "加入选课列表" }).click();
   await picker.getByRole("button", { name: "完成" }).click();
   await expect(courseList(page)).toContainText("高等数学");
   await courseList(page).getByRole("button", { name: "高等数学" }).click();
   await expect(sectionList(page)).toContainText("教师乙");
+  await sectionList(page).getByRole("button", { name: "加入课表" }).first().click();
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）").first()).toBeVisible();
   await sectionList(page).getByRole("button", { name: "换班" }).click();
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师乙）").first()).toBeVisible();
+  await expect(page.getByRole("grid", { name: "周课表" }).getByText("高等数学（教师甲）")).toHaveCount(0);
   await expect(courseList(page)).not.toContainText(/班03|班01/);
 });
 

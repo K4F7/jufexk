@@ -5,6 +5,7 @@ import adminRoutes from "../src/routes/admin";
 import authRoutes from "../src/routes/auth";
 import importRoutes from "../src/routes/imports";
 import ordinaryUserRoutes from "../src/routes/ordinary-user";
+import programPlanRoutes from "../src/routes/program-plan";
 import publicCatalogRoutes from "../src/routes/public-catalog";
 import scheduleOfferingRoutes from "../src/routes/schedule-offerings";
 import { adminAuth, adminHeaders as sessionHeaders } from "./admin-session";
@@ -27,6 +28,7 @@ describe("domain route composition", () => {
     const domainRoutes = [
       publicCatalogRoutes,
       scheduleOfferingRoutes,
+      programPlanRoutes,
       authRoutes,
       ordinaryUserRoutes,
       adminRoutes,
@@ -47,6 +49,12 @@ describe("domain route composition", () => {
     );
     expect(scheduleOfferingRoutes.routes.map(routeKey)).toContain(
       "GET /api/schedule-offerings",
+    );
+    expect(programPlanRoutes.routes.map(routeKey)).toContain(
+      "GET /api/program-plan",
+    );
+    expect(importRoutes.routes.map(routeKey)).toContain(
+      "POST /api/admin/import/program-plan",
     );
     expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/cas");
     expect(authRoutes.routes.map(routeKey)).toContain("POST /api/auth/dev");

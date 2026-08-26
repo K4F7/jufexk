@@ -39,6 +39,7 @@ export type JwxtOffering = {
   catalogTeacherId: number | null;
   catalogRating?: number | null;
   catalogReviewCount?: number;
+  suggestedTerm?: string;
 };
 
 export type JwxtFilterOption = {
@@ -174,6 +175,7 @@ export function normalizeOffering(partial: Partial<JwxtOffering> & Pick<JwxtOffe
     catalogTeacherId: partial.catalogTeacherId ?? null,
     catalogRating: partial.catalogRating ?? null,
     catalogReviewCount: partial.catalogReviewCount ?? 0,
+    suggestedTerm: (partial.suggestedTerm || "").trim() || undefined,
   };
 }
 
