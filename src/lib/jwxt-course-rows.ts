@@ -12,16 +12,20 @@ export function requiredElectiveLabel(categoryPath: string, origin: PlanOrigin):
 }
 
 export function planStatusLabel(item: PlannedItem | undefined): string {
-  if (!item) return "未选班";
+  if (!item) return "未选";
   if (!item.included) return "已排除";
-  return "已加入";
+  if (item.status === 0) return "未选";
+  if (item.status === 1) return "备选";
+  return "已选";
 }
 
 export function uniquePlanCourses(items: PlannedItem[]): PlannedItem[] {
   const seen = new Map<string, PlannedItem>();
   for (const item of items) {
     const existing = seen.get(item.courseCode);
-    if (!existing || (item.included && !existing.included)) seen.set(item.courseCode, item);
+    if (!existing || item.status > existing.status || (item.included && !existing.included)) {
+      seen.set(item.courseCode, item);
+    }
   }
   return [...seen.values()];
 }

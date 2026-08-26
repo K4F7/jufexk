@@ -33,7 +33,7 @@ export const SITE_RESOURCES = [
   {
     href: "https://github.com/XiaLing233/tongji-course-scheduler",
     title: "XiaLing233 / tongji-course-scheduler",
-    note: "排课模拟的冲突检测和周课表交互参考了这个项目。",
+    note: "排课模拟的冲突检测、两步选课和周课表交互参考了这个项目。对象是课号加开课班。",
     extra: { href: "https://xk.xialing.icu", title: "线上演示" },
   },
   {
