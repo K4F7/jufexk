@@ -1,8 +1,10 @@
 import { Alert, Button, Card } from "@heroui/react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../components/DetailFeedback";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
+import { readDevPreview } from "../lib/dev-preview";
 
 type LogoutState = "confirm" | "pending" | "done" | "error";
 
@@ -14,7 +16,20 @@ type LogoutState = "confirm" | "pending" | "done" | "error";
  */
 export function LogoutPage() {
   const { viewer, ready, clear } = useViewer();
-  const [state, setState] = useState<LogoutState>("confirm");
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
+  const [state, setState] = useState<LogoutState>(() => {
+    if (preview === "done") return "done";
+    if (preview === "error") return "error";
+    return "confirm";
+  });
+  const previewAuthed = preview === "confirm" || preview === "error";
+
+  useEffect(() => {
+    if (preview === "done") setState("done");
+    else if (preview === "error") setState("error");
+    else if (preview === "confirm") setState("confirm");
+  }, [preview]);
 
   const logout = useCallback(async () => {
     setState("pending");
@@ -27,9 +42,11 @@ export function LogoutPage() {
     }
   }, [clear]);
 
+  const authenticated = previewAuthed || viewer.authenticated;
+  const sessionReady = preview != null || ready;
   const showConfirm =
-    ready && viewer.authenticated && (state === "confirm" || state === "pending");
-  const showRetry = ready && state === "error";
+    sessionReady && authenticated && (state === "confirm" || state === "pending");
+  const showRetry = sessionReady && state === "error";
 
   return (
     <section aria-labelledby="logout-heading" className="mx-auto max-w-xl py-8">
@@ -38,8 +55,8 @@ export function LogoutPage() {
           <Card.Title id="logout-heading">退出登录</Card.Title>
         </Card.Header>
         <Card.Content>
-          {!ready ? <DetailLoadingStatus label="正在读取登录状态…" /> : null}
-          {ready && state === "done" ? (
+          {!sessionReady ? <DetailLoadingStatus label="正在读取登录状态…" /> : null}
+          {sessionReady && state === "done" ? (
             <Alert status="success">
               <Alert.Indicator />
               <Alert.Content>
@@ -50,7 +67,7 @@ export function LogoutPage() {
               </Alert.Content>
             </Alert>
           ) : null}
-          {ready && state === "error" ? (
+          {sessionReady && state === "error" ? (
             <Alert status="danger">
               <Alert.Indicator />
               <Alert.Content>
@@ -61,9 +78,9 @@ export function LogoutPage() {
               </Alert.Content>
             </Alert>
           ) : null}
-          {ready &&
+          {sessionReady &&
           (state === "confirm" || state === "pending") &&
-          !viewer.authenticated ? (
+          !authenticated ? (
             <Alert status="accent">
               <Alert.Indicator />
               <Alert.Content>

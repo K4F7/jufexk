@@ -16,7 +16,7 @@ import {
   type Key,
 } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import {
   AnonymousAvatar,
   HEROUI_AVATAR_PLACEHOLDERS,
@@ -24,6 +24,12 @@ import {
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
+import {
+  isDevAtlasSession,
+  previewEmptyProfile,
+  previewFilledProfile,
+  readDevPreview,
+} from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
 import type { UserProfile, UserProfileReview } from "../lib/types";
 import { formatPublicHandle } from "../public-handle";
@@ -92,6 +98,9 @@ function ProfileReviewItem({ review }: { review: UserProfileReview }) {
 
 export function ProfilePage() {
   const { viewer, ready, applySession } = useViewer();
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
+  const skipGate = isDevAtlasSession(searchParams);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
@@ -101,7 +110,33 @@ export function ProfilePage() {
   const lastAvatarAttemptRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!ready || !viewer.authenticated) return;
+    if (preview === "error") {
+      setProfile(null);
+      setAvailable(false);
+      setLoading(false);
+      return;
+    }
+    if (preview === "empty") {
+      setProfile(previewEmptyProfile());
+      setAvailable(true);
+      setLoading(false);
+      return;
+    }
+    if (preview === "filled") {
+      setProfile(previewFilledProfile());
+      setAvailable(true);
+      setLoading(false);
+      return;
+    }
+    if (!ready) return;
+    if (!viewer.authenticated) {
+      if (skipGate) {
+        setProfile(previewEmptyProfile());
+        setAvailable(true);
+        setLoading(false);
+      }
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     api<UserProfile>("/api/user/profile")
@@ -121,9 +156,9 @@ export function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, viewer.authenticated]);
+  }, [ready, viewer.authenticated, preview, skipGate]);
 
-  if (!ready) {
+  if (!ready && !skipGate) {
     return (
       <section aria-label="个人主页" className="py-8">
         <p className="m-0 flex items-center gap-2 text-sm text-muted">
@@ -134,7 +169,7 @@ export function ProfilePage() {
     );
   }
 
-  if (!viewer.authenticated) {
+  if (!viewer.authenticated && !skipGate) {
     const from = encodeURIComponent("/profile");
     return <Navigate to={`${viewer.loginPath}?from=${from}`} replace />;
   }
@@ -291,7 +326,7 @@ export function ProfilePage() {
 
       <aside className="min-w-0 self-start">
         <Card className="gap-6" role="article" aria-labelledby="profile-card-heading">
-          <Card.Header className="items-center text-center">
+          <Card.Header className="items-center gap-3 text-center">
             <Popover isOpen={avatarPickerOpen} onOpenChange={setAvatarPickerOpen}>
               <Button
                 aria-label="更换官方头像"

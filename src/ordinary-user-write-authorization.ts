@@ -62,15 +62,18 @@ export const originOk = (c: Context) => {
 
 /**
  * wrangler / Vite loopback only — production Worker hostnames never match.
- * Origin is ignored: a public HTTP host plus a loopback Origin is not local.
+ * wrangler remaps both Host and URL to the custom domain over HTTP; production
+ * is HTTPS, so a loopback Origin on HTTP is still local preview.
  */
 export const isLoopbackWorkerRequest = (c: Context) => {
   if (loopbackHostHeader(c.req.header("Host"))) return true;
   try {
-    return LOOPBACK_HOSTS.has(new URL(c.req.url).hostname);
+    if (LOOPBACK_HOSTS.has(new URL(c.req.url).hostname)) return true;
   } catch {
     return false;
   }
+  const origin = c.req.header("Origin");
+  return Boolean(origin && isWranglerLocalRewrite(c, origin));
 };
 
 export function ordinaryUserCsrfOk(c: Context) {

@@ -4,13 +4,14 @@
  */
 import { Button, Card, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import { DetailErrorAlert } from "../components/DetailFeedback";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
+import { readDevPreview } from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { LatestReview, PublicUserProfile } from "../lib/types";
@@ -19,6 +20,8 @@ import { formatPublicCode, formatPublicHandle } from "../public-handle";
 export function PublicUserPage() {
   const { code } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
   const { viewer, ready } = useViewer();
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
   const [error, setError] = useState("");
@@ -27,6 +30,31 @@ export function PublicUserPage() {
   const [followPending, setFollowPending] = useState(false);
 
   useEffect(() => {
+    if (preview === "error") {
+      setProfile(null);
+      setError("公开主页加载失败");
+      setLoading(false);
+      return;
+    }
+    if (preview === "empty") {
+      setProfile({
+        public_code: 1,
+        handle: "#000001",
+        avatar_key: 0,
+        reserved: false,
+        followable: true,
+        viewer_followed: false,
+        viewer_is_self: false,
+        note: null,
+        review_count: 0,
+        following_count: 0,
+        follower_count: 0,
+        reviews: [],
+      });
+      setError("");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -47,7 +75,7 @@ export function PublicUserPage() {
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, preview]);
 
   const toggleFollow = async () => {
     if (!profile || profile.viewer_is_self) return;
@@ -83,7 +111,7 @@ export function PublicUserPage() {
     }
   };
 
-  if (loading || !ready) {
+  if ((loading || !ready) && !preview) {
     return (
       <section aria-label="公开主页" className="py-8">
         <p className="m-0 flex items-center gap-2 text-sm text-muted">

@@ -144,7 +144,7 @@ test("guest nav shows a login link into the CAS form @mobile-smoke", async ({
   );
 });
 
-test("signed-in viewer sees the account menu and the logged-in login page", async ({
+test("signed-in viewer sees the account menu and leaves /login for the prior page", async ({
   page,
 }) => {
   await mockApi(page, state({ authenticated: true }));
@@ -157,9 +157,9 @@ test("signed-in viewer sees the account menu and the logged-in login page", asyn
   await expect(page.getByRole("link", { name: "登录" })).toHaveCount(0);
 
   await page.goto("/login");
-  await expect(page.getByText("已登录")).toBeVisible();
+  await expect(page.getByText("已登录", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "发送验证信" })).toHaveCount(0);
-  await expect(page).toHaveURL(/\/courses$/, { timeout: 5000 });
+  await expect(page).toHaveURL(/\/courses$/);
 });
 
 test("logout from the account menu clears the session and reports the result", async ({
@@ -283,9 +283,8 @@ test("keyboard reaches the account menu and logout confirm", async ({
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
-  // Keyboard open focuses the first item (主页); 消息 follows,
-  // so two ArrowDowns reach 退出登录.
-  await page.keyboard.press("ArrowDown");
+  // Keyboard open focuses the first item (主页); one ArrowDown
+  // reaches 退出登录.
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/logout$/);

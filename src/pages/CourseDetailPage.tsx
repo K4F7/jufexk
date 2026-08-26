@@ -40,6 +40,7 @@ import { RouterAriaLink } from "../components/RouterAriaLink";
 import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
+import { readDevPreview } from "../lib/dev-preview";
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { categoryLabel, formatCredits } from "../lib/labels";
 import { reviewAnchorId } from "../lib/review-dimensions";
@@ -251,7 +252,14 @@ export function CourseDetailPage() {
     (location.state as { submitted?: boolean } | null)?.submitted,
   );
 
+  const preview = readDevPreview(new URLSearchParams(location.search));
+
   useEffect(() => {
+    if (preview === "error") {
+      setData(null);
+      setError("课程加载失败");
+      return;
+    }
     let cancelled = false;
     setData(null);
     setError("");
@@ -266,7 +274,7 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, preview]);
 
   useEffect(() => {
     if (!course) return;

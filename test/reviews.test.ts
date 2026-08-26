@@ -373,7 +373,7 @@ describe("review submission required scheme scores", () => {
     expect(response.status).toBe(400);
   });
 
-  it("accepts a review-only submission without overall or scores", async () => {
+  it("accepts a review-only submission with overall and without scores", async () => {
     const courseId = await createBoundCourse("general", "REVONLY1");
     const leftover = await submit({
       courseId,
@@ -384,7 +384,7 @@ describe("review submission required scheme scores", () => {
     });
     expect(leftover.status).toBe(200);
     expect(await insertedReview(courseId)).toMatchObject({
-      overall: null,
+      overall: 4,
       scores: null,
       comment: REQUIRED_NOTE,
     });
@@ -395,9 +395,17 @@ describe("review submission required scheme scores", () => {
       teacherId: 1,
       reviewOnly: true,
     });
-    expect(omitted.status).toBe(200);
+    expect(omitted.status).toBe(400);
+
+    const withOverall = await submit({
+      courseId: courseId2,
+      teacherId: 1,
+      reviewOnly: true,
+      overall: 3.5,
+    });
+    expect(withOverall.status).toBe(200);
     expect(await insertedReview(courseId2)).toMatchObject({
-      overall: null,
+      overall: 3.5,
       scores: null,
     });
 
@@ -413,7 +421,7 @@ describe("review submission required scheme scores", () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       comment: REQUIRED_NOTE,
-      overall: null,
+      overall: 3.5,
     });
   });
 

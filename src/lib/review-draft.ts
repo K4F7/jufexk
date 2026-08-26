@@ -4,7 +4,6 @@ export const REVIEW_DRAFT_VERSION = 1;
 
 export type ReviewDraft = {
   version: typeof REVIEW_DRAFT_VERSION;
-  term: string;
   scores: Record<string, string>;
   overall: string;
   note: string;
@@ -24,7 +23,6 @@ export function parseReviewDraft(raw: unknown): ReviewDraft | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const value = raw as Record<string, unknown>;
   if (value.version !== REVIEW_DRAFT_VERSION) return null;
-  if (typeof value.term !== "string") return null;
   if (typeof value.overall !== "string") return null;
   if (typeof value.note !== "string") return null;
   if (typeof value.grade !== "string") return null;
@@ -40,7 +38,6 @@ export function parseReviewDraft(raw: unknown): ReviewDraft | null {
   );
   return {
     version: REVIEW_DRAFT_VERSION,
-    term: value.term,
     scores,
     overall: value.overall,
     note: value.note,

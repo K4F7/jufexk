@@ -68,7 +68,7 @@ describe("local-only dev login", () => {
     expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
   });
 
-  it("is absent on a public HTTP host even with a loopback Origin", async () => {
+  it("issues a session when wrangler remaps Host and URL over HTTP", async () => {
     const response = await SELF.fetch(
       `http://courses.sein.moe${DEV_LOGIN_PATH}`,
       {
@@ -80,9 +80,9 @@ describe("local-only dev login", () => {
         body: "{}",
       },
     );
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: "Not Found" });
-    expect(cookieHeader(response)).not.toContain(`${EMAIL_LOGIN_COOKIE}=`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ authenticated: true });
+    expect(cookieHeader(response)).toContain(`${EMAIL_LOGIN_COOKIE}=`);
   });
 
   it("issues a session when wrangler rewrites the URL but Host stays loopback", async () => {

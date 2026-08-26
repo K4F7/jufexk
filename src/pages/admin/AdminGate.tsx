@@ -1,10 +1,11 @@
 import { Tabs, Typography, buttonVariants } from "@heroui/react";
 import type { ReactNode } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useSearchParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { RouterAriaLink } from "../../components/RouterAriaLink";
 import { useAdminSession } from "../../hooks/useAdminSession";
 import { useViewer } from "../../hooks/useViewer";
+import { isDevAtlasSession, readDevPreview } from "../../lib/dev-preview";
 
 const ADMIN_TABS = [
   { id: "hub", href: "/admin", label: "概览" },
@@ -17,9 +18,41 @@ const ADMIN_TABS = [
  * 管理员分区门禁：已绑定学号的校园登录会在探测 /api/admin/session 时
  * 自动提升为管理员会话。不再接受 Cloudflare 共享口令。
  */
+function AdminForbidden({ authenticated }: { authenticated: boolean }) {
+  return (
+    <section className="mx-auto max-w-[480px]">
+      <Typography className="m-0 text-[22px] font-bold" type="h1">
+        管理后台
+      </Typography>
+      <p className="mb-4 mt-2 text-[13px] text-muted">
+        当前身份不是管理员。
+      </p>
+      {authenticated ? null : (
+        <RouterAriaLink
+          className={`${buttonVariants({ variant: "primary" })} no-underline`}
+          to="/login?from=/admin"
+        >
+          去登录
+        </RouterAriaLink>
+      )}
+    </section>
+  );
+}
+
 export function AdminGate({ children }: { children: ReactNode }) {
   const { authed, ready } = useAdminSession();
   const { viewer, ready: viewerReady } = useViewer();
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
+  const skipGate = isDevAtlasSession(searchParams) && preview !== "forbidden";
+
+  if (preview === "forbidden") {
+    return <AdminForbidden authenticated={viewer.authenticated} />;
+  }
+
+  if (skipGate) {
+    return <>{children}</>;
+  }
 
   if (!ready || !viewerReady) {
     return (
@@ -30,24 +63,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
   }
 
   if (!authed) {
-    return (
-      <section className="mx-auto max-w-[480px]">
-        <Typography className="m-0 text-[22px] font-bold" type="h1">
-          管理后台
-        </Typography>
-        <p className="mb-4 mt-2 text-[13px] text-muted">
-          当前身份不是管理员。
-        </p>
-        {viewer.authenticated ? null : (
-          <RouterAriaLink
-            className={`${buttonVariants({ variant: "primary" })} no-underline`}
-            to="/login?from=/admin"
-          >
-            去登录
-          </RouterAriaLink>
-        )}
-      </section>
-    );
+    return <AdminForbidden authenticated={viewer.authenticated} />;
   }
 
   return <>{children}</>;

@@ -42,6 +42,7 @@ import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
+import { emptyCatalogPage, readDevPreview } from "../lib/dev-preview";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import {
   GENERAL_EDUCATION_FILTER,
@@ -121,6 +122,7 @@ export function CoursesPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
+  const preview = readDevPreview(params);
   const q = params.get("q") || "";
   const rawCategory = params.get("category") || "";
   const category = isPublicCatalogCategory(rawCategory) ? rawCategory : "";
@@ -156,6 +158,19 @@ export function CoursesPage() {
   }, [q, category, sort, page]);
 
   useEffect(() => {
+    if (preview === "error") {
+      setData(null);
+      setError("课程目录加载失败");
+      setLoading(false);
+      return;
+    }
+    if (preview === "empty-catalog" || preview === "empty") {
+      setData(emptyCatalogPage());
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     let cancelled = false;
 
@@ -180,7 +195,7 @@ export function CoursesPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [queryString, reloadToken]);
+  }, [queryString, reloadToken, preview]);
 
   const offerRescue =
     data != null &&

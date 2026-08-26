@@ -1,10 +1,12 @@
+import { ArrowRotateRight, Check } from "@gravity-ui/icons";
 import {
   Alert,
   Button,
   Card,
-  FieldError,
+  Description,
   Form,
   Input,
+  InputGroup,
   InputOTP,
   Label,
   REGEXP_ONLY_DIGITS,
@@ -12,10 +14,12 @@ import {
   Spinner,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@heroui/react";
 import { useEffect, useRef, useState, type FormEvent, type Key } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../components/DetailFeedback";
 import { useViewer } from "../hooks/useViewer";
 import { ApiError, api } from "../lib/api";
@@ -67,48 +71,80 @@ function isQrDataImage(image: string) {
 }
 
 const RETURN_TO_CREDENTIALS_RE = /请重新登录|学号或密码|用户名或密码/;
-const LOCKED_ACCOUNT_RE = /锁定|冻结|禁用/;
-const PASSWORD_UPDATE_RE = /过期|初始密码|修改密码/;
-const VERIFY_CODE_RE = /验证码/;
 
 function shouldReturnToCredentials(message: string) {
   return RETURN_TO_CREDENTIALS_RE.test(message);
 }
 
-function loginErrorTitle(message: string) {
-  if (LOCKED_ACCOUNT_RE.test(message)) return "账号暂时无法登录";
-  if (PASSWORD_UPDATE_RE.test(message)) return "需要先更新密码";
-  if (VERIFY_CODE_RE.test(message)) return "验证码不正确";
-  return "无法完成登录";
-}
-
-const ALREADY_LOGGED_IN_REDIRECT_MS = 3000;
-
-function AlreadyLoggedInAlert() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      navigate("/courses", { replace: true });
-    }, ALREADY_LOGGED_IN_REDIRECT_MS);
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [navigate]);
-
-  return (
-    <Alert status="success">
-      <Alert.Indicator />
-      <Alert.Content>
-        <Alert.Title>已登录</Alert.Title>
-      </Alert.Content>
-    </Alert>
-  );
-}
-
 const SESSION_LOADING_STATUS = (
   <DetailLoadingStatus label="正在读取登录状态…" />
 );
+
+const LOGIN_PREVIEW_PARAM = "preview";
+const PREVIEW_MFA_CHALLENGE = "preview-mfa";
+const PREVIEW_QR_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+function LoginPreviewBar() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const current = searchParams.get(LOGIN_PREVIEW_PARAM) || "password";
+
+  return (
+    <ToggleButtonGroup
+      disallowEmptySelection
+      aria-label="登录预览状态"
+      className="mb-4"
+      selectedKeys={new Set([current])}
+      selectionMode="single"
+      size="sm"
+      onSelectionChange={(keys) => {
+        const next = [...keys][0];
+        if (typeof next !== "string") return;
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set(LOGIN_PREVIEW_PARAM, next);
+        setSearchParams(nextParams, { replace: true });
+      }}
+    >
+      <ToggleButton id="password">账号密码</ToggleButton>
+      <ToggleButton id="mfa">
+        <ToggleButtonGroup.Separator />
+        验证码
+      </ToggleButton>
+      <ToggleButton id="mfa-error">
+        <ToggleButtonGroup.Separator />
+        验证码错误
+      </ToggleButton>
+      <ToggleButton id="qr">
+        <ToggleButtonGroup.Separator />
+        扫码加载
+      </ToggleButton>
+      <ToggleButton id="qr-scanned">
+        <ToggleButtonGroup.Separator />
+        已扫码
+      </ToggleButton>
+      <ToggleButton id="qr-expired">
+        <ToggleButtonGroup.Separator />
+        二维码失效
+      </ToggleButton>
+      <ToggleButton id="qr-error">
+        <ToggleButtonGroup.Separator />
+        请求过频
+      </ToggleButton>
+      <ToggleButton id="qr-fail">
+        <ToggleButtonGroup.Separator />
+        扫码失败
+      </ToggleButton>
+      <ToggleButton id="locked">
+        <ToggleButtonGroup.Separator />
+        账号锁定
+      </ToggleButton>
+      <ToggleButton id="password-update">
+        <ToggleButtonGroup.Separator />
+        需改密
+      </ToggleButton>
+    </ToggleButtonGroup>
+  );
+}
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -120,17 +156,121 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
-  const [challenge, setChallenge] = useState("");
-  const [maskedPhone, setMaskedPhone] = useState("");
+  const [challenge, setChallenge] = useState(() =>
+    import.meta.env.DEV &&
+    (searchParams.get(LOGIN_PREVIEW_PARAM) === "mfa" ||
+      searchParams.get(LOGIN_PREVIEW_PARAM) === "mfa-error")
+      ? PREVIEW_MFA_CHALLENGE
+      : "",
+  );
   const [busy, setBusy] = useState(false);
   const [redeeming, setRedeeming] = useState(Boolean(magicToken));
-  const [error, setError] = useState("");
-  const [loginTab, setLoginTab] = useState("password");
-  const [qrPhase, setQrPhase] = useState<QrPhase>("idle");
+  const [error, setError] = useState(() => {
+    if (!import.meta.env.DEV) return "";
+    const preview = searchParams.get(LOGIN_PREVIEW_PARAM);
+    if (preview === "qr-error") return "请求过于频繁，请稍后再试";
+    if (preview === "qr-fail") return "登录失败，请稍后重试";
+    return "";
+  });
+  const [loginTab, setLoginTab] = useState(() =>
+    import.meta.env.DEV &&
+    (searchParams.get(LOGIN_PREVIEW_PARAM)?.startsWith("qr") ?? false)
+      ? "qr"
+      : "password",
+  );
+  const [qrPhase, setQrPhase] = useState<QrPhase>(() => {
+    if (!import.meta.env.DEV) return "idle";
+    const preview = searchParams.get(LOGIN_PREVIEW_PARAM);
+    if (preview === "qr") return "loading";
+    if (preview === "qr-scanned") return "scanned";
+    if (preview === "qr-expired") return "expired";
+    if (preview === "qr-error" || preview === "qr-fail") return "error";
+    return "idle";
+  });
   const [qrChallenge, setQrChallenge] = useState("");
-  const [qrImage, setQrImage] = useState("");
+  const [qrImage, setQrImage] = useState(() =>
+    import.meta.env.DEV && searchParams.get(LOGIN_PREVIEW_PARAM) === "qr-scanned"
+      ? PREVIEW_QR_IMAGE
+      : "",
+  );
   const loginRequestId = useRef(0);
   const qrRequestId = useRef(0);
+  const mfaSubmitting = useRef(false);
+  const loginPreview = import.meta.env.DEV
+    ? searchParams.get(LOGIN_PREVIEW_PARAM)
+    : null;
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !loginPreview) return;
+    setMfaCode("");
+    setBusy(false);
+    mfaSubmitting.current = false;
+    if (loginPreview === "mfa") {
+      setChallenge(PREVIEW_MFA_CHALLENGE);
+      setError("");
+      setLoginTab("password");
+      return;
+    }
+    if (loginPreview === "mfa-error") {
+      setChallenge(PREVIEW_MFA_CHALLENGE);
+      setError("验证码不正确");
+      setLoginTab("password");
+      return;
+    }
+    if (loginPreview === "qr") {
+      setChallenge("");
+      setError("");
+      setLoginTab("qr");
+      resetQr("loading");
+      return;
+    }
+    if (loginPreview === "qr-scanned") {
+      setChallenge("");
+      setError("");
+      setLoginTab("qr");
+      qrRequestId.current += 1;
+      setQrChallenge("");
+      setQrImage(PREVIEW_QR_IMAGE);
+      setQrPhase("scanned");
+      return;
+    }
+    if (loginPreview === "qr-expired") {
+      setChallenge("");
+      setError("");
+      setLoginTab("qr");
+      resetQr("expired");
+      return;
+    }
+    if (loginPreview === "qr-error") {
+      setChallenge("");
+      setError("请求过于频繁，请稍后再试");
+      setLoginTab("qr");
+      resetQr("error");
+      return;
+    }
+    if (loginPreview === "qr-fail") {
+      setChallenge("");
+      setError("登录失败，请稍后重试");
+      setLoginTab("qr");
+      resetQr("error");
+      return;
+    }
+    if (loginPreview === "locked") {
+      setChallenge("");
+      setError("账号已锁定，请稍后再试");
+      setLoginTab("password");
+      return;
+    }
+    if (loginPreview === "password-update") {
+      setChallenge("");
+      setError("密码已过期，请先修改密码");
+      setLoginTab("password");
+      return;
+    }
+    setChallenge("");
+    setError("");
+    setLoginTab("password");
+  }, [loginPreview]);
 
   useEffect(() => {
     if (!magicToken || viewer.authenticated) {
@@ -262,51 +402,55 @@ export function LoginPage() {
       resetQr();
       return;
     }
+    if (loginPreview === "qr") {
+      setError("");
+      resetQr("loading");
+      return;
+    }
+    if (loginPreview === "qr-scanned") {
+      qrRequestId.current += 1;
+      setError("");
+      setQrChallenge("");
+      setQrImage(PREVIEW_QR_IMAGE);
+      setQrPhase("scanned");
+      return;
+    }
+    if (loginPreview === "qr-expired") {
+      setError("");
+      resetQr("expired");
+      return;
+    }
+    if (loginPreview === "qr-error") {
+      setError("请求过于频繁，请稍后再试");
+      resetQr("error");
+      return;
+    }
+    if (loginPreview === "qr-fail") {
+      setError("登录失败，请稍后重试");
+      resetQr("error");
+      return;
+    }
     void startQr();
   }
 
-  /** Local testing only — Vite DEV UI; Worker still rejects non-loopback hosts. */
-  async function submitDevLogin() {
-    const requestId = ++loginRequestId.current;
+  /** DEV only — flip the next login UI; does not call auth APIs. */
+  function simulateNextLoginUi() {
     setError("");
-    setBusy(true);
-    try {
-      const session = await api<{ authenticated?: boolean; csrfToken?: string }>(
-        "/api/auth/dev",
-        {
-          method: "POST",
-          body: "{}",
-        },
-      );
-      if (requestId !== loginRequestId.current) return;
-      if (session.authenticated) applySession(session);
-      navigate(searchParams.get("from") ? backTarget : "/profile", {
-        replace: true,
-      });
-    } catch (err: unknown) {
-      if (requestId !== loginRequestId.current) return;
-      setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
-    } finally {
-      if (requestId === loginRequestId.current) setBusy(false);
+    setBusy(false);
+    if (challenge) {
+      navigate(backTarget, { replace: true });
+      return;
     }
+    setChallenge(PREVIEW_MFA_CHALLENGE);
   }
 
   const devLoginButton = import.meta.env.DEV ? (
     <Button
-      fullWidth
-      isPending={busy}
       type="button"
       variant="secondary"
-      onPress={() => {
-        void submitDevLogin();
-      }}
+      onPress={simulateNextLoginUi}
     >
-      {({ isPending }) => (
-        <>
-          {isPending ? <Spinner color="current" size="sm" /> : null}
-          {isPending ? "正在完成本地登录…" : "本地测试登录"}
-        </>
-      )}
+      本地测试登录
     </Button>
   ) : null;
 
@@ -324,7 +468,6 @@ export function LoginPage() {
       if (body.needsMfa) {
         setError("");
         setChallenge(body.challenge);
-        setMaskedPhone(body.maskedPhone || "");
         return;
       }
       setPassword("");
@@ -337,15 +480,23 @@ export function LoginPage() {
     }
   }
 
-  async function submitMfa(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitMfaCode(code: string) {
+    if (mfaSubmitting.current || code.length !== 4) return;
+    mfaSubmitting.current = true;
     const requestId = ++loginRequestId.current;
     setError("");
     setBusy(true);
     try {
+      if (import.meta.env.DEV && challenge === PREVIEW_MFA_CHALLENGE) {
+        await new Promise((resolve) => window.setTimeout(resolve, 600));
+        if (requestId !== loginRequestId.current) return;
+        setError("验证码不正确");
+        setMfaCode("");
+        return;
+      }
       const session = await api<CasStart>("/api/auth/cas/mfa", {
         method: "POST",
-        body: JSON.stringify({ challenge, code: mfaCode, password }),
+        body: JSON.stringify({ challenge, code, password }),
       });
       if (requestId !== loginRequestId.current) return;
       setPassword("");
@@ -355,29 +506,32 @@ export function LoginPage() {
       const message =
         err instanceof ApiError ? err.message : "验证码不正确";
       setError(message);
+      setMfaCode("");
       if (shouldReturnToCredentials(message)) {
         setPassword("");
         setChallenge("");
-        setMfaCode("");
-        setMaskedPhone("");
       }
     } finally {
-      if (requestId === loginRequestId.current) setBusy(false);
+      if (requestId === loginRequestId.current) {
+        mfaSubmitting.current = false;
+        setBusy(false);
+      }
     }
   }
 
-  const errorAlert = error ? (
-    <Alert status="danger">
-      <Alert.Indicator />
-      <Alert.Content>
-        <Alert.Title>{loginErrorTitle(error)}</Alert.Title>
-        <Alert.Description>{error}</Alert.Description>
-      </Alert.Content>
-    </Alert>
-  ) : null;
+  function submitMfa(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitMfaCode(mfaCode);
+  }
+
+  const passwordInvalid = loginTab === "password" && Boolean(error);
 
   return (
     <section aria-labelledby="login-heading" className="mx-auto max-w-xl py-8">
+      {import.meta.env.DEV &&
+      (loginPreview || searchParams.get("atlas") === "1") ? (
+        <LoginPreviewBar />
+      ) : null}
       <Card
         role="article"
         aria-labelledby="login-heading"
@@ -388,13 +542,11 @@ export function LoginPage() {
             {campusReauth ? "重新验证校园身份" : "登录"}
           </Typography>
         </Card.Header>
-        {ready && viewer.authenticated && !campusReauth ? (
-          <Card.Content>
-            <AlreadyLoggedInAlert />
-          </Card.Content>
-        ) : !ready && !redeeming ? (
+        {ready && viewer.authenticated && !campusReauth && !loginPreview ? (
+          <Navigate to={backTarget} replace />
+        ) : !ready && !redeeming && !loginPreview ? (
           <Card.Content>{SESSION_LOADING_STATUS}</Card.Content>
-        ) : redeeming ? (
+        ) : redeeming && !loginPreview ? (
           <Card.Content>
             <LoginProgressAlert
               title="正在完成登录"
@@ -402,74 +554,75 @@ export function LoginPage() {
             />
           </Card.Content>
         ) : challenge ? (
-          <Form
-            aria-busy={busy}
-            aria-labelledby="login-heading"
-            onSubmit={submitMfa}
-          >
-            <Card.Content>
-              <div className="flex flex-col gap-4">
-                {errorAlert}
-                {busy ? (
-                  <LoginProgressAlert
-                    title="正在确认验证码"
-                    description="马上就好。"
-                  />
-                ) : (
-                  <Alert status="accent">
-                    <Alert.Indicator />
-                    <Alert.Content>
-                      <Alert.Title>请输入验证码</Alert.Title>
-                      <Alert.Description>
-                        {maskedPhone
-                          ? `学校会把验证码发到企业微信（绑定手机 ${maskedPhone}），不是本站短信。`
-                          : "学校会把验证码发到企业微信（统一身份绑定的手机），不是本站短信。"}
-                      </Alert.Description>
-                    </Alert.Content>
-                  </Alert>
-                )}
-                <div className="mx-auto flex w-[280px] flex-col gap-2">
-                  <Label>验证码</Label>
-                  <InputOTP
-                    aria-label="验证码"
-                    autoComplete="one-time-code"
-                    className="justify-center"
-                    inputMode="numeric"
-                    isDisabled={busy}
-                    maxLength={4}
-                    name="mfa"
-                    pattern={REGEXP_ONLY_DIGITS}
-                    value={mfaCode}
-                    variant="secondary"
-                    onChange={setMfaCode}
-                  >
-                    <InputOTP.Group className="gap-2 sm:gap-3">
-                      <InputOTP.Slot index={0} />
-                      <InputOTP.Slot index={1} />
-                      <InputOTP.Slot index={2} />
-                      <InputOTP.Slot index={3} />
-                    </InputOTP.Group>
-                  </InputOTP>
-                </div>
+          <Card.Content className="flex flex-col items-center">
+            <Form
+              aria-busy={busy}
+              aria-labelledby="login-heading"
+              className="mx-auto flex w-72 flex-col items-center gap-4"
+              onSubmit={submitMfa}
+            >
+              <div className="flex w-full flex-col items-center gap-2 text-center">
+                <Label>验证码</Label>
+                <Description>输入发送到企业微信的四位验证码</Description>
+                <InputOTP
+                  aria-describedby={error ? "code-error" : undefined}
+                  aria-label="验证码"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  className="w-auto justify-center"
+                  inputMode="numeric"
+                  isDisabled={busy}
+                  isInvalid={Boolean(error)}
+                  maxLength={4}
+                  name="code"
+                  pattern={REGEXP_ONLY_DIGITS}
+                  value={mfaCode}
+                  variant="secondary"
+                  onChange={(value) => {
+                    setMfaCode(value);
+                    if (error) setError("");
+                  }}
+                  onComplete={(value) => {
+                    setMfaCode(value);
+                    void submitMfaCode(value);
+                  }}
+                >
+                  <InputOTP.Group>
+                    <InputOTP.Slot className="size-14 text-xl" index={0} />
+                    <InputOTP.Slot className="size-14 text-xl" index={1} />
+                    <InputOTP.Slot className="size-14 text-xl" index={2} />
+                    <InputOTP.Slot className="size-14 text-xl" index={3} />
+                  </InputOTP.Group>
+                </InputOTP>
+                <span
+                  className="field-error"
+                  data-visible={Boolean(error)}
+                  id="code-error"
+                >
+                  {error}
+                </span>
               </div>
-            </Card.Content>
-            <Card.Footer className="mt-4 flex flex-col gap-2">
               <Button
-                fullWidth
+                className="w-full"
                 isDisabled={mfaCode.length !== 4}
                 isPending={busy}
                 type="submit"
+                variant="primary"
               >
-                {({ isPending }) => (
-                  <>
-                    {isPending ? <Spinner color="current" size="sm" /> : null}
-                    {isPending ? "正在完成登录…" : "完成登录"}
-                  </>
-                )}
+                {({ isPending }) =>
+                  isPending ? (
+                    <>
+                      <Spinner className="size-4" />
+                      正在验证…
+                    </>
+                  ) : (
+                    "验证"
+                  )
+                }
               </Button>
               {devLoginButton}
-            </Card.Footer>
-          </Form>
+            </Form>
+          </Card.Content>
         ) : (
           <Card.Content>
             <Tabs
@@ -496,109 +649,151 @@ export function LoginPage() {
                   onSubmit={submitCas}
                 >
                   <div className="flex flex-col gap-4">
-                    {loginTab === "password" ? errorAlert : null}
-                    {busy ? (
-                      <LoginProgressAlert
-                        title="正在登录"
-                        description="通常只要几秒。"
-                      />
-                    ) : null}
                     <TextField
                       fullWidth
                       isDisabled={busy}
+                      isInvalid={passwordInvalid}
                       isRequired
                       name="username"
                       autoComplete="username"
                       value={username}
-                      onChange={setUsername}
+                      onChange={(value) => {
+                        setUsername(value);
+                        if (error) setError("");
+                      }}
                     >
                       <Label>学号</Label>
-                      <Input placeholder="江财统一身份学号" variant="primary" />
-                      <FieldError />
+                      <Input
+                        aria-describedby={passwordInvalid ? "password-error" : undefined}
+                        placeholder="请输入校园卡号"
+                        variant="primary"
+                      />
                     </TextField>
                     <TextField
                       fullWidth
                       isDisabled={busy}
+                      isInvalid={passwordInvalid}
                       isRequired
                       name="password"
                       type="password"
                       autoComplete="current-password"
                       value={password}
-                      onChange={setPassword}
+                      onChange={(value) => {
+                        setPassword(value);
+                        if (error) setError("");
+                      }}
                     >
                       <Label>校园密码</Label>
-                      <Input placeholder="统一身份认证密码" variant="primary" />
-                      <FieldError />
+                      <InputGroup variant="primary">
+                        <InputGroup.Input
+                          aria-describedby={
+                            passwordInvalid ? "password-error" : undefined
+                          }
+                          placeholder="请输入统一身份认证平台登录密码"
+                        />
+                        {busy ? (
+                          <InputGroup.Suffix>
+                            <Spinner className="size-4" />
+                          </InputGroup.Suffix>
+                        ) : null}
+                      </InputGroup>
                     </TextField>
-                    <Button fullWidth isPending={busy} type="submit">
-                      {({ isPending }) => (
-                        <>
-                          {isPending ? <Spinner color="current" size="sm" /> : null}
-                          {isPending ? "正在登录…" : "登录"}
-                        </>
-                      )}
-                    </Button>
-                    {devLoginButton}
+                    <span
+                      className="field-error"
+                      data-visible={passwordInvalid}
+                      id="password-error"
+                    >
+                      {error}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button isPending={busy} type="submit">
+                        {({ isPending }) => (
+                          <>
+                            {isPending ? <Spinner className="size-4" /> : <Check />}
+                            {isPending ? "正在登录…" : "登录"}
+                          </>
+                        )}
+                      </Button>
+                      {devLoginButton}
+                    </div>
                   </div>
                 </Form>
               </Tabs.Panel>
               <Tabs.Panel className="pt-4" id="qr">
                 <div className="flex flex-col gap-4">
                   {qrPhase === "loading" || qrPhase === "idle" ? (
-                    <>
-                      <Skeleton className="mx-auto h-48 w-48" />
-                      <LoginProgressAlert
-                        title="正在获取二维码"
-                        description="马上就好。"
-                      />
-                    </>
+                    <div
+                      aria-label="正在获取二维码"
+                      className="relative mx-auto size-48"
+                      role="status"
+                    >
+                      <Skeleton className="h-48 w-48" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Spinner size="lg" />
+                      </div>
+                    </div>
                   ) : null}
-                  {qrImage && (qrPhase === "pending" || qrPhase === "scanned") ? (
-                    <>
-                      <Alert status="accent">
-                        <Alert.Indicator />
-                        <Alert.Content>
-                          <Alert.Title>
-                            {qrPhase === "scanned" ? "扫码成功，请在手机上确认" : "使用微信或企业微信扫一扫登录"}
-                          </Alert.Title>
-                        </Alert.Content>
-                      </Alert>
+                  {qrImage && qrPhase === "pending" ? (
+                    <img
+                      alt="微信或企业微信登录二维码"
+                      className="mx-auto size-48"
+                      src={qrImage}
+                      onError={() => {
+                        setQrImage("");
+                        setQrPhase("expired");
+                      }}
+                    />
+                  ) : null}
+                  {qrImage && qrPhase === "scanned" ? (
+                    <div className="relative mx-auto size-48">
                       <img
                         alt="微信或企业微信登录二维码"
-                        className="mx-auto size-48"
+                        className="size-48 opacity-50"
                         src={qrImage}
-                        onError={() => {
-                          setQrImage("");
-                          setQrPhase("expired");
-                        }}
                       />
-                    </>
-                  ) : null}
-                  {qrPhase === "error" ? errorAlert : null}
-                  {qrPhase === "expired" || qrPhase === "cancelled" ? (
-                    <Alert status="warning">
-                      <Alert.Indicator />
-                      <Alert.Content>
-                        <Alert.Title>
-                          {qrPhase === "cancelled" ? "扫码已取消" : "二维码已失效"}
-                        </Alert.Title>
-                        <Alert.Description>
-                          请刷新二维码后重新扫码。
-                        </Alert.Description>
-                      </Alert.Content>
-                    </Alert>
+                      <Button
+                        aria-live="polite"
+                        className="absolute inset-0 size-48 flex-col whitespace-normal"
+                        role="status"
+                        variant="ghost"
+                      >
+                        <span className="text-sm font-medium">扫码成功，请在手机上确认</span>
+                      </Button>
+                    </div>
                   ) : null}
                   {qrPhase === "expired" ||
                   qrPhase === "cancelled" ||
                   qrPhase === "error" ? (
-                    <Button
-                      fullWidth
-                      onPress={() => {
-                        void startQr();
-                      }}
-                    >
-                      刷新二维码
-                    </Button>
+                    <div className="relative mx-auto size-48">
+                      {qrImage ? (
+                        <img
+                          alt="微信或企业微信登录二维码"
+                          className="size-48 opacity-50"
+                          src={qrImage}
+                        />
+                      ) : (
+                        <Skeleton animationType="none" className="h-48 w-48" />
+                      )}
+                      <Button
+                        aria-label="刷新二维码"
+                        className="group absolute inset-0 size-48 flex-col gap-1"
+                        variant="ghost"
+                        onPress={() => {
+                          void startQr();
+                        }}
+                      >
+                        {qrPhase === "cancelled" ? (
+                          <span className="text-sm font-medium">扫码已取消</span>
+                        ) : qrPhase === "expired" ? (
+                          <span className="text-sm font-medium">二维码已失效</span>
+                        ) : qrPhase === "error" ? (
+                          <span className="text-sm font-medium">
+                            {error || "登录失败，请稍后重试"}
+                          </span>
+                        ) : null}
+                        <ArrowRotateRight className="size-5 transition-transform group-hover:rotate-180" />
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </Tabs.Panel>
