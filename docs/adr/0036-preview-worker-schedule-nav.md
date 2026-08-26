@@ -11,7 +11,7 @@ _2026-08-26：生产自定义域不挂排课入口；Cloudflare `preview` 环境
 ## Consequences
 
 - 不要把生产 D1 或生产 AI 摘要队列绑到 preview。
-- 预览要「看起来同一份数据」时，运维在本机 `pnpm db:clone-preview`；CI 不导出含学生投稿的库。
+- 预览要「看起来同一份数据」时，运维在本机 `pnpm db:clone-preview`（先清空预览对象再导入完整 dump，保留同一 `database_id`，不必先 apply migrations）；CI 不导出含学生投稿的库。
 - Turnstile widget 需允许预览主机名，否则预览站人机验证会失败。
 
 ## Considered Options
