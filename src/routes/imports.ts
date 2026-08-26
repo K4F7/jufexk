@@ -26,6 +26,11 @@ import {
   HistoricalBatchImportError,
   importV5HistoricalBatch,
 } from "../historical-batch-imports";
+import {
+  applyProgramPlanImport,
+  parseProgramPlanImportRecords,
+  ProgramPlanImportError,
+} from "../program-plan-import";
 import { scheduleRelationSummaryRecompute } from "../review-summary";
 import { fail, markPublicCatalogCacheChanged } from "./support";
 import type { AppContext } from "./types";
@@ -131,6 +136,19 @@ importRoutes.post("/api/admin/import/relations", async (c) => {
     return c.json(result, result.created ? 201 : 200);
   } catch (error) {
     return relationAdditionFailure(c, error);
+  }
+});
+importRoutes.post("/api/admin/import/program-plan", async (c) => {
+  try {
+    const result = await applyProgramPlanImport(
+      c.env.DB,
+      parseProgramPlanImportRecords(await c.req.json<unknown>()),
+    );
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof ProgramPlanImportError)
+      return fail(c, error.message, error.status);
+    throw error;
   }
 });
 importRoutes.post("/api/admin/import/course-plan-attributes", async (c) => {
