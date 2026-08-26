@@ -347,7 +347,7 @@ test("first load shows skeleton rows and keeps the header height stable @mobile-
   ).toBeVisible();
   await expect(header.getByText("共 5 条", { exact: true })).toBeVisible();
   await expect(
-    page.getByLabel("pagination").getByText("共 5 条", { exact: true }),
+    page.getByLabel("分页").getByText("共 5 条", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("status", { name: "加载中…" })).toHaveCount(0);
 
