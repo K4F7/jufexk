@@ -179,12 +179,7 @@ export function createOrdinaryUserResolver(
   };
 }
 
-/**
- * Session boundary for ordinary-user writes.
- * Guests stay anonymous. Test HMAC or the CAS/email session cookie can
- * authenticate; AuthBridge JWT, admin cookies, IP hashes and submitter
- * hashes never authenticate here.
- */
+/** Session boundary for ordinary-user writes; guests stay anonymous. */
 export const resolveOrdinaryUser = createOrdinaryUserResolver([
   resolveTestHmacCredential,
   resolveOrdinaryUserSessionCredential,

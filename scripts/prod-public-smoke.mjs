@@ -4,7 +4,7 @@
  * Reconnaissance-then-action: wait for networkidle, screenshot, inspect DOM,
  * then click/fill with discovered roles. Headless Chromium. Not wired into CI.
  *
- * Does not log in, POST reviews, open AuthBridge, or follow 导师 / Tencent sheets.
+ * Does not log in, POST reviews, or follow 导师 / Tencent sheets.
  *
  * Usage: node scripts/prod-public-smoke.mjs
  */
@@ -165,15 +165,7 @@ function forbiddenRequest(request) {
       /^\/reviews?(?:\/|$)/.test(url.pathname) ||
       url.pathname === "/api/user/logout" ||
       url.pathname === "/submit");
-  const isAuthBridgeRequest =
-    url.origin !== ORIGIN &&
-    (/authbridge/i.test(`${url.hostname}${url.pathname}`) ||
-      (url.pathname === "/login" &&
-        (url.searchParams.get("mode") === "callback" ||
-          url.searchParams.has("appid") ||
-          url.searchParams.has("callback"))));
-
-  return isAuthOrReviewWrite || isAuthBridgeRequest
+  return isAuthOrReviewWrite
     ? { method, url: url.href }
     : null;
 }

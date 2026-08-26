@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
-import { handleCampusAuthStatus } from "../campus-jwt";
 import {
   EHALL_LAUNCH_PATH,
   EHALL_SESSION_PATH,
@@ -27,7 +26,6 @@ import {
   USER_DELETION_RESTORE_PATH,
 } from "../ordinary-user-account";
 import {
-  handleCampusAuthCallback,
   handleOrdinaryUserLogout,
   handleOrdinaryUserSession,
 } from "../ordinary-user-session";
@@ -49,8 +47,6 @@ authRoutes.get("/api/u/:code", handlePublicUserProfile);
 authRoutes.post("/api/user/logout", handleOrdinaryUserLogout);
 authRoutes.post(USER_DELETION_PATH, handleRequestOrdinaryUserDeletion);
 authRoutes.post(USER_DELETION_RESTORE_PATH, handleRestoreOrdinaryUserDeletion);
-authRoutes.get("/api/auth/campus", handleCampusAuthStatus);
-authRoutes.post("/api/auth/callback", handleCampusAuthCallback);
 authRoutes.post("/api/auth/email", handleEmailLoginRequest);
 authRoutes.post("/api/auth/verify", handleEmailLoginVerify);
 authRoutes.post("/api/auth/cas", handleCasLogin);

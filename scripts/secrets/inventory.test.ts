@@ -112,7 +112,7 @@ describe("secret inventory", () => {
   it("selects only worker keys from a dotenv file", () => {
     const selected = selectWorkerDevVars(
       parseDotenv(
-        "IP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCAMPUS_IDENTITY_SECRET=id\nCAS_CHALLENGE_SECRET=cas\nCAMPUS_JWT_SECRET=jwt\nMAIL_DELIVERY_TOKEN=mail\nREVIEW_AUTHOR_LOOKUP_TO=admin@example.test\nCLOUDFLARE_API_TOKEN=no\n",
+        "IP_HASH_SECRET=ip\nTURNSTILE_SECRET=turnstile\nCAMPUS_IDENTITY_SECRET=id\nCAS_CHALLENGE_SECRET=cas\nMAIL_DELIVERY_TOKEN=mail\nREVIEW_AUTHOR_LOOKUP_TO=admin@example.test\nCLOUDFLARE_API_TOKEN=no\n",
       ),
     );
     expect(selected.missing).toEqual([]);

@@ -1,6 +1,5 @@
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { CAMPUS_JWT_COOKIE } from "./campus-jwt";
 import {
   ORDINARY_USER_SESSION_TTL_SECONDS,
   clearOrdinaryUserSessionCookie,
@@ -68,7 +67,6 @@ export function issueOrdinaryUserCsrf(c: Context, token: string) {
 }
 
 export function clearOrdinaryUserCookies(c: Context) {
-  deleteCookie(c, CAMPUS_JWT_COOKIE, { path: "/" });
   clearOrdinaryUserSessionCookie(c);
   deleteCookie(c, ORDINARY_USER_CSRF_COOKIE, { path: "/" });
   deleteCookie(c, EHALL_SESSION_COOKIE, { path: EHALL_SESSION_COOKIE_PATH });
@@ -138,17 +136,4 @@ export async function handleOrdinaryUserLogout(c: Context) {
   }
   clearOrdinaryUserCookies(c);
   return c.json({ ok: true, ...guestSession() });
-}
-
-const closedCampusCallback = () => ({
-  error: "普通用户认证尚未开放接入",
-  reason: "abandoned",
-});
-
-/**
- * Abandoned AuthBridge callback. Campus login is jufe_cas password proxy.
- * Always 503, including when CAMPUS_JWT_ENABLED=1 is set by mistake.
- */
-export async function handleCampusAuthCallback(c: Context) {
-  return c.json(closedCampusCallback(), 503);
 }

@@ -1,6 +1,5 @@
--- Ordinary-user auth identities for campus AuthBridge JWT (#138).
--- users.id stays the only business identity. AuthBridge `sub` is not a
--- stable student id when `enc` is set; we store a hashed subject only.
+-- Ordinary-user auth identities (#138).
+-- users.id stays the only business identity; subjects are stored as hashes.
 CREATE TABLE auth_identities (
   provider TEXT NOT NULL,
   issuer TEXT NOT NULL,

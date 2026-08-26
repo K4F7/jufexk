@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function mockShellApi(
   page: Page,
-  options: { campusEnabled?: boolean; siteName?: string } = {},
+  options: { siteName?: string } = {},
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -22,27 +22,6 @@ async function mockShellApi(
           loginPath: "/login",
           logoutPath: "/logout",
         },
-      });
-    }
-    if (url.pathname === "/api/auth/campus") {
-      return route.fulfill({
-        json: options.campusEnabled
-          ? {
-              enabled: true,
-              reason: "live",
-              loginPath: "/login",
-              logoutPath: "/logout",
-              callbackPath: "/api/auth/callback",
-              appId: "jufexk",
-              authBridgeBaseUrl: "https://authbridge.example",
-            }
-          : {
-              enabled: false,
-              reason: "not_whitelisted",
-              loginPath: "/login",
-              logoutPath: "/logout",
-              callbackPath: "/api/auth/callback",
-            },
       });
     }
     if (url.pathname === "/api/site/banner") {

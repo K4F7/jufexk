@@ -10,8 +10,7 @@ import { RouterAriaLink } from "./RouterAriaLink";
  * The session payload carries no email, sub or users.id. After login the
  * trigger shows only the public handle; guests still see 「登录」. The
  * accessible name stays 「账号」 so existing tests keep working.
- * Guests always get a real login link: CAS password proxy is the
- * production path. AuthBridge callback is abandoned.
+ * Guests always get a real login link through the production CAS password proxy.
  *
  * 登录后菜单含「主页」与「消息」（#459 / #460 / #607）；管理员会话再多一项
  * 「管理后台」。未读数接口不可用时隐藏角标，不影响菜单本身。

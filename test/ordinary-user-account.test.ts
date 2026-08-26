@@ -378,7 +378,7 @@ describe("ordinary user account deletion", () => {
     await env.DB.prepare(
       "INSERT INTO auth_identities(provider,issuer,subject,user_id) VALUES(?,?,?,?)",
     )
-      .bind("authbridge", "jufexk", "late-restore-subject", user.stableUserId)
+      .bind("legacy", "jufexk", "late-restore-subject", user.stableUserId)
       .run();
     const identityBefore = await env.DB.prepare(
       "SELECT COUNT(*) count FROM auth_identities WHERE user_id=?",

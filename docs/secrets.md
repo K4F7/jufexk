@@ -25,7 +25,7 @@ Worker/GHA 的 JWXT 编排变量和凭据已移至归档分支；`main` 不再�
 
 - `SITE_NAME`、`UNIVERSITY_NAME`、`PUBLIC_SURFACE`、`TURNSTILE_SITE_KEY`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置。
 - 预览 Worker `jufexk-preview` 共用同一 Secrets Store；会话 Cookie 按 Host 隔离，不会写回生产 D1。
-- 已淘汰、不要再绑定：`CAMPUS_JWT_AUD`、`CAMPUS_APP_ID`、`AUTHBRIDGE_BASE_URL`、`CAMPUS_JWT_SECRET`、`CAMPUS_JWT_AES_KEY`、`CAMPUS_JWT_ENABLED`、`MAIL_DELIVERY_URL`、`MAIL_FROM`、`MAIL_DELIVERY_TOKEN`、`REVIEW_AUTHOR_LOOKUP_TO`。远程 store 里若还留着旧密钥，可之后人工删除，不要重新绑到 Worker。#478 曾为点评作者查询把邮件变量绑回，#500 再次解绑以免 deploy 依赖不存在的 Secrets Store 条目。
+- 已淘汰、不要再绑定：`MAIL_DELIVERY_URL`、`MAIL_FROM`、`MAIL_DELIVERY_TOKEN`、`REVIEW_AUTHOR_LOOKUP_TO`。远程 store 里若还留着旧邮件密钥，可之后人工删除，不要重新绑到 Worker。#478 曾为点评作者查询把邮件变量绑回，#500 再次解绑以免 deploy 依赖不存在的 Secrets Store 条目。
 - Vitest 夹具字符串（Secrets Store 绑定的测试替代值）：仅测试
 - `JUFEXK_BASE_URL`、`JUFEXK_BACKUP_PATH`、`JUFEXK_OPERATOR`、`JUFEXK_ADMIN_COOKIE`、`JUFEXK_ADMIN_CSRF`：运维参数。管理员不再使用共享口令，先绑定学号再复制会话 Cookie。
 

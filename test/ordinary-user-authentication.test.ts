@@ -1,6 +1,5 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { CAMPUS_JWT_COOKIE } from "../src/campus-jwt";
 import {
   EMAIL_LOGIN_COOKIE,
   ORDINARY_USER_ID_HEADER,
@@ -309,14 +308,14 @@ describe("ordinary user authentication adapters", () => {
     }
   });
 
-  it("does not authenticate AuthBridge JWT cookies, Bearer tokens, or admin cookies", async () => {
+  it("does not authenticate unknown cookies, Bearer tokens, or admin cookies", async () => {
     const token =
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjYW1wdXMtc3RhYmxlLXN1YiIsImV4cCI6OTk5OTk5OTk5OX0.sig";
     const admin = await adminAuth();
     expect(
       await resolveFrom(
         ordinaryUserRequest("/auth", {
-          Cookie: `${CAMPUS_JWT_COOKIE}=${token}`,
+          Cookie: `unknown_session=${token}`,
         }),
       ),
     ).toBeNull();
