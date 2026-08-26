@@ -525,6 +525,8 @@ export function LoginPage() {
   }
 
   const passwordInvalid = loginTab === "password" && Boolean(error);
+  const mfaError =
+    error && !RETURN_TO_CREDENTIALS_RE.test(error) ? error : "";
 
   return (
     <section aria-labelledby="login-heading" className="mx-auto max-w-xl py-8">
@@ -565,14 +567,14 @@ export function LoginPage() {
                 <Label>验证码</Label>
                 <Description>输入发送到企业微信的四位验证码</Description>
                 <InputOTP
-                  aria-describedby={error ? "code-error" : undefined}
+                  aria-describedby={mfaError ? "code-error" : undefined}
                   aria-label="验证码"
                   autoComplete="one-time-code"
                   autoFocus
                   className="w-auto justify-center"
                   inputMode="numeric"
                   isDisabled={busy}
-                  isInvalid={Boolean(error)}
+                  isInvalid={Boolean(mfaError)}
                   maxLength={4}
                   name="code"
                   pattern={REGEXP_ONLY_DIGITS}
@@ -596,10 +598,10 @@ export function LoginPage() {
                 </InputOTP>
                 <span
                   className="field-error"
-                  data-visible={Boolean(error)}
+                  data-visible={Boolean(mfaError)}
                   id="code-error"
                 >
-                  {error}
+                  {mfaError}
                 </span>
               </div>
               <Button
@@ -751,14 +753,13 @@ export function LoginPage() {
                         className="size-48 opacity-50"
                         src={qrImage}
                       />
-                      <Button
+                      <div
                         aria-live="polite"
-                        className="absolute inset-0 size-48 flex-col whitespace-normal"
+                        className="absolute inset-0 flex size-48 flex-col items-center justify-center whitespace-normal"
                         role="status"
-                        variant="ghost"
                       >
                         <span className="text-sm font-medium">扫码成功，请在手机上确认</span>
-                      </Button>
+                      </div>
                     </div>
                   ) : null}
                   {qrPhase === "expired" ||
