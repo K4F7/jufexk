@@ -650,6 +650,15 @@ describe("AI summary queue consumer", () => {
     expect(item.state.acked).toBe(true);
   });
 
+  it("skips enqueue when the preview Worker has no AI summary queue", async () => {
+    const { AI_SUMMARY_QUEUE: _queue, ...previewEnv } = queueEnv();
+    await expect(
+      scheduleRelationSummaryRecompute({ env: previewEnv }, 12, 34, {
+        immediate: true,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("enqueues only relation identifiers and the immediate flag", async () => {
     const sent: AiSummaryQueueMessage[] = [];
     await scheduleRelationSummaryRecompute(

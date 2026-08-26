@@ -42,7 +42,7 @@ describe("classifyChangedPaths", () => {
     expect(ciWorkflow.match(/^  web_static:/gm)).toHaveLength(1);
     expect(ciWorkflow).toContain("pnpm run check:static");
     expect(packageScripts["check:static"]).toBe(
-      "wrangler types && tsc --noEmit && pnpm run test:static && vite build && wrangler deploy --dry-run",
+      "wrangler types && tsc --noEmit && pnpm run test:static && vite build && wrangler deploy --dry-run --env=\"\"",
     );
     expect(packageScripts["test:static"]).toBe(
       "vitest run --config vitest.node.config.ts && vitest run --config vitest.catalog-baseline.config.ts && vitest run --config vitest.program-plan.config.ts && vitest run --config vitest.secrets.config.ts",
@@ -85,6 +85,7 @@ describe("classifyChangedPaths", () => {
   it("keeps production deploy to build and wrangler deploy only", () => {
     expect(deployWorkflow).toContain("pnpm run build");
     expect(deployWorkflow).toContain("wrangler deploy");
+    expect(deployWorkflow).toContain("wrangler deploy --env preview");
     expect(deployWorkflow).not.toContain("playwright");
     expect(deployWorkflow).not.toContain("pnpm run check");
     expect(deployWorkflow).not.toContain("ensure-remote");
@@ -99,6 +100,12 @@ describe("classifyChangedPaths", () => {
     expect(migrateWorkflow).toContain("production-d1-migrate");
     expect(migrateWorkflow).toContain("wrangler d1 migrations list jufexk --remote");
     expect(migrateWorkflow).toContain("wrangler d1 migrations apply jufexk --remote");
+    expect(migrateWorkflow).toContain(
+      "wrangler d1 migrations list jufexk-preview --remote",
+    );
+    expect(migrateWorkflow).toContain(
+      "wrangler d1 migrations apply jufexk-preview --remote",
+    );
     expect(deployWorkflow).not.toContain("migrations apply");
   });
 
