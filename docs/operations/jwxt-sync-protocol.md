@@ -8,4 +8,4 @@ Cookie authentication never falls back to password login. An expired or rejected
 
 Build and run the constrained Louis container with `Dockerfile.jwxt-sync` and `docker-compose.jwxt-sync.yml`. The compose limits are `cpus: 2.0`, `mem_limit: 2g`, read-only root, tmpfs scratch space, no added capabilities, and no-new-privileges. Inject `EHALL_COOKIE`, `CLOUDFLARE_API_TOKEN`, and `CLOUDFLARE_ACCOUNT_ID` only at runtime through an untracked `.env.jwxt-sync`; never bake them into the image.
 
-To capture a fresh cookie locally, start Chrome/Edge with remote debugging on port 9222, log in to eHall, then run `pnpm run jwxt-cookie-capture`. The script reads the existing browser context through CDP, waits for the eHall session cookies, and atomically writes `.env.jwxt-sync` without printing the cookie. It never uploads browser state.
+To capture a fresh cookie locally, run `pnpm run jwxt-cookie-capture`. The script opens only the eHall home page; the operator handles every login and subsequent navigation manually. It reads the local browser context, waits for the eHall session cookies, and atomically writes `.env.jwxt-sync` without printing or uploading browser state.
