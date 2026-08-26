@@ -4,8 +4,8 @@ import { TIER3_QUESTIONS } from "../review-score-fixtures";
 /**
  * 写评价（Issue #402 + #400 + #447）：入口只从课程页「写点评」；表单对齐 icourse ——
  * 课×师已知时用「点评 · 课名（教师）」卡片头；四道三档、
- * 1–5 半星推荐度（必填）、纯文本详细评价、选填数字成绩、可保存草稿；
- * 「只写点评不评分」只跳过三档题，不跳过推荐度。
+ * 1–5 半星推荐度（默认必填）、纯文本详细评价、选填数字成绩、可保存草稿；
+ * 「只写点评不评分」问卷仍显示，评分与推荐度改为可选。
  * 从课程页带入的课/老师不再重选；投稿一律匿名。
  * 线下课与 mooc 同一套四道题；发布成功回到该 课程×教师 的详情页。一句话总结字段已下线。
  *
@@ -589,7 +589,7 @@ test("optional grade is submitted and shown on the course detail", async ({
   await expect(item.getByText("成绩 90", { exact: true })).toBeVisible();
 });
 
-test("review-only submit skips tier questions but still requires overall", async ({
+test("review-only submit keeps the questionnaire optional", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
@@ -598,7 +598,7 @@ test("review-only submit skips tier questions but still requires overall", async
   await expect(skipRatings).not.toBeChecked();
   await clickLabeledCheckbox(page, "只写点评不评分");
   await expect(skipRatings).toBeChecked();
-  await expect(page.getByRole("grid", { name: "课程难度" })).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "课程难度" })).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeVisible();
   await expect(
     page.getByText("建议尽量评分，方便同学比较选课"),
@@ -606,18 +606,13 @@ test("review-only submit skips tier questions but still requires overall", async
 
   await fillComment(page, VALID_NOTE);
   await page.getByRole("button", { name: "发布" }).click();
-  await expect(page.getByText("请选择推荐度")).toBeVisible();
-  expect(posted).toHaveLength(0);
-
-  await pickOverall(page, "4");
-  await page.getByRole("button", { name: "发布" }).click();
 
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   expect(posted).toHaveLength(1);
   expect(posted[0]).toMatchObject({
     courseId: 8,
     teacherId: 9,
-    overall: 4,
+    overall: null,
     scores: null,
     reviewOnly: true,
     comment: `<p>${VALID_NOTE}</p>`,

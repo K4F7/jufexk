@@ -161,14 +161,14 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
   const offeringId = b.offeringId.value,
     teacherId = b.teacherId,
     reviewOnly = b.reviewOnly,
-    overall = b.overall,
+    overall = reviewOnly ? b.overall || null : b.overall,
     ip = c.req.header("CF-Connecting-IP") || "unknown",
     ipHash = await keyedDigest(ip, await readSecret(c.env.IP_HASH_SECRET));
   if (b.offeringId.supplied && (!offeringId || offeringId < 1))
     return fail(c, "开课班无效");
   if (!courseId || !teacherId)
     return fail(c, "请选择有效的课程和任课教师");
-  if (!overall)
+  if (!reviewOnly && !overall)
     return fail(c, "请选择有效的课程、任课教师和总体评分");
   // 一句话总结必填（#444）；成绩选填，空串存 NULL，不进 AI 总结提示词。
   const headline = b.headline;
@@ -213,7 +213,7 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         }>();
   if (course) courseId = course.course_id;
   if (!course) return fail(c, "请选择有效的课程、任课教师和总体评分");
-  if (!overall)
+  if (!reviewOnly && !overall)
     return fail(c, "请选择有效的课程、任课教师和总体评分");
   const snapshot = snapshotReviewScores({
     schemeKey: course.scheme_key,

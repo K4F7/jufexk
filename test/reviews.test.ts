@@ -395,18 +395,11 @@ describe("review submission required scheme scores", () => {
       teacherId: 1,
       reviewOnly: true,
     });
-    expect(omitted.status).toBe(400);
-
-    const withOverall = await submit({
-      courseId: courseId2,
-      teacherId: 1,
-      reviewOnly: true,
-      overall: 3.5,
-    });
-    expect(withOverall.status).toBe(200);
+    expect(omitted.status).toBe(200);
     expect(await insertedReview(courseId2)).toMatchObject({
-      overall: 3.5,
+      overall: null,
       scores: null,
+      comment: REQUIRED_NOTE,
     });
 
     const guest = await SELF.fetch(
@@ -421,7 +414,7 @@ describe("review submission required scheme scores", () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       comment: REQUIRED_NOTE,
-      overall: 3.5,
+      overall: null,
     });
   });
 

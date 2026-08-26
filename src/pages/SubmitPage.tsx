@@ -67,16 +67,19 @@ function ScaleRadios({
   name,
   label,
   options,
+  required = true,
   value,
   onChange,
 }: {
   name: string;
   label: string;
   options: ReadonlyArray<{ value: string; label: string }>;
+  required?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
   const [invalid, setInvalid] = useState(false);
+  const errorId = `${name}-error`;
   return (
     <>
       <TagGroup
@@ -90,7 +93,7 @@ function ScaleRadios({
           onChange(next);
         }}
       >
-        <Label isRequired>{label}</Label>
+        <Label isRequired={required}>{label}</Label>
         <TagGroup.List>
           {options.map((option) => (
             <Tag key={option.value} id={option.value} textValue={option.label}>
@@ -98,29 +101,37 @@ function ScaleRadios({
             </Tag>
           ))}
         </TagGroup.List>
-        {invalid ? <ErrorMessage>请选择{label}</ErrorMessage> : null}
+        {invalid ? (
+          <ErrorMessage id={errorId}>请选择{label}</ErrorMessage>
+        ) : null}
       </TagGroup>
-      <input
-        required
-        aria-hidden
-        className="sr-only"
-        name={name}
-        tabIndex={-1}
-        value={value}
-        onChange={() => {}}
-        onInvalid={(event) => {
-          event.preventDefault();
-          setInvalid(true);
-        }}
-      />
+      {required ? (
+        <input
+          required
+          aria-describedby={invalid ? errorId : undefined}
+          aria-invalid={invalid || undefined}
+          aria-label={label}
+          className="sr-only"
+          name={name}
+          tabIndex={-1}
+          value={value}
+          onChange={() => {}}
+          onInvalid={(event) => {
+            event.preventDefault();
+            setInvalid(true);
+          }}
+        />
+      ) : null}
     </>
   );
 }
 
 function OverallStarRating({
+  required = true,
   value,
   onChange,
 }: {
+  required?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -131,7 +142,7 @@ function OverallStarRating({
   return (
     <div className="flex flex-wrap items-center gap-3">
       <RadioGroup
-        isRequired
+        isRequired={required}
         className="flex-col gap-1"
         name="overall"
         orientation="horizontal"
@@ -139,7 +150,7 @@ function OverallStarRating({
         onChange={onChange}
       >
         <div className="flex items-center gap-3">
-          <Label isRequired className="m-0 leading-6">
+          <Label isRequired={required} className="m-0 leading-6">
             推荐度
           </Label>
           <div
@@ -453,7 +464,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
       setMsg("请选择课程和任课教师");
       return;
     }
-    if (!overall) {
+    if (!reviewOnly && !overall) {
       setMsg("请选择推荐度");
       return;
     }
@@ -478,7 +489,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
         body: JSON.stringify({
           courseId: selectedCourse.id,
           teacherId: Number(teacherId),
-          overall: Number(overall),
+          overall: overall ? Number(overall) : null,
           scores: reviewOnly ? null : payloadScores,
           headline: headlineFromNote(note),
           grade: grade.trim(),
@@ -636,7 +647,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
               </>
             )}
 
-            {reviewOnly ? null : hiddenCoreLabels.length ? (
+            {hiddenCoreLabels.length ? (
               <p className="m-0 text-sm text-muted">
                 该课程为网课（MOOC），
                 {hiddenCoreLabels.map((label) => `「${label}」`).join("、")}
@@ -644,30 +655,33 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
               </p>
             ) : null}
 
-            {reviewOnly ? null : (
-              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-                {questions.map((question) => (
-                  <ScaleRadios
-                    key={question.id}
-                    name={`score-${question.id}`}
-                    label={question.prompt}
-                    options={question.options.map((option) => ({
-                      value: String(option.value),
-                      label: option.label,
-                    }))}
-                    value={scores[question.id] || ""}
-                    onChange={(value) =>
-                      setScores((current) => ({
-                        ...current,
-                        [question.id]: value,
-                      }))
-                    }
-                  />
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+              {questions.map((question) => (
+                <ScaleRadios
+                  key={question.id}
+                  name={`score-${question.id}`}
+                  label={question.prompt}
+                  options={question.options.map((option) => ({
+                    value: String(option.value),
+                    label: option.label,
+                  }))}
+                  required={!reviewOnly}
+                  value={scores[question.id] || ""}
+                  onChange={(value) =>
+                    setScores((current) => ({
+                      ...current,
+                      [question.id]: value,
+                    }))
+                  }
+                />
+              ))}
+            </div>
             <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-              <OverallStarRating value={overall} onChange={setOverall} />
+              <OverallStarRating
+                required={!reviewOnly}
+                value={overall}
+                onChange={setOverall}
+              />
               <Checkbox
                 className="ml-auto"
                 isSelected={reviewOnly}
