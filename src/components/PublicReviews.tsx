@@ -50,93 +50,93 @@ export function PublicReviews({
       {rows.length ? (
         <div>
           <div role="list" aria-label="评价列表" aria-busy={isLoadingMore}>
-          {rows.map((review, index) => (
-            <div key={review.id} role="listitem">
-              {index > 0 ? <Separator /> : null}
-              <article className="py-4 [content-visibility:auto] [contain-intrinsic-size:auto_6rem]">
-                {counterpart === "course" ? (
-                  <p className="m-0 min-w-0 text-sm font-semibold">
-                    <RouterAriaLink
-                      className="break-words"
-                      to={`/courses/${review.course_id}`}
-                    >
-                      {review.course_name || "课程未标注"}
-                      {review.course_code ? `（${review.course_code}）` : null}
-                    </RouterAriaLink>
-                  </p>
-                ) : null}
-                <div
-                  className={`flex items-start gap-2 ${
-                    counterpart === "course" ? "mt-1.5" : ""
-                  }`}
-                >
-                  <span
-                    aria-hidden
-                    className="shrink-0 select-none font-serif text-4xl leading-[0.6] text-accent/35"
-                  >
-                    “
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 flex flex-wrap items-center gap-x-2 text-[calc(12/15*1rem)] text-muted">
-                      <ReviewAuthor
-                        publicCode={review.author_public_code}
-                        avatarKey={review.author_avatar_key}
-                      />
-                      {review.overall != null ? (
-                        <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
-                      ) : null}
-                      {review.term ? <span>{review.term}</span> : null}
-                      {review.grade ? <span>成绩 {review.grade}</span> : null}
-                      {review.created_at ? (
-                        <time dateTime={formatReviewDate(review.created_at)}>
-                          {formatReviewDate(review.created_at)}
-                        </time>
-                      ) : null}
+            {rows.map((review, index) => (
+              <div key={review.id} role="listitem">
+                {index > 0 ? <Separator /> : null}
+                <article className="py-4 [content-visibility:auto] [contain-intrinsic-size:auto_6rem]">
+                  {counterpart === "course" ? (
+                    <p className="m-0 min-w-0 text-sm font-semibold">
+                      <RouterAriaLink
+                        className="break-words"
+                        to={`/courses/${review.course_id}`}
+                      >
+                        {review.course_name || "课程未标注"}
+                        {review.course_code ? `（${review.course_code}）` : null}
+                      </RouterAriaLink>
                     </p>
-                    {review.headline ? (
-                      <p className="mb-1 mt-0 break-words text-sm font-semibold">
-                        {review.headline}
+                  ) : null}
+                  <div
+                    className={`flex items-start gap-2 ${
+                      counterpart === "course" ? "mt-1.5" : ""
+                    }`}
+                  >
+                    <span
+                      aria-hidden
+                      className="shrink-0 select-none font-serif text-4xl leading-[0.6] text-accent/35"
+                    >
+                      “
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 flex flex-wrap items-center gap-x-2 text-[calc(12/15*1rem)] text-muted">
+                        <ReviewAuthor
+                          publicCode={review.author_public_code}
+                          avatarKey={review.author_avatar_key}
+                        />
+                        {review.overall != null ? (
+                          <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
+                        ) : null}
+                        {review.term ? <span>{review.term}</span> : null}
+                        {review.grade ? <span>成绩 {review.grade}</span> : null}
+                        {review.created_at ? (
+                          <time dateTime={formatReviewDate(review.created_at)}>
+                            {formatReviewDate(review.created_at)}
+                          </time>
+                        ) : null}
                       </p>
-                    ) : null}
-                    <ReviewNoteContent
-                      comment={review.comment}
-                      commentFormat={review.comment_format}
-                    />
-                    {review.dimensionLabels?.length ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {review.dimensionLabels.map((dimension) => (
-                          <Chip key={dimension.id} size="sm" variant="soft">
+                      {review.headline ? (
+                        <p className="mb-1 mt-0 break-words text-sm font-semibold">
+                          {review.headline}
+                        </p>
+                      ) : null}
+                      <ReviewNoteContent
+                        comment={review.comment}
+                        commentFormat={review.comment_format}
+                      />
+                      {review.dimensionLabels?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {review.dimensionLabels.map((dimension) => (
+                            <Chip key={dimension.id} size="sm" variant="soft">
+                              <Chip.Label>
+                                {dimension.label} {dimension.option}
+                              </Chip.Label>
+                            </Chip>
+                          ))}
+                        </div>
+                      ) : null}
+                      {typeof review.dimensionAverage === "number" ? (
+                        <div className="mt-2">
+                          <Chip size="sm" variant="soft">
                             <Chip.Label>
-                              {dimension.label} {dimension.option}
+                              维度均分 {review.dimensionAverage.toFixed(1)}
                             </Chip.Label>
                           </Chip>
-                        ))}
-                      </div>
-                    ) : null}
-                    {typeof review.dimensionAverage === "number" ? (
-                      <div className="mt-2">
-                        <Chip size="sm" variant="soft">
-                          <Chip.Label>
-                            维度均分 {review.dimensionAverage.toFixed(1)}
-                          </Chip.Label>
-                        </Chip>
-                      </div>
-                    ) : null}
-                    {isEndorsableReview(review) ? (
-                      <ReviewRecognitionControl
-                        review={review}
-                        ready={ready}
-                        authenticated={viewer.authenticated}
-                        loginPath={viewer.loginPath}
-                        onUnauthenticated={clear}
-                      />
-                    ) : null}
+                        </div>
+                      ) : null}
+                      {isEndorsableReview(review) ? (
+                        <ReviewRecognitionControl
+                          review={review}
+                          ready={ready}
+                          authenticated={viewer.authenticated}
+                          loginPath={viewer.loginPath}
+                          onUnauthenticated={clear}
+                        />
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              </article>
-            </div>
-          ))}
-        </div>
+                </article>
+              </div>
+            ))}
+          </div>
           {hasMore ? (
             <div className="flex justify-center border-t border-border pt-4">
               <Button variant="secondary" isPending={isLoadingMore} onPress={onLoadMore}>
