@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyChangedPaths } from "../scripts/ci/classify-changed-paths.mjs";
 import bindAdminWorkflow from "../.github/workflows/bind-admin-students.yml?raw";
+import ctaSyncWorkflow from "../.github/workflows/cta-sync.yml?raw";
 import ciWorkflow from "../.github/workflows/ci.yml?raw";
 import playwrightConfig from "../playwright.config.ts?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
@@ -117,6 +118,18 @@ describe("classifyChangedPaths", () => {
     expect(bindAdminWorkflow).toContain("JUFEXK_ADMIN_STUDENT_IDS");
     expect(bindAdminWorkflow).toContain(
       "scripts/admin/bind-student-ids.ts --remote --apply",
+    );
+  });
+
+  it("writes CTA homepages only from an on-demand production workflow", () => {
+    expect(ctaSyncWorkflow).toContain("workflow_dispatch");
+    expect(ctaSyncWorkflow).not.toContain("push:");
+    expect(ctaSyncWorkflow).toContain("production-cta-sync");
+    expect(ctaSyncWorkflow).toContain("environment: production");
+    expect(ctaSyncWorkflow).toContain("secrets.CLOUDFLARE_API_TOKEN");
+    expect(ctaSyncWorkflow).toContain("pnpm cta-sync");
+    expect(ctaSyncWorkflow).toContain(
+      "scripts/cta-sync/apply-remote.ts --remote --apply",
     );
   });
 
