@@ -121,9 +121,10 @@ describe("classifyChangedPaths", () => {
     );
   });
 
-  it("writes CTA homepages only from an on-demand production workflow", () => {
+  it("writes CTA homepages from production GHA, not from a schedule", () => {
     expect(ctaSyncWorkflow).toContain("workflow_dispatch");
-    expect(ctaSyncWorkflow).not.toContain("push:");
+    expect(ctaSyncWorkflow).toContain("migrations/0046_teacher_cta_homepage.sql");
+    expect(ctaSyncWorkflow).not.toContain("schedule:");
     expect(ctaSyncWorkflow).toContain("production-cta-sync");
     expect(ctaSyncWorkflow).toContain("environment: production");
     expect(ctaSyncWorkflow).toContain("secrets.CLOUDFLARE_API_TOKEN");

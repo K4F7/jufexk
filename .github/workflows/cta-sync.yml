@@ -1,6 +1,11 @@
 name: Sync CTA teacher homepages
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "migrations/0046_teacher_cta_homepage.sql"
+      - ".github/workflows/cta-sync.yml"
 concurrency:
   group: production-cta-sync
   cancel-in-progress: false
