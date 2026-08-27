@@ -14,7 +14,9 @@ import {
   type CtaTeacherCandidate,
 } from "./cta-teacher-homepage";
 
-const MAX_AVATAR_BYTES = 512 * 1024;
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const CTA_PHOTO_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const ALLOWED_AVATAR_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -36,6 +38,7 @@ export type CtaPhotoResponse = {
 
 export type CtaSearchResult = {
   candidates: CtaTeacherCandidate[];
+  total: number;
   truncated: boolean;
 };
 
@@ -133,10 +136,10 @@ export function createHttpCtaClient(
         },
         body,
       });
-      if (!response.ok) return { candidates: [], truncated: false };
+      if (!response.ok) return { candidates: [], total: 0, truncated: false };
       const json = (await response.json()) as SearchTeachersJson;
       if (json.result !== 1 || !Array.isArray(json.teachersInfos)) {
-        return { candidates: [], truncated: false };
+        return { candidates: [], total: 0, truncated: false };
       }
       const candidates = json.teachersInfos
         .map(parseCandidate)
@@ -144,6 +147,7 @@ export function createHttpCtaClient(
       const total = Number(json.totalResult) || candidates.length;
       return {
         candidates,
+        total,
         truncated: total > candidates.length,
       };
     },
@@ -179,7 +183,11 @@ export function createHttpCtaClient(
     async fetchPhoto(url) {
       if (isDefaultCtaAvatarUrl(url)) return null;
       const response = await fetchImpl(url, {
-        headers: { Accept: "image/*" },
+        headers: {
+          Accept: "image/*",
+          Referer: `${CTA_ORIGIN}/`,
+          "User-Agent": CTA_PHOTO_USER_AGENT,
+        },
       });
       if (!response.ok) return null;
       const bytes = new Uint8Array(await response.arrayBuffer());
@@ -196,6 +204,33 @@ export function createHttpCtaClient(
   };
 }
 
+export async function fetchCtaTeacherDirectory(
+  client: CtaTeacherClient,
+  pageSize = 40,
+): Promise<CtaTeacherCandidate[]> {
+  const seen = new Set<number>();
+  const all: CtaTeacherCandidate[] = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+  while (all.length < total) {
+    const result = await client.searchTeachers({
+      teaName: "",
+      page,
+      pageSize,
+    });
+    if (page === 1) total = result.total || result.candidates.length;
+    for (const candidate of result.candidates) {
+      if (seen.has(candidate.uid)) continue;
+      seen.add(candidate.uid);
+      all.push(candidate);
+    }
+    if (!result.candidates.length) break;
+    page += 1;
+    if (page > 200) break;
+  }
+  return all;
+}
+
 async function searchCandidates(
   client: CtaTeacherClient,
   name: string,
@@ -205,14 +240,14 @@ async function searchCandidates(
   let truncated = false;
   for (const teaName of catalogSearchNames(name)) {
     const page = await client.searchTeachers({ teaName });
-    truncated = truncated || page.truncated;
+    truncated = truncated || page.truncated || page.total > page.candidates.length;
     for (const candidate of page.candidates) {
       if (seen.has(candidate.uid)) continue;
       seen.add(candidate.uid);
       merged.push(candidate);
     }
   }
-  return { candidates: merged, truncated };
+  return { candidates: merged, total: merged.length, truncated };
 }
 
 async function clearStoredAvatar(db: D1Database, teacherId: number) {

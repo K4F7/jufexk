@@ -4,6 +4,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  createHttpCtaClient,
+  fetchCtaTeacherDirectory,
+} from "../src/cta-teacher-sync";
+import {
   CTA_DEFAULT_AVATAR_SHA256,
   catalogSearchNames,
   chooseCtaMatch,
@@ -172,5 +176,46 @@ describe("public teacher projection", () => {
     expect(publicTeacher).not.toHaveProperty("cta_uid");
     expect(publicTeacher).not.toHaveProperty("avatar_sha256");
     expect(publicTeacher).not.toHaveProperty("image_locked");
+  });
+});
+
+describe("CTA photo fetch", () => {
+  it("sends Referer and User-Agent so the Chaoxing CDN allows the file", async () => {
+    const seen: Record<string, string | null> = {};
+    const png = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const client = createHttpCtaClient(async (_url, init) => {
+      const headers = new Headers(init?.headers);
+      seen.referer = headers.get("referer");
+      seen.userAgent = headers.get("user-agent");
+      return new Response(png, { headers: { "content-type": "image/png" } });
+    });
+    const photo = await client.fetchPhoto(
+      "https://p.ananas.chaoxing.com/star3/origin/abcdef12.png",
+    );
+    expect(seen.referer).toBe("http://cta.jxufe.edu.cn/");
+    expect(seen.userAgent).toMatch(/Mozilla\/5\.0/);
+    expect(photo?.bytes.byteLength).toBe(8);
+  });
+});
+
+describe("CTA directory crawl", () => {
+  it("pages through the public index once", async () => {
+    const pages = [
+      [{ uid: 1, realname: "甲", photo: "aaaaaaaa", deptName: "A" }],
+      [{ uid: 2, realname: "乙", photo: "bbbbbbbb", deptName: "B" }],
+    ];
+    const directory = await fetchCtaTeacherDirectory({
+      async searchTeachers(query) {
+        const candidates = pages[(query.page ?? 1) - 1] ?? [];
+        return { candidates, total: 2, truncated: query.page === 1 };
+      },
+      async fetchTeacherPhotoId() {
+        return null;
+      },
+      async fetchPhoto() {
+        return null;
+      },
+    });
+    expect(directory.map((item) => item.uid)).toEqual([1, 2]);
   });
 });

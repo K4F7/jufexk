@@ -44,8 +44,10 @@ function fakeClient(options: {
 }): CtaTeacherClient {
   return {
     async searchTeachers() {
+      const candidates = options.candidates ?? [];
       return {
-        candidates: options.candidates ?? [],
+        candidates,
+        total: candidates.length,
         truncated: false,
       };
     },

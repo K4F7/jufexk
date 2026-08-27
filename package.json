@@ -27,6 +27,8 @@
     "audit:catalog-full": "tsx scripts/catalog-baseline/audit-full.ts",
     "catalog-baseline": "tsx scripts/catalog-baseline/cli.ts",
     "jwxt-sync": "tsx scripts/jwxt-sync/run.ts",
+    "cta-sync": "tsx scripts/cta-sync/run.ts",
+    "cta-sync:apply-local": "python3 scripts/cta-sync/apply-local.py",
     "jwxt-collect": "tsx scripts/jwxt-collector/run.ts",
     "jwxt-cookie-capture": "tsx scripts/jwxt-cookie-capture.ts",
     "deploy": "pnpm run build && wrangler deploy",
