@@ -331,7 +331,7 @@ function PaginationFooter({
   const pages = Math.max(totalPages, 1);
   const selectedPage = Math.min(Math.max(currentPage, 1), pages);
   return (
-    <Pagination className="mt-3 w-full" size="sm">
+    <Pagination aria-label="分页" className="mt-3 w-full" size="sm">
       <Pagination.Summary>
         共 {total} {totalUnit}
       </Pagination.Summary>

@@ -510,8 +510,18 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
     }
   }
 
-  if (!viewerReady || !viewer.authenticated) {
+  // 会话仍在解析时不播报：此时无法区分「已确认访客将跳转登录」与
+  // 「已登录用户在等会话」，提前断言「正在前往登录」对后者是假状态消息。
+  if (!viewerReady) {
     return null;
+  }
+
+  if (!viewer.authenticated) {
+    return (
+      <p className="sr-only" role="status">
+        正在前往登录…
+      </p>
+    );
   }
 
   if (phase === "gate") {
