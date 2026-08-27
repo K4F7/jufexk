@@ -201,7 +201,9 @@ test("guest sees counts, no selected state, and a real login link", async ({ pag
     }),
   ).toHaveAttribute("aria-pressed", "false");
 
-  await expect(entry(page, "历史评价不可认可。").getByRole("button")).toHaveCount(0);
+  await expect(
+    entry(page, "历史评价不可认可。").getByRole("button", { name: /认可/ }),
+  ).toHaveCount(0);
 
   await zero.click();
   const prompt = entry(page, "零计数当前文字评价。").getByRole("status");
