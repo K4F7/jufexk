@@ -1,6 +1,18 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+
+const repoRoot = path.dirname(fileURLToPath(import.meta.url));
+
+/** Ignore a directory next to this config. Absolute paths work on Windows.
+ *  A recursive glob that starts with star-star slash .worktree would also
+ *  match this worktree's own src and silently kill HMR when prototype
+ *  runs from .worktree/<issue>/ (#152). */
+function ignoreDir(name: string): string {
+  return path.join(repoRoot, name);
+}
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -14,12 +26,17 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
-    // Issue worktrees copy the full repo. Watching them freezes Vite HMR (#152).
-    // Use a root-relative glob — a recursive `**` prefix also matches this
-    // worktree's own absolute path (`…/.worktree/dev-preview-atlas/src/…`) and
-    // silently disables HMR when `pnpm prototype` runs from the worktree.
     watch: {
-      ignored: [".worktree/**"],
+      ignored: [
+        ignoreDir(".worktree"),
+        ignoreDir(".worktrees"),
+        ignoreDir(".wrangler"),
+        ignoreDir(".local-data"),
+        ignoreDir(".scratch"),
+        ignoreDir(".playwright-cli"),
+        ignoreDir("test-results"),
+        ignoreDir("output"),
+      ],
     },
     proxy: {
       "/api": {

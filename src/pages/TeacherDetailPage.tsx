@@ -10,10 +10,11 @@
  * Issue #482 · docs/ui/foundations.md §详情体验.
  */
 import { Breadcrumbs, Card, Typography } from "@heroui/react";
+import { TeacherIdentityName } from "../components/TeacherIdentityName";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
-import { OfficialHomepageLink } from "../components/OfficialHomepageLink";
+import { TeacherHomepageLine } from "../components/OfficialHomepageLink";
 import {
   DetailErrorAlert,
   DetailPageSkeleton,
@@ -59,15 +60,16 @@ function TeacherIdentityCard({
           className="size-[96px] rounded-full"
           fallback={teacher.name.slice(0, 1)}
         />
-        <Typography
-          className="m-0 text-[calc(18/15*1rem)] font-bold leading-tight"
-          type="h1"
-        >
-          {teacher.name}
-        </Typography>
+        <TeacherIdentityName as="h1">{teacher.name}</TeacherIdentityName>
         <Card.Description>
           {teacher.department || "院系未标注"}
         </Card.Description>
+        <div className="w-full min-w-0">
+          <TeacherHomepageLine
+            officialUrl={teacher.official_homepage_url}
+            teacherId={teacher.id}
+          />
+        </div>
       </Card.Header>
       <Card.Content>
         <dl className="m-0 grid gap-1.5 text-sm">
@@ -84,11 +86,6 @@ function TeacherIdentityCard({
           <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
             {teacher.bio}
           </p>
-        ) : null}
-        {teacher.official_homepage_url ? (
-          <div className="mt-3">
-            <OfficialHomepageLink href={teacher.official_homepage_url} />
-          </div>
         ) : null}
       </Card.Content>
     </Card>

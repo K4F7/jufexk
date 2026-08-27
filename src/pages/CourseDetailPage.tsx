@@ -24,7 +24,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
-import { OfficialHomepageLink } from "../components/OfficialHomepageLink";
+import { TeacherHomepageLine } from "../components/OfficialHomepageLink";
 import { CourseAdminNotice } from "../components/CourseAdminNotice";
 import { CourseAiSummary } from "../components/CourseAiSummary";
 import {
@@ -694,12 +694,12 @@ export function CourseDetailPage() {
       <aside className="space-y-3 self-start">
         {selectedTeacher ? (
           <Card aria-label="任课教师">
-            <RouterAriaLink
-              aria-label={`${selectedTeacher.name}的教师主页`}
-              className="block! w-full! rounded-none! no-underline hover:bg-transparent hover:no-underline!"
-              to={`/teachers/${selectedTeacher.id}`}
-            >
-              <Card.Header className="items-center text-center">
+            <Card.Header className="items-center gap-1 text-center">
+              <RouterAriaLink
+                aria-label={`${selectedTeacher.name}的教师主页`}
+                className="flex! w-full! flex-col! items-center gap-1 rounded-none! no-underline hover:bg-transparent hover:no-underline!"
+                to={`/teachers/${selectedTeacher.id}`}
+              >
                 <AnonymousAvatar
                   seed={selectedTeacher.id}
                   photoSrc={selectedTeacher.avatar_url}
@@ -707,21 +707,26 @@ export function CourseDetailPage() {
                   className="size-[96px] rounded-full"
                   fallback={selectedTeacher.name.slice(0, 1)}
                 />
-                <Card.Title className="text-accent">
+                <Typography
+                  className="m-0 min-w-0 text-[calc(22/15*1rem)] font-bold leading-tight text-accent"
+                  render={({ children, ...domProps }) => (
+                    <span {...domProps}>{children}</span>
+                  )}
+                  type="h1"
+                >
                   {selectedTeacher.name}
-                </Card.Title>
-                {selectedTeacher.department ? (
-                  <Card.Description>{selectedTeacher.department}</Card.Description>
-                ) : null}
-              </Card.Header>
-            </RouterAriaLink>
-            {selectedTeacher.official_homepage_url ? (
-              <Card.Footer className="justify-center">
-                <OfficialHomepageLink
-                  href={selectedTeacher.official_homepage_url}
+                </Typography>
+                <Card.Description>
+                  {selectedTeacher.department || "院系未标注"}
+                </Card.Description>
+              </RouterAriaLink>
+              <div className="w-full min-w-0">
+                <TeacherHomepageLine
+                  officialUrl={selectedTeacher.official_homepage_url}
+                  teacherId={selectedTeacher.id}
                 />
-              </Card.Footer>
-            ) : null}
+              </div>
+            </Card.Header>
           </Card>
         ) : null}
 

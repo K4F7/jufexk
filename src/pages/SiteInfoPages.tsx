@@ -67,9 +67,8 @@ export function AboutPage() {
   return (
     <SiteInfoPage title="关于我们">
       <p>
-        先前学长学姐做的课评站停了，后来还能看的那张在线表格也不再更新。
+        以前的江财课评站和腾讯文档都停止更新了，我又特别需要这个，所以就做了
       </p>
-      <p>假期里就想着，干脆自己写一个。</p>
     </SiteInfoPage>
   );
 }
@@ -78,12 +77,12 @@ export function ContactPage() {
   return (
     <SiteInfoPage title="反馈问题">
       <p>
-        网站功能有问题或想提建议，去{" "}
+        网站功能问题和建议去提issue{" "}
         <ExternalLink href={GITHUB_ISSUES_URL}>GitHub 开个 issue</ExternalLink>{" "}
         就行。
       </p>
       <p>
-        要投诉某条评论，发邮件到{" "}
+        投诉评论问题，发邮件{" "}
         {/* 原生 mailto：HeroUI Link 会走 RouterProvider，把协议当成站内路径。 */}
         <a className="link" href={`mailto:${CONTACT_EMAIL}`}>
           {CONTACT_EMAIL}
@@ -109,9 +108,9 @@ export function ResourcesPage() {
 export function TermsPage() {
   return (
     <SiteInfoPage title="使用条款">
-      <p>本站和学校官方无关。上面的评价都是学生写的，仅供参考。</p>
+      <p>站点和学校官方无关。评价都是由学生写的，仅供参考。</p>
       <p>
-        请不要发布违法内容。这里没有事先审核，不过我们仍可以删帖、禁言。
+        请不要发布违规内容，人身攻击，过激的言论，请使用平缓的语言，便于大家的参考。
       </p>
     </SiteInfoPage>
   );
