@@ -554,16 +554,15 @@ export function LoginPage() {
     error && !RETURN_TO_CREDENTIALS_RE.test(error) ? error : "";
 
   return (
-    <section aria-labelledby="login-heading" className="mx-auto max-w-xl py-8">
+    <section
+      aria-labelledby="login-heading"
+      className="mx-auto w-full max-w-xl py-8"
+    >
       {import.meta.env.DEV &&
       (loginPreview || searchParams.get("atlas") === "1") ? (
         <LoginPreviewBar />
       ) : null}
-      <Card
-        role="article"
-        aria-labelledby="login-heading"
-        variant="secondary"
-      >
+      <Card role="article" aria-labelledby="login-heading">
         <Card.Header>
           <Typography className="m-0 text-lg font-semibold" id="login-heading" type="h1">
             {campusReauth ? "重新验证校园身份" : "登录"}
@@ -634,18 +633,13 @@ export function LoginPage() {
                 isDisabled={mfaCode.length !== 4}
                 isPending={busy}
                 type="submit"
-                variant="primary"
               >
-                {({ isPending }) =>
-                  isPending ? (
-                    <>
-                      <Spinner className="size-4" />
-                      正在验证…
-                    </>
-                  ) : (
-                    "验证"
-                  )
-                }
+                {({ isPending }) => (
+                  <>
+                    {isPending ? <Spinner color="current" size="sm" /> : null}
+                    {isPending ? "正在验证…" : "验证"}
+                  </>
+                )}
               </Button>
               {devLoginButton}
             </Form>
@@ -673,6 +667,11 @@ export function LoginPage() {
                 <Form
                   aria-busy={busy}
                   aria-labelledby="login-heading"
+                  onReset={() => {
+                    setUsername("");
+                    setPassword("");
+                    setError("");
+                  }}
                   onSubmit={submitCas}
                 >
                   <div className="flex flex-col gap-4">
@@ -730,15 +729,28 @@ export function LoginPage() {
                     >
                       {error}
                     </span>
-                    <div className="flex gap-2">
-                      <Button isPending={busy} type="submit">
-                        {({ isPending }) => (
-                          <>
-                            {isPending ? <Spinner className="size-4" /> : <Check />}
-                            {isPending ? "正在登录…" : "登录"}
-                          </>
-                        )}
-                      </Button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Button isPending={busy} type="submit">
+                          {({ isPending }) => (
+                            <>
+                              {isPending ? (
+                                <Spinner color="current" size="sm" />
+                              ) : (
+                                <Check />
+                              )}
+                              {isPending ? "正在登录…" : "登录"}
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          isDisabled={busy}
+                          type="reset"
+                          variant="secondary"
+                        >
+                          重置
+                        </Button>
+                      </div>
                       {devLoginButton}
                     </div>
                   </div>
