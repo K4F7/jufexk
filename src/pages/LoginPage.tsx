@@ -433,24 +433,48 @@ export function LoginPage() {
     void startQr();
   }
 
-  /** DEV only — flip the next login UI; does not call auth APIs. */
-  function simulateNextLoginUi() {
+  /** Local testing only — Vite DEV UI; Worker still rejects unless ALLOW_DEV_LOGIN=1. */
+  async function submitDevLogin() {
+    const requestId = ++loginRequestId.current;
     setError("");
-    setBusy(false);
-    if (challenge) {
-      navigate(backTarget, { replace: true });
-      return;
+    setBusy(true);
+    try {
+      const session = await api<{ authenticated?: boolean; csrfToken?: string }>(
+        "/api/auth/dev",
+        {
+          method: "POST",
+          body: "{}",
+        },
+      );
+      if (requestId !== loginRequestId.current) return;
+      if (session.authenticated) applySession(session);
+      navigate(searchParams.get("from") ? backTarget : "/profile", {
+        replace: true,
+      });
+    } catch (err: unknown) {
+      if (requestId !== loginRequestId.current) return;
+      setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
+    } finally {
+      if (requestId === loginRequestId.current) setBusy(false);
     }
-    setChallenge(PREVIEW_MFA_CHALLENGE);
   }
 
   const devLoginButton = import.meta.env.DEV ? (
     <Button
+      fullWidth
+      isPending={busy}
       type="button"
       variant="secondary"
-      onPress={simulateNextLoginUi}
+      onPress={() => {
+        void submitDevLogin();
+      }}
     >
-      本地测试登录
+      {({ isPending }) => (
+        <>
+          {isPending ? <Spinner color="current" size="sm" /> : null}
+          {isPending ? "正在完成本地登录…" : "本地测试登录"}
+        </>
+      )}
     </Button>
   ) : null;
 

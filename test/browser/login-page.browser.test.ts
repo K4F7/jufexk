@@ -506,33 +506,11 @@ test("guest recognition prompt reaches login and returns to the source page", as
   ).toBeVisible();
 });
 
-test("dev-only local login shows the MFA step without authenticating", async ({
-  page,
-}) => {
-  let authCalls = 0;
-  await page.route("**/api/auth/dev", async (route) => {
-    authCalls += 1;
-    return route.fulfill({
-      json: {
-        authenticated: true,
-        csrfToken: "csrf-user",
-        loginPath: "/login",
-        logoutPath: "/logout",
-      },
-    });
-  });
-
+test("dev-only local login goes to the personal homepage", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: "本地测试登录" }).click();
-  await expect(page.getByText("输入发送到企业微信的四位验证码")).toBeVisible();
-  await expect(page.getByRole("button", { name: "验证" })).toBeVisible();
-  await expect(page).toHaveURL(/\/login$/);
-  expect(authCalls).toBe(0);
-
-  await page.getByRole("button", { name: "本地测试登录" }).click();
-  await expect(page.getByText("已登录", { exact: true })).toHaveCount(0);
-  await expect(page).toHaveURL(/\/courses$/);
-  expect(authCalls).toBe(0);
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByText("我的主页")).toBeVisible();
 });
 
 const QR_DATA_URL =
@@ -621,15 +599,11 @@ test("leaving the QR tab and coming back starts a new challenge", async ({
   await expect.poll(() => qrStarts).toBe(2);
 });
 
-test("dev-only local login keeps a safe from target on the MFA step", async ({
-  page,
-}) => {
+test("dev-only local login honors a safe from target", async ({ page }) => {
   await page.goto("/login?from=/courses/8");
   await page.getByRole("button", { name: "本地测试登录" }).click();
-  await expect(page.getByText("输入发送到企业微信的四位验证码")).toBeVisible();
-  await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8$/);
-
-  await page.getByRole("button", { name: "本地测试登录" }).click();
-  await expect(page.getByText("已登录", { exact: true })).toHaveCount(0);
   await expect(page).toHaveURL(/\/courses\/8$/);
+  await expect(
+    page.getByRole("heading", { name: "中国传统文化导论" }),
+  ).toBeVisible();
 });
