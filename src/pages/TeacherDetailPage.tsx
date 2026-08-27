@@ -13,6 +13,7 @@ import { Breadcrumbs, Card, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
+import { OfficialHomepageLink } from "../components/OfficialHomepageLink";
 import {
   DetailErrorAlert,
   DetailPageSkeleton,
@@ -53,6 +54,7 @@ function TeacherIdentityCard({
       <Card.Header className="items-center text-center">
         <AnonymousAvatar
           seed={teacher.id}
+          photoSrc={teacher.avatar_url}
           size="lg"
           fallback={teacher.name.slice(0, 1)}
         />
@@ -81,6 +83,11 @@ function TeacherIdentityCard({
           <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
             {teacher.bio}
           </p>
+        ) : null}
+        {teacher.official_homepage_url ? (
+          <div className="mt-3">
+            <OfficialHomepageLink href={teacher.official_homepage_url} />
+          </div>
         ) : null}
       </Card.Content>
     </Card>

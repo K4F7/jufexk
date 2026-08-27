@@ -10,6 +10,7 @@ const publicListMutationRoutes: ReadonlyArray<readonly [string, RegExp]> = [
   ["POST", /^\/api\/admin\/courses$/],
   ["DELETE", /^\/api\/admin\/courses\/[^/]+$/],
   ["POST", /^\/api\/admin\/teachers$/],
+  ["POST", /^\/api\/admin\/cta-sync$/],
   ["DELETE", /^\/api\/admin\/teachers\/[^/]+$/],
   ["PUT", /^\/api\/admin\/courses\/[^/]+\/teachers$/],
   ["POST", /^\/api\/admin\/catalog-baseline\/uploads\/[^/]+\/publish$/],

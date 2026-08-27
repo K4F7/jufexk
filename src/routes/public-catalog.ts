@@ -36,6 +36,10 @@ import {
 } from "../public-list-projection-plan";
 import { deriveCourseCatalogMeta } from "../lib/course-metadata";
 import {
+  isDefaultCtaAvatarSha256,
+  toPublicTeacher,
+} from "../cta-teacher-homepage";
+import {
   publicCreatedAt,
   publicGrade,
   publicHeadline,
@@ -579,15 +583,17 @@ publicCatalogRoutes.get("/api/teachers", async (c) => {
   const totalCount = pageRows.total;
   setPublicCatalogCacheHeaders(c);
   return c.json({
-    items: pageRows.items.map(
-      (row: { name?: string; course_count?: number }) => {
-        const sport = virtualPeSportForTeacherName(
-          typeof row.name === "string" ? row.name : "",
-        );
-        if (!sport) return row;
-        return { ...row, course_count: Number(row.course_count || 0) + 1 };
-      },
-    ),
+    items: pageRows.items.map((row: Record<string, unknown>) => {
+      const teacher = toPublicTeacher(row);
+      const sport = virtualPeSportForTeacherName(
+        typeof teacher.name === "string" ? teacher.name : "",
+      );
+      if (!sport) return teacher;
+      return {
+        ...teacher,
+        course_count: Number(teacher.course_count || 0) + 1,
+      };
+    }),
     page,
     pageSize: size,
     total: totalCount,
@@ -627,8 +633,9 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
        ORDER BY review_count DESC,c.name,c.id`,
     ).bind(id, id),
   ]);
-  const teacher = teacherResult.results[0];
-  if (!teacher) return fail(c, "教师不存在", 404);
+  const teacherRow = teacherResult.results[0];
+  if (!teacherRow) return fail(c, "教师不存在", 404);
+  const teacher = toPublicTeacher(teacherRow);
   const reviewCount = Number(teacher.review_count) || 0;
   const reviewPage = await getPublicReviewPageFor(
     c,
@@ -644,11 +651,9 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
       [key: string]: unknown;
     }>,
   );
-  const visibleSport = virtualPeSportForTeacherName(
-    typeof (teacher as { name?: string }).name === "string"
-      ? (teacher as { name: string }).name
-      : "",
-  );
+  const teacherName =
+    typeof teacher.name === "string" ? teacher.name : "";
+  const visibleSport = virtualPeSportForTeacherName(teacherName);
   if (
     visibleSport &&
     !publicCourses.some(
@@ -659,12 +664,12 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
       virtualPeSportItem(visibleSport, [
         {
           id: id as number,
-          name: (teacher as { name: string }).name,
+          name: teacherName,
         },
       ]),
     );
-    (teacher as { course_count: number }).course_count =
-      Number((teacher as { course_count?: number }).course_count || 0) + 1;
+    teacher.course_count =
+      Number(teacher.course_count || 0) + 1;
   }
   return c.json({
     teacher,
@@ -672,6 +677,41 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
     reviews: reviewPage.items,
     reviewCount,
     nextReviewCursor: reviewPage.nextCursor,
+  });
+});
+publicCatalogRoutes.get("/api/teachers/:id/avatar", async (c) => {
+  const id = integer(c.req.param("id"));
+  if (!id) return fail(c, "教师不存在", 404);
+  const teacher = await c.env.DB.prepare(
+    `SELECT image_locked,avatar_sha256 FROM teachers WHERE id=?`,
+  )
+    .bind(id)
+    .first<{ image_locked: number | null; avatar_sha256: string | null }>();
+  if (!teacher) return fail(c, "教师不存在", 404);
+  if (
+    Number(teacher.image_locked) === 1 ||
+    !teacher.avatar_sha256 ||
+    isDefaultCtaAvatarSha256(teacher.avatar_sha256)
+  ) {
+    return fail(c, "没有可展示的教师头像", 404);
+  }
+  const stored = await c.env.DB.prepare(
+    `SELECT content_type,sha256,bytes FROM teacher_avatars WHERE teacher_id=?`,
+  )
+    .bind(id)
+    .first<{ content_type: string; sha256: string; bytes: ArrayBuffer }>();
+  if (
+    !stored?.bytes ||
+    stored.sha256 !== teacher.avatar_sha256 ||
+    isDefaultCtaAvatarSha256(stored.sha256)
+  ) {
+    return fail(c, "没有可展示的教师头像", 404);
+  }
+  c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  c.header("Content-Type", stored.content_type || "image/png");
+  return new Response(stored.bytes, {
+    status: 200,
+    headers: c.res.headers,
   });
 });
 publicCatalogRoutes.get("/api/teachers/:id/reviews", async (c) => {
@@ -783,7 +823,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
         category: "sports",
         department: "",
         teachers: typedTeachers.map((teacher) => ({
-          ...teacher,
+          ...toPublicTeacher(teacher as Record<string, unknown>),
           review_count: 0,
           rating: null,
           dimensionLabels: null,
@@ -882,7 +922,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
       ...decoratedCourse,
       ...meta,
       teachers: typedTeachers.map((teacher) => ({
-        ...teacher,
+        ...toPublicTeacher(teacher as Record<string, unknown>),
         dimensionLabels:
           dimMap.get(relationDimensionKey(id, teacher.id)) ?? null,
         ...(signalMap.get(`${id}:${teacher.id}`) ?? {
