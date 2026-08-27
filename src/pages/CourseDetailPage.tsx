@@ -559,7 +559,7 @@ export function CourseDetailPage() {
             </p>
           </div>
 
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
+          <div className="mt-2 flex flex-wrap items-center gap-x-2">
             <Stars rating={rating} className="text-[calc(16/15*1rem)]" />
             {rating != null ? (
               <span className="tabular text-[calc(20/15*1rem)] font-semibold leading-none text-accent">
@@ -567,11 +567,13 @@ export function CourseDetailPage() {
               </span>
             ) : null}
             {relationCount > 0 ? (
-              <span className="text-[calc(12/15*1rem)] text-muted">
+              <span className="text-[calc(12/15*1rem)] leading-none text-muted">
                 （{relationCount} 人评价）
               </span>
             ) : (
-              <span className="text-[calc(13/15*1rem)] text-muted">暂无评价</span>
+              <span className="text-[calc(13/15*1rem)] leading-none text-muted">
+                暂无评价
+              </span>
             )}
           </div>
 

@@ -4,7 +4,11 @@
  */
 
 import type {
+  Course,
   Paginated,
+  PublicReview,
+  ReviewComment,
+  Teacher,
   UserNotification,
   UserProfile,
 } from "./types";
@@ -136,6 +140,14 @@ export function previewFilledNotices(): UserNotification[] {
       created_at: "2026-08-20 08:00:00",
       read: true,
     },
+    {
+      id: "preview-notice-followed-user",
+      type: "followed_user_review",
+      text: "匿名用户#000002 发布了新任课评价",
+      href: "/courses/8?teacher=2#review-102",
+      created_at: "2026-08-19 18:00:00",
+      read: true,
+    },
   ];
 }
 
@@ -153,4 +165,127 @@ export function previewUnreadNotificationCount(
     return previewFilledNotices().filter((item) => item.read === false).length;
   }
   return null;
+}
+
+/** DEV mock inbox for /notices and the header dropdown. `null` = use the live API. */
+export function previewNotificationInbox(preview: string | null): {
+  items: UserNotification[];
+  available: boolean;
+} | null {
+  if (preview === "error") return { items: [], available: false };
+  if (preview === "empty" || preview === PREVIEW_NOTICES_BADGE_ZERO) {
+    return { items: [], available: true };
+  }
+  if (preview === "filled" || preview === PREVIEW_NOTICES_BADGE) {
+    return { items: previewFilledNotices(), available: true };
+  }
+  return null;
+}
+
+export const PREVIEW_REVIEW_COMMENTS = "review-comments";
+
+export function previewFilledCourseDetail(courseId = 8): {
+  course: Course & { teachers: Teacher[] };
+  reviewCount: number;
+} {
+  const teachers: Teacher[] = [
+    {
+      id: 2,
+      name: "林晓雯",
+      department: "会计学院",
+      title: "",
+      bio: "",
+      review_count: 2,
+      follow_count: 3,
+      recommend_count: 8,
+      not_recommend_count: 1,
+    },
+  ];
+  return {
+    course: {
+      id: courseId,
+      code: "ACC2101",
+      name: "中级财务会计",
+      category: "general",
+      department: "会计学院",
+      teacher_refs: "2:林晓雯",
+      teachers,
+      review_count: 2,
+      rating: 4.5,
+      credits: 3,
+      description: "",
+      enrollment_category: "专业必修课",
+      teaching_type: "理论课",
+    } as Course & { teachers: Teacher[] },
+    reviewCount: 2,
+  };
+}
+
+export function previewFilledCourseReviews(courseId = 8): PublicReview[] {
+  return [
+    {
+      id: "review:101",
+      course_id: courseId,
+      teacher_id: 2,
+      course_name: "中级财务会计",
+      course_code: "ACC2101",
+      teacher_name: "林晓雯",
+      comment: "例题扎实，作业量适中。",
+      grade: "90",
+      overall: 5,
+      created_at: "2025-09-12 10:00:00",
+      endorsement_count: 8,
+      endorsable: true,
+      author_public_code: 3,
+      author_avatar_key: 2,
+      dimensionLabels: [
+        { id: "difficulty", label: "课程难度", option: "适中" },
+        { id: "homework", label: "作业多少", option: "适中" },
+        { id: "grading", label: "给分好坏", option: "较好" },
+        { id: "gain", label: "收获多少", option: "较多" },
+      ],
+    },
+    {
+      id: "review:102",
+      course_id: courseId,
+      teacher_id: 2,
+      course_name: "中级财务会计",
+      course_code: "ACC2101",
+      teacher_name: "林晓雯",
+      comment: "节奏偏快，建议提前预习例题。",
+      overall: 4,
+      created_at: "2025-10-03 14:00:00",
+      endorsement_count: 2,
+      endorsable: true,
+      author_public_code: 4,
+      author_avatar_key: 3,
+    },
+  ];
+}
+
+/** DEV mock 回复 under a course review card. `null` = no seed (live empty UI). */
+export function previewReviewComments(
+  preview: string | null,
+  atlas: boolean,
+  reviewId: string | number,
+): ReviewComment[] | null {
+  if (preview === "error") return null;
+  if (!atlas && preview == null) return null;
+  const key = String(reviewId).replace(/[:#]/g, "-");
+  return [
+    {
+      id: `${key}-c1`,
+      authorPublicCode: 2,
+      body: "作业量确实适中，期中那套例题很有用。",
+      createdAt: "2026-08-26 18:10:00",
+    },
+    {
+      id: `${key}-c2`,
+      authorPublicCode: 1,
+      body: "补充：考试范围以作业题型为主。",
+      createdAt: "2026-08-27 09:20:00",
+      parentId: `${key}-c1`,
+      viewerOwned: true,
+    },
+  ];
 }

@@ -4,9 +4,10 @@
  * 头像 + 匿名用户 + 星级 + 四维档位 + 正文 + 认可（Issue #431）。
  *
  * 四维档位标签由 #373 公开流投影按条目下发（dimensionLabels），有则渲染
- * 中文档位 Chip；旧 1–5 规则快照继续显示维度均分 Chip；两者都没有的历史
- * 行不渲染维度行。逐条星级 / 日期与评分筛选依赖 #410 的
- * 投影字段（overall/created_at），未下发前不渲染对应控件。
+ * FourDimLine（与课程页头部同一套「标签：值」）；旧 1–5 规则快照继续显示
+ * 维度均分 Chip；两者都没有的历史行不渲染维度行。逐条星级旁侧用投稿页
+ * overallCaption；日期与评分筛选依赖 #410 的投影字段
+ * （overall/created_at），未下发前不渲染对应控件。
  */
 import {
   Alert,
@@ -20,19 +21,30 @@ import {
   Typography,
 } from "@heroui/react";
 import { memo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAdminSession } from "../hooks/useAdminSession";
+import { useReviewAdminChrome } from "../hooks/useReviewAdminChrome";
 import { useViewer } from "../hooks/useViewer";
+import {
+  isDevAtlasSession,
+  previewReviewComments,
+  readDevPreview,
+} from "../lib/dev-preview";
+import { fourDimLineLabels } from "../lib/dimension-labels";
+import { resolveReviewAdminDockVisible } from "../lib/review-admin-chrome";
 import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import { reviewAnchorId } from "../lib/review-dimensions";
-import type { PublicReview } from "../lib/types";
+import { parseHandlePublicCode } from "../public-handle";
+import type { PublicReview, ReviewComment } from "../lib/types";
+import { FourDimLine } from "./FourDimLine";
+import { ReviewActionBar } from "./ReviewActionBar";
 import { ReviewAuthor } from "./ReviewAuthor";
 import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
 import { ReviewAdminControls } from "./ReviewAdminControls";
+import { ReviewAdminDock } from "./ReviewAdminDock";
 import { ReviewNoteContent } from "./ReviewNoteContent";
-import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
-import { Stars } from "./Stars";
+import { StarsWithCaption } from "./Stars";
 
 export type CourseReviewSort =
   | "recognized"
@@ -109,16 +121,25 @@ const CourseReviewItem = memo(function CourseReviewItem({
   loginPath,
   onUnauthenticated,
   adminAuthed,
+  showAdminControls,
   onReviewChanged,
+  seedComments,
+  viewerPublicCode,
+  previewComposer,
 }: {
   review: PublicReview;
   ready: boolean;
   authenticated: boolean;
   loginPath: string;
   onUnauthenticated: () => void;
-  /** 管理员会话有效时渲染管理动作（屏蔽 / 删除 / 查作者）。 */
+  /** 管理员会话有效时渲染屏蔽提示。 */
   adminAuthed: boolean;
+  /** dock 开关打开后才渲染屏蔽 / 删除 / 查作者。 */
+  showAdminControls: boolean;
   onReviewChanged?: () => void;
+  seedComments: ReviewComment[];
+  viewerPublicCode: number | null;
+  previewComposer: boolean;
 }) {
   const date = formatReviewDate(review.created_at);
   return (
@@ -133,10 +154,10 @@ const CourseReviewItem = memo(function CourseReviewItem({
             avatarKey={review.author_avatar_key}
           />
           {review.overall != null ? (
-            <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
-          ) : null}
-          {review.grade ? (
-            <span className="font-normal text-muted">成绩 {review.grade}</span>
+            <StarsWithCaption
+              rating={review.overall}
+              className="text-[calc(13/15*1rem)]"
+            />
           ) : null}
           {review.blocked ? (
             <Chip color="danger" size="sm" variant="soft">
@@ -144,11 +165,6 @@ const CourseReviewItem = memo(function CourseReviewItem({
             </Chip>
           ) : null}
         </span>
-        {date ? (
-          <time className="text-[calc(12/15*1rem)] text-muted" dateTime={date}>
-            {date}
-          </time>
-        ) : null}
       </header>
       {review.blocked && adminAuthed ? (
         <p className="mb-0 mt-1 text-[12px] text-danger">
@@ -156,15 +172,10 @@ const CourseReviewItem = memo(function CourseReviewItem({
         </p>
       ) : null}
       {review.dimensionLabels?.length ? (
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {review.dimensionLabels.map((dimension) => (
-            <Chip key={dimension.id} size="sm" variant="soft">
-              <Chip.Label>
-                {dimension.label} {dimension.option}
-              </Chip.Label>
-            </Chip>
-          ))}
-        </div>
+        <FourDimLine
+          className="mt-1.5"
+          labels={fourDimLineLabels(review.dimensionLabels)}
+        />
       ) : typeof review.dimensionAverage === "number" ? (
         <div className="mt-1.5">
           <Chip size="sm" variant="soft">
@@ -174,29 +185,30 @@ const CourseReviewItem = memo(function CourseReviewItem({
           </Chip>
         </div>
       ) : null}
-      {review.headline ? (
-        <p className="mb-0 mt-2 break-words text-[calc(14/15*1rem)] font-semibold">
-          {review.headline}
-        </p>
-      ) : null}
       <div className="mt-2">
         <ReviewNoteContent
           comment={review.comment}
           commentFormat={review.comment_format}
         />
       </div>
-      {isEndorsableReview(review) ? (
-        <footer className="mt-3">
-          <ReviewRecognitionControl
-            review={review}
-            ready={ready}
-            authenticated={authenticated}
-            loginPath={loginPath}
-            onUnauthenticated={onUnauthenticated}
-          />
-        </footer>
+      {review.grade ? (
+        <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
+          成绩：{review.grade}
+        </p>
       ) : null}
-      {adminAuthed && onReviewChanged ? (
+      <ReviewActionBar
+        review={review}
+        date={date}
+        ready={ready}
+        authenticated={authenticated}
+        loginPath={loginPath}
+        onUnauthenticated={onUnauthenticated}
+        endorsable={isEndorsableReview(review)}
+        seedComments={seedComments}
+        viewerPublicCode={viewerPublicCode}
+        previewComposer={previewComposer}
+      />
+      {showAdminControls && onReviewChanged ? (
         <ReviewAdminControls review={review} onChanged={onReviewChanged} />
       ) : null}
     </article>
@@ -240,8 +252,21 @@ export function CourseReviewSection({
   onReviewChanged?: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { viewer, ready, clear } = useViewer();
   const { authed: adminAuthed } = useAdminSession();
+  const searchParams = new URLSearchParams(location.search);
+  const preview = readDevPreview(searchParams);
+  const atlas = isDevAtlasSession(searchParams);
+  const previewComposer = preview != null || atlas;
+  const viewerPublicCode = parseHandlePublicCode(viewer.handle);
+  const showAdminDock = resolveReviewAdminDockVisible({
+    adminAuthed,
+    preview,
+  });
+  const { visible: adminChromeVisible, setVisible: setAdminChromeVisible } =
+    useReviewAdminChrome(preview);
+  const showAdminControls = showAdminDock && adminChromeVisible;
 
   const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;
 
@@ -317,7 +342,13 @@ export function CourseReviewSection({
                   loginPath={viewer.loginPath}
                   onUnauthenticated={clear}
                   adminAuthed={adminAuthed}
+                  showAdminControls={showAdminControls}
                   onReviewChanged={onReviewChanged}
+                  seedComments={
+                    previewReviewComments(preview, atlas, review.id) ?? []
+                  }
+                  viewerPublicCode={viewerPublicCode}
+                  previewComposer={previewComposer}
                 />
               </div>
             ))}
@@ -354,6 +385,12 @@ export function CourseReviewSection({
           </span>
         </div>
       )}
+      {showAdminDock ? (
+        <ReviewAdminDock
+          visible={adminChromeVisible}
+          onVisibleChange={setAdminChromeVisible}
+        />
+      ) : null}
     </section>
   );
 }

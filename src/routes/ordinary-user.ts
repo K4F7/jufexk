@@ -6,6 +6,10 @@ import {
   handleWithdrawEndorsement,
 } from "../review-endorsements";
 import {
+  handleCreateReviewComment,
+  handleDeleteReviewComment,
+} from "../review-comments";
+import {
   handleCreateFollow,
   handleCreateNotRecommend,
   handleCreateRecommend,
@@ -65,6 +69,11 @@ ordinaryUserRoutes.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/endorsement",
   handleWithdrawEndorsement,
+);
+ordinaryUserRoutes.post("/api/reviews/:id/comments", handleCreateReviewComment);
+ordinaryUserRoutes.delete(
+  "/api/reviews/:id/comments/:commentId",
+  handleDeleteReviewComment,
 );
 ordinaryUserRoutes.put(
   "/api/courses/:id/teachers/:teacherId/follow",

@@ -530,13 +530,17 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
   const subjectKnown = Boolean(selectedCourse && selectedTeacher);
 
   return (
-    <section className="mx-auto max-w-[800px]">
+    <section className="mx-auto my-auto w-full max-w-[800px]">
       <Form
         aria-labelledby="submit-review-heading"
         validationBehavior="native"
         onSubmit={onSubmit}
       >
-        <Card role="region" aria-labelledby="submit-review-heading">
+        <Card
+          className="gap-6"
+          role="region"
+          aria-labelledby="submit-review-heading"
+        >
           {subjectKnown && selectedCourse && selectedTeacher ? (
             <ReviewSubjectHeader
               headingId="submit-review-heading"
@@ -558,7 +562,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             </Card.Header>
           )}
 
-          <Card.Content className="gap-5">
+          <Card.Content className="gap-8">
             {teacherLocked ? null : (
               <>
                 {courseLocked && selectedCourse ? null : (

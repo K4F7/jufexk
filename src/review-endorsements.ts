@@ -84,7 +84,7 @@ function endorsementState(count: number, endorsed: boolean) {
   return { endorsementCount: count, viewerEndorsed: endorsed };
 }
 
-async function readIdempotency(
+export async function readIdempotency(
   db: D1Database,
   userId: string,
   operation: string,
@@ -100,7 +100,7 @@ async function readIdempotency(
     .first<{ request_digest: string; status: number; response_json: string }>();
 }
 
-async function saveIdempotency(
+export async function saveIdempotency(
   db: D1Database,
   userId: string,
   operation: string,
@@ -120,13 +120,34 @@ async function saveIdempotency(
   return readIdempotency(db, userId, operation, key);
 }
 
-function parseIdempotencyKey(raw: string | undefined) {
+export function parseIdempotencyKey(raw: string | undefined) {
   const key = (raw || "").trim();
   return key.length >= 8 && key.length <= 128 ? key : null;
 }
 
 async function requireWriteUser(c: Context) {
   return requireOrdinaryWriteUser(c, "请先登录后再认可", "当前账号无法认可评价");
+}
+
+/** 逐条评价的公开回复数；0046 迁移未应用时留空，不影响公开流。 */
+async function commentCounts(db: D1Database, reviewIds: number[]) {
+  const counts = new Map<number, number>();
+  if (!reviewIds.length) return counts;
+  const placeholders = reviewIds.map(() => "?").join(",");
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT review_id, COUNT(*) count FROM review_comments
+         WHERE deleted_at IS NULL AND review_id IN (${placeholders})
+         GROUP BY review_id`,
+      )
+      .bind(...reviewIds)
+      .all<{ review_id: number; count: number }>();
+    for (const row of results) counts.set(row.review_id, Number(row.count) || 0);
+  } catch {
+    return new Map();
+  }
+  return counts;
 }
 
 export async function decoratePublicReviews(
@@ -153,6 +174,7 @@ export async function decoratePublicReviews(
       .all<{ review_id: number }>();
     for (const row of results) endorsed.add(row.review_id);
   }
+  const comments = await commentCounts(db, reviewIds);
   return items.map((item) => {
     const endorsable = isEndorsablePublicId(item.id) && item.blocked !== true;
     const reviewId = endorsable ? parseCurrentReviewId(String(item.id)) : null;
@@ -161,6 +183,9 @@ export async function decoratePublicReviews(
       endorsement_count: Number(item.endorsement_count) || 0,
       endorsable,
     };
+    if (reviewId != null) {
+      decorated.comment_count = comments.get(reviewId) ?? 0;
+    }
     if (viewerUserId) {
       decorated.viewer_endorsed = !!(reviewId && endorsed.has(reviewId));
     }

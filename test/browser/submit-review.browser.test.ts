@@ -339,6 +339,7 @@ test("icourse-aligned form appears immediately @mobile-smoke", async ({
   await expect(teacherSelect).toContainText("请选择");
   await expect(page.getByText("Select an item")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
+  await expect(page.getByPlaceholder("选填")).toBeVisible();
   await expect(page.getByText("选填。分享成绩，方便同学们综合判断。")).toBeVisible();
   await expect(
     page.getByText("可以搜索课名、老师或课号，再选出对应的课。"),
@@ -561,7 +562,7 @@ test("typed note is submitted without a formatting toolbar", async ({
   expect(posted[0].headline).toBe("这门课给分宽松，值得推荐");
 });
 
-// #447：选填成绩随提交进入载荷，并在课程详情条目元信息行展示。
+// #447：选填成绩随提交进入载荷，并在课程详情条目正文后单独一行展示。
 test("optional grade is submitted and shown on the course detail", async ({
   page,
 }) => {
@@ -586,7 +587,7 @@ test("optional grade is submitted and shown on the course detail", async ({
     .getByRole("listitem")
     .first();
   await expect(item.getByText(VALID_NOTE).first()).toBeVisible();
-  await expect(item.getByText("成绩 90", { exact: true })).toBeVisible();
+  await expect(item.getByText("成绩：90", { exact: true })).toBeVisible();
 });
 
 test("review-only submit keeps the questionnaire optional", async ({

@@ -22,8 +22,10 @@ describe("parseOverallRating", () => {
 describe("overallCaption", () => {
   it("returns the label for a selected star value", () => {
     expect(overallCaption("1")).toBe("较差");
+    expect(overallCaption("3.5")).toBe("很推荐");
     expect(overallCaption("4.5")).toBe("非常推荐");
     expect(overallCaption("5")).toBe("必选");
+    expect(overallCaption(String(3.5))).toBe("很推荐");
     expect(overallCaption("")).toBe("");
   });
 });

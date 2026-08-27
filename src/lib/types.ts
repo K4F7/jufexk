@@ -174,6 +174,22 @@ export type PublicReview = {
   author_public_code?: number | null;
   /** 官方头像 0–4；#000000 固定为 0。 */
   author_avatar_key?: number | null;
+  /** 该条评价下的公开回复数；仅当前评价（review:NNN）下发。 */
+  comment_count?: number;
+};
+
+/** 任课评价下的一条回复；当前评价走 /api/reviews/:id/comments，DEV preview 用种子。 */
+export type ReviewComment = {
+  id: string;
+  authorPublicCode: number;
+  /** 官方头像 0–4；缺失时按公开编号派生占位。 */
+  authorAvatarKey?: number | null;
+  body: string;
+  createdAt: string;
+  /** 回复目标（同一条评价下的另一条回复）；顶层评论为空。 */
+  parentId?: string | null;
+  /** Preview-only: show 删除 without a matching viewer handle. */
+  viewerOwned?: boolean;
 };
 
 export type LatestReview = {

@@ -11,7 +11,8 @@ type NotificationRow = {
     | "followed_relation_review"
     | "review_endorsed"
     | "followed_user_review"
-    | "user_followed";
+    | "user_followed"
+    | "review_comment_replied";
   message: string;
   link: string;
   createdAt: string;
