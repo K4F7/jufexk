@@ -208,6 +208,41 @@ describe("public list projection plan", () => {
       expect(teacher?.match_text).toContain("张三");
       expect(teacher?.match_text).toContain("数学学院");
       expect(teacher?.pinyin_text).toContain("zhangsan");
+      expect(
+        await env.DB.prepare(
+          "SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?",
+        )
+          .bind('"高等数"')
+          .first<{ rowid: number }>(),
+      ).toEqual({ rowid: 57420 });
+      expect(
+        await env.DB.prepare(
+          "SELECT rowid FROM teacher_search_fts WHERE teacher_search_fts MATCH ?",
+        )
+          .bind('"zhang"')
+          .first<{ rowid: number }>(),
+      ).toEqual({ rowid: 57421 });
+
+      await env.DB.prepare(
+        "UPDATE public_course_canonicals SET match_text=? WHERE course_id=?",
+      )
+        .bind("触发器新文本", 57420)
+        .run();
+      expect(
+        await env.DB.prepare(
+          "SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ? AND rowid=?",
+        )
+          .bind('match_text : "高等数"', 57420)
+          .first(),
+      ).toBeNull();
+      expect(
+        await env.DB.prepare(
+          "SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?",
+        )
+          .bind('match_text : "触发器新"')
+          .first<{ rowid: number }>(),
+      ).toEqual({ rowid: 57420 });
+
     } finally {
       await env.DB.prepare(
         "DELETE FROM course_name_variants WHERE course_id=57420",

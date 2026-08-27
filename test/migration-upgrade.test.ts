@@ -56,4 +56,56 @@ it("upgrades from 0008 without losing referenced seed catalog mappings", async (
       "SELECT created_course_id,created_teacher_id FROM catalog_requests WHERE course_code='PE012'",
     ).first(),
   ).toEqual({ created_course_id: 2, created_teacher_id: 1 });
+  expect(
+    await db.prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM course_search_fts) course_fts,
+        (SELECT COUNT(*) FROM teacher_search_fts) teacher_fts`,
+    ).first(),
+  ).toMatchObject({ course_fts: expect.any(Number), teacher_fts: expect.any(Number) });
+});
+
+it("backfills existing public search projections when adding FTS5", async () => {
+  const db = (env as unknown as { FTS_MIGRATION_DB: D1Database }).FTS_MIGRATION_DB;
+  const ftsMigration = TEST_D1_MIGRATIONS.find((migration) =>
+    migration.name.startsWith("0047_catalog_fts5_trigram"),
+  );
+  expect(ftsMigration).toBeTruthy();
+  await applyD1Migrations(
+    db,
+    TEST_D1_MIGRATIONS.filter((migration) => migration !== ftsMigration),
+    "fts_upgrade_migrations",
+  );
+  await db.batch([
+    db.prepare(
+      "INSERT INTO teachers(id,source_teacher_label,name) VALUES(90471,'迁移教师','迁移教师')",
+    ),
+    db.prepare(
+      "INSERT INTO courses(id,code,name,category) VALUES(90470,'FTS-UPGRADE','迁移课程','general')",
+    ),
+    db.prepare(
+      `INSERT INTO public_course_canonicals(
+        course_id,canonical_course_id,search_text,match_text,pinyin_text,teacher_variant_text
+      ) VALUES(90470,90470,'迁移课程','迁移课程 FTS-UPGRADE','qianyikecheng','')`,
+    ),
+    db.prepare(
+      `INSERT INTO public_teacher_search(teacher_id,match_text,pinyin_text)
+       VALUES(90471,'迁移教师','qianyijiaoshi')`,
+    ),
+  ]);
+  await applyD1Migrations(db, [ftsMigration!], "fts_upgrade_migrations");
+  expect(
+    await db.prepare(
+      "SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?",
+    )
+      .bind('"迁移课程"')
+      .first(),
+  ).toEqual({ rowid: 90470 });
+  expect(
+    await db.prepare(
+      "SELECT rowid FROM teacher_search_fts WHERE teacher_search_fts MATCH ?",
+    )
+      .bind('"qianyijiaoshi"')
+      .first(),
+  ).toEqual({ rowid: 90471 });
 });

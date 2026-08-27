@@ -4,6 +4,7 @@ import { isAsciiLetterTerm } from "../lib/catalog-pinyin";
 import { shouldShowScheduleNav } from "../lib/public-surface";
 import {
   andSearchTermsWithPinyin,
+  andSearchTermsWithTrigram,
   containsPattern,
   likeSql,
   parseSearchTerms,
@@ -527,11 +528,16 @@ publicCatalogRoutes.get("/api/teachers", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const searchTerms = parseSearchTerms(search);
-  const searchGroup = andSearchTermsWithPinyin(
+  const searchGroup = andSearchTermsWithTrigram(
     searchTerms,
-    likeSql("pts.match_text"),
-    likeSql("pts.pinyin_text"),
-    isAsciiLetterTerm,
+    (term) =>
+      andSearchTermsWithPinyin(
+        [term],
+        likeSql("pts.match_text"),
+        likeSql("pts.pinyin_text"),
+        isAsciiLetterTerm,
+      ),
+    "pts.teacher_id IN (SELECT rowid FROM teacher_search_fts WHERE teacher_search_fts MATCH ?)",
   );
   const where = searchGroup.sql || "1=1";
   const args = searchGroup.args;
@@ -735,11 +741,16 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
-  const searchGroup = andSearchTermsWithPinyin(
+  const searchGroup = andSearchTermsWithTrigram(
     parseSearchTerms(search),
-    likeSql("pcc.match_text"),
-    likeSql("pcc.pinyin_text"),
-    isAsciiLetterTerm,
+    (term) =>
+      andSearchTermsWithPinyin(
+        [term],
+        likeSql("pcc.match_text"),
+        likeSql("pcc.pinyin_text"),
+        isAsciiLetterTerm,
+      ),
+    "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
   );
   const where = `${publicCourseVisibleSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = searchGroup.args;

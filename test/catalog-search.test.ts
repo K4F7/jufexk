@@ -3,6 +3,9 @@ import { isAsciiLetterTerm } from "../src/lib/catalog-pinyin";
 import {
   andSearchTerms,
   andSearchTermsWithPinyin,
+  andSearchTermsWithTrigram,
+  ftsLiteral,
+  isTrigramTerm,
   delimitedExactSql,
   likeEscape,
   likeSql,
@@ -36,6 +39,24 @@ describe("parseSearchTerms", () => {
       "e",
       "f",
     ]);
+  });
+});
+
+describe("trigram search routing", () => {
+  it("routes Unicode terms of three code points and quotes FTS operators", () => {
+    expect(isTrigramTerm("财经大")).toBe(true);
+    expect(isTrigramTerm("财")).toBe(false);
+    expect(ftsLiteral("foo OR bar%\"baz")).toBe('"foo OR bar%""baz"');
+    expect(
+      andSearchTermsWithTrigram(
+        ["财经大", "财"],
+        (term) => ({ sql: "name LIKE ?", args: [`%${term}%`] }),
+        "id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
+      ),
+    ).toEqual({
+      sql: '((id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)) AND (name LIKE ?)) AND (name LIKE ?)',
+      args: ['"财经大"', "%财经大%", "%财%"],
+    });
   });
 });
 
