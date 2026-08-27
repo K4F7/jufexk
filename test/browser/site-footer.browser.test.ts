@@ -104,9 +104,9 @@ test("footer site-info links open their pages", async ({ page }) => {
   await footerNav.getByRole("link", { name: "关于我们" }).click();
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.getByRole("heading", { name: "关于我们" })).toBeVisible();
-  await expect(page.getByText(/非官方课程—教师评价站/)).toBeVisible();
-  await expect(page.getByText(/点评会绑到具体任课老师/)).toBeVisible();
-  await expect(page.getByText(/公开内容匿名发布，站方可拒绝或撤回/)).toBeVisible();
+  await expect(page.getByText(/非官方课程—教师评价站/)).toHaveCount(0);
+  await expect(page.getByText(/点评会绑到具体任课老师/)).toHaveCount(0);
+  await expect(page.getByText(/公开内容匿名发布，站方可拒绝或撤回/)).toHaveCount(0);
   await expect(page.getByText(/经人工审核/)).toHaveCount(0);
 
   await footerNav.getByRole("link", { name: "反馈问题" }).click();
@@ -123,10 +123,11 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page).toHaveURL(/\/resources$/);
   await expect(page.getByRole("heading", { name: "友情链接" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "资源" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "评知校园" })).toBeVisible();
+  await expect(page.getByText("本站源码与 issue 在 GitHub 公开")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "评知校园" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "USTC-iCourse / ustc-course" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   for (const channel of SITE_OFFICIAL_CHANNELS) {
     await expect(page.getByRole("link", { name: channel.title })).toHaveAttribute(
       "href",

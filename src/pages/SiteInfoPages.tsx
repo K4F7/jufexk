@@ -3,9 +3,7 @@ import type { ReactNode } from "react";
 import {
   CONTACT_EMAIL,
   GITHUB_ISSUES_URL,
-  GITHUB_REPO_URL,
   SITE_OFFICIAL_CHANNELS,
-  SITE_RESOURCES,
 } from "../lib/site-links";
 
 function SiteInfoPage({
@@ -13,16 +11,18 @@ function SiteInfoPage({
   children,
 }: {
   title: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <section className="mx-auto max-w-[860px]">
       <Typography className="m-0 text-[22px] font-bold" type="h1">
         {title}
       </Typography>
-      <Typography.Prose className="mt-4 flex flex-col gap-3">
-        {children}
-      </Typography.Prose>
+      {children ? (
+        <Typography.Prose className="mt-4 flex flex-col gap-3">
+          {children}
+        </Typography.Prose>
+      ) : null}
     </section>
   );
 }
@@ -64,16 +64,7 @@ function ExternalLink({
 }
 
 export function AboutPage() {
-  return (
-    <SiteInfoPage title="关于我们">
-      <p>
-        本站是江西财经大学非官方课程—教师评价站，站内名称「非官方课评@JUFE」。本站不是学校官方服务，也不代表学校立场。
-      </p>
-      <p>
-        点评会绑到具体任课老师。公开内容匿名发布，站方可拒绝或撤回。
-      </p>
-    </SiteInfoPage>
-  );
+  return <SiteInfoPage title="关于我们" />;
 }
 
 export function ContactPage() {
@@ -99,29 +90,6 @@ export function ContactPage() {
 export function ResourcesPage() {
   return (
     <SiteInfoPage title="友情链接">
-      <p>本站源码与 issue 在 GitHub 公开：</p>
-      <p>
-        <ExternalLink href={GITHUB_REPO_URL}>{GITHUB_REPO_URL}</ExternalLink>
-      </p>
-      <p>也参考了这些公开项目：</p>
-      <ul>
-        {SITE_RESOURCES.map((item) => (
-          <li key={item.href}>
-            <ExternalLink href={item.href}>{item.title}</ExternalLink>
-            {"extra" in item && item.extra ? (
-              <>
-                {" "}
-                （
-                <ExternalLink href={item.extra.href}>
-                  {item.extra.title}
-                </ExternalLink>
-                ）
-              </>
-            ) : null}
-            ：{item.note}
-          </li>
-        ))}
-      </ul>
       <p>学校官方频道：</p>
       <ul>
         {SITE_OFFICIAL_CHANNELS.map((item) => (
