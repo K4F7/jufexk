@@ -41,6 +41,7 @@
     "db:seed-preview": "wrangler d1 execute jufexk --local --file=scripts/prototype-local-seed.sql",
     "db:export-remote": "mkdir -p .local-data && wrangler d1 export jufexk --remote --output=.local-data/remote-export.sql -y",
     "db:import-remote-local": "python3 scripts/import-remote-export-local.py",
+    "benchmark:catalog-fts": "bash scripts/d1/benchmark-catalog-fts.sh",
     "db:create-preview": "bash scripts/d1/create-preview-db.sh",
     "db:clone-preview": "bash scripts/d1/clone-preview.sh",
     "catalog-relations:v10": "tsx scripts/catalog-relation-additions/publish-v10.ts",

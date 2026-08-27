@@ -24,6 +24,7 @@ export default defineConfig(async () => {
             "BASELINE_PUBLISH_DB_8",
             "COURSE_EXCLUSION_MIGRATION_DB",
             "COURSE_EXCLUSION_CONFLICT_DB",
+            "FTS_MIGRATION_DB",
           ],
           bindings: {
             PUBLIC_SURFACE: "production",

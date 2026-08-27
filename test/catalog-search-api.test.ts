@@ -10,6 +10,7 @@ const linearCourse = "搜索线代";
 const percentCourse = "搜索百分号100%课";
 const underscoreCourse = "搜索A_下划线课";
 const underscoreDecoy = "搜索AB下划线课";
+const operatorCourse = "搜索NEAR操作课";
 
 let firstTeacherId = 0;
 
@@ -49,6 +50,7 @@ beforeAll(async () => {
     insertCourse("SEARCH-PCT", percentCourse),
     insertCourse("SEARCH-UNDERSCORE", underscoreCourse),
     insertCourse("SEARCH-DECOY", underscoreDecoy),
+    insertCourse("SEARCH-OPERATOR", operatorCourse),
   ]);
   firstTeacherId = Number(first.meta.last_row_id);
   const secondTeacherId = Number(second.meta.last_row_id);
@@ -90,6 +92,23 @@ describe("目录搜索把通配符当字面量", () => {
   it("投稿课程选项同样不把 % 当通配符", async () => {
     const body = await search("/api/courses/options", "q=%");
     expect(body.items.map((item) => item.name)).not.toContain(mathCourse);
+  });
+
+  it("3+ 字符的通配符和 FTS 运算符仍按字面量匹配", async () => {
+    expect(await courseNames("q=100%")).toContain(percentCourse);
+    expect(await courseNames("q=A_下")).toContain(underscoreCourse);
+    expect(await courseNames("q=NEAR")).toContain(operatorCourse);
+  });
+});
+
+describe("FTS5 candidate narrowing", () => {
+  it("uses the trigram virtual table for eligible terms", async () => {
+    const plan = await env.DB.prepare(
+      "EXPLAIN QUERY PLAN SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?",
+    )
+      .bind('"搜索高"')
+      .all<{ detail: string }>();
+    expect(plan.results.some((row) => row.detail.includes("VIRTUAL TABLE"))).toBe(true);
   });
 });
 
@@ -432,7 +451,7 @@ describe("预计算 match_text", () => {
   });
 
   it("改课名后下一次公开列表能搜到新名字", async () => {
-    const renamed = "搜索高数改名";
+    const renamed = "完全新课程名";
     await env.DB.prepare("UPDATE courses SET name=? WHERE name=?")
       .bind(renamed, mathCourse)
       .run();

@@ -29,6 +29,42 @@ export type SearchFilter = {
   args: string[];
 };
 
+/** FTS5 trigram only accepts terms with at least three Unicode code points. */
+export function isTrigramTerm(term: string): boolean {
+  return Array.from(term).length >= 3;
+}
+
+/** Quote a user term as an FTS5 literal, including operators and wildcards. */
+export function ftsLiteral(term: string): string {
+  return `"${term.replaceAll('"', '""')}"`;
+}
+
+/**
+ * Use the trigram index for safe terms and retain the exact LIKE fallback for
+ * short terms. `fallback` is evaluated per term so pinyin-column semantics
+ * and LIKE wildcard escaping remain unchanged.
+ */
+export function andSearchTermsWithTrigram(
+  terms: string[],
+  fallback: (term: string) => SearchFilter,
+  ftsSql: string,
+): SearchFilter {
+  if (!terms.length) return { sql: "", args: [] };
+  const groups = terms.map((term) => {
+    const filter = fallback(term);
+    if (isTrigramTerm(term))
+      return {
+        sql: `((${ftsSql}) AND (${filter.sql}))`,
+        args: [ftsLiteral(term), ...filter.args],
+      };
+    return { sql: `(${filter.sql})`, args: filter.args };
+  });
+  return {
+    sql: groups.map((group) => group.sql).join(" AND "),
+    args: groups.flatMap((group) => group.args),
+  };
+}
+
 /** 拆出去重后的搜索词条；空查询返回空数组。 */
 export function parseSearchTerms(raw: string): string[] {
   const terms = raw

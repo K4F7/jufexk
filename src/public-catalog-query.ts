@@ -6,6 +6,7 @@ import {
 import {
   andSearchTerms,
   andSearchTermsWithPinyin,
+  andSearchTermsWithTrigram,
   containsPattern,
   delimitedExactSql,
   likeSql,
@@ -433,19 +434,24 @@ export async function queryPublicCourses(
   const searchTerms = parseSearchTerms(search);
   const categoryFilter = publicCategoryFilterSql(query.category, "c");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  const searchGroup = andSearchTermsWithPinyin(
+  const indexedSearchGroup = andSearchTermsWithTrigram(
     searchTerms,
-    likeSql("pcc.match_text"),
-    likeSql("pcc.pinyin_text"),
-    isAsciiLetterTerm,
+    (term) =>
+      andSearchTermsWithPinyin(
+        [term],
+        likeSql("pcc.match_text"),
+        likeSql("pcc.pinyin_text"),
+        isAsciiLetterTerm,
+      ),
+    "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
   );
-  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
+  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${indexedSearchGroup.sql ? ` AND ${indexedSearchGroup.sql}` : ""}`;
   const args = [
     ...categoryFilter.args,
     department,
     department,
     ...(teacherId === null ? [] : [teacherId]),
-    ...searchGroup.args,
+    ...indexedSearchGroup.args,
   ];
   const countJoins =
     teacherId === null
@@ -568,11 +574,16 @@ export async function queryPublicCourseRelations(
   const courseSearchTerms = searchTerms.filter(
     (term) => !exactTeachers.matchedTerms.has(term),
   );
-  const searchGroup = andSearchTermsWithPinyin(
+  const searchGroup = andSearchTermsWithTrigram(
     courseSearchTerms,
-    likeSql("pcc.match_text"),
-    likeSql("pcc.pinyin_text"),
-    isAsciiLetterTerm,
+    (term) =>
+      andSearchTermsWithPinyin(
+        [term],
+        likeSql("pcc.match_text"),
+        likeSql("pcc.pinyin_text"),
+        isAsciiLetterTerm,
+      ),
+    "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
   );
   const rowHit = relationRowHit(courseSearchTerms);
   const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}${rowHit.sql ? ` AND ${rowHit.sql}` : ""}${exactTeacherFilter}`;

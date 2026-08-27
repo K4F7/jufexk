@@ -8,6 +8,16 @@ on:
         required: true
         default: false
         type: boolean
+      apply_migrations:
+        description: Apply repository migrations to the guarded preview D1
+        required: true
+        default: false
+        type: boolean
+      run_benchmark:
+        description: Run the fixed-scale catalog LIKE versus FTS benchmark
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: fts5-preview-capability-smoke
@@ -59,7 +69,12 @@ jobs:
           [[ -n "$database_id" && "$database_id" != "null" ]]
           [[ "$database_id" != "$PRODUCTION_DATABASE_ID" ]]
           [[ "$database_id" != "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" ]]
-          printf '{"name":"fts5-preview-smoke","d1_databases":[{"binding":"PREVIEW","database_name":"%s","database_id":"%s"}]}' "$PREVIEW_DATABASE_NAME" "$database_id" > /tmp/fts-wrangler.jsonc
+          jq -cn \
+            --arg name "$PREVIEW_DATABASE_NAME" \
+            --arg database_id "$database_id" \
+            --arg migrations_dir "$GITHUB_WORKSPACE/migrations" \
+            '{name:"fts5-preview-smoke",d1_databases:[{binding:"PREVIEW",database_name:$name,database_id:$database_id,migrations_dir:$migrations_dir}]}' \
+            > /tmp/fts-wrangler.jsonc
           echo "database_id=$database_id" >> "$GITHUB_OUTPUT"
           echo "Resolved isolated preview D1: $PREVIEW_DATABASE_NAME"
       - name: Run isolated FTS5 trigram smoke
@@ -78,7 +93,7 @@ jobs:
           CREATE VIRTUAL TABLE ${prefix}_fts USING fts5(match_text,pinyin_text,content='${prefix}_content',content_rowid='id',tokenize='trigram');
           CREATE TRIGGER ${prefix}_ai AFTER INSERT ON ${prefix}_content BEGIN INSERT INTO ${prefix}_fts(rowid,match_text,pinyin_text) VALUES(new.id,new.match_text,new.pinyin_text); END;
           CREATE TRIGGER ${prefix}_ad AFTER DELETE ON ${prefix}_content BEGIN INSERT INTO ${prefix}_fts(${prefix}_fts,rowid,match_text,pinyin_text) VALUES('delete',old.id,old.match_text,old.pinyin_text); END;
-          CREATE TRIGGER ${prefix}_au AFTER UPDATE ON ${prefix}_content BEGIN INSERT INTO ${prefix}_fts(${prefix}_fts,rowid,match_text,pinyin_text) VALUES('delete',old.id,old.match_text,old.match_text); INSERT INTO ${prefix}_fts(rowid,match_text,pinyin_text) VALUES(new.id,new.match_text,new.pinyin_text); END;
+          CREATE TRIGGER ${prefix}_au AFTER UPDATE ON ${prefix}_content BEGIN INSERT INTO ${prefix}_fts(${prefix}_fts,rowid,match_text,pinyin_text) VALUES('delete',old.id,old.match_text,old.pinyin_text); INSERT INTO ${prefix}_fts(rowid,match_text,pinyin_text) VALUES(new.id,new.match_text,new.pinyin_text); END;
           INSERT INTO ${prefix}_content(id,match_text,pinyin_text) VALUES(1,'江西财经大学 course catalog','jiangxicaijingdaxue course catalog');
           INSERT INTO ${prefix}_fts(${prefix}_fts) VALUES('rebuild');
           SQL
@@ -104,6 +119,18 @@ jobs:
           jq -e '.[0].results[0].n == 1' /tmp/fts-update_new.json
           jq -e '.[0].results[0].n == 0' /tmp/fts-delete.json
           jq -e 'any(.[] | .results[]?; (.detail // "" | ascii_upcase | contains("VIRTUAL TABLE")))' /tmp/fts-eqp.json
+      - name: Apply repository migrations to preview
+        if: inputs.apply_migrations
+        shell: bash
+        run: pnpm exec wrangler d1 migrations apply PREVIEW --config /tmp/fts-wrangler.jsonc --remote
+      - name: Benchmark public catalog candidate narrowing
+        if: inputs.run_benchmark
+        env:
+          D1_BENCH_CONFIG: /tmp/fts-wrangler.jsonc
+          D1_BENCH_BINDING: PREVIEW
+          D1_BENCH_DATABASE_ID: ${{ steps.preview.outputs.database_id }}
+        shell: bash
+        run: pnpm run benchmark:catalog-fts
       - name: Clean up smoke tables
         if: always() && steps.preview.outputs.database_id != ''
         shell: bash
