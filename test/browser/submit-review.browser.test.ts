@@ -339,7 +339,7 @@ test("icourse-aligned form appears immediately @mobile-smoke", async ({
   await expect(teacherSelect).toContainText("请选择");
   await expect(page.getByText("Select an item")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
-  await expect(page.getByText("选填", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("选填。分享成绩，方便同学们综合判断。")).toBeVisible();
   await expect(
     page.getByText("可以搜索课名、老师或课号，再选出对应的课。"),
   ).toBeVisible();

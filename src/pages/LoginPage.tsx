@@ -194,6 +194,7 @@ export function LoginPage() {
       : "",
   );
   const loginRequestId = useRef(0);
+  const authLandingRef = useRef<string | null>(null);
   const qrRequestId = useRef(0);
   const mfaSubmitting = useRef(false);
   const loginPreview = import.meta.env.DEV
@@ -447,10 +448,11 @@ export function LoginPage() {
         },
       );
       if (requestId !== loginRequestId.current) return;
+      const target = searchParams.get("from") ? backTarget : "/profile";
+      // Prefer this over the generic authenticated Navigate (defaults to /courses).
+      authLandingRef.current = target;
       if (session.authenticated) applySession(session);
-      navigate(searchParams.get("from") ? backTarget : "/profile", {
-        replace: true,
-      });
+      navigate(target, { replace: true });
     } catch (err: unknown) {
       if (requestId !== loginRequestId.current) return;
       setError(err instanceof ApiError ? err.message : "登录失败，请稍后重试");
@@ -461,7 +463,6 @@ export function LoginPage() {
 
   const devLoginButton = import.meta.env.DEV ? (
     <Button
-      fullWidth
       isPending={busy}
       type="button"
       variant="secondary"
@@ -569,7 +570,7 @@ export function LoginPage() {
           </Typography>
         </Card.Header>
         {ready && viewer.authenticated && !campusReauth && !loginPreview ? (
-          <Navigate to={backTarget} replace />
+          <Navigate to={authLandingRef.current ?? backTarget} replace />
         ) : !ready && !redeeming && !loginPreview ? (
           <Card.Content>{SESSION_LOADING_STATUS}</Card.Content>
         ) : redeeming && !loginPreview ? (
@@ -678,7 +679,6 @@ export function LoginPage() {
                     <TextField
                       fullWidth
                       isDisabled={busy}
-                      isInvalid={passwordInvalid}
                       isRequired
                       name="username"
                       autoComplete="username"
@@ -698,7 +698,6 @@ export function LoginPage() {
                     <TextField
                       fullWidth
                       isDisabled={busy}
-                      isInvalid={passwordInvalid}
                       isRequired
                       name="password"
                       type="password"
