@@ -4,9 +4,9 @@
  * 点评区带排序与认可，写点评入口进 /submit 预设关系。
  *
  * 后端 descope（#410 的缺口不在 #402 实现）：目录走 /api/courses 前端展开
- * 关系行；点评条目没有逐条 overall/created_at（无星级、
- * 无学期/评分筛选中的学期）；四维档位用 #373 的 dimensionLabels，旧快照显示
- * 维度均分 Chip。
+ * 关系行；点评条目没有逐条 overall/term/created_at（无星级、无学期、
+ * 无学期/评分筛选）；四维档位用 #373 的 dimensionLabels 走 FourDimLine，
+ * 旧快照显示维度均分 Chip；有 overall 时星级旁侧用投稿页 overallCaption。
  */
 import { expect, test, type Page } from "@playwright/test";
 
@@ -295,11 +295,15 @@ test("course detail defaults to the most-reviewed relation", async ({
   // 第一条即 mock 流的第一条 匿名评价 1。
   const first = reviewItems(page).first();
   await expect(first).toContainText("匿名用户");
-  await expect(first).not.toContainText("2026 春");
+  await expect(first.getByText("必选")).toBeVisible();
+  await expect(first.getByText("2026 春")).toHaveCount(0);
   await expect(first).toContainText("2026-08-11");
   await expect(first).toContainText("匿名评价 1");
   await expect(
     first.getByRole("button", { name: /认可/ }),
+  ).toHaveCount(0);
+  await expect(
+    first.getByRole("button", { name: "学过" }),
   ).toHaveCount(0);
 
   // 右栏：老师卡 + 其他老师 + 这位老师的其他课。
@@ -828,7 +832,7 @@ test("empty and mobile states remain accessible without overflow @mobile-smoke",
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
 });
 
-test("review items render headline, grade, and all dimension chips when present", async ({
+test("review items render grade and FourDimLine without a title line", async ({
   page,
 }) => {
   await page.route("**/api/courses/8/reviews**", (route) => {
@@ -846,7 +850,7 @@ test("review items render headline, grade, and all dimension chips when present"
             grade: "A",
             overall: 5,
             created_at: "2026-08-20 12:00:00",
-            // v3 五档标签（含考勤松紧）经 dimensionLabels 逐条下发即全部渲染。
+            // 条目四维与课程页头部同一套 FourDimLine；考勤不进这行。
             dimensionLabels: [
               { id: "difficulty", label: "课程难度", option: "简单" },
               { id: "homework", label: "作业多少", option: "不多" },
@@ -876,28 +880,33 @@ test("review items render headline, grade, and all dimension chips when present"
   const items = reviewItems(page);
   await expect(items).toHaveCount(2);
 
-  const withHeadline = items.nth(0);
-  // headline 加粗行在正文上方；成绩在元信息行；五个维度 chip 全渲染。
+  const withGrade = items.nth(0);
+  // 正文按纯文本展示；一句话总结不再单独加粗成行；成绩单独一行在正文后。
   await expect(
-    withHeadline.locator("p.font-semibold", { hasText: "一句话总结：值得选" }),
+    withGrade.getByText("正文详细评价内容，足够长的一段文字用于占位。"),
   ).toBeVisible();
+  await expect(withGrade.getByText("一句话总结：值得选")).toHaveCount(0);
+  await expect(withGrade.locator("p.font-semibold")).toHaveCount(0);
+  await expect(withGrade.getByText("2026 春")).toHaveCount(0);
   await expect(
-    withHeadline.getByText("成绩 A", { exact: true }),
+    withGrade.getByText("成绩：A", { exact: true }),
   ).toBeVisible();
+  await expect(withGrade.getByText("必选", { exact: true })).toBeVisible();
+  await expect(withGrade.getByText("考勤松紧 宽松")).toHaveCount(0);
   await expect(
-    withHeadline.getByText("考勤松紧 宽松", { exact: true }),
+    withGrade.getByText("课程难度：简单", { exact: true }),
   ).toBeVisible();
-  await expect(
-    withHeadline.getByText("课程难度 简单", { exact: true }),
-  ).toBeVisible();
+  await expect(withGrade.getByText("课程难度 简单", { exact: true })).toHaveCount(
+    0,
+  );
 
-  // 历史行：无 headline 加粗行、无成绩。
+  // 历史行：无标题行、无成绩。
   const legacy = items.nth(1);
   await expect(legacy.locator("p.font-semibold")).toHaveCount(0);
   await expect(legacy.getByText(/成绩/)).toHaveCount(0);
 });
 
-test("four-tier snapshot reviews show four Chinese tier chips and no average", async ({
+test("four-tier snapshot reviews show FourDimLine text and no average", async ({
   page,
 }) => {
   await page.route("**/api/courses/8/reviews**", (route) => {
@@ -911,6 +920,7 @@ test("four-tier snapshot reviews show four Chinese tier chips and no average", a
             course_id: 8,
             teacher_id: 9,
             comment: "带新四维快照的补充说明",
+            overall: 3.5,
             dimensionLabels: [
               { id: "difficulty", label: "课程难度", option: "简单" },
               { id: "homework", label: "作业多少", option: "中等" },
@@ -939,12 +949,15 @@ test("four-tier snapshot reviews show four Chinese tier chips and no average", a
   const items = reviewItems(page);
   await expect(items).toHaveCount(2);
   const tiered = items.nth(0);
-  await expect(tiered.getByText("课程难度 简单", { exact: true })).toBeVisible();
-  await expect(tiered.getByText("作业多少 中等", { exact: true })).toBeVisible();
-  await expect(tiered.getByText("给分好坏 杀手", { exact: true })).toBeVisible();
-  await expect(tiered.getByText("收获多少 一般", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("很推荐")).toBeVisible();
+  await expect(tiered.getByText("课程难度：简单", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("作业多少：中等", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("给分好坏：杀手", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("收获多少：一般", { exact: true })).toBeVisible();
+  await expect(tiered.getByText("课程难度 简单", { exact: true })).toHaveCount(0);
   await expect(tiered.getByText("维度均分")).toHaveCount(0);
   const legacy = items.nth(1);
   await expect(legacy.getByText("维度均分 3.5")).toBeVisible();
+  await expect(legacy.getByText("很推荐")).toHaveCount(0);
   await expect(legacy.getByText("课程难度")).toHaveCount(0);
 });

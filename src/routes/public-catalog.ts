@@ -54,6 +54,7 @@ import {
   type PublicRelationListQuery,
 } from "../public-catalog-query";
 import { handleLatestPublicReviews } from "../public-reviews-latest";
+import { handleListReviewComments } from "../review-comments";
 import { decoratePublicReviews } from "../review-endorsements";
 import { loadRelationSignalPayloads } from "../relation-signals";
 import { resolveOrdinaryUser } from "../ordinary-user-authentication";
@@ -1010,5 +1011,7 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
 });
 
 publicCatalogRoutes.get("/api/reviews/latest", handleLatestPublicReviews);
+
+publicCatalogRoutes.get("/api/reviews/:id/comments", handleListReviewComments);
 
 export default publicCatalogRoutes;

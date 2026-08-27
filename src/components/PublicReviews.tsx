@@ -1,11 +1,20 @@
 import { Alert, Button, Card, Chip, Separator, Spinner, Typography } from "@heroui/react";
+import { useLocation } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
+import {
+  isDevAtlasSession,
+  previewReviewComments,
+  readDevPreview,
+} from "../lib/dev-preview";
+import { fourDimLineLabels } from "../lib/dimension-labels";
 import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import type { PublicReview } from "../lib/types";
-import { Stars } from "./Stars";
+import { parseHandlePublicCode } from "../public-handle";
+import { FourDimLine } from "./FourDimLine";
+import { StarsWithCaption } from "./Stars";
+import { ReviewActionBar } from "./ReviewActionBar";
 import { ReviewNoteContent } from "./ReviewNoteContent";
-import { ReviewRecognitionControl } from "./ReviewRecognitionControl";
 import { ReviewAuthor } from "./ReviewAuthor";
 import { RouterAriaLink } from "./RouterAriaLink";
 
@@ -33,6 +42,12 @@ export function PublicReviews({
   onLoadMore: () => void;
 }) {
   const { viewer, ready, clear } = useViewer();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const preview = readDevPreview(searchParams);
+  const atlas = isDevAtlasSession(searchParams);
+  const previewComposer = preview != null || atlas;
+  const viewerPublicCode = parseHandlePublicCode(viewer.handle);
   return (
     <section className="mb-2" aria-labelledby="public-reviews-heading">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -77,40 +92,32 @@ export function PublicReviews({
                       “
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="mb-1 flex flex-wrap items-center gap-x-2 text-[calc(12/15*1rem)] text-muted">
+                      <p className="mb-1 flex flex-wrap items-center gap-x-2 leading-none text-[calc(12/15*1rem)] text-muted">
                         <ReviewAuthor
                           publicCode={review.author_public_code}
                           avatarKey={review.author_avatar_key}
                         />
                         {review.overall != null ? (
-                          <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
-                        ) : null}
-                        {review.grade ? <span>成绩 {review.grade}</span> : null}
-                        {review.created_at ? (
-                          <time dateTime={formatReviewDate(review.created_at)}>
-                            {formatReviewDate(review.created_at)}
-                          </time>
+                          <StarsWithCaption
+                            rating={review.overall}
+                            className="text-[calc(13/15*1rem)]"
+                          />
                         ) : null}
                       </p>
-                      {review.headline ? (
-                        <p className="mb-1 mt-0 break-words text-sm font-semibold">
-                          {review.headline}
-                        </p>
-                      ) : null}
                       <ReviewNoteContent
                         comment={review.comment}
                         commentFormat={review.comment_format}
                       />
+                      {review.grade ? (
+                        <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
+                          成绩：{review.grade}
+                        </p>
+                      ) : null}
                       {review.dimensionLabels?.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {review.dimensionLabels.map((dimension) => (
-                            <Chip key={dimension.id} size="sm" variant="soft">
-                              <Chip.Label>
-                                {dimension.label} {dimension.option}
-                              </Chip.Label>
-                            </Chip>
-                          ))}
-                        </div>
+                        <FourDimLine
+                          className="mt-2"
+                          labels={fourDimLineLabels(review.dimensionLabels)}
+                        />
                       ) : null}
                       {typeof review.dimensionAverage === "number" ? (
                         <div className="mt-2">
@@ -121,15 +128,20 @@ export function PublicReviews({
                           </Chip>
                         </div>
                       ) : null}
-                      {isEndorsableReview(review) ? (
-                        <ReviewRecognitionControl
-                          review={review}
-                          ready={ready}
-                          authenticated={viewer.authenticated}
-                          loginPath={viewer.loginPath}
-                          onUnauthenticated={clear}
-                        />
-                      ) : null}
+                      <ReviewActionBar
+                        review={review}
+                        date={formatReviewDate(review.created_at)}
+                        ready={ready}
+                        authenticated={viewer.authenticated}
+                        loginPath={viewer.loginPath}
+                        onUnauthenticated={clear}
+                        endorsable={isEndorsableReview(review)}
+                        seedComments={
+                          previewReviewComments(preview, atlas, review.id) ?? []
+                        }
+                        viewerPublicCode={viewerPublicCode}
+                        previewComposer={previewComposer}
+                      />
                     </div>
                   </div>
                 </article>

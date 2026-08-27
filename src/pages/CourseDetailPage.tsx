@@ -41,7 +41,12 @@ import { RouterAriaLink } from "../components/RouterAriaLink";
 import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
-import { readDevPreview } from "../lib/dev-preview";
+import {
+  PREVIEW_REVIEW_COMMENTS,
+  previewFilledCourseDetail,
+  previewFilledCourseReviews,
+  readDevPreview,
+} from "../lib/dev-preview";
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { categoryLabel, formatCredits } from "../lib/labels";
 import { reviewAnchorId } from "../lib/review-dimensions";
@@ -255,6 +260,11 @@ export function CourseDetailPage() {
       setError("课程加载失败");
       return;
     }
+    if (preview === PREVIEW_REVIEW_COMMENTS) {
+      setError("");
+      setData(previewFilledCourseDetail(Number(id) || 8));
+      return;
+    }
     let cancelled = false;
     setData(null);
     setError("");
@@ -315,6 +325,14 @@ export function CourseDetailPage() {
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
+    if (preview === PREVIEW_REVIEW_COMMENTS) {
+      const items = previewFilledCourseReviews(Number(id) || 8);
+      reviewFeed.reset(items, null);
+      setFilteredReviewTotal(items.length);
+      setReviewsLoading(false);
+      setReviewsError("");
+      return;
+    }
     if (!id || !effectiveTeacherId) {
       reviewFeed.reset([], null);
       setFilteredReviewTotal(0);
@@ -355,7 +373,7 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted, reviewsVersion]);
+  }, [id, preview, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted, reviewsVersion]);
 
   /** 管理动作（屏蔽/解除/删除）后：清空评价会话缓存并 bump 版本重拉。 */
   const handleReviewsChanged = useCallback(() => {
@@ -559,7 +577,7 @@ export function CourseDetailPage() {
             </p>
           </div>
 
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
+          <div className="mt-2 flex flex-wrap items-center gap-x-2">
             <Stars rating={rating} className="text-[calc(16/15*1rem)]" />
             {rating != null ? (
               <span className="tabular text-[calc(20/15*1rem)] font-semibold leading-none text-accent">
@@ -567,11 +585,13 @@ export function CourseDetailPage() {
               </span>
             ) : null}
             {relationCount > 0 ? (
-              <span className="text-[calc(12/15*1rem)] text-muted">
+              <span className="text-[calc(12/15*1rem)] leading-none text-muted">
                 （{relationCount} 人评价）
               </span>
             ) : (
-              <span className="text-[calc(13/15*1rem)] text-muted">暂无评价</span>
+              <span className="text-[calc(13/15*1rem)] leading-none text-muted">
+                暂无评价
+              </span>
             )}
           </div>
 

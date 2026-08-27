@@ -4,6 +4,7 @@
  * Icons: HeroUI-recommended @gravity-ui/icons (Star / StarFill). HeroUI has no Rating.
  */
 import { Star, StarFill } from "@gravity-ui/icons";
+import { overallCaption } from "../lib/review-overall";
 
 const STAR_COUNT = 5;
 
@@ -68,6 +69,28 @@ export function Stars({
       {Array.from({ length: STAR_COUNT }, (_, index) => (
         <StarGlyph key={index} fill={starFill(rating, index + 1)} />
       ))}
+    </span>
+  );
+}
+
+/** 点评条目用：星级旁侧显示投稿页同一套推荐度文案（很推荐 / 必选…）。 */
+export function StarsWithCaption({
+  rating,
+  className = "",
+}: {
+  rating: number;
+  className?: string;
+}) {
+  const caption = overallCaption(String(rating));
+  return (
+    <span className="inline-flex items-center gap-x-1.5 leading-none">
+      <Stars
+        rating={rating}
+        className={`translate-y-[0.14em] ${className}`}
+      />
+      {caption ? (
+        <span className="font-normal leading-none text-muted">{caption}</span>
+      ) : null}
     </span>
   );
 }

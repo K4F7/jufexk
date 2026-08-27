@@ -257,7 +257,7 @@ function DefaultShell({
       <SiteBanner banner={banner} />
 
       <main
-        className="mx-auto w-full max-w-[1520px] flex-1 px-4 pb-16 pt-8 sm:px-5 xl:px-4"
+        className="mx-auto flex w-full max-w-[1520px] flex-1 flex-col px-4 pb-16 pt-8 sm:px-5 xl:px-4"
         id="main-content"
         tabIndex={-1}
       >

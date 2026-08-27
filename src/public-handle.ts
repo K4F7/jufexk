@@ -26,6 +26,14 @@ export function formatPublicHandle(code: number): string {
   return `匿名用户#${formatPublicCode(code)}`;
 }
 
+/** Parse `匿名用户#000001` / `#000001` from the viewer session handle. */
+export function parseHandlePublicCode(handle?: string | null): number | null {
+  if (!handle) return null;
+  const match = /#(\d{1,6})$/.exec(handle.trim());
+  if (!match) return null;
+  return parsePublicCodeParam(match[1]);
+}
+
 export async function findUserByPublicCode(
   db: D1Database,
   publicCode: number,
