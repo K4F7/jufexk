@@ -10,11 +10,5 @@ export function statusBadgeUrl(theme: "light" | "dark"): string {
   return `${STATUS_PAGE_URL}/badge?theme=${theme}`;
 }
 
-/** Official JUFE channels listed on /resources. */
-export const SITE_OFFICIAL_CHANNELS = [
-  { href: "https://www.jxufe.edu.cn/", title: "学校官网" },
-  { href: "https://jwc.jxufe.edu.cn/", title: "教务处" },
-  { href: "http://xk.jxufe.edu.cn/", title: "选课平台" },
-  { href: "http://ehall.jxufe.edu.cn/", title: "智慧江财" },
-  { href: "https://jwxt.jxufe.edu.cn/jxcjcaslogin", title: "本科教务" },
-] as const;
+/** Official JUFE QQ channel listed on /resources. */
+export const JUFE_QQ_CHANNEL_URL = "https://pd.qq.com/s/8pxythjnt";
