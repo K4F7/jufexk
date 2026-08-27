@@ -154,6 +154,16 @@ export const adminTeacherSchema = z
     department: cleanedField(80),
     title: cleanedField(80),
     bio: cleanedField(1000),
+    homepageUrl: unknownField,
+    homepageLocked: unknownField,
+    imageLocked: unknownField,
+  })
+  .passthrough();
+
+export const adminCtaSyncSchema = z
+  .object({
+    teacherId: integerField,
+    limit: integerField,
   })
   .passthrough();
 

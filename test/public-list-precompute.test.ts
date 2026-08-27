@@ -30,6 +30,7 @@ describe("public list refresh coordination", () => {
     ["POST", "/api/admin/courses"],
     ["DELETE", "/api/admin/courses/42"],
     ["POST", "/api/admin/teachers"],
+    ["POST", "/api/admin/cta-sync"],
     ["DELETE", "/api/admin/teachers/42"],
     ["PUT", "/api/admin/courses/42/teachers"],
     ["POST", "/api/admin/catalog-baseline/uploads/batch-42/publish"],

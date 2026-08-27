@@ -34,20 +34,24 @@ export function officialAvatarSrc(avatarKey: number): string {
 export function AnonymousAvatar({
   seed,
   avatarKey,
+  photoSrc,
   size = "sm",
   fallback = "匿",
   className,
 }: {
   seed?: string | number;
   avatarKey?: number;
+  /** 教师公开头像；缺省或 CTA 默认剪影未入库时仍走 HeroUI 占位图。 */
+  photoSrc?: string | null;
   size?: "sm" | "md" | "lg";
   fallback?: string;
   className?: string;
 }) {
   const src =
-    avatarKey != null
+    photoSrc ||
+    (avatarKey != null
       ? officialAvatarSrc(avatarKey)
-      : placeholderAvatarSrc(seed ?? 0);
+      : placeholderAvatarSrc(seed ?? 0));
   return (
     <Avatar size={size} className={className} aria-hidden>
       <Avatar.Image alt="" src={src} />

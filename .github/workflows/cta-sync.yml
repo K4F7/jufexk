@@ -1,0 +1,39 @@
+name: Sync CTA teacher homepages
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "migrations/0046_teacher_cta_homepage.sql"
+      - ".github/workflows/cta-sync.yml"
+concurrency:
+  group: production-cta-sync
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  sync:
+    name: sync
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply pending D1 migrations
+        run: pnpm exec wrangler d1 migrations apply jufexk --remote
+      - name: Fetch CTA index, bind unique matches, compress WebP
+        run: pnpm cta-sync
+      - name: Write homepages and WebP avatars to production D1
+        run: pnpm exec tsx scripts/cta-sync/apply-remote.ts --remote --apply
+        # 没有真人照片的教师不写 teacher_avatars，公开接口 avatar_url 仍为 null，页面继续用 HeroUI 占位头像。

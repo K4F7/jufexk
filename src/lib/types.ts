@@ -74,6 +74,10 @@ export type Teacher = {
   department: string;
   title: string;
   bio: string;
+  /** CTA 公开详情页；未绑定、锁主页或默认占位时为 null。 */
+  official_homepage_url?: string | null;
+  /** 本站存储的公开头像；默认剪影或锁图时为 null，回退 HeroUI 头像。 */
+  avatar_url?: string | null;
   rating?: number | null;
   course_count?: number;
   review_count?: number;

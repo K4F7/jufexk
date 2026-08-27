@@ -65,6 +65,7 @@ import {
   adminCourseSchema,
   adminStudentBindingsSchema,
   adminOfferingSchema,
+  adminCtaSyncSchema,
   adminTeacherSchema,
   adminUserBlockSchema,
   moderationSchema,
@@ -73,6 +74,15 @@ import {
   teacherIdsSchema,
 } from "./request-schemas";
 import announcementRoutes from "./announcements";
+import {
+  ctaHomepageUrl,
+  isAllowedCtaHomepageUrl,
+  parseCtaHomepageUrl,
+} from "../cta-teacher-homepage";
+import {
+  createHttpCtaClient,
+  syncTeacherCtaHomepageBatch,
+} from "../cta-teacher-sync";
 
 const adminRoutes = new Hono<AppEnv>();
 
@@ -1471,6 +1481,61 @@ adminRoutes.delete("/api/admin/courses/:id", async (c) => {
   await c.env.DB.prepare("DELETE FROM courses WHERE id=?").bind(id).run();
   return c.json({ ok: true });
 });
+function parseOptionalFlag(value: unknown): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (value === true || value === 1 || value === "1") return true;
+  if (value === false || value === 0 || value === "0") return false;
+  return undefined;
+}
+
+function parseAdminCtaHomepagePatch(body: {
+  homepageUrl?: unknown;
+  homepageLocked?: unknown;
+  imageLocked?: unknown;
+}): { error?: string; sql?: string; args?: unknown[] } {
+  const sets: string[] = [];
+  const args: unknown[] = [];
+  if (body.homepageUrl !== undefined) {
+    const url =
+      typeof body.homepageUrl === "string" ? body.homepageUrl.trim() : "";
+    if (url && !isAllowedCtaHomepageUrl(url)) return { error: "官方主页链接无效" };
+    if (!url) {
+      sets.push(
+        "homepage_url=NULL",
+        "cta_fid=NULL",
+        "cta_uid=NULL",
+        "homepage_match='none'",
+      );
+    } else {
+      const parsed = parseCtaHomepageUrl(url);
+      if (!parsed) return { error: "官方主页链接无效" };
+      sets.push(
+        "homepage_url=?",
+        "cta_fid=?",
+        "cta_uid=?",
+        "homepage_match='manual'",
+      );
+      args.push(ctaHomepageUrl(parsed.uid, parsed.fid), parsed.fid, parsed.uid);
+    }
+  }
+  const homepageLocked = parseOptionalFlag(body.homepageLocked);
+  if (homepageLocked !== undefined) {
+    sets.push("homepage_locked=?");
+    args.push(homepageLocked ? 1 : 0);
+  }
+  const imageLocked = parseOptionalFlag(body.imageLocked);
+  if (imageLocked !== undefined) {
+    sets.push("image_locked=?");
+    args.push(imageLocked ? 1 : 0);
+    if (imageLocked) sets.push("avatar_sha256=NULL");
+  }
+  if (!sets.length) return {};
+  return {
+    sql: `UPDATE teachers SET ${sets.join(",")} WHERE id=?`,
+    args,
+  };
+}
+
 adminRoutes.get("/api/admin/teachers", async (c) =>
   c.json(
     (await c.env.DB.prepare("SELECT * FROM teachers ORDER BY name").all())
@@ -1517,6 +1582,13 @@ adminRoutes.post("/api/admin/teachers", async (c) => {
         existingId,
       )
       .run();
+    const homepagePatch = parseAdminCtaHomepagePatch(b);
+    if (homepagePatch.error) return fail(c, homepagePatch.error);
+    if (homepagePatch.sql) {
+      await c.env.DB.prepare(homepagePatch.sql)
+        .bind(...(homepagePatch.args ?? []), existingId)
+        .run();
+    }
   } else {
     if (!sourceTeacherLabel || !name) return fail(c, "来源教师名不能为空");
     const result = await c.env.DB.prepare(
@@ -1532,7 +1604,36 @@ adminRoutes.post("/api/admin/teachers", async (c) => {
       .run();
     id = Number(result.meta.last_row_id);
   }
+  if (parseOptionalFlag(b.imageLocked) === true && id) {
+    await c.env.DB.prepare("DELETE FROM teacher_avatars WHERE teacher_id=?")
+      .bind(id)
+      .run();
+  }
   return c.json({ ok: true, id });
+});
+adminRoutes.post("/api/admin/cta-sync", async (c) => {
+  const parsedBody = adminCtaSyncSchema.safeParse(
+    (await c.req.json<unknown>().catch(() => ({}))) ?? {},
+  );
+  if (!parsedBody.success) return fail(c, "同步参数无效");
+  const teacherId = parsedBody.data.teacherId;
+  const limit = parsedBody.data.limit;
+  try {
+    const items = await syncTeacherCtaHomepageBatch(
+      c.env.DB,
+      {
+        teacherId: teacherId ?? undefined,
+        limit: limit ?? undefined,
+      },
+      createHttpCtaClient(),
+    );
+    markPublicCatalogCacheChanged(c);
+    return c.json({ ok: true, items });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "同步失败";
+    if (message === "教师不存在") return fail(c, message, 404);
+    return fail(c, "同步失败", 502);
+  }
 });
 adminRoutes.delete("/api/admin/teachers/:id", async (c) => {
   const id = integer(c.req.param("id"));

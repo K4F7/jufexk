@@ -24,6 +24,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
+import { OfficialHomepageLink } from "../components/OfficialHomepageLink";
 import { CourseAdminNotice } from "../components/CourseAdminNotice";
 import { CourseAiSummary } from "../components/CourseAiSummary";
 import {
@@ -681,6 +682,7 @@ export function CourseDetailPage() {
               <Card.Header className="items-center text-center">
                 <AnonymousAvatar
                   seed={selectedTeacher.id}
+                  photoSrc={selectedTeacher.avatar_url}
                   size="lg"
                   fallback={selectedTeacher.name.slice(0, 1)}
                 />
@@ -692,6 +694,13 @@ export function CourseDetailPage() {
                 ) : null}
               </Card.Header>
             </RouterAriaLink>
+            {selectedTeacher.official_homepage_url ? (
+              <Card.Footer className="justify-center">
+                <OfficialHomepageLink
+                  href={selectedTeacher.official_homepage_url}
+                />
+              </Card.Footer>
+            ) : null}
           </Card>
         ) : null}
 
