@@ -90,14 +90,6 @@ export const siteBannerSchema = z
   })
   .passthrough();
 
-export const adminAnnouncementSchema = z
-  .object({
-    title: z.string().trim().min(1).max(120),
-    content: z.string().trim().min(1).max(10000),
-    author: z.string().trim().min(1).max(120),
-  })
-  .passthrough();
-
 export const adminUserBlockSchema = z
   .object({
     days: z.coerce.number().int().min(1).max(3650),

@@ -17,7 +17,7 @@ export function AccountPage() {
 
   if (!ready && !forceGuest) {
     return (
-      <section aria-labelledby="account-heading" className="mx-auto max-w-xl py-8">
+      <section aria-labelledby="account-heading" className="mx-auto w-full max-w-xl py-8">
         <p className="m-0 flex items-center gap-2 text-sm text-muted">
           <Spinner color="current" size="sm" />
           正在读取登录状态…
@@ -31,7 +31,7 @@ export function AccountPage() {
   }
 
   return (
-    <section aria-labelledby="account-heading" className="mx-auto max-w-xl py-8">
+    <section aria-labelledby="account-heading" className="mx-auto w-full max-w-xl py-8">
       <Card role="article" aria-labelledby="account-heading">
         <Card.Header>
           <Card.Title id="account-heading">账号管理</Card.Title>

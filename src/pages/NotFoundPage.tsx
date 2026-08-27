@@ -3,7 +3,10 @@ import { RouterAriaLink } from "../components/RouterAriaLink";
 
 export function NotFoundPage() {
   return (
-    <section aria-labelledby="not-found-heading" className="mx-auto max-w-xl py-8">
+    <section
+      aria-labelledby="not-found-heading"
+      className="mx-auto w-full max-w-xl py-8"
+    >
       <Card role="article" aria-labelledby="not-found-heading">
         <Card.Header>
           <Card.Title id="not-found-heading">页面不存在</Card.Title>

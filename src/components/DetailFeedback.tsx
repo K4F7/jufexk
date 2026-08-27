@@ -62,7 +62,7 @@ function TeacherDetailSkeleton() {
       </section>
       <aside>
         <Surface className="flex flex-col items-center px-4 py-5">
-          <Skeleton className="size-16 rounded-full" />
+          <Skeleton className="size-[96px] rounded-full" />
           <Skeleton className="mt-3 h-5 w-24 rounded" />
           <Skeleton className="mt-2 h-3 w-20 rounded" />
         </Surface>

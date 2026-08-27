@@ -46,7 +46,7 @@ export function AdminHubPage() {
   return (
     <AdminLayout
       title="管理后台"
-      description="全站 Banner、公告栏与管理员学号在这里维护；屏蔽点评、查询作者、课程管理员公告嵌在课程详情页上。"
+      description="全站 Banner 与管理员学号在这里维护；屏蔽点评、查询作者、课程管理员公告嵌在课程详情页上。"
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <HubCard
@@ -54,12 +54,6 @@ export function AdminHubPage() {
           description="顶栏下方的全站公告条；桌面版与移动版分别设置，含设置历史。"
           title="全站 Banner"
           to="/admin/banner"
-        />
-        <HubCard
-          action="打开公告栏"
-          description="公开公告列表；管理员可发布、编辑、删除。"
-          title="公告栏"
-          to="/announcements"
         />
         <HubCard
           action="管理员学号"

@@ -162,7 +162,7 @@ test("signed-in viewer sees the account menu and leaves /login for the prior pag
   await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("logout from the account menu clears the session and reports the result", async ({
+test("logout from the account menu stays on the page and confirms in a dialog", async ({
   page,
 }) => {
   const mock = state({ authenticated: true });
@@ -171,41 +171,52 @@ test("logout from the account menu clears the session and reports the result", a
 
   await page.getByRole("button", { name: "账号" }).click();
   await page.getByRole("menuitem", { name: "退出登录" }).click();
-  await expect(page).toHaveURL(/\/logout$/);
-  // The guide page never signs out on its own; the explicit confirm does.
+  await expect(page).toHaveURL(/\/courses$/);
+  const dialog = page.getByRole("alertdialog", { name: "确认退出登录？" });
+  await expect(dialog).toBeVisible();
   expect(mock.logoutCalls).toBe(0);
+
+  await dialog.getByRole("button", { name: "取消" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "账号" })).toBeVisible();
+  expect(mock.logoutCalls).toBe(0);
+
+  await page.getByRole("button", { name: "账号" }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
   await page.getByRole("button", { name: "确认退出" }).click();
-  await expect(page.getByText("已退出登录")).toBeVisible();
+  await expect(page).toHaveURL(/\/courses$/);
   expect(mock.logoutCalls).toBe(1);
   await expect(page.getByRole("link", { name: "登录", exact: true })).toBeVisible();
   await expect(page.getByText("登录未开放")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "返回继续浏览" })).toHaveCount(0);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
 });
 
 test("logout failure offers a retry that recovers", async ({ page }) => {
   const mock = state({ authenticated: true, logoutFails: true });
   await mockApi(page, mock);
-  await page.goto("/logout");
+  await page.goto("/courses");
+  await page.getByRole("button", { name: "账号" }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
   await page.getByRole("button", { name: "确认退出" }).click();
   await expect(page.getByText("退出失败")).toBeVisible();
   await expect(
     page.getByText("网络或服务暂时不可用，退出没有完成，请重试。"),
   ).toBeVisible();
-  await expect(page.getByText("也可以直接关掉页面")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/courses$/);
+  await expect(page.getByRole("button", { name: "账号" })).toBeVisible();
 
   mock.logoutFails = false;
   await page.getByRole("button", { name: "重试退出" }).click();
-  await expect(page.getByText("已退出登录")).toBeVisible();
+  await expect(page.getByRole("link", { name: "登录", exact: true })).toBeVisible();
   expect(mock.logoutCalls).toBe(2);
+  await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("the logout guide page tells guests there is nothing to sign out of", async ({
-  page,
-}) => {
+test("the old /logout URL is gone", async ({ page }) => {
   const mock = state();
   await mockApi(page, mock);
   await page.goto("/logout");
-  await expect(page.getByText("当前未登录")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "页面不存在" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "确认退出" }),
   ).toHaveCount(0);
@@ -287,9 +298,11 @@ test("keyboard reaches the account menu and logout confirm", async ({
   // reaches 退出登录.
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/logout$/);
+  await expect(page).toHaveURL(/\/courses$/);
   const confirmLogout = page.getByRole("button", { name: "确认退出" });
+  await expect(confirmLogout).toBeVisible();
   await confirmLogout.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByText("已退出登录")).toBeVisible();
+  await expect(page.getByRole("link", { name: "登录", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/courses$/);
 });

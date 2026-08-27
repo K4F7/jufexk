@@ -15,19 +15,15 @@ import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
 import { AccountPage } from "./pages/AccountPage";
-import { AdminAnnouncementEditPage } from "./pages/admin/AdminAnnouncementEditPage";
 import { AdminBannerPage } from "./pages/admin/AdminBannerPage";
 import { AdminHubPage } from "./pages/admin/AdminHubPage";
 import { AdminStudentBindingsPage } from "./pages/admin/AdminStudentBindingsPage";
 import { AdminUserBlockPage } from "./pages/admin/AdminUserBlockPage";
-import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
 import { LatestPage } from "./pages/LatestPage";
 import { LoginPage } from "./pages/LoginPage";
-import { LogoutPage } from "./pages/LogoutPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { NoticesPage } from "./pages/NoticesPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { PublicUserPage } from "./pages/PublicUserPage";
 import { SchedulePage } from "./pages/SchedulePage";
@@ -172,24 +168,17 @@ export function App() {
               <Route path="/teachers" element={<TeachersPage />} />
               <Route path="/teachers/:id" element={<TeacherDetailPage />} />
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/logout" element={<LogoutPage />} />
               <Route path="/account" element={<AccountPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/u/:code" element={<PublicUserPage />} />
-              <Route path="/notices" element={<NoticesPage />} />
               <Route path="/submit" element={<SubmitPage config={config} />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/resources" element={<ResourcesPage />} />
               <Route path="/terms" element={<TermsPage />} />
-              <Route path="/announcements" element={<AnnouncementsPage />} />
               <Route path="/admin" element={<AdminHubPage />} />
               <Route path="/admin/admins" element={<AdminStudentBindingsPage />} />
               <Route path="/admin/banner" element={<AdminBannerPage />} />
-              <Route
-                path="/admin/announcements/:id"
-                element={<AdminAnnouncementEditPage />}
-              />
               <Route path="/admin/users/:id" element={<AdminUserBlockPage />} />
               {PrototypeGalleryPage ? (
                 <Route

@@ -28,7 +28,6 @@ export type AtlasTargets = {
   emptyCourseId: number | null;
   filledTeacherId: number | null;
   secondTeacherId: number | null;
-  announcementId: number | null;
 };
 
 export type AtlasPage = {
@@ -51,7 +50,6 @@ const emptyTargets: AtlasTargets = {
   emptyCourseId: null,
   filledTeacherId: null,
   secondTeacherId: null,
-  announcementId: null,
 };
 
 export function withAtlasParam(path: string): string {
@@ -70,7 +68,6 @@ export function resolveAtlasTargets(input: {
   filledCourses: Array<{ id: number; name: string; teacher_refs?: string }>;
   emptyCourses: Array<{ id: number; name: string }>;
   teachers: Array<{ id: number; name: string }>;
-  announcements: Array<{ id: number; title: string }>;
 }): AtlasTargets {
   const filled =
     input.filledCourses.find((course) => course.name === ATLAS_FILLED_COURSE_QUERY) ??
@@ -94,16 +91,11 @@ export function resolveAtlasTargets(input: {
     refs.find((ref) => ref.name === ATLAS_SECOND_TEACHER_NAME) ??
     refs.find((ref) => ref.id !== primary?.id) ??
     null;
-  const announcement =
-    input.announcements.find((item) => item.title.startsWith("【预览】")) ??
-    input.announcements[0] ??
-    null;
   return {
     filledCourseId: filled?.id ?? null,
     emptyCourseId: empty?.id ?? null,
     filledTeacherId: teacher?.id ?? primary?.id ?? null,
     secondTeacherId: secondary?.id ?? null,
-    announcementId: announcement?.id ?? null,
   };
 }
 
@@ -135,10 +127,6 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
     targets.filledCourseId != null && targets.filledTeacherId != null
       ? `/submit?courseId=${targets.filledCourseId}&teacherId=${targets.filledTeacherId}`
       : "/submit";
-  const announcementEdit =
-    targets.announcementId != null
-      ? `/admin/announcements/${targets.announcementId}`
-      : "/admin/announcements/new";
 
   return [
     {
@@ -315,34 +303,6 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           access: "public",
         },
         {
-          id: "announcements",
-          title: "公告栏",
-          description: "公开公告列表",
-          href: "/announcements",
-          access: "public",
-        },
-        {
-          id: "announcements-empty",
-          title: "公告栏 · 空态",
-          description: "DEV mock：暂时没有公告",
-          href: "/announcements?preview=empty",
-          access: "public",
-        },
-        {
-          id: "announcements-error",
-          title: "公告栏 · 加载失败",
-          description: "DEV mock：公告加载失败",
-          href: "/announcements?preview=error",
-          access: "public",
-        },
-        {
-          id: "announcements-admin",
-          title: "公告栏 · 管理员动作",
-          description: "DEV mock：发布 / 编辑 / 删除按钮",
-          href: "/announcements?preview=admin",
-          access: "admin",
-        },
-        {
           id: "public-user",
           title: "公开用户页",
           description: `匿名用户#${ATLAS_PUBLIC_CODE} 的过审点评`,
@@ -498,44 +458,37 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
         },
         {
           id: "notices",
-          title: "站内消息",
-          description: "真实 D1：本地测试登录后的消息",
-          href: "/notices",
+          title: "消息下拉 · 未读/已读",
+          description: "DEV mock：顶栏信封下拉（关注课评 / 认可 / 关注）",
+          href: "/courses?preview=filled",
           access: "login",
         },
         {
           id: "notices-empty",
-          title: "站内消息 · 空态",
-          description: "DEV mock：还没有消息哦",
-          href: "/notices?preview=empty",
-          access: "login",
-        },
-        {
-          id: "notices-filled",
-          title: "站内消息 · 未读/已读",
-          description: "DEV mock：未读角标与已读列表",
-          href: "/notices?preview=filled",
+          title: "消息下拉 · 空态",
+          description: "DEV mock：顶栏信封下拉「还没有消息哦」",
+          href: "/courses?preview=notices-badge-zero",
           access: "login",
         },
         {
           id: "notices-badge",
           title: "消息未读",
           description: "DEV mock：顶栏信封红点 3（关注 + 关注课评）",
-          href: "/notices?preview=notices-badge",
+          href: "/courses?preview=notices-badge",
           access: "login",
         },
         {
           id: "notices-badge-zero",
           title: "消息已读",
           description: "DEV mock：顶栏信封无角标",
-          href: "/notices?preview=notices-badge-zero",
+          href: "/courses?preview=notices-badge-zero",
           access: "login",
         },
         {
           id: "notices-error",
-          title: "站内消息 · 加载失败",
-          description: "DEV mock：消息暂时加载不了",
-          href: "/notices?preview=error",
+          title: "消息下拉 · 加载失败",
+          description: "DEV mock：顶栏下拉「消息暂时加载不了」",
+          href: "/courses?preview=notices-error",
           access: "login",
         },
         {
@@ -543,27 +496,6 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           title: "账号 · 未登录",
           description: "DEV mock：访客账号卡（登录后默认进个人主页）",
           href: "/account?preview=guest",
-          access: "public",
-        },
-        {
-          id: "logout",
-          title: "退出登录",
-          description: "DEV mock：确认退出",
-          href: "/logout?preview=confirm",
-          access: "login",
-        },
-        {
-          id: "logout-done",
-          title: "退出登录 · 已退出",
-          description: "DEV mock：已退出登录",
-          href: "/logout?preview=done",
-          access: "public",
-        },
-        {
-          id: "logout-error",
-          title: "退出登录 · 失败",
-          description: "DEV mock：退出失败",
-          href: "/logout?preview=error",
           access: "public",
         },
       ],
@@ -583,7 +515,7 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
         {
           id: "admin-hub",
           title: "管理首页",
-          description: "Banner、公告、学号绑定、禁言入口",
+          description: "Banner、学号绑定、禁言入口",
           href: "/admin",
           access: "admin",
         },
@@ -599,20 +531,6 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           title: "管理员学号",
           description: "绑定校园登录学号",
           href: "/admin/admins",
-          access: "admin",
-        },
-        {
-          id: "admin-announcement-new",
-          title: "发布公告",
-          description: "新建公告表单",
-          href: "/admin/announcements/new",
-          access: "admin",
-        },
-        {
-          id: "admin-announcement-edit",
-          title: "编辑公告",
-          description: "打开一条预览公告",
-          href: announcementEdit,
           access: "admin",
         },
         {

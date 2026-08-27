@@ -225,13 +225,9 @@ describe("pnpm db:seed-preview 灌进公开目录", () => {
     const reviews = await env.DB.prepare(
       "SELECT COUNT(*) n FROM reviews WHERE submitter_hash LIKE 'proto-r-%'",
     ).first<{ n: number }>();
-    const announcements = await env.DB.prepare(
-      "SELECT COUNT(*) n FROM announcements WHERE author='本地预览'",
-    ).first<{ n: number }>();
     expect(teachers?.n).toBe(PREVIEW_TEACHERS.length);
     expect(courses?.n).toBe(PREVIEW_COURSE_CODES.length);
     expect(reviews?.n).toBe(PREVIEW_REVIEW_COUNT);
-    expect(announcements?.n).toBe(2);
   });
 
   it("公开课程和教师接口能读到预览行", async () => {
@@ -303,7 +299,7 @@ describe("pnpm db:seed-preview 灌进公开目录", () => {
     );
   });
 
-  it("课程详情、最新课评、公告、Banner 和公开用户页能读到预览状态", async () => {
+  it("课程详情、最新课评、Banner 和公开用户页能读到预览状态", async () => {
     const catalog = await SELF.fetch(
       `${origin}/api/courses?q=${encodeURIComponent("中级财务会计")}`,
     ).then((response) =>
@@ -397,13 +393,6 @@ describe("pnpm db:seed-preview 灌进公开目录", () => {
       latest.items.some((item) => item.comment.includes("仅登录用户可见的预览点评正文")),
     ).toBe(false);
     expect(latest.items.some((item) => item.comment.includes("待审核的预览点评"))).toBe(false);
-
-    const announcements = await SELF.fetch(`${origin}/api/announcements`).then((response) =>
-      response.json<{ items: Array<{ title: string; author: string }> }>(),
-    );
-    expect(announcements.items.map((item) => item.title)).toEqual(
-      expect.arrayContaining(["【预览】欢迎使用本地种子", "【预览】维护通知"]),
-    );
 
     const banner = await SELF.fetch(`${origin}/api/site/banner`).then((response) =>
       response.json<{ desktopHtml: string; mobileHtml: string }>(),
