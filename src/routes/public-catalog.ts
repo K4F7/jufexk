@@ -53,6 +53,10 @@ import {
   type PublicCourseListQuery,
   type PublicRelationListQuery,
 } from "../public-catalog-query";
+import {
+  buildCatalogCandidateFtsQuery,
+  CATALOG_FUZZY_SERVER_HARD_LIMIT,
+} from "../lib/catalog-search-candidates";
 import { handleLatestPublicReviews } from "../public-reviews-latest";
 import { handleListReviewComments } from "../review-comments";
 import { decoratePublicReviews } from "../review-endorsements";
@@ -486,6 +490,89 @@ publicCatalogRoutes.get("/api/config", async (c) => {
 publicCatalogRoutes.get("/api/site/banner", async (c) =>
   c.json(await loadSiteBanner(c.env.DB)),
 );
+publicCatalogRoutes.get("/api/search/candidates", async (c) => {
+  await ensurePublicListPrecomputes(c.env.DB);
+  const kind = clean(c.req.query("kind"), 20);
+  if (kind !== "course" && kind !== "teacher") {
+    return fail(c, "kind 只允许 course 或 teacher", 400);
+  }
+  const query = clean(c.req.query("q"), 80);
+  const requestedLimit = Number(c.req.query("limit") || "200");
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.max(1, Math.min(Math.trunc(requestedLimit), CATALOG_FUZZY_SERVER_HARD_LIMIT))
+    : 200;
+  const ftsQuery = buildCatalogCandidateFtsQuery(query);
+  if (!ftsQuery) {
+    return c.json({ items: [], meta: { rows_read: 0, candidate_count: 0 } });
+  }
+  if (kind === "course") {
+    const result = await c.env.DB.prepare(
+      `WITH hits AS (
+         SELECT rowid,bm25(course_search_fts) score
+         FROM course_search_fts
+         WHERE course_search_fts MATCH ?
+         ORDER BY score
+         LIMIT ?
+       )
+       SELECT c.id,c.name,c.code,c.department,pcc.pinyin_text pinyin,
+        GROUP_CONCAT(DISTINCT t.name) teachers
+       FROM hits
+       JOIN courses c ON c.id=hits.rowid
+       ${publicCourseCanonicalJoin}
+       LEFT JOIN course_teachers ct ON ct.course_id=c.id
+       LEFT JOIN teachers t ON t.id=ct.teacher_id
+       WHERE ${publicCourseVisibleSql("c")}
+       GROUP BY c.id
+       ORDER BY hits.score,c.name,c.code,c.id`,
+    )
+      .bind(ftsQuery, limit)
+      .all();
+    const rows = (result.results || []) as Array<Record<string, unknown>>;
+    return c.json({
+      items: rows.map((row) => ({
+        id: Number(row.id),
+        name: String(row.name || ""),
+        code: String(row.code || ""),
+        department: String(row.department || ""),
+        teachers: row.teachers ? String(row.teachers).split(",") : [],
+        pinyin: String(row.pinyin || ""),
+      })),
+      meta: {
+        rows_read: Number((result as { meta?: { rows_read?: number } }).meta?.rows_read) || 0,
+        candidate_count: rows.length,
+      },
+    });
+  }
+  const result = await c.env.DB.prepare(
+    `WITH hits AS (
+       SELECT rowid,bm25(teacher_search_fts) score
+       FROM teacher_search_fts
+       WHERE teacher_search_fts MATCH ?
+       ORDER BY score
+       LIMIT ?
+     )
+     SELECT t.id,t.name,t.department,pts.pinyin_text pinyin
+       FROM hits
+       JOIN teachers t ON t.id=hits.rowid
+       ${publicTeacherSearchJoin}
+      ORDER BY hits.score,t.name,t.department,t.id`,
+  )
+    .bind(ftsQuery, limit)
+    .all();
+  const rows = (result.results || []) as Array<Record<string, unknown>>;
+  return c.json({
+    items: rows.map((row) => ({
+      id: Number(row.id),
+      name: String(row.name || ""),
+      department: String(row.department || ""),
+      pinyin: String(row.pinyin || ""),
+    })),
+    meta: {
+      rows_read: Number((result as { meta?: { rows_read?: number } }).meta?.rows_read) || 0,
+      candidate_count: rows.length,
+    },
+  });
+});
 publicCatalogRoutes.get("/api/courses", async (c) => {
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);

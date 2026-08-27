@@ -6,6 +6,7 @@ import {
   type CourseSearchCandidate,
   type TeacherSearchCandidate,
 } from "../src/lib/catalog-fuzzy-search";
+import { buildCatalogCandidateFtsQuery } from "../src/lib/catalog-search-candidates";
 
 const courses: CourseSearchCandidate[] = [
   {
@@ -47,6 +48,16 @@ describe("isCatalogFuzzyQueryEligible", () => {
     expect(isCatalogFuzzyQueryEligible("高数")).toBe(false);
     expect(isCatalogFuzzyQueryEligible("高等数雪")).toBe(true);
     expect(isCatalogFuzzyQueryEligible("mat10")).toBe(true);
+  });
+});
+
+describe("buildCatalogCandidateFtsQuery", () => {
+  it("quotes FTS operators and wildcard characters as literals", () => {
+    const query = buildCatalogCandidateFtsQuery(`C++ %_\\ "语法"`);
+    expect(query).toContain('"c++"');
+    expect(query).toContain('"%_\\"');
+    expect(query).toContain('"""语法"');
+    expect(query).toMatch(/^".*"(?: OR ".*")*$/);
   });
 });
 

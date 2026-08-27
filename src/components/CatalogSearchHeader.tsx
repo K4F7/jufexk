@@ -19,6 +19,7 @@ export type CatalogSearchSuggestion = {
   id: string;
   title: string;
   detail?: string;
+  kind?: "strict" | "fuzzy";
 };
 
 export type CatalogSearchHeaderProps = {
@@ -149,7 +150,9 @@ export function CatalogSearchHeader({
                       id={item.id}
                       textValue={item.title}
                     >
-                      <Label>{item.title}</Label>
+                      <Label>
+                        {item.kind === "fuzzy" ? `可能是：${item.title}` : item.title}
+                      </Label>
                       {item.detail ? (
                         <Description>{item.detail}</Description>
                       ) : null}

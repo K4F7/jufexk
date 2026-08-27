@@ -1,27 +1,24 @@
 import Fuse, { type FuseResult, type IFuseOptions } from "fuse.js";
+import {
+  CATALOG_FUZZY_CANDIDATE_LIMIT,
+  isCatalogFuzzyQueryEligible,
+  type CatalogSearchCandidate,
+  type CatalogSearchCandidateKind,
+  type CourseSearchCandidate,
+  type TeacherSearchCandidate,
+} from "./catalog-search-candidates";
+
+export {
+  CATALOG_FUZZY_CANDIDATE_LIMIT,
+  CATALOG_FUZZY_SERVER_HARD_LIMIT,
+  isCatalogFuzzyQueryEligible,
+  type CatalogSearchCandidate,
+  type CatalogSearchCandidateKind,
+  type CourseSearchCandidate,
+  type TeacherSearchCandidate,
+} from "./catalog-search-candidates";
 
 export const CATALOG_FUZZY_THRESHOLD = 0.35;
-export const CATALOG_FUZZY_CANDIDATE_LIMIT = 200;
-export const CATALOG_FUZZY_SERVER_HARD_LIMIT = 500;
-
-export type CourseSearchCandidate = {
-  id: number;
-  name: string;
-  code: string;
-  department: string;
-  teachers: string[];
-  pinyin: string;
-};
-
-export type TeacherSearchCandidate = {
-  id: number;
-  name: string;
-  department: string;
-  pinyin: string;
-};
-
-export type CatalogSearchCandidate = CourseSearchCandidate | TeacherSearchCandidate;
-export type CatalogSearchCandidateKind = "course" | "teacher";
 
 const sharedOptions = {
   includeScore: true,
@@ -49,17 +46,6 @@ export const teacherFuseOptions: IFuseOptions<TeacherSearchCandidate> = {
     { name: "department", weight: 0.05 },
   ],
 };
-
-/**
- * The first release deliberately keeps one-character and two-Han-character
- * queries out of fuzzy fallback. Two-character Chinese can be enabled later
- * only if the committed quality corpus demonstrates acceptable ambiguity.
- */
-export function isCatalogFuzzyQueryEligible(query: string): boolean {
-  const normalized = query.trim();
-  if ([...normalized].length < 3) return false;
-  return /[\p{L}\p{N}]/u.test(normalized);
-}
 
 export function rankCatalogFuzzyCandidates(
   kind: "course",

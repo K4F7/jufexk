@@ -20,6 +20,8 @@ import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { emptyCatalogPage, readDevPreview } from "../lib/dev-preview";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
+import { rankCatalogFuzzyCandidates } from "../lib/catalog-fuzzy-search";
+import type { TeacherSearchCandidate } from "../lib/catalog-search-candidates";
 import type { Course, Paginated, Teacher } from "../lib/types";
 
 const FILTER_DELAY = 320;
@@ -65,16 +67,24 @@ export function TeachersPage() {
         page: "1",
         pageSize: String(CATALOG_SUGGEST_PAGE_SIZE),
       });
-      return api<Paginated<Teacher>>(`/api/teachers?${suggest}`, { signal }).then(
-        (result) =>
-          result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
+      return api<Paginated<Teacher>>(`/api/teachers?${suggest}`, { signal }).then(async (result) => {
+        if (result.items.length > 0) {
+          return result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
             (teacher): CatalogSearchSuggestion => ({
-              id: String(teacher.id),
-              title: teacher.name,
-              detail: teacher.department,
+              id: String(teacher.id), title: teacher.name, detail: teacher.department, kind: "strict",
             }),
-          ),
-      );
+          );
+        }
+        const candidates = await api<{ items: TeacherSearchCandidate[] }>(
+          `/api/search/candidates?kind=teacher&q=${encodeURIComponent(query)}&limit=200`,
+          { signal },
+        );
+        return rankCatalogFuzzyCandidates("teacher", query, candidates.items)
+          .slice(0, CATALOG_SUGGEST_PAGE_SIZE)
+          .map(({ item }): CatalogSearchSuggestion => ({
+            id: String(item.id), title: item.name, detail: item.department, kind: "fuzzy",
+          }));
+      });
     },
     [],
   );
