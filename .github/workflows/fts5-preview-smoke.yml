@@ -81,28 +81,29 @@ jobs:
           CREATE TRIGGER ${prefix}_au AFTER UPDATE ON ${prefix}_content BEGIN INSERT INTO ${prefix}_fts(${prefix}_fts,rowid,match_text,pinyin_text) VALUES('delete',old.id,old.match_text,old.match_text); INSERT INTO ${prefix}_fts(rowid,match_text,pinyin_text) VALUES(new.id,new.match_text,new.pinyin_text); END;
           INSERT INTO ${prefix}_content(id,match_text,pinyin_text) VALUES(1,'江西财经大学 course catalog','jiangxicaijingdaxue course catalog');
           INSERT INTO ${prefix}_fts(${prefix}_fts) VALUES('rebuild');
-          SELECT 'zh' kind,COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '财经大';
-          SELECT 'ascii' kind,COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH 'ourse';
-          SELECT 'pinyin' kind,COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH 'aijing';
-          INSERT INTO ${prefix}_content(id,match_text,pinyin_text) VALUES(2,'教师评价系统','jiaoshipingjiaxitong');
-          SELECT 'insert' kind,COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '师评价';
-          UPDATE ${prefix}_content SET match_text='课程评价系统',pinyin_text='kechengpingjiaxitong' WHERE id=2;
-          SELECT 'update_old' kind,COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '师评价';
-          SELECT 'update_new' kind,COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '程评价';
-          DELETE FROM ${prefix}_content WHERE id=2;
-          SELECT 'delete' kind,COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '程评价';
-          EXPLAIN QUERY PLAN SELECT rowid FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '财经大';
           SQL
           pnpm exec wrangler d1 execute PREVIEW --config /tmp/fts-wrangler.jsonc --remote --json --file "$sql_file" > /tmp/fts-smoke.json
           cat /tmp/fts-smoke.json
-          jq -e '[.[] | .results[]? | select(.kind == "zh") | .n] == [1]' /tmp/fts-smoke.json
-          jq -e '[.[] | .results[]? | select(.kind == "ascii") | .n] == [1]' /tmp/fts-smoke.json
-          jq -e '[.[] | .results[]? | select(.kind == "pinyin") | .n] == [1]' /tmp/fts-smoke.json
-          jq -e '[.[] | .results[]? | select(.kind == "insert") | .n] == [1]' /tmp/fts-smoke.json
-          jq -e '[.[] | .results[]? | select(.kind == "update_old") | .n] == [0]' /tmp/fts-smoke.json
-          jq -e '[.[] | .results[]? | select(.kind == "update_new") | .n] == [1]' /tmp/fts-smoke.json
-          jq -e '[.[] | .results[]? | select(.kind == "delete") | .n] == [0]' /tmp/fts-smoke.json
-          jq -e 'any(.[] | .results[]?; (.detail // "" | ascii_upcase | contains("VIRTUAL TABLE")))' /tmp/fts-smoke.json
+          run_query() { local label="$1"; shift; pnpm exec wrangler d1 execute PREVIEW --config /tmp/fts-wrangler.jsonc --remote --json --command "$1" > "/tmp/fts-${label}.json"; cat "/tmp/fts-${label}.json"; }
+          run_query zh "SELECT COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '财经大'"
+          run_query ascii "SELECT COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH 'ourse'"
+          run_query pinyin "SELECT COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH 'aijing'"
+          pnpm exec wrangler d1 execute PREVIEW --config /tmp/fts-wrangler.jsonc --remote --command "INSERT INTO ${prefix}_content(id,match_text,pinyin_text) VALUES(2,'教师评价系统','jiaoshipingjiaxitong');"
+          run_query insert "SELECT COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '师评价'"
+          pnpm exec wrangler d1 execute PREVIEW --config /tmp/fts-wrangler.jsonc --remote --command "UPDATE ${prefix}_content SET match_text='课程评价系统',pinyin_text='kechengpingjiaxitong' WHERE id=2;"
+          run_query update_old "SELECT COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '师评价'"
+          run_query update_new "SELECT COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '程评价'"
+          pnpm exec wrangler d1 execute PREVIEW --config /tmp/fts-wrangler.jsonc --remote --command "DELETE FROM ${prefix}_content WHERE id=2;"
+          run_query delete "SELECT COUNT(*) n FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '程评价'"
+          run_query eqp "EXPLAIN QUERY PLAN SELECT rowid FROM ${prefix}_fts WHERE ${prefix}_fts MATCH '财经大'"
+          jq -e '.[0].results[0].n == 1' /tmp/fts-zh.json
+          jq -e '.[0].results[0].n == 1' /tmp/fts-ascii.json
+          jq -e '.[0].results[0].n == 1' /tmp/fts-pinyin.json
+          jq -e '.[0].results[0].n == 1' /tmp/fts-insert.json
+          jq -e '.[0].results[0].n == 0' /tmp/fts-update_old.json
+          jq -e '.[0].results[0].n == 1' /tmp/fts-update_new.json
+          jq -e '.[0].results[0].n == 0' /tmp/fts-delete.json
+          jq -e 'any(.[] | .results[]?; (.detail // "" | ascii_upcase | contains("VIRTUAL TABLE")))' /tmp/fts-eqp.json
       - name: Clean up smoke tables
         if: always() && steps.preview.outputs.database_id != ''
         shell: bash
