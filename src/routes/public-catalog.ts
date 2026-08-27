@@ -707,11 +707,10 @@ publicCatalogRoutes.get("/api/teachers/:id/avatar", async (c) => {
   ) {
     return fail(c, "没有可展示的教师头像", 404);
   }
-  c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-  c.header("Content-Type", stored.content_type || "image/png");
-  return new Response(stored.bytes, {
-    status: 200,
-    headers: c.res.headers,
+  const bytes = new Uint8Array(stored.bytes);
+  return c.body(bytes, 200, {
+    "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+    "Content-Type": stored.content_type || "image/png",
   });
 });
 publicCatalogRoutes.get("/api/teachers/:id/reviews", async (c) => {
