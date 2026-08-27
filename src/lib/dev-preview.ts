@@ -276,8 +276,9 @@ export function previewReviewComments(
     {
       id: `${key}-c1`,
       authorPublicCode: 2,
-      body: "作业量确实适中，期中那套例题很有用。",
+      body: "作业量确实适中，期中那套例题很有用。老师会把作业题型拆开讲，期末复习按作业过一遍基本能覆盖考点，就是有几周连着两次小测，时间要自己排一下。",
       createdAt: "2026-08-26 18:10:00",
+      endorsementCount: 5,
     },
     {
       id: `${key}-c2`,
@@ -285,6 +286,7 @@ export function previewReviewComments(
       body: "补充：考试范围以作业题型为主。",
       createdAt: "2026-08-27 09:20:00",
       parentId: `${key}-c1`,
+      endorsementCount: 2,
       viewerOwned: true,
     },
   ];

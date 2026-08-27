@@ -83,10 +83,13 @@ export function StarsWithCaption({
 }) {
   const caption = overallCaption(String(rating));
   return (
-    <span className="inline-flex items-center gap-x-1.5">
-      <Stars rating={rating} className={className} />
+    <span className="inline-flex items-center gap-x-1.5 leading-none">
+      <Stars
+        rating={rating}
+        className={`translate-y-[0.14em] ${className}`}
+      />
       {caption ? (
-        <span className="font-normal text-muted">{caption}</span>
+        <span className="font-normal leading-none text-muted">{caption}</span>
       ) : null}
     </span>
   );

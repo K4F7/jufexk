@@ -35,6 +35,8 @@ type CommentRow = {
   createdAt: string;
   authorPublicCode: number | null;
   authorAvatarKey: number | null;
+  endorsementCount?: number;
+  viewerEndorsed?: boolean;
 };
 
 function mapComment(row: CommentRow) {
@@ -45,7 +47,53 @@ function mapComment(row: CommentRow) {
     body: row.body,
     createdAt: row.createdAt,
     parentId: row.parentCommentId != null ? String(row.parentCommentId) : null,
+    endorsementCount: Number(row.endorsementCount) || 0,
+    viewerEndorsed: row.viewerEndorsed === true,
   };
+}
+
+async function decorateCommentEndorsements(
+  db: D1Database,
+  items: ReturnType<typeof mapComment>[],
+  viewerUserId: string | null,
+) {
+  if (!items.length) return items;
+  const ids = items.map((item) => Number(item.id));
+  const placeholders = ids.map(() => "?").join(",");
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT comment_id, COUNT(*) count FROM review_comment_endorsements
+         WHERE comment_id IN (${placeholders})
+         GROUP BY comment_id`,
+      )
+      .bind(...ids)
+      .all<{ comment_id: number; count: number }>();
+    const counts = new Map(
+      results.map((row) => [row.comment_id, Number(row.count) || 0]),
+    );
+    const endorsed = new Set<number>();
+    if (viewerUserId) {
+      const { results: rows } = await db
+        .prepare(
+          `SELECT comment_id FROM review_comment_endorsements
+           WHERE user_id=? AND comment_id IN (${placeholders})`,
+        )
+        .bind(viewerUserId, ...ids)
+        .all<{ comment_id: number }>();
+      for (const row of rows) endorsed.add(row.comment_id);
+    }
+    return items.map((item) => {
+      const id = Number(item.id);
+      return {
+        ...item,
+        endorsementCount: counts.get(id) ?? 0,
+        viewerEndorsed: endorsed.has(id),
+      };
+    });
+  } catch {
+    return items;
+  }
 }
 
 /** 与公开文字流一致的评价可见性；游客额外排除 login_only。 */
@@ -90,7 +138,12 @@ export async function handleListReviewComments(c: AppContext) {
   )
     .bind(reviewId)
     .all<CommentRow>();
-  return c.json({ items: results.map(mapComment) });
+  const items = await decorateCommentEndorsements(
+    c.env.DB,
+    results.map(mapComment),
+    viewer?.id ?? null,
+  );
+  return c.json({ items });
 }
 
 export async function handleCreateReviewComment(c: AppContext) {

@@ -61,8 +61,8 @@ test("comments are collapsed by default and the toggle expands and collapses the
   await expect(first.getByText("作业量确实适中，期中那套例题很有用。")).toBeVisible();
   // 展开后输入框直接聚焦，方便马上写自己的评论。
   await expect(first.getByRole("textbox", { name: "你的评论" })).toBeFocused();
-  // 楼中楼引用：第二条回复带「回复 匿名用户#000002：」。
-  await expect(first.getByText("回复 匿名用户#000002：")).toBeVisible();
+  // 楼中楼引用：第二条回复带蓝名 @匿名用户#000002。
+  await expect(first.getByRole("link", { name: "@匿名用户#000002" })).toBeVisible();
 
   await expanded.click();
   await expect(
@@ -82,9 +82,9 @@ test("replying to a comment opens the thread, targets the reply and posts it loc
 
   // 点第一条回复的「回复」：回复框切换为回复目标并聚焦。
   await first.getByRole("button", { name: "回复 匿名用户#000002" }).click();
-  const composer = first.getByRole("textbox", { name: "回复 匿名用户#000002" });
+  const composer = first.getByRole("textbox", { name: "回复 @匿名用户#000002" });
   await expect(composer).toBeFocused();
-  await expect(first.getByText("回复 匿名用户#000002", { exact: true })).toBeVisible();
+  await expect(first.getByText("@匿名用户#000002").first()).toBeVisible();
 
   await composer.fill("同感，例题命中考点。");
   await first.getByRole("button", { name: "回复", exact: true }).click();
@@ -95,9 +95,10 @@ test("replying to a comment opens the thread, targets the reply and posts it loc
     first.getByRole("button", { name: "收起评论，当前 3 条回复" }),
   ).toBeVisible();
 
-  // 取消回复后回到普通评论模式。
+  // 框内引用在空内容时退格，改回回复楼主。
   await first.getByRole("button", { name: "回复 匿名用户#000002" }).click();
-  await first.getByRole("button", { name: "取消回复" }).click();
+  await expect(first.getByRole("textbox", { name: "回复 @匿名用户#000002" })).toBeFocused();
+  await first.getByRole("textbox", { name: "回复 @匿名用户#000002" }).press("Backspace");
   await expect(first.getByRole("textbox", { name: "你的评论" })).toBeVisible();
 });
 
@@ -210,7 +211,7 @@ test("live mode fetches comments on expand and posts replies with the parent lin
 
   // 回复他人的评论：提交带 parentCommentId，后端触发回复通知。
   await first.getByRole("button", { name: "回复 匿名用户#000002" }).click();
-  const composer = first.getByRole("textbox", { name: "回复 匿名用户#000002" });
+  const composer = first.getByRole("textbox", { name: "回复 @匿名用户#000002" });
   await expect(composer).toBeFocused();
   await composer.fill("同感，附议一楼。");
   await first.getByRole("button", { name: "回复", exact: true }).click();

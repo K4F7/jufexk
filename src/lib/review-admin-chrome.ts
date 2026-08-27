@@ -1,7 +1,9 @@
 /**
- * 课程页点评管理动作的显示偏好：默认关闭，普通浏览不渲染
- * ReviewAdminControls。管理员经侧面 dock 打开后，写入 sessionStorage。
- * DEV `?preview=admin` 与公告栏一致，视为「展示管理 chrome」。
+ * 课程页点评 / 回复管理动作的显示偏好：默认关闭，普通浏览不渲染
+ * ReviewAdminControls 与 preview `viewerOwned` 的回复删除。
+ * 管理员经侧面 dock 打开后，写入 sessionStorage。
+ * 只覆盖点评屏蔽 / 查作者 / 删除与回复删除。
+ * 课评页「管理员公告」仍只看管理员会话，不读这个开关。
  */
 
 export const REVIEW_ADMIN_CHROME_STORAGE_KEY = "jufexk-review-admin-chrome";
@@ -41,10 +43,28 @@ export function resolveReviewAdminDockVisible(options: {
   return options.adminAuthed || isAdminChromePreview(options.preview);
 }
 
-/** 开关关闭时隐藏点评上的管理动作；`preview=admin` 强制打开。 */
+/** 开关关闭时隐藏点评上的管理动作。`preview=admin` 不强制打开。 */
 export function resolveReviewAdminChromeVisible(options: {
   storedOn: boolean;
-  preview: string | null;
 }): boolean {
-  return isAdminChromePreview(options.preview) || options.storedOn;
+  return options.storedOn;
+}
+
+/**
+ * 回复行「删除」：作者删自己的回复始终可见；preview `viewerOwned`
+ * （演示管理删除、不匹配当前 handle）跟 dock 开关。
+ */
+export function resolveCommentDeleteVisible(options: {
+  showAdminControls: boolean;
+  viewerPublicCode: number | null;
+  authorPublicCode: number;
+  viewerOwned?: boolean;
+}): boolean {
+  if (
+    options.viewerPublicCode != null &&
+    options.authorPublicCode === options.viewerPublicCode
+  ) {
+    return true;
+  }
+  return options.showAdminControls && options.viewerOwned === true;
 }

@@ -6,6 +6,7 @@
  * 顶层回复通知评价作者、回复他人的回复通知被回复者（review_comment_replied）。
  */
 import {
+  ArrowShapeTurnUpRight,
   ArrowUpFromSquare,
   Comment,
   CommentFill,
@@ -14,14 +15,18 @@ import {
 import {
   Alert,
   Button,
+  Chip,
+  InputGroup,
+  Label,
   Separator,
   Spinner,
   Surface,
-  TextArea,
+  TextField,
   Toolbar,
 } from "@heroui/react";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useReviewComments } from "../hooks/useReviewComments";
+import { resolveCommentDeleteVisible } from "../lib/review-admin-chrome";
 import { formatPublicCode, formatPublicHandle } from "../public-handle";
 import { formatRelativeTime, formatReviewDate } from "../lib/review-date";
 import { reviewSharePath } from "../lib/review-dimensions";
@@ -32,6 +37,7 @@ import { RouterAriaLink } from "./RouterAriaLink";
 import {
   ReviewRecognitionAlerts,
   ReviewRecognitionButton,
+  useCommentRecognition,
   useReviewRecognition,
 } from "./ReviewRecognitionControl";
 
@@ -41,7 +47,13 @@ function commentButtonLabel(open: boolean, count: number) {
   return open ? `收起评论，${countLabel}` : `评论，${countLabel}`;
 }
 
-type ReplyTarget = { id: string; handle: string };
+type ReplyTarget = { id: string; handle: string; snippet: string };
+
+function commentSnippet(body: string, max = 20): string {
+  const text = body.trim().replace(/\s+/g, " ");
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
 
 export function ReviewActionBar({
   review,
@@ -54,6 +66,7 @@ export function ReviewActionBar({
   seedComments,
   viewerPublicCode,
   previewComposer,
+  showAdminControls = false,
 }: {
   review: PublicReview;
   date: string;
@@ -66,6 +79,8 @@ export function ReviewActionBar({
   viewerPublicCode: number | null;
   /** DEV atlas / preview: show the composer without a live write path. */
   previewComposer: boolean;
+  /** dock 开关打开后才渲染 preview `viewerOwned` 的回复删除。 */
+  showAdminControls?: boolean;
 }) {
   const recognition = useReviewRecognition({
     review,
@@ -116,6 +131,7 @@ export function ReviewActionBar({
     setReplyTarget({
       id: comment.id,
       handle: formatPublicHandle(comment.authorPublicCode),
+      snippet: commentSnippet(comment.body),
     });
     setOpen(true);
     focusComposer();
@@ -199,6 +215,7 @@ export function ReviewActionBar({
       {open ? (
         <ReviewCommentsPanel
           id={commentsId}
+          reviewId={review.id}
           comments={comments.comments}
           loading={comments.loading}
           error={comments.error}
@@ -209,6 +226,12 @@ export function ReviewActionBar({
           canCompose={canCompose}
           loginTarget={recognition.loginTarget}
           viewerPublicCode={viewerPublicCode}
+          showAdminControls={showAdminControls}
+          previewComposer={previewComposer}
+          ready={ready}
+          authenticated={authenticated}
+          loginPath={loginPath}
+          onUnauthenticated={onUnauthenticated}
           textareaRef={textareaRef}
           onDraftChange={setDraft}
           onReply={beginReply}
@@ -223,8 +246,86 @@ export function ReviewActionBar({
   );
 }
 
+function CommentRowActions({
+  reviewId,
+  comment,
+  handle,
+  canDelete,
+  previewComposer,
+  ready,
+  authenticated,
+  loginPath,
+  onUnauthenticated,
+  onReply,
+  onDelete,
+}: {
+  reviewId: string | number;
+  comment: ReviewComment;
+  handle: string;
+  canDelete: boolean;
+  previewComposer: boolean;
+  ready: boolean;
+  authenticated: boolean;
+  loginPath: string;
+  onUnauthenticated: () => void;
+  onReply: (comment: ReviewComment) => void;
+  onDelete: (id: string) => void;
+}) {
+  const recognition = useCommentRecognition({
+    reviewId,
+    comment,
+    preview: previewComposer,
+    ready,
+    authenticated,
+    loginPath,
+    onUnauthenticated,
+  });
+  return (
+    <div>
+      <div className="flex items-center">
+        <ReviewRecognitionButton
+          appearance="icon"
+          noun="回复"
+          state={recognition.state}
+          ready={recognition.ready}
+          onPress={() => {
+            void recognition.press();
+          }}
+        />
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-accent"
+          aria-label={`回复 ${handle}`}
+          onPress={() => onReply(comment)}
+        >
+          <ArrowShapeTurnUpRight aria-hidden />
+          回复
+        </Button>
+        {canDelete ? (
+          <Button
+            size="sm"
+            variant="danger"
+            aria-label={`删除 ${handle} 的回复`}
+            onPress={() => onDelete(comment.id)}
+          >
+            删除
+          </Button>
+        ) : null}
+      </div>
+      <ReviewRecognitionAlerts
+        error={recognition.error}
+        loginPrompted={recognition.loginPrompted}
+        loginTarget={recognition.loginTarget}
+        noun="回复"
+      />
+    </div>
+  );
+}
+
 function ReviewCommentsPanel({
   id,
+  reviewId,
   comments,
   loading,
   error,
@@ -235,6 +336,12 @@ function ReviewCommentsPanel({
   canCompose,
   loginTarget,
   viewerPublicCode,
+  showAdminControls,
+  previewComposer,
+  ready,
+  authenticated,
+  loginPath,
+  onUnauthenticated,
   textareaRef,
   onDraftChange,
   onReply,
@@ -243,6 +350,7 @@ function ReviewCommentsPanel({
   onSubmit,
 }: {
   id: string;
+  reviewId: string | number;
   comments: ReviewComment[];
   loading: boolean;
   error: string | null;
@@ -253,6 +361,12 @@ function ReviewCommentsPanel({
   canCompose: boolean;
   loginTarget: string;
   viewerPublicCode: number | null;
+  showAdminControls: boolean;
+  previewComposer: boolean;
+  ready: boolean;
+  authenticated: boolean;
+  loginPath: string;
+  onUnauthenticated: () => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   onDraftChange: (value: string) => void;
   onReply: (comment: ReviewComment) => void;
@@ -272,10 +386,12 @@ function ReviewCommentsPanel({
       ) : null}
       {comments.map((item, index) => {
         const handle = formatPublicHandle(item.authorPublicCode);
-        const owned =
-          item.viewerOwned ||
-          (viewerPublicCode != null &&
-            item.authorPublicCode === viewerPublicCode);
+        const canDelete = resolveCommentDeleteVisible({
+          showAdminControls,
+          viewerPublicCode,
+          authorPublicCode: item.authorPublicCode,
+          viewerOwned: item.viewerOwned,
+        });
         const parent = item.parentId ? byId.get(item.parentId) : undefined;
         return (
           <div key={item.id}>
@@ -290,7 +406,7 @@ function ReviewCommentsPanel({
               <div className="min-w-0 flex-1">
                 <p className="mb-0 flex flex-wrap items-baseline gap-x-2 text-[calc(12/15*1rem)]">
                   <RouterAriaLink
-                    className="font-medium text-foreground no-underline"
+                    className="font-medium text-accent no-underline"
                     to={`/u/${formatPublicCode(item.authorPublicCode)}`}
                   >
                     {handle}
@@ -304,32 +420,28 @@ function ReviewCommentsPanel({
                 </p>
                 <p className="mb-0 mt-0.5 break-words text-sm">
                   {parent ? (
-                    <span className="text-muted">
-                      回复 {formatPublicHandle(parent.authorPublicCode)}：
-                    </span>
+                    <RouterAriaLink
+                      className="me-1 font-medium text-accent no-underline"
+                      to={`/u/${formatPublicCode(parent.authorPublicCode)}`}
+                    >
+                      @{formatPublicHandle(parent.authorPublicCode)}
+                    </RouterAriaLink>
                   ) : null}
                   {item.body}
                 </p>
-                <div className="flex items-center">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`回复 ${handle}`}
-                    onPress={() => onReply(item)}
-                  >
-                    回复
-                  </Button>
-                  {owned ? (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      aria-label={`删除 ${handle} 的回复`}
-                      onPress={() => onDelete(item.id)}
-                    >
-                      删除
-                    </Button>
-                  ) : null}
-                </div>
+                <CommentRowActions
+                  reviewId={reviewId}
+                  comment={item}
+                  handle={handle}
+                  canDelete={canDelete}
+                  previewComposer={previewComposer}
+                  ready={ready}
+                  authenticated={authenticated}
+                  loginPath={loginPath}
+                  onUnauthenticated={onUnauthenticated}
+                  onReply={onReply}
+                  onDelete={onDelete}
+                />
               </div>
             </div>
           </div>
@@ -347,29 +459,50 @@ function ReviewCommentsPanel({
       {canCompose ? (
         <>
           {comments.length > 0 ? <Separator variant="secondary" /> : null}
-          {replyTarget ? (
-            <p className="mb-0 flex items-center justify-between gap-2 text-[calc(12/15*1rem)] text-muted">
-              <span>回复 {replyTarget.handle}</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="取消回复"
-                onPress={onCancelReply}
-              >
-                取消
-              </Button>
-            </p>
-          ) : null}
-          <TextArea
-            ref={textareaRef}
-            variant="secondary"
+          <TextField
             fullWidth
-            rows={2}
-            aria-label={replyTarget ? `回复 ${replyTarget.handle}` : "你的评论"}
-            placeholder={replyTarget ? `回复 ${replyTarget.handle}` : "你的评论"}
+            name="review-comment"
             value={draft}
-            onChange={(event) => onDraftChange(event.target.value)}
-          />
+            onChange={onDraftChange}
+          >
+            <Label className="sr-only">
+              {replyTarget ? `回复 @${replyTarget.handle}` : "你的评论"}
+            </Label>
+            <InputGroup
+              variant="secondary"
+              fullWidth
+              className="flex flex-col gap-2 py-2"
+            >
+              {replyTarget ? (
+                <InputGroup.Prefix className="min-w-0 px-3 py-0">
+                  <Chip color="accent" size="sm" variant="soft">
+                    <Chip.Label>
+                      @{replyTarget.handle}
+                      {replyTarget.snippet
+                        ? ` · ${replyTarget.snippet}`
+                        : ""}
+                    </Chip.Label>
+                  </Chip>
+                </InputGroup.Prefix>
+              ) : null}
+              <InputGroup.TextArea
+                ref={textareaRef}
+                className="w-full resize-none px-3.5 py-0"
+                rows={2}
+                placeholder="你的评论"
+                onKeyDown={(event) => {
+                  if (
+                    replyTarget &&
+                    event.key === "Backspace" &&
+                    draft.length === 0
+                  ) {
+                    event.preventDefault();
+                    onCancelReply();
+                  }
+                }}
+              />
+            </InputGroup>
+          </TextField>
           <div className="flex justify-end">
             <Button
               size="sm"

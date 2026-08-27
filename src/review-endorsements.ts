@@ -259,3 +259,126 @@ export const handleCreateEndorsement = (c: Context) =>
 
 export const handleWithdrawEndorsement = (c: Context) =>
   mutateEndorsement(c, WITHDRAW_OPERATION);
+
+export const COMMENT_CREATE_ENDORSEMENT = "comment-endorsement.create";
+export const COMMENT_WITHDRAW_ENDORSEMENT = "comment-endorsement.withdraw";
+
+function parsePositiveInt(raw: string | undefined) {
+  const id = Number((raw || "").trim());
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+async function commentEndorsementCount(db: D1Database, commentId: number) {
+  const row = await db
+    .prepare(
+      "SELECT COUNT(*) count FROM review_comment_endorsements WHERE comment_id=?",
+    )
+    .bind(commentId)
+    .first<{ count: number }>();
+  return row?.count || 0;
+}
+
+async function viewerEndorsedComment(
+  db: D1Database,
+  userId: string,
+  commentId: number,
+) {
+  const row = await db
+    .prepare(
+      "SELECT 1 ok FROM review_comment_endorsements WHERE user_id=? AND comment_id=?",
+    )
+    .bind(userId, commentId)
+    .first();
+  return !!row;
+}
+
+async function loadEndorsableComment(
+  db: D1Database,
+  reviewId: number,
+  commentId: number,
+) {
+  return db
+    .prepare(
+      `SELECT rc.id
+       FROM review_comments rc
+       JOIN reviews r ON r.id = rc.review_id
+       WHERE rc.id=? AND rc.review_id=? AND rc.deleted_at IS NULL
+         AND r.status='approved'
+         AND r.blocked_at IS NULL
+         AND r.deleted_at IS NULL`,
+    )
+    .bind(commentId, reviewId)
+    .first<{ id: number }>();
+}
+
+async function mutateCommentEndorsement(
+  c: Context,
+  operation:
+    | typeof COMMENT_CREATE_ENDORSEMENT
+    | typeof COMMENT_WITHDRAW_ENDORSEMENT,
+) {
+  const auth = await requireWriteUser(c);
+  if ("error" in auth) return auth.error;
+  const reviewId = parseCurrentReviewId(c.req.param("id"));
+  const commentId = parsePositiveInt(c.req.param("commentId"));
+  if (!reviewId || !commentId) return fail(c, "回复不存在或不可认可", 404);
+  const idempotencyKey = parseIdempotencyKey(c.req.header("Idempotency-Key"));
+  if (!idempotencyKey) return fail(c, "缺少有效的幂等键", 400);
+  const requestDigest = await digest(
+    JSON.stringify({ operation, reviewId, commentId }),
+  );
+  const replay = await readIdempotency(
+    c.env.DB,
+    auth.user.id,
+    operation,
+    idempotencyKey,
+  );
+  if (replay) {
+    if (replay.request_digest !== requestDigest)
+      return fail(c, "幂等键与请求不匹配", 409);
+    return c.json(JSON.parse(replay.response_json));
+  }
+  if (operation === COMMENT_CREATE_ENDORSEMENT) {
+    const eligible = await loadEndorsableComment(c.env.DB, reviewId, commentId);
+    if (!eligible) return fail(c, "回复不存在或不可认可", 404);
+    await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO review_comment_endorsements(user_id,comment_id) VALUES(?,?)",
+    )
+      .bind(auth.user.id, commentId)
+      .run();
+  } else {
+    const exists = await c.env.DB.prepare(
+      "SELECT id FROM review_comments WHERE id=? AND review_id=?",
+    )
+      .bind(commentId, reviewId)
+      .first();
+    if (!exists) return fail(c, "回复不存在或不可认可", 404);
+    await c.env.DB.prepare(
+      "DELETE FROM review_comment_endorsements WHERE user_id=? AND comment_id=?",
+    )
+      .bind(auth.user.id, commentId)
+      .run();
+  }
+  const body = endorsementState(
+    await commentEndorsementCount(c.env.DB, commentId),
+    await viewerEndorsedComment(c.env.DB, auth.user.id, commentId),
+  );
+  const stored = await saveIdempotency(
+    c.env.DB,
+    auth.user.id,
+    operation,
+    idempotencyKey,
+    requestDigest,
+    200,
+    body,
+  );
+  if (stored && stored.request_digest !== requestDigest)
+    return fail(c, "幂等键与请求不匹配", 409);
+  return c.json(stored ? JSON.parse(stored.response_json) : body);
+}
+
+export const handleCreateCommentEndorsement = (c: Context) =>
+  mutateCommentEndorsement(c, COMMENT_CREATE_ENDORSEMENT);
+
+export const handleWithdrawCommentEndorsement = (c: Context) =>
+  mutateCommentEndorsement(c, COMMENT_WITHDRAW_ENDORSEMENT);

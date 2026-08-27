@@ -44,7 +44,7 @@ export function ReviewAdminDock({
                   <Label>在点评上显示管理动作</Label>
                 </Switch.Content>
                 <Description>
-                  关闭后普通浏览不显示屏蔽、查询作者资料、删除。
+                  关闭后不显示点评屏蔽、查询作者资料、删除与回复删除。公告不受此开关影响。
                 </Description>
               </Switch>
             </Drawer.Body>

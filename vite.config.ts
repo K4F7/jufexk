@@ -15,8 +15,11 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     // Issue worktrees copy the full repo. Watching them freezes Vite HMR (#152).
+    // Use a root-relative glob — `**/.worktree/**` also matches this worktree's
+    // own absolute path (`…/.worktree/dev-preview-atlas/src/…`) and silently
+    // disables HMR when `pnpm prototype` runs from the worktree.
     watch: {
-      ignored: ["**/.worktree/**"],
+      ignored: [".worktree/**"],
     },
     proxy: {
       "/api": {

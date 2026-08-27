@@ -17,3 +17,12 @@ export const REVIEW_DIMENSIONS = [
 export function reviewAnchorId(id: string | number): string {
   return String(id).replace(/[:#~]/g, "-");
 }
+
+/** Course-page permalink path for 分享 / 复制链接. */
+export function reviewSharePath(review: {
+  id: string | number;
+  course_id: number;
+  teacher_id: number;
+}): string {
+  return `/courses/${review.course_id}?teacher=${review.teacher_id}#${reviewAnchorId(review.id)}`;
+}

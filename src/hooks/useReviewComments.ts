@@ -14,6 +14,8 @@ type ApiComment = {
   body: string;
   createdAt: string;
   parentId?: string | number | null;
+  endorsementCount?: number;
+  viewerEndorsed?: boolean;
 };
 
 function normalizeComment(row: ApiComment): ReviewComment {
@@ -24,6 +26,8 @@ function normalizeComment(row: ApiComment): ReviewComment {
     body: row.body,
     createdAt: row.createdAt,
     parentId: row.parentId != null ? String(row.parentId) : null,
+    endorsementCount: Number(row.endorsementCount) || 0,
+    viewerEndorsed: row.viewerEndorsed === true,
   };
 }
 
@@ -103,6 +107,7 @@ export function useReviewComments({
             body: trimmed,
             createdAt: nowTimestamp(),
             parentId,
+            endorsementCount: 0,
             viewerOwned: true,
           },
         ]);

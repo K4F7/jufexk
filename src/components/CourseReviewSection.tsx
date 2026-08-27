@@ -148,7 +148,7 @@ const CourseReviewItem = memo(function CourseReviewItem({
       className="scroll-mt-20 border-b border-separator py-5 last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_9rem]"
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className="flex flex-wrap items-center gap-x-2 text-[calc(13/15*1rem)] font-medium text-foreground">
+        <span className="flex flex-wrap items-center gap-x-2 leading-none text-[calc(13/15*1rem)] font-medium text-foreground">
           <ReviewAuthor
             publicCode={review.author_public_code}
             avatarKey={review.author_avatar_key}
@@ -207,6 +207,7 @@ const CourseReviewItem = memo(function CourseReviewItem({
         seedComments={seedComments}
         viewerPublicCode={viewerPublicCode}
         previewComposer={previewComposer}
+        showAdminControls={showAdminControls}
       />
       {showAdminControls && onReviewChanged ? (
         <ReviewAdminControls review={review} onChanged={onReviewChanged} />
@@ -265,7 +266,7 @@ export function CourseReviewSection({
     preview,
   });
   const { visible: adminChromeVisible, setVisible: setAdminChromeVisible } =
-    useReviewAdminChrome(preview);
+    useReviewAdminChrome();
   const showAdminControls = showAdminDock && adminChromeVisible;
 
   const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;

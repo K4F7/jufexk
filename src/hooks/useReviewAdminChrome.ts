@@ -6,7 +6,7 @@ import {
   writeReviewAdminChromeVisible,
 } from "../lib/review-admin-chrome";
 
-export function useReviewAdminChrome(preview: string | null) {
+export function useReviewAdminChrome() {
   const [storedOn, setStoredOn] = useState(() =>
     readReviewAdminChromeVisible(reviewAdminSessionStorage()),
   );
@@ -17,7 +17,7 @@ export function useReviewAdminChrome(preview: string | null) {
   }, []);
 
   return {
-    visible: resolveReviewAdminChromeVisible({ storedOn, preview }),
+    visible: resolveReviewAdminChromeVisible({ storedOn }),
     setVisible,
   };
 }

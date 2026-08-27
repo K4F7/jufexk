@@ -188,7 +188,10 @@ export type ReviewComment = {
   createdAt: string;
   /** 回复目标（同一条评价下的另一条回复）；顶层评论为空。 */
   parentId?: string | null;
-  /** Preview-only: show 删除 without a matching viewer handle. */
+  /** 该条回复的认可数；列表接口与 DEV preview 种子下发。 */
+  endorsementCount?: number;
+  viewerEndorsed?: boolean;
+  /** Preview-only: 不匹配当前 handle 的演示删除，跟 dock 管理开关。 */
   viewerOwned?: boolean;
 };
 

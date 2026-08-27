@@ -344,4 +344,47 @@ describe("review comments API", () => {
     const row = body.items.find((item) => item.id === `review:${reviewId}`);
     expect(row?.comment_count).toBe(2);
   });
+
+  it("creates and withdraws comment endorsements", async () => {
+    const reviewId = await insertReview({ comment: "回复认可测试评价" });
+    const author = await ordinaryWriteSession("comment-endorse-author");
+    const created = await postComment(reviewId, author, "请认可这条回复");
+    expect(created.status).toBe(200);
+    const commentId = (await created.json<{ comment: { id: string } }>()).comment
+      .id;
+    const voter = await ordinaryWriteSession("comment-endorse-voter");
+
+    const put = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/reviews/${reviewId}/comments/${commentId}/endorsement`,
+      {
+        method: "PUT",
+        headers: commentHeaders(voter, crypto.randomUUID()),
+      },
+    );
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({
+      endorsementCount: 1,
+      viewerEndorsed: true,
+    });
+
+    const listed = await listComments(reviewId, voter);
+    expect(listed.body.items?.[0]).toMatchObject({
+      id: commentId,
+      endorsementCount: 1,
+      viewerEndorsed: true,
+    });
+
+    const withdrawn = await SELF.fetch(
+      `${WRITE_ORIGIN}/api/reviews/${reviewId}/comments/${commentId}/endorsement`,
+      {
+        method: "DELETE",
+        headers: commentHeaders(voter, crypto.randomUUID()),
+      },
+    );
+    expect(withdrawn.status).toBe(200);
+    expect(await withdrawn.json()).toEqual({
+      endorsementCount: 0,
+      viewerEndorsed: false,
+    });
+  });
 });
