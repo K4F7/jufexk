@@ -69,7 +69,12 @@ jobs:
           [[ -n "$database_id" && "$database_id" != "null" ]]
           [[ "$database_id" != "$PRODUCTION_DATABASE_ID" ]]
           [[ "$database_id" != "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" ]]
-          printf '{"name":"fts5-preview-smoke","d1_databases":[{"binding":"PREVIEW","database_name":"%s","database_id":"%s"}]}' "$PREVIEW_DATABASE_NAME" "$database_id" > /tmp/fts-wrangler.jsonc
+          jq -cn \
+            --arg name "$PREVIEW_DATABASE_NAME" \
+            --arg database_id "$database_id" \
+            --arg migrations_dir "$GITHUB_WORKSPACE/migrations" \
+            '{name:"fts5-preview-smoke",migrations_dir:$migrations_dir,d1_databases:[{binding:"PREVIEW",database_name:$name,database_id:$database_id}]}' \
+            > /tmp/fts-wrangler.jsonc
           echo "database_id=$database_id" >> "$GITHUB_OUTPUT"
           echo "Resolved isolated preview D1: $PREVIEW_DATABASE_NAME"
       - name: Run isolated FTS5 trigram smoke
