@@ -53,6 +53,7 @@
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
     "dompurify": "^3.4.14",
+    "fuse.js": "7.5.0",
     "hono": "4.13.3",
     "pinyin-pro": "^3.29.2",
     "react": "^19.2.8",

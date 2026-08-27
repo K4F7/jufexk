@@ -42,6 +42,21 @@ async function mockCatalogApi(page: Page) {
         },
       });
     }
+    if (url.pathname === "/api/search/candidates") {
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              id: 9,
+              name: "张三",
+              department: "人文学院",
+              pinyin: "zhangsan",
+            },
+          ],
+          meta: { rows_read: 1, candidate_count: 1 },
+        },
+      });
+    }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
 }
@@ -75,6 +90,16 @@ test("escape closes suggestions without clearing the field", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByRole("option")).toHaveCount(0);
   await expect(search).toHaveValue("张");
+});
+
+test("strict empty search shows an explicitly fuzzy suggestion", async ({ page }) => {
+  await mockCatalogApi(page);
+  await page.goto("/teachers");
+  const search = page.getByRole("searchbox", { name: "搜索教师" });
+  await search.fill("张三错");
+  await expect(page.getByRole("option", { name: /可能是：张三/ })).toBeVisible({
+    timeout: 5000,
+  });
 });
 
 test("shell course search submits to /courses?q= without suggestions", async ({

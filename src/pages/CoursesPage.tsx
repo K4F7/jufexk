@@ -52,6 +52,11 @@ import {
   publicCategoryOptionLabel,
 } from "../lib/public-categories";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
+import {
+  isCatalogFuzzyQueryEligible,
+  rankCatalogFuzzyCandidates,
+} from "../lib/catalog-fuzzy-search";
+import type { CourseSearchCandidate } from "../lib/catalog-search-candidates";
 import { expandCourseRelations } from "../lib/course-relations";
 import type { Course, CourseRelation, Paginated, Teacher } from "../lib/types";
 
@@ -423,16 +428,25 @@ function GlobalSearchVariantAHeader({
         page: "1",
         pageSize: String(CATALOG_SUGGEST_PAGE_SIZE),
       });
-      return api<Paginated<Course>>(`/api/courses?${suggest}`, { signal }).then(
-        (result) =>
-          result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
+      return api<Paginated<Course>>(`/api/courses?${suggest}`, { signal }).then(async (result) => {
+        if (result.items.length > 0) {
+          return result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
             (course): CatalogSearchSuggestion => ({
-              id: String(course.id),
-              title: course.name,
-              detail: course.code,
+              id: String(course.id), title: course.name, detail: course.code, kind: "strict",
             }),
-          ),
-      );
+          );
+        }
+        if (!isCatalogFuzzyQueryEligible(query)) return [];
+        const candidates = await api<{ items: CourseSearchCandidate[] }>(
+          `/api/search/candidates?kind=course&q=${encodeURIComponent(query)}&limit=200`,
+          { signal },
+        );
+        return rankCatalogFuzzyCandidates("course", query, candidates.items)
+          .slice(0, CATALOG_SUGGEST_PAGE_SIZE)
+          .map(({ item }): CatalogSearchSuggestion => ({
+            id: String(item.id), title: item.name, detail: item.code, kind: "fuzzy",
+          }));
+      });
     },
     [],
   );
