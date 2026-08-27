@@ -5,11 +5,10 @@ import { shouldShowScheduleNav } from "../lib/public-surface";
 import {
   andSearchTermsWithPinyin,
   andSearchTermsWithTrigram,
-  containsPattern,
   likeSql,
   parseSearchTerms,
-  prefixPattern,
 } from "../lib/catalog-search";
+import { buildCatalogSearchRanking } from "../lib/catalog-search-ranking";
 import {
   groupEnglishLevelItems,
   isPublicListCategoryFilter,
@@ -542,6 +541,12 @@ publicCatalogRoutes.get("/api/teachers", async (c) => {
   );
   const where = searchGroup.sql || "1=1";
   const args = searchGroup.args;
+  const teacherRanking = buildCatalogSearchRanking(
+    searchTerms,
+    { exact: ["t.name"], prefix: ["t.name"], substring: ["t.name"], pinyin: "pts.pinyin_text", teacher: ["t.department"] },
+    "teacher",
+    args.length,
+  );
   const teacherCount = () =>
     c.env.DB.prepare(
       `SELECT COUNT(*) n FROM teachers t ${publicTeacherSearchJoin} WHERE ${where}`,
@@ -559,25 +564,12 @@ publicCatalogRoutes.get("/api/teachers", async (c) => {
       LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
       LEFT JOIN (SELECT teacher_id,SUM(review_count) review_count FROM public_review_counts GROUP BY teacher_id) teacher_review_counts ON teacher_review_counts.teacher_id=t.id
      WHERE ${where}
-     ORDER BY CASE
-       WHEN ?='' THEN 0
-       WHEN t.name=? THEN 0
-       WHEN ${likeSql("t.name")} THEN 1
-       WHEN t.department=? THEN 2
-       WHEN ${likeSql("t.department")} THEN 3
-       WHEN ${likeSql("pts.pinyin_text")} THEN 4
-       ELSE 5
-     END,review_count DESC,t.name,t.department,t.id
+       ORDER BY ${teacherRanking.sql},review_count DESC,t.name,t.department,t.id
      LIMIT ? OFFSET ?`,
   )
     .bind(
       ...args,
-      search,
-      search,
-      prefixPattern(search),
-      search,
-      prefixPattern(search),
-      containsPattern(search),
+      ...teacherRanking.args,
       size,
       (page - 1) * size,
     )
@@ -742,8 +734,9 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
+  const searchTerms = parseSearchTerms(search);
   const searchGroup = andSearchTermsWithTrigram(
-    parseSearchTerms(search),
+    searchTerms,
     (term) =>
       andSearchTermsWithPinyin(
         [term],
@@ -755,6 +748,12 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
   );
   const where = `${publicCourseVisibleSql("c")}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}`;
   const args = searchGroup.args;
+  const optionRanking = buildCatalogSearchRanking(
+    searchTerms,
+    { exact: ["c.name", "c.code"], exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"], prefix: ["c.name", "c.code"], substring: ["c.name", "c.code"], pinyin: "pcc.pinyin_text", teacher: ["c.department", "pcc.teacher_variant_text"] },
+    "option",
+    args.length,
+  );
   const optionCount = () =>
     c.env.DB.prepare(
       `SELECT COUNT(*) n FROM courses c ${publicCourseOptionJoin} WHERE ${where}`,
@@ -768,9 +767,9 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
        GROUP_CONCAT(DISTINCT t.name) teachers,
        COUNT(*) OVER() window_total
      FROM courses c ${publicCourseOptionJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
-     WHERE ${where} GROUP BY c.id ORDER BY c.name,c.id LIMIT ? OFFSET ?`,
+     WHERE ${where} GROUP BY c.id ORDER BY ${searchTerms.length ? `${optionRanking.sql},` : ""}c.name,c.id LIMIT ? OFFSET ?`,
   )
-    .bind(...args, size, (page - 1) * size)
+    .bind(...args, ...(searchTerms.length ? optionRanking.args : []), size, (page - 1) * size)
     .all();
   const pageRows = await windowedPage(
     results as WindowedRow[],

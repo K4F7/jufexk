@@ -8,12 +8,11 @@ import {
   andSearchTermsWithPinyin,
   andSearchTermsWithTrigram,
   containsPattern,
-  delimitedExactSql,
   likeSql,
   parseSearchTerms,
-  prefixPattern,
   type SearchFilter,
 } from "./lib/catalog-search";
+import { buildCatalogSearchRanking } from "./lib/catalog-search-ranking";
 import {
   publicBrowseFamilySql,
   publicCategoryFilterSql,
@@ -275,25 +274,6 @@ function relationRowHit(terms: string[]): SearchFilter {
   };
 }
 
-function teacherRelevanceClauses(terms: string[]): SearchFilter {
-  if (!terms.length) return { sql: "", args: [] };
-  const exactSql = terms
-    .map(() => "t.name=? OR t.source_teacher_label=?")
-    .join(" OR ");
-  const likePair = `${likeSql("t.name")} OR ${likeSql("t.source_teacher_label")}`;
-  const likeSqlAll = terms.map(() => likePair).join(" OR ");
-  return {
-    sql: `WHEN ${exactSql} THEN 5
-       WHEN ${likeSqlAll} THEN 6
-       WHEN ${likeSqlAll} THEN 7`,
-    args: [
-      ...terms.flatMap((term) => [term, term]),
-      ...terms.flatMap((term) => [prefixPattern(term), prefixPattern(term)]),
-      ...terms.flatMap((term) => [containsPattern(term), containsPattern(term)]),
-    ],
-  };
-}
-
 async function loadVirtualPeRelations(
   db: D1Database,
   searchTerms: string[],
@@ -465,42 +445,17 @@ export async function queryPublicCourses(
       .bind(...args)
       .first<{ n: number }>()
       .then((row) => row?.n || 0);
-  const allTermsInTitle =
-    searchTerms.length > 1
-      ? andSearchTerms(
-          searchTerms,
-          `${likeSql("c.name")} OR ${likeSql("c.code")}`,
-        )
-      : { sql: "", args: [] };
   const displayNameSql = publicCourseDisplayNameSql("c");
-  const relevanceOrder = `CASE
-       WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? OR (${displayNameSql})=? THEN 0
-       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql(`(${displayNameSql})`)} THEN 1
-       ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
-       WHEN c.department=? THEN 3
-       WHEN ${likeSql("c.department")} THEN 4
-       WHEN ${delimitedExactSql("pcc.teacher_variant_text")} THEN 5
-       WHEN ${likeSql("pcc.teacher_variant_text")} THEN 6
-       WHEN ${likeSql("pcc.pinyin_text")} THEN 7
-       ELSE 8
-     END,review_count DESC,c.name,c.code,c.id`;
-  const searchRankArgs = [
-    search,
-    search,
-    search,
-    search,
-    search,
-    prefixPattern(search),
-    prefixPattern(search),
-    prefixPattern(search),
-    ...allTermsInTitle.args,
-    search,
-    prefixPattern(search),
-    search,
-    prefixPattern(search),
-    containsPattern(search),
-  ];
+  const sharedRanking = buildCatalogSearchRanking(searchTerms, {
+    exact: ["c.name", "c.code", `(${publicBrowseFamilySql("c")})`, `(${displayNameSql})`],
+    exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"],
+    prefix: ["c.name", "c.code", `(${displayNameSql})`],
+    substring: ["c.name", "c.code", `(${displayNameSql})`],
+    pinyin: "pcc.pinyin_text",
+    teacher: ["c.department", "pcc.teacher_variant_text"],
+  }, "course", args.length);
+  const relevanceOrder = `${sharedRanking.sql},review_count DESC,c.name,c.code,c.id`;
+  const searchRankArgs = sharedRanking.args;
   const { results } = await db
     .prepare(
       `SELECT c.*,
@@ -610,39 +565,18 @@ export async function queryPublicCourseRelations(
       .first()
       .then((row) => Number((row as { n?: number } | null)?.n) || 0);
 
-  const allTermsInTitle =
-    searchTerms.length > 1
-      ? andSearchTerms(searchTerms, `${likeSql("c.name")} OR ${likeSql("c.code")}`)
-      : { sql: "", args: [] };
-  const teacherRank = teacherRelevanceClauses(searchTerms);
   const displayNameSql = publicCourseDisplayNameSql("c");
   const nameSortSql = publicRelationNameSortSql("c", "t");
-  const relevanceOrder = `CASE
-       WHEN ?='' THEN 0
-       WHEN c.name=? OR c.code=? OR (${publicBrowseFamilySql("c")})=? OR (${displayNameSql})=? THEN 0
-       WHEN ${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql(`(${displayNameSql})`)} THEN 1
-       ${allTermsInTitle.sql ? `WHEN ${allTermsInTitle.sql} THEN 2` : ""}
-       WHEN c.department=? THEN 3
-       WHEN ${likeSql("c.department")} THEN 4
-       ${teacherRank.sql}
-       WHEN ${likeSql("pcc.pinyin_text")} THEN 8
-       ELSE 9
-     END,review_count DESC,${nameSortSql}`;
-  const searchRankArgs = [
-    search,
-    search,
-    search,
-    search,
-    search,
-    prefixPattern(search),
-    prefixPattern(search),
-    prefixPattern(search),
-    ...allTermsInTitle.args,
-    search,
-    prefixPattern(search),
-    ...teacherRank.args,
-    containsPattern(search),
-  ];
+  const sharedRanking = buildCatalogSearchRanking(searchTerms, {
+    exact: ["c.name", "c.code", `(${publicBrowseFamilySql("c")})`, `(${displayNameSql})`],
+    exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"],
+    prefix: ["c.name", "c.code", `(${displayNameSql})`],
+    substring: ["c.name", "c.code", `(${displayNameSql})`],
+    pinyin: "pcc.pinyin_text",
+    teacher: ["t.name", "t.source_teacher_label", "c.department"],
+  }, "relation", args.length);
+  const relevanceOrder = `${sharedRanking.sql},review_count DESC,${nameSortSql}`;
+  const searchRankArgs = sharedRanking.args;
   const orderBy =
     sort === "name"
       ? nameSortSql
