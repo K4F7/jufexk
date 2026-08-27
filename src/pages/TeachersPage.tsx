@@ -17,6 +17,7 @@ import {
 import { TeacherResultTable } from "../components/TeacherResultTable";
 import { api } from "../lib/api";
 import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
+import { emptyCatalogPage, readDevPreview } from "../lib/dev-preview";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
 import type { Course, Paginated, Teacher } from "../lib/types";
@@ -47,6 +48,7 @@ export function TeachersPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
+  const preview = readDevPreview(params);
   const q = params.get("q") || "";
   const parsedPage = Number(params.get("page") || "1");
   const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
@@ -99,6 +101,19 @@ export function TeachersPage() {
   }, [queryDraft, q, params, setParams]);
 
   useEffect(() => {
+    if (preview === "error") {
+      setData(null);
+      setError("教师资料加载失败");
+      setLoading(false);
+      return;
+    }
+    if (preview === "empty") {
+      setData(emptyCatalogPage());
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     let cancelled = false;
     const query = new URLSearchParams();
@@ -124,7 +139,7 @@ export function TeachersPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [q, page, reloadToken]);
+  }, [q, page, reloadToken, preview]);
 
   const offerRescue =
     data != null &&

@@ -39,9 +39,12 @@ export function StarGlyph({
   }
   return (
     <span className={`relative inline-block size-[1em] shrink-0 ${className}`}>
-      <Star aria-hidden className="absolute inset-0 size-[1em] text-border" />
-      <span className="absolute inset-0 w-1/2 overflow-hidden">
-        <StarFill aria-hidden className="size-[1em]" />
+      <Star aria-hidden className="absolute inset-0 size-full text-border" />
+      <span className="absolute inset-y-0 left-0 w-1/2 overflow-hidden">
+        <StarFill
+          aria-hidden
+          className="block h-full w-[200%] max-w-none"
+        />
       </span>
     </span>
   );

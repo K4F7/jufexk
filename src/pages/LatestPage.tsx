@@ -4,17 +4,21 @@
  */
 import { Button, Card, Spinner, Typography } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ReviewAuthor } from "../components/ReviewAuthor";
 import { DetailErrorAlert } from "../components/DetailFeedback";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useLoadMoreOnVisible } from "../hooks/useLoadMoreOnVisible";
 import { api } from "../lib/api";
+import { readDevPreview } from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { LatestReview, PublicReviewPage } from "../lib/types";
 
 export function LatestPage() {
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
   const [items, setItems] = useState<LatestReview[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +31,21 @@ export function LatestPage() {
   isLoadingMoreRef.current = isLoadingMore;
 
   useEffect(() => {
+    if (preview === "error") {
+      setItems([]);
+      setNextCursor(null);
+      setError("最新课评加载失败");
+      setLoading(false);
+      return;
+    }
+    if (preview === "empty") {
+      setItems([]);
+      setNextCursor(null);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
@@ -49,7 +68,7 @@ export function LatestPage() {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [preview]);
 
   const loadMore = useCallback(async () => {
     const cursor = nextCursorRef.current;

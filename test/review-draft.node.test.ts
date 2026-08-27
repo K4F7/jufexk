@@ -5,7 +5,6 @@ describe("parseReviewDraft", () => {
   it("keeps a valid draft and drops expired or broken payloads", () => {
     const fresh = parseReviewDraft({
       version: REVIEW_DRAFT_VERSION,
-      term: "2026秋",
       scores: { difficulty: "2" },
       overall: "4.5",
       note: "老师讲课很清楚，收获很大，推荐给学弟学妹。",
@@ -24,7 +23,6 @@ describe("parseReviewDraft", () => {
     expect(
       parseReviewDraft({
         version: REVIEW_DRAFT_VERSION,
-        term: "2026秋",
         scores: {},
         overall: "",
         note: "还没写完",
@@ -37,7 +35,6 @@ describe("parseReviewDraft", () => {
     expect(
       parseReviewDraft({
         version: REVIEW_DRAFT_VERSION,
-        term: "",
         scores: {},
         overall: "",
         note: "还没写完",

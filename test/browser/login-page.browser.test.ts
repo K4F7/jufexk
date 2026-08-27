@@ -206,18 +206,18 @@ test("MFA step drops a leftover password error and names 企业微信", async ({
   await page.getByLabel("校园密码").fill("secret-pass");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByText("学号或密码不正确")).toHaveCount(0);
-  await expect(page.getByText("请输入验证码")).toBeVisible();
+  await expect(page.getByText("验证码", { exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "扫码登录" })).toHaveCount(0);
-  await expect(page.getByText(/企业微信/)).toBeVisible();
-  await expect(page.getByText(/不是本站短信/)).toBeVisible();
+  await expect(page.getByText("输入发送到企业微信的四位验证码")).toBeVisible();
+  await expect(page.getByRole("button", { name: "验证" })).toBeVisible();
+  await expect(page.getByText("已发送到企业微信")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "完成登录" })).toHaveCount(0);
   await expect(page.getByText("短信验证码")).toHaveCount(0);
-  await expect(page.getByText("验证码已发送到")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(
     0,
   );
 
   await page.getByLabel("验证码").fill("8765");
-  await page.getByRole("button", { name: "完成登录" }).click();
   await expect(page).toHaveURL(/\/courses$/);
   expect(mfaPayload).toContain("8765");
   expect(mfaPayload).toContain("secret-pass");
@@ -249,7 +249,6 @@ test("post-OTP password failure returns to the credential form", async ({
   await page.getByLabel("校园密码").fill("secret-pass");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByLabel("验证码").fill("8765");
-  await page.getByRole("button", { name: "完成登录" }).click();
   await expect(page.getByLabel("学号")).toBeVisible();
   await expect(page.getByLabel("校园密码")).toBeVisible();
   await expect(page.getByText("请确认后重新登录")).toBeVisible();
@@ -291,7 +290,7 @@ test("session bootstrap shows a loading status before the form", async ({
   await expect(page.getByLabel("学号")).toBeVisible();
 });
 
-test("CAS submit shows a pending alert and button while waiting", async ({
+test("CAS submit shows a pending button while waiting", async ({
   page,
 }) => {
   let releaseCas!: () => void;
@@ -315,8 +314,7 @@ test("CAS submit shows a pending alert and button while waiting", async ({
   await page.getByLabel("校园密码").fill("secret-pass");
   await page.getByRole("button", { name: "登录", exact: true }).click();
 
-  await expect(page.getByText("正在登录", { exact: true })).toBeVisible();
-  await expect(page.getByText("通常只要几秒。")).toBeVisible();
+  await expect(page.getByText("通常只要几秒。")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "正在登录…" })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeDisabled();
   await expect(page.getByLabel("校园密码")).toBeDisabled();
@@ -325,7 +323,20 @@ test("CAS submit shows a pending alert and button while waiting", async ({
   await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("MFA submit shows a pending alert while the code is checked", async ({
+test("MFA error preview uses field-error instead of an alert", async ({
+  page,
+}) => {
+  await page.goto("/login?preview=mfa-error&atlas=1");
+  await expect(page.getByText("输入发送到企业微信的四位验证码")).toBeVisible();
+  const fieldError = page.locator("#code-error");
+  await expect(fieldError).toHaveText("验证码不正确");
+  await expect(fieldError).toHaveAttribute("data-visible", "true");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "验证" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "验证" })).toBeDisabled();
+});
+
+test("MFA submit shows a pending button while the code is checked", async ({
   page,
 }) => {
   let releaseMfa!: () => void;
@@ -358,11 +369,8 @@ test("MFA submit shows a pending alert while the code is checked", async ({
   await page.getByLabel("校园密码").fill("secret-pass");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByLabel("验证码").fill("8765");
-  await page.getByRole("button", { name: "完成登录" }).click();
 
-  await expect(page.getByText("正在确认验证码")).toBeVisible();
-  await expect(page.getByText("马上就好。")).toBeVisible();
-  await expect(page.getByRole("button", { name: "正在完成登录…" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "正在验证…" })).toBeVisible();
   await expect(page.getByLabel("验证码")).toBeDisabled();
 
   releaseMfa();
@@ -382,9 +390,36 @@ test("school CAS tips appear on the login card", async ({ page }) => {
   await page.getByLabel("校园密码").fill("secret-pass");
   await page.getByRole("button", { name: "登录", exact: true }).click();
 
-  await expect(page.getByText("账号暂时无法登录")).toBeVisible();
-  await expect(page.getByText("账号已被锁定，请稍后再试")).toBeVisible();
+  const fieldError = page.locator("#password-error");
+  await expect(fieldError).toHaveText("账号已被锁定，请稍后再试");
+  await expect(fieldError).toHaveAttribute("data-visible", "true");
+  await expect(page.getByText("账号暂时无法登录")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByLabel("学号")).toBeVisible();
+});
+
+test("password locked preview uses field-error instead of an alert", async ({
+  page,
+}) => {
+  await page.goto("/login?preview=locked&atlas=1");
+  const fieldError = page.locator("#password-error");
+  await expect(fieldError).toHaveText("账号已锁定，请稍后再试");
+  await expect(fieldError).toHaveAttribute("data-visible", "true");
+  await expect(page.getByText("账号暂时无法登录")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByLabel("学号")).toBeVisible();
+});
+
+test("password-update preview uses field-error instead of an alert", async ({
+  page,
+}) => {
+  await page.goto("/login?preview=password-update&atlas=1");
+  const fieldError = page.locator("#password-error");
+  await expect(fieldError).toHaveText("密码已过期，请先修改密码");
+  await expect(fieldError).toHaveAttribute("data-visible", "true");
+  await expect(page.getByText("需要先更新密码")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByLabel("校园密码")).toBeVisible();
 });
 
 test("email magic-link redeeming uses the official progress alert", async ({
@@ -481,16 +516,13 @@ test("dev-only local login goes to the personal homepage", async ({ page }) => {
 const QR_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-test("QR tab shows the official image and scan copy @mobile-smoke", async ({ page }) => {
+test("QR tab shows the official image without a hint Alert @mobile-smoke", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("tab", { name: "扫码登录" }).click();
-  const hint = page.getByText("使用微信或企业微信扫一扫登录");
   const qr = page.getByRole("img", { name: "微信或企业微信登录二维码" });
-  await expect(hint).toBeVisible();
   await expect(qr).toBeVisible();
-  const hintBox = await hint.boundingBox();
-  const qrBox = await qr.boundingBox();
-  expect(hintBox && qrBox && hintBox.y < qrBox.y).toBeTruthy();
+  await expect(page.getByText("使用微信或企业微信扫一扫登录")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("expired QR shows official copy and refresh requests a new challenge", async ({
@@ -513,9 +545,7 @@ test("expired QR shows official copy and refresh requests a new challenge", asyn
   await page.goto("/login");
   await page.getByRole("tab", { name: "扫码登录" }).click();
   await expect(page.getByText("二维码已失效")).toBeVisible();
-  await expect(page.getByRole("img", { name: "微信或企业微信登录二维码" })).toHaveCount(
-    0,
-  );
+  await expect(page.getByRole("img", { name: "微信或企业微信登录二维码" })).toBeVisible();
   const refresh = page.getByRole("button", { name: "刷新二维码" });
   await expect(refresh).toBeVisible();
   await refresh.click();

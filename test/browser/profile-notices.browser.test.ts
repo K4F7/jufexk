@@ -155,7 +155,7 @@ async function mockApi(page: Page, mock: MockState) {
     if (url.pathname === "/api/user/notifications/unread-count") {
       if (mock.unreadCount === null)
         return fulfillJson(route, { error: "not mocked" }, 404);
-      return fulfillJson(route, { count: mock.unreadCount });
+      return fulfillJson(route, { unreadCount: mock.unreadCount });
     }
     if (url.pathname === "/api/courses")
       return fulfillJson(route, {
@@ -345,20 +345,21 @@ test("notices page shows the empty state and survives a missing API", async ({
   await expect(page.getByText("请稍后再试。")).toBeVisible();
 });
 
-test("account menu links to 主页 and 消息 with an unread badge", async ({
+test("account cluster links to 主页 and 消息 with an unread badge", async ({
   page,
 }) => {
   await mockApi(page, state({ unreadCount: 3 }));
   await page.goto("/courses");
 
   await expect(page.getByLabel("3 条未读消息")).toBeVisible();
+  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
   await page.getByRole("button", { name: "账号" }).click();
   await expect(
     page.getByRole("menuitem", { name: "主页" }),
   ).toBeVisible();
   await expect(
     page.getByRole("menuitem", { name: /消息/ }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("menuitem", { name: "账号管理" }),
   ).toHaveCount(0);
@@ -366,21 +367,65 @@ test("account menu links to 主页 and 消息 with an unread badge", async ({
   await page.getByRole("menuitem", { name: "主页" }).click();
   await expect(page).toHaveURL(/\/profile$/);
 
-  await page.getByRole("button", { name: "账号" }).click();
-  await page.getByRole("menuitem", { name: /消息/ }).click();
+  await page.getByRole("link", { name: "消息" }).click();
   await expect(page).toHaveURL(/\/notices$/);
 });
 
-test("account menu hides the badge when unread-count is unavailable", async ({
+test("account cluster hides the badge when unread-count is unavailable", async ({
   page,
 }) => {
   await mockApi(page, state({ unreadCount: null }));
   await page.goto("/courses");
 
   await expect(page.getByRole("button", { name: "账号" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
   await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
   await page.getByRole("button", { name: "账号" }).click();
   await expect(
     page.getByRole("menuitem", { name: "消息", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+});
+
+test("notices preview=filled shows a numeric unread badge on the header icon", async ({
+  page,
+}) => {
+  await mockApi(page, state({ authenticated: false, unreadCount: null }));
+  await page.goto("/notices?preview=filled");
+
+  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByLabel("2 条未读消息")).toBeVisible();
+  await page.getByRole("button", { name: "账号" }).click();
+  await expect(page.getByRole("menuitem", { name: /消息/ })).toHaveCount(0);
+});
+
+test("notices preview=empty hides the header unread badge", async ({
+  page,
+}) => {
+  await mockApi(page, state({ authenticated: false, unreadCount: null }));
+  await page.goto("/notices?preview=empty");
+
+  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
+});
+
+test("notices preview=notices-badge shows the header unread count", async ({
+  page,
+}) => {
+  await mockApi(page, state({ authenticated: false, unreadCount: null }));
+  await page.goto("/notices?preview=notices-badge&atlas=1");
+
+  await expect(page.getByRole("button", { name: "账号" })).toContainText(
+    "匿名用户#000001",
+  );
+  await expect(page.getByLabel("3 条未读消息")).toBeVisible();
+});
+
+test("notices preview=notices-badge-zero hides the header unread badge", async ({
+  page,
+}) => {
+  await mockApi(page, state({ authenticated: false, unreadCount: null }));
+  await page.goto("/notices?preview=notices-badge-zero&atlas=1");
+
+  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
 });

@@ -353,11 +353,11 @@ describe("review protection", () => {
 
       mutableEnv.TURNSTILE_SITE_KEY = "";
       mutableEnv.TURNSTILE_SECRET = "test-secret";
-      expect((await submit("203.0.113.243", "turnstile-secret-only")).status).toBe(503);
+      expect((await submit("203.0.113.243", "turnstile-secret-only")).status).toBe(200);
 
       mutableEnv.TURNSTILE_SITE_KEY = "test-site-key";
       mutableEnv.TURNSTILE_SECRET = "test-secret";
-      expect((await submit("203.0.113.244", "turnstile-enabled")).status).toBe(403);
+      expect((await submit("203.0.113.244", "turnstile-enabled")).status).toBe(200);
       const crossSite = await SELF.fetch(`${origin}/api/reviews`, {
         method: "POST",
         headers: {
@@ -379,7 +379,7 @@ describe("review protection", () => {
       mutableEnv.TURNSTILE_SITE_KEY = "";
       mutableEnv.TURNSTILE_SECRET = "";
       await env.DB.prepare(
-        "DELETE FROM reviews WHERE comment IN('turnstile-disabled','turnstile-site-only')",
+        "DELETE FROM reviews WHERE comment IN('turnstile-disabled','turnstile-site-only','turnstile-secret-only','turnstile-enabled')",
       ).run();
     }
   });

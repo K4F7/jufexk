@@ -1,6 +1,6 @@
 import { AlertDialog, Button, Typography, buttonVariants } from "@heroui/react";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   DetailErrorAlert,
   DetailLoadingStatus,
@@ -8,6 +8,7 @@ import {
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useAdminSession } from "../hooks/useAdminSession";
 import { api } from "../lib/api";
+import { readDevPreview } from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
 import type { Announcement } from "../lib/types";
 
@@ -18,6 +19,9 @@ import type { Announcement } from "../lib/types";
 export function AnnouncementsPage() {
   const { authed: isAdmin, ready: adminReady } = useAdminSession();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
+  const showAdmin = (adminReady && isAdmin) || preview === "admin";
   const [items, setItems] = useState<Announcement[] | null>(null);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -28,8 +32,18 @@ export function AnnouncementsPage() {
   }, []);
 
   useEffect(() => {
+    if (preview === "error") {
+      setItems(null);
+      setError("公告加载失败");
+      return;
+    }
+    if (preview === "empty") {
+      setItems([]);
+      setError("");
+      return;
+    }
     load().catch((e) => setError((e as Error).message));
-  }, [load]);
+  }, [load, preview]);
 
   const remove = async (id: number) => {
     setActionError("");
@@ -47,7 +61,7 @@ export function AnnouncementsPage() {
         <Typography className="m-0 text-[22px] font-bold" type="h1">
           公告栏
         </Typography>
-        {adminReady && isAdmin ? (
+        {showAdmin ? (
           <div className="flex flex-wrap gap-2">
             <RouterAriaLink
               className={`${buttonVariants({ variant: "ghost" })} no-underline`}
@@ -99,7 +113,7 @@ export function AnnouncementsPage() {
               <p className="mb-0 mt-2 text-[12px] text-muted">
                 发表于 {formatReviewDate(a.time) || "—"}
               </p>
-              {adminReady && isAdmin ? (
+              {showAdmin ? (
                 <div className="mt-3 flex gap-2">
                   <Button
                     size="sm"

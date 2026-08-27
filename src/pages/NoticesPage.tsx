@@ -5,11 +5,18 @@
  */
 import { Alert, Chip, Spinner, Typography } from "@heroui/react";
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
 import { announceNotificationsRead } from "../hooks/useUnreadNotifications";
 import { api } from "../lib/api";
+import {
+  isDevAtlasSession,
+  PREVIEW_NOTICES_BADGE,
+  PREVIEW_NOTICES_BADGE_ZERO,
+  previewFilledNotices,
+  readDevPreview,
+} from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
 import type { UserNotification } from "../lib/types";
 
@@ -27,12 +34,47 @@ function normalizeNotifications(
 
 export function NoticesPage() {
   const { viewer, ready } = useViewer();
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
+  const skipGate = isDevAtlasSession(searchParams);
   const [items, setItems] = useState<UserNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
 
   useEffect(() => {
-    if (!ready || !viewer.authenticated) return;
+    if (preview === "error") {
+      setItems([]);
+      setAvailable(false);
+      setLoading(false);
+      return;
+    }
+    if (preview === "empty") {
+      setItems([]);
+      setAvailable(true);
+      setLoading(false);
+      return;
+    }
+    if (preview === "filled" || preview === PREVIEW_NOTICES_BADGE) {
+      setItems(previewFilledNotices());
+      setAvailable(true);
+      setLoading(false);
+      return;
+    }
+    if (preview === PREVIEW_NOTICES_BADGE_ZERO) {
+      setItems([]);
+      setAvailable(true);
+      setLoading(false);
+      return;
+    }
+    if (!ready) return;
+    if (!viewer.authenticated) {
+      if (skipGate) {
+        setItems([]);
+        setAvailable(true);
+        setLoading(false);
+      }
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     api<UserNotification[] | { items?: UserNotification[] }>(
@@ -58,9 +100,9 @@ export function NoticesPage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, viewer.authenticated]);
+  }, [ready, viewer.authenticated, preview, skipGate]);
 
-  if (!ready) {
+  if (!ready && !skipGate) {
     return (
       <section aria-label="全部消息" className="py-8">
         <p className="m-0 flex items-center gap-2 text-sm text-muted">
@@ -71,7 +113,7 @@ export function NoticesPage() {
     );
   }
 
-  if (!viewer.authenticated) {
+  if (!viewer.authenticated && !skipGate) {
     const from = encodeURIComponent("/notices");
     return <Navigate to={`${viewer.loginPath}?from=${from}`} replace />;
   }

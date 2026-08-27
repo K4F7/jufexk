@@ -18,6 +18,7 @@ import {
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { readDevPreview } from "../lib/dev-preview";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { api } from "../lib/api";
 import { formatSidebarScore } from "../lib/labels";
@@ -92,7 +93,14 @@ export function TeacherDetailPage() {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
 
+  const preview = readDevPreview(new URLSearchParams(location.search));
+
   useEffect(() => {
+    if (preview === "error") {
+      setData(null);
+      setError("教师资料加载失败");
+      return;
+    }
     let cancelled = false;
     setData(null);
     setError("");
@@ -107,7 +115,7 @@ export function TeacherDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, preview]);
 
   if (error) {
     return (

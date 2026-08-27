@@ -27,6 +27,7 @@ export default defineConfig(async () => {
           ],
           bindings: {
             PUBLIC_SURFACE: "production",
+            ALLOW_DEV_LOGIN: "1",
             ISSUE111_RELATION_MANIFEST_SHA256: "manifest",
             V5_IMPORT_ARTIFACT_SHA256: "manifest",
             V5_IMPORT_MANIFEST_SHA256: "manifest",

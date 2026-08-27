@@ -1,7 +1,8 @@
 import { Alert, Card, Spinner } from "@heroui/react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useViewer } from "../hooks/useViewer";
+import { readDevPreview } from "../lib/dev-preview";
 
 /**
  * Ordinary-user account page (issue #139). Logged-in visitors go to the
@@ -10,8 +11,11 @@ import { useViewer } from "../hooks/useViewer";
  */
 export function AccountPage() {
   const { viewer, ready } = useViewer();
+  const [searchParams] = useSearchParams();
+  const preview = readDevPreview(searchParams);
+  const forceGuest = preview === "guest";
 
-  if (!ready) {
+  if (!ready && !forceGuest) {
     return (
       <section aria-labelledby="account-heading" className="mx-auto max-w-xl py-8">
         <p className="m-0 flex items-center gap-2 text-sm text-muted">
@@ -22,7 +26,7 @@ export function AccountPage() {
     );
   }
 
-  if (viewer.authenticated) {
+  if (viewer.authenticated && !forceGuest) {
     return <Navigate to="/profile" replace />;
   }
 

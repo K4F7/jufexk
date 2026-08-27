@@ -27,6 +27,7 @@ export type Bindings = Omit<
   OPENAI_API_KEY?: RuntimeSecret;
   OPENAI_MODEL?: string;
   PUBLIC_SURFACE?: string;
+  ALLOW_DEV_LOGIN?: string;
 };
 export type Vars = {
   adminSession?: string;

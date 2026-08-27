@@ -3,8 +3,9 @@ import { TIER3_QUESTIONS } from "../review-score-fixtures";
 
 /**
  * 写评价（Issue #402 + #400 + #447）：入口只从课程页「写点评」；表单对齐 icourse ——
- * 课×师已知时用「点评 · 课名（教师）」卡片头；学期 Select 选填、四道三档、
- * 1–5 半星本次推荐度、纯文本详细评价、选填数字成绩、可保存草稿、只写点评不评分。
+ * 课×师已知时用「点评 · 课名（教师）」卡片头；四道三档、
+ * 1–5 半星推荐度（默认必填）、纯文本详细评价、选填数字成绩、可保存草稿；
+ * 「只写点评不评分」问卷仍显示，评分与推荐度改为可选。
  * 从课程页带入的课/老师不再重选；投稿一律匿名。
  * 线下课与 mooc 同一套四道题；发布成功回到该 课程×教师 的详情页。一句话总结字段已下线。
  *
@@ -109,7 +110,6 @@ async function mockSubmitApi(
         headline: entry.headline ?? "",
         ...(entry.grade ? { grade: entry.grade } : {}),
         overall: entry.overall,
-        term: entry.term,
         created_at: "2026-08-24 06:00:00",
         endorsement_count: 0,
         endorsable: false,
@@ -161,12 +161,6 @@ async function mockSubmitApi(
   return posted;
 }
 
-async function passGate(page: Page) {
-  const start = page.getByRole("button", { name: "开始填写" });
-  await expect(start).toBeVisible();
-  await start.click();
-}
-
 async function chooseCourse(page: Page, query: string, name: string) {
   const combo = page.getByRole("combobox", { name: "课程" });
   await combo.click();
@@ -175,11 +169,11 @@ async function chooseCourse(page: Page, query: string, name: string) {
 }
 
 async function pickScore(page: Page, label: string, value: string) {
-  const group = page.getByRole("radiogroup", { name: label });
-  await group.getByText(value, { exact: true }).click();
-  await expect(
-    group.getByRole("radio", { name: value, exact: true }),
-  ).toBeChecked();
+  // 三档题是 TagGroup selectionMode="single"：React Aria 暴露 grid + row。
+  const group = page.getByRole("grid", { name: label });
+  const tag = group.getByRole("row", { name: value, exact: true });
+  await tag.click();
+  await expect(tag).toHaveAttribute("aria-selected", "true");
 }
 
 async function pickTeacher(page: Page, name: string) {
@@ -196,15 +190,9 @@ async function fillComment(page: Page, text: string) {
   await noteEditor(page).fill(text);
 }
 
-/** 学期 Select 选第一项（列表随当前日期生成，第一项即最近学期）。 */
-async function pickTerm(page: Page) {
-  await page.getByRole("button", { name: /学期/ }).click();
-  await page.getByRole("option").first().click();
-}
-
 async function pickOverall(page: Page, value: string) {
   await page
-    .getByRole("radiogroup", { name: "本次推荐度" })
+    .getByRole("radiogroup", { name: "推荐度" })
     .getByRole("radio", { name: `${value} 星`, exact: true })
     .click({ force: true });
 }
@@ -226,35 +214,35 @@ async function answerTier3AndOverall(
 
 /** 所有课都应看到的公共核四道三档题（中文档位，#374）。 */
 async function expectTier3Questions(page: Page) {
-  const difficulty = page.getByRole("radiogroup", { name: "课程难度" });
+  const difficulty = page.getByRole("grid", { name: "课程难度" });
   await expect(difficulty).toBeVisible();
   await expect(
-    difficulty.getByRole("radio", { name: "简单", exact: true }),
+    difficulty.getByRole("row", { name: "简单", exact: true }),
   ).toBeVisible();
   await expect(
-    difficulty.getByRole("radio", { name: "中等", exact: true }),
+    difficulty.getByRole("row", { name: "中等", exact: true }),
   ).toBeVisible();
   await expect(
-    difficulty.getByRole("radio", { name: "困难", exact: true }),
+    difficulty.getByRole("row", { name: "困难", exact: true }),
   ).toBeVisible();
   // 三档题显示中文文案，不显示成 1/2/3 分。
   await expect(
-    difficulty.getByRole("radio", { name: "1", exact: true }),
+    difficulty.getByRole("row", { name: "1", exact: true }),
   ).toHaveCount(0);
 
-  const homework = page.getByRole("radiogroup", { name: "作业多少" });
-  await expect(homework.getByRole("radio", { name: "不多", exact: true })).toBeVisible();
-  await expect(homework.getByRole("radio", { name: "超多", exact: true })).toBeVisible();
+  const homework = page.getByRole("grid", { name: "作业多少" });
+  await expect(homework.getByRole("row", { name: "不多", exact: true })).toBeVisible();
+  await expect(homework.getByRole("row", { name: "超多", exact: true })).toBeVisible();
 
-  const grading = page.getByRole("radiogroup", { name: "给分好坏" });
-  await expect(grading.getByRole("radio", { name: "超好", exact: true })).toBeVisible();
-  await expect(grading.getByRole("radio", { name: "杀手", exact: true })).toBeVisible();
+  const grading = page.getByRole("grid", { name: "给分好坏" });
+  await expect(grading.getByRole("row", { name: "超好", exact: true })).toBeVisible();
+  await expect(grading.getByRole("row", { name: "杀手", exact: true })).toBeVisible();
 
-  const gain = page.getByRole("radiogroup", { name: "收获多少" });
-  await expect(gain.getByRole("radio", { name: "很多", exact: true })).toBeVisible();
-  await expect(gain.getByRole("radio", { name: "没有", exact: true })).toBeVisible();
+  const gain = page.getByRole("grid", { name: "收获多少" });
+  await expect(gain.getByRole("row", { name: "很多", exact: true })).toBeVisible();
+  await expect(gain.getByRole("row", { name: "没有", exact: true })).toBeVisible();
 
-  await expect(page.getByRole("radiogroup", { name: "本次推荐度" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "点名频率" })).toHaveCount(0);
   await expect(page.getByText("简单 / 中等 / 困难")).toHaveCount(0);
   await expect(page.getByText("不多 / 中等 / 超多")).toHaveCount(0);
@@ -334,39 +322,29 @@ test("pending session on /submit stays silent instead of announcing a login redi
   await expect(page).toHaveURL(/\/login\?from=/);
 });
 
-test("gate comes first and the icourse-aligned form appears after entry @mobile-smoke", async ({
+test("icourse-aligned form appears immediately @mobile-smoke", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
 
-  const start = page.getByRole("button", { name: "开始填写" });
-  await expect(start).toBeVisible();
-  await expect(start).toBeEnabled();
+  await expect(page.getByRole("button", { name: "开始填写" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "写评价" })).toBeVisible();
   await expect(page.getByText(/评价必须绑定已有任课关系/)).toHaveCount(0);
   await expect(page.getByText("人机验证已完成。")).toHaveCount(0);
-  await expect(page.getByRole("combobox", { name: "课程" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "发布" })).toHaveCount(0);
-
-  await start.click();
-
-  await expect(start).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "课程" })).toBeVisible();
   const teacherSelect = page.getByRole("button", { name: /任课教师/ });
   await expect(teacherSelect).toBeVisible();
   await expect(teacherSelect).toBeDisabled();
   await expect(teacherSelect).toContainText("请选择");
   await expect(page.getByText("Select an item")).toHaveCount(0);
-  // 学期 Select 在教师之后，默认最近学期。
-  const termSelect = page.getByRole("button", { name: /学期/ });
-  await expect(termSelect).toBeVisible();
-  await expect(page.getByText("选填", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
+  await expect(page.getByText("选填。分享成绩，方便同学们综合判断。")).toBeVisible();
   await expect(
     page.getByText("可以搜索课名、老师或课号，再选出对应的课。"),
   ).toBeVisible();
   await expect(page.getByText("选择这门课的任课老师")).toBeVisible();
-  // 四道三档（中文档位）+ 本次推荐度。
+  // 四道三档（中文档位）+ 推荐度。
   await expectOfflineQuestions(page);
   await expect(
     page.getByRole("textbox", { name: "一句话总结本课" }),
@@ -393,14 +371,13 @@ test("gate comes first and the icourse-aligned form appears after entry @mobile-
   expect(posted).toHaveLength(0);
 });
 
-test("deep link prefills course and teacher after the gate", async ({
+test("deep link prefills course and teacher on the form", async ({
   page,
 }) => {
   await mockSubmitApi(page);
   await page.goto("/submit?courseId=8&teacherId=9");
+  await expect(page.getByRole("button", { name: "开始填写" })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "课程" })).toHaveCount(0);
-
-  await passGate(page);
 
   const target = page.getByRole("region", {
     name: "点评 · 中国传统文化导论（测试教师）",
@@ -411,27 +388,23 @@ test("deep link prefills course and teacher after the gate", async ({
   await expect(target.getByText(/学期：/)).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "课程" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /任课教师/ })).toHaveCount(0);
-
-  await pickTerm(page);
-  await expect(target.getByText(/学期：/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
 });
 
 test("save keeps a draft for the same course and teacher", async ({ page }) => {
   await mockSubmitApi(page);
   await page.goto("/submit?courseId=8&teacherId=9");
-  await passGate(page);
   await fillComment(page, VALID_NOTE);
   await clickLabeledCheckbox(page, "只写点评不评分");
   await page.getByRole("button", { name: "保存" }).click();
   await expect(page.getByText("已保存，可稍后继续填写")).toBeVisible();
 
   await page.reload();
-  await passGate(page);
   await expect(noteEditor(page)).toHaveValue(VALID_NOTE);
   await expect(
     page.getByRole("checkbox", { name: "只写点评不评分" }),
   ).toBeChecked();
-  await expect(page.getByRole("radiogroup", { name: "本次推荐度" })).toHaveCount(0);
+  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeVisible();
 });
 
 test("three-tier options show Chinese labels and submit the full payload @mobile-smoke", async ({
@@ -439,12 +412,9 @@ test("three-tier options show Chinese labels and submit the full payload @mobile
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
-  await passGate(page);
   await chooseCourse(page, "文化", "中国传统文化导论");
   await pickTeacher(page, "测试教师");
   await expectOfflineQuestions(page);
-
-  await pickTerm(page);
 
   // 缺题拦截：先答三维 + 推荐度，提交被拦在 收获多少。
   await pickScore(page, "课程难度", "简单");
@@ -475,8 +445,7 @@ test("three-tier options show Chinese labels and submit the full payload @mobile
   });
   // 成绩选填：未填时提交空串，服务端存 NULL。
   expect(posted[0].grade).toBe("");
-  expect(typeof posted[0].term).toBe("string");
-  expect(posted[0].term).not.toBe("");
+  expect(posted[0]).not.toHaveProperty("term");
   // 载荷不含 v1 旧维度键（#374），也不再带考勤。
   expect(posted[0].scores).not.toHaveProperty("teaching");
   expect(posted[0].scores).not.toHaveProperty("workload");
@@ -490,10 +459,8 @@ test("three-tier options show Chinese labels and submit the full payload @mobile
 test("short comment is blocked before submit", async ({ page }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
-  await passGate(page);
   await chooseCourse(page, "文化", "中国传统文化导论");
   await pickTeacher(page, "测试教师");
-  await pickTerm(page);
   await pickScore(page, "课程难度", "简单");
   await pickScore(page, "作业多少", "中等");
   await pickScore(page, "给分好坏", "超好");
@@ -511,10 +478,8 @@ test("a note shorter than 10 chars after trim blocks submit", async ({
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
-  await passGate(page);
   await chooseCourse(page, "文化", "中国传统文化导论");
   await pickTeacher(page, "测试教师");
-  await pickTerm(page);
 
   await answerTier3AndOverall(page, "3");
   // 去掉首尾空白后只有 9 字，达不到必填下限。
@@ -536,13 +501,11 @@ test("mooc course shows the same four questions without an offline-only hint", a
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
-  await passGate(page);
   await chooseCourse(page, "思政", "思政网课");
 
   await expectOfflineQuestions(page);
 
   await pickTeacher(page, "网课教师");
-  await pickTerm(page);
   await pickScore(page, "课程难度", "中等");
   await pickScore(page, "作业多少", "超多");
   await pickScore(page, "给分好坏", "一般");
@@ -568,7 +531,6 @@ test("pe course shows the same four three-tier questions as major", async ({
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
-  await passGate(page);
   await chooseCourse(page, "体育", "大学体育");
   await expectOfflineQuestions(page);
   await expect(
@@ -582,10 +544,8 @@ test("typed note is submitted without a formatting toolbar", async ({
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
-  await passGate(page);
   await chooseCourse(page, "文化", "中国传统文化导论");
   await pickTeacher(page, "测试教师");
-  await pickTerm(page);
   await answerTier3AndOverall(page, "5");
 
   const editor = noteEditor(page);
@@ -607,10 +567,8 @@ test("optional grade is submitted and shown on the course detail", async ({
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit");
-  await passGate(page);
   await chooseCourse(page, "文化", "中国传统文化导论");
   await pickTeacher(page, "测试教师");
-  await pickTerm(page);
   await answerTier3AndOverall(page, "4");
   await fillComment(page, VALID_NOTE);
   await page.getByRole("textbox", { name: "你的成绩" }).fill("90");
@@ -631,22 +589,20 @@ test("optional grade is submitted and shown on the course detail", async ({
   await expect(item.getByText("成绩 90", { exact: true })).toBeVisible();
 });
 
-test("review-only submit skips ratings and still publishes the comment", async ({
+test("review-only submit keeps the questionnaire optional", async ({
   page,
 }) => {
   const posted = await mockSubmitApi(page);
   await page.goto("/submit?courseId=8&teacherId=9");
-  await passGate(page);
-
   const skipRatings = page.getByRole("checkbox", { name: "只写点评不评分" });
   await expect(skipRatings).not.toBeChecked();
   await clickLabeledCheckbox(page, "只写点评不评分");
   await expect(skipRatings).toBeChecked();
-  await expect(page.getByRole("radiogroup", { name: "课程难度" })).toHaveCount(0);
-  await expect(page.getByRole("radiogroup", { name: "本次推荐度" })).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "课程难度" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeVisible();
   await expect(
     page.getByText("建议尽量评分，方便同学比较选课"),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await fillComment(page, VALID_NOTE);
   await page.getByRole("button", { name: "发布" }).click();
