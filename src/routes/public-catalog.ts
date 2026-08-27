@@ -710,7 +710,7 @@ publicCatalogRoutes.get("/api/teachers/:id/avatar", async (c) => {
   const bytes = new Uint8Array(stored.bytes);
   return c.body(bytes, 200, {
     "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
-    "Content-Type": stored.content_type || "image/png",
+    "Content-Type": stored.content_type || "image/webp",
   });
 });
 publicCatalogRoutes.get("/api/teachers/:id/reviews", async (c) => {

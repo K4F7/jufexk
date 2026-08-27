@@ -45,6 +45,7 @@ def content_type_for(blob: bytes, declared: str | None) -> str:
 
 
 def main() -> int:
+    seed_missing = "--seed-missing" in sys.argv
     bindings_path = ARTIFACT / "bindings.json"
     if not bindings_path.is_file():
         raise SystemExit(f"Missing {bindings_path}\nRun: pnpm cta-sync")
@@ -56,6 +57,7 @@ def main() -> int:
     updated = 0
     avatars = 0
     skipped_missing = 0
+    seeded = 0
     try:
         for row in rows:
             teacher_id = int(row["teacherId"])
@@ -63,6 +65,19 @@ def main() -> int:
                 "SELECT homepage_locked, image_locked FROM teachers WHERE id=?",
                 (teacher_id,),
             ).fetchone()
+            if exists is None and seed_missing:
+                conn.execute(
+                    """INSERT INTO teachers(id,source_teacher_label,name,department)
+                       VALUES(?,?,?,?)""",
+                    (
+                        teacher_id,
+                        row["name"],
+                        row["name"],
+                        row.get("department") or "",
+                    ),
+                )
+                exists = (0, 0)
+                seeded += 1
             if exists is None:
                 skipped_missing += 1
                 continue
@@ -91,10 +106,16 @@ def main() -> int:
                     (row["match"], teacher_id),
                 )
             updated += 1
-            blob_path = ARTIFACT / "avatars" / f"{teacher_id}.bin"
+            webp_path = ARTIFACT / "avatars" / f"{teacher_id}.webp"
+            blob_path = webp_path if webp_path.is_file() else ARTIFACT / "avatars" / f"{teacher_id}.bin"
             if image_locked or not blob_path.is_file() or not row.get("avatarSha256"):
                 continue
             blob = blob_path.read_bytes()
+            declared = (
+                "image/webp"
+                if blob_path.suffix == ".webp"
+                else row.get("contentType")
+            )
             conn.execute(
                 """INSERT INTO teacher_avatars(teacher_id,content_type,sha256,bytes,source_url,fetched_at)
                    VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)
@@ -106,7 +127,7 @@ def main() -> int:
                      fetched_at=excluded.fetched_at""",
                 (
                     teacher_id,
-                    content_type_for(blob, row.get("contentType")),
+                    content_type_for(blob, declared),
                     row["avatarSha256"],
                     blob,
                     row.get("homepageUrl") or "cta-sync",
@@ -121,6 +142,7 @@ def main() -> int:
             {
                 "updatedTeachers": updated,
                 "avatarsStored": avatars,
+                "seededTeachers": seeded,
                 "missingTeachers": skipped_missing,
             },
             indent=2,
