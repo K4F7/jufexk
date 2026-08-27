@@ -2,8 +2,8 @@
  * Browser coverage for production review recognition (issue #78).
  *
  * Asserts observable labels, counts, aria-pressed, pending disablement,
- * failure rollback, guest login guidance, and the historical/score-only
- * eligibility boundary. Write requests go to the mocked endorsement API.
+ * failure rollback, guest login guidance, and historical plus current
+ * text-review eligibility. Write requests go to the mocked endorsement API.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 
@@ -63,8 +63,8 @@ function liveReviews(store: Store, authenticated: boolean) {
       endorsement_count: store.counts["review:306"],
       viewer_endorsed: authenticated ? store.endorsed["review:306"] : undefined,
     }),
-    review("historical:hist-1", "历史评价不可认可。", {
-      endorsable: false,
+    review("historical:hist-1", "历史评价可以认可。", {
+      endorsable: true,
     }),
   ];
 }
@@ -182,7 +182,11 @@ function userStore(): Store {
 test("guest sees counts, no selected state, and a real login link", async ({ page }) => {
   await mockApi(page, guestStore());
   await page.goto("/courses/8?teacher=9");
-  await expect(page.getByRole("button", { name: "认可这条评价，还没有人认可" })).toBeEnabled();
+  await expect(
+    entry(page, "零计数当前文字评价。").getByRole("button", {
+      name: "认可这条评价，还没有人认可",
+    }),
+  ).toBeEnabled();
 
   const zero = entry(page, "零计数当前文字评价。").getByRole("button", {
     name: "认可这条评价，还没有人认可",
@@ -202,8 +206,10 @@ test("guest sees counts, no selected state, and a real login link", async ({ pag
   ).toHaveAttribute("aria-pressed", "false");
 
   await expect(
-    entry(page, "历史评价不可认可。").getByRole("button", { name: /认可/ }),
-  ).toHaveCount(0);
+    entry(page, "历史评价可以认可。").getByRole("button", {
+      name: "认可这条评价，还没有人认可",
+    }),
+  ).toBeVisible();
 
   await zero.click();
   const prompt = entry(page, "零计数当前文字评价。").getByRole("status");

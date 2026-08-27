@@ -54,10 +54,11 @@ async function login() {
 
 async function adminAction(
   auth: { cookie: string; csrf: string },
-  reviewId: number,
+  reviewId: number | string,
   action: "block" | "unblock" | "author-lookup" | "delete",
 ) {
-  return SELF.fetch(`${origin}/api/admin/reviews/${reviewId}${action === "delete" ? "" : `/${action}`}`, {
+  const id = encodeURIComponent(String(reviewId));
+  return SELF.fetch(`${origin}/api/admin/reviews/${id}${action === "delete" ? "" : `/${action}`}`, {
     method: action === "delete" ? "DELETE" : "POST",
     headers: adminHeaders(auth),
   });
@@ -548,5 +549,72 @@ describe("admin review actions", () => {
       (env as { REVIEW_AUTHOR_LOOKUP_TO?: string }).REVIEW_AUTHOR_LOOKUP_TO =
         previousTo;
     }
+  });
+
+  it("blocks and deletes a public historical review without author lookup", async () => {
+    const historicalId = `admin-hist-${crypto.randomUUID()}`;
+    const comment = "管理员可屏蔽删除的历史评价";
+    await env.DB.prepare(
+      `INSERT INTO public_historical_reviews(
+         id,course_id,teacher_id,comment,package_contract,
+         approved_package_manifest_sha256,approved_catalog_content_sha256
+       ) VALUES(?,?,?,?,?,?,?)`,
+    )
+      .bind(
+        historicalId,
+        1,
+        1,
+        comment,
+        "legacy-historical-production-freeze-v1",
+        "a".repeat(64),
+        "b".repeat(64),
+      )
+      .run();
+    const publicId = `historical:${historicalId}`;
+    expect(await publicReviewText()).toContain(comment);
+
+    const auth = await login();
+    const lookup = await adminAction(auth, publicId, "author-lookup");
+    expect(lookup.status).toBe(404);
+    expect(await lookup.json()).toEqual({ error: "历史评价没有作者账号" });
+
+    const blocked = await adminAction(auth, publicId, "block");
+    expect(blocked.status).toBe(200);
+    expect(await blocked.json()).toEqual({ ok: true, changed: true });
+    expect(await publicReviewText()).not.toContain(comment);
+
+    const adminPage = await courseReviewPage({ Cookie: auth.cookie });
+    expect(reviewByComment(adminPage.items, comment)).toMatchObject({
+      id: publicId,
+      blocked: true,
+      endorsable: false,
+    });
+
+    const endorser = await ordinaryWriteSession("admin-historical-endorser");
+    const endorsement = await SELF.fetch(
+      `${origin}/api/reviews/${encodeURIComponent(publicId)}/endorsement`,
+      {
+        method: "PUT",
+        headers: ordinaryWriteHeaders(endorser, {
+          "Idempotency-Key": "blocked-historical-endorsement",
+        }),
+      },
+    );
+    expect(endorsement.status).toBe(404);
+
+    const unblocked = await adminAction(auth, publicId, "unblock");
+    expect(await unblocked.json()).toEqual({ ok: true, changed: true });
+    expect(await publicReviewText()).toContain(comment);
+
+    const deleted = await adminAction(auth, publicId, "delete");
+    expect(await deleted.json()).toEqual({ ok: true, changed: true });
+    expect(await publicReviewText()).not.toContain(comment);
+    expect(
+      await env.DB.prepare(
+        "SELECT blocked_at,deleted_at FROM public_historical_reviews WHERE id=?",
+      )
+        .bind(historicalId)
+        .first(),
+    ).toMatchObject({ deleted_at: expect.any(String) });
   });
 });

@@ -1,22 +1,14 @@
 import { AlertDialog, Button } from "@heroui/react";
 import { useState } from "react";
 import { api } from "../lib/api";
+import { parsePublicReviewTarget } from "../lib/public-review-id";
 import type { PublicReview } from "../lib/types";
 
 /**
  * 课程页点评上的管理动作（仅管理员会话渲染，对齐 icourse）：
- * 屏蔽 / 解除屏蔽 · 删除（AlertDialog 确认）· 查询作者资料。
- * 公开流 id 形如 review:123 / legacy:456；管理动作只适用于任课评价行，
- * 历史评价没有作者账号，不渲染这些动作。
+ * 屏蔽 / 解除屏蔽 · 删除（AlertDialog 确认）。查询作者资料只适用于
+ * 有账号的任课评价。
  */
-
-function adminReviewId(id: string | number): number | null {
-  if (typeof id === "number") {
-    return Number.isSafeInteger(id) && id > 0 ? id : null;
-  }
-  const match = /^review:(\d+)$/.exec(id);
-  return match ? Number(match[1]) : null;
-}
 
 export function ReviewAdminControls({
   review,
@@ -26,12 +18,14 @@ export function ReviewAdminControls({
   /** 屏蔽 / 删除等改变公开集合的动作完成后调用，触发列表刷新。 */
   onChanged: () => void;
 }) {
-  const reviewId = adminReviewId(review.id);
+  const target = parsePublicReviewTarget(String(review.id));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [lookupSent, setLookupSent] = useState(false);
 
-  if (reviewId == null) return null;
+  if (target == null) return null;
+  const adminPath = `/api/admin/reviews/${encodeURIComponent(target.publicId)}`;
+  const canLookupAuthor = target.kind === "review";
 
   const blocked = !!review.blocked;
 
@@ -50,7 +44,7 @@ export function ReviewAdminControls({
 
   const toggleBlock = () =>
     run(() =>
-      api(`/api/admin/reviews/${reviewId}/${blocked ? "unblock" : "block"}`, {
+      api(`${adminPath}/${blocked ? "unblock" : "block"}`, {
         method: "POST",
         body: "{}",
       }),
@@ -58,7 +52,7 @@ export function ReviewAdminControls({
 
   const lookupAuthor = () =>
     run(async () => {
-      await api(`/api/admin/reviews/${reviewId}/author-lookup`, {
+      await api(`${adminPath}/author-lookup`, {
         method: "POST",
         body: "{}",
       });
@@ -66,7 +60,7 @@ export function ReviewAdminControls({
     }, false);
 
   const deleteReview = () =>
-    run(() => api(`/api/admin/reviews/${reviewId}`, { method: "DELETE" }));
+    run(() => api(adminPath, { method: "DELETE" }));
 
   return (
     <div
@@ -85,14 +79,16 @@ export function ReviewAdminControls({
         >
           {blocked ? "解除屏蔽" : "屏蔽"}
         </Button>
-        <Button
-          isDisabled={pending || lookupSent}
-          size="sm"
-          variant="outline"
-          onPress={() => void lookupAuthor()}
-        >
-          查询作者资料
-        </Button>
+        {canLookupAuthor ? (
+          <Button
+            isDisabled={pending || lookupSent}
+            size="sm"
+            variant="outline"
+            onPress={() => void lookupAuthor()}
+          >
+            查询作者资料
+          </Button>
+        ) : null}
         <AlertDialog>
           <Button isDisabled={pending} size="sm" variant="danger">
             删除
@@ -106,7 +102,9 @@ export function ReviewAdminControls({
                 </AlertDialog.Header>
                 <AlertDialog.Body>
                   <p>
-                    你正在作为管理员删除其他用户的评价。建议使用屏蔽而非删除；删除后不可恢复。
+                    {canLookupAuthor
+                      ? "你正在作为管理员删除其他用户的评价。建议使用屏蔽而非删除；删除后不可恢复。"
+                      : "你正在作为管理员删除这条历史评价。建议使用屏蔽而非删除；删除后不可恢复。"}
                   </p>
                 </AlertDialog.Body>
                 <AlertDialog.Footer>

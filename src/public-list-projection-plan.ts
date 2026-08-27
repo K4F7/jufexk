@@ -7,7 +7,11 @@ import {
   publicPeHasTextReviewSql,
   publicCourseVisibleSql,
 } from "./lib/public-course-presentation";
-import { guestReviewBindingSql } from "./public-review-visibility";
+import {
+  guestReviewBindingSql,
+  historicalPublicVisibleSql,
+  legacyPublicVisibleSql,
+} from "./public-review-visibility";
 
 const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
@@ -111,11 +115,12 @@ const aggregateInsert = `
     UNION ALL
     SELECT phr.course_id,phr.teacher_id
     FROM public_historical_reviews phr
+    WHERE 1=1${historicalPublicVisibleSql("phr")}
     UNION ALL
     SELECT lr.course_id,lr.teacher_id
     FROM legacy_reviews lr
     WHERE lr.status='approved'
-      AND trim(COALESCE(lr.comment,''))<>''
+      AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}
   ) visible_text_reviews
   WHERE ${refreshLeaseGuard}
   GROUP BY course_id,teacher_id;

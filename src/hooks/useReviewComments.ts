@@ -1,10 +1,10 @@
 /**
- * 评价回复区数据层：当前评价（review:NNN）走 /api/reviews/:id/comments 真实接口，
- * 首次展开时拉取；DEV atlas / preview 与历史评价保持本地种子回复，不打接口。
- * 顶层回复落库后由 0046 触发器给评价作者发站内消息；回复他人的回复通知被回复者。
+ * 评价回复区数据层：公开文字流条目走 /api/reviews/:id/comments；
+ * DEV atlas / preview 保持本地种子回复，不打接口。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../lib/api";
+import { parsePublicReviewTarget } from "../lib/public-review-id";
 import type { PublicReview, ReviewComment } from "../lib/types";
 
 type ApiComment = {
@@ -31,9 +31,9 @@ function normalizeComment(row: ApiComment): ReviewComment {
   };
 }
 
-/** 当前评价才有回复后端；历史/旧版评价 id 不带 review: 前缀。 */
+/** 公开文字流条目（任课评价 / 历史评价 / 已批准资料行）可走回复后端。 */
 export function isCommentableReview(review: PublicReview) {
-  return typeof review.id === "string" && /^review:\d+$/.test(review.id);
+  return parsePublicReviewTarget(String(review.id)) != null;
 }
 
 function localCommentId(reviewId: string | number, index: number) {

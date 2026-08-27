@@ -41,6 +41,7 @@ import {
   deliverReviewAuthorLookup,
   type ReviewAuthorIdentity,
 } from "../admin-review-author-mail";
+import { parsePublicReviewTarget } from "../lib/public-review-id";
 import {
   clean,
   csrfOk,
@@ -109,46 +110,119 @@ type AdminReviewTarget = {
   deleted_at: string | null;
 };
 
+type AdminTextReviewTarget = {
+  course_id: number;
+  teacher_id: number | null;
+  blocked_at: string | null;
+  deleted_at: string | null;
+};
+
+function visibilityUpdateSql(table: string, action: "blocked" | "unblocked" | "deleted") {
+  if (action === "blocked") {
+    return `UPDATE ${table} SET blocked_at=CURRENT_TIMESTAMP
+            WHERE id=? AND blocked_at IS NULL AND deleted_at IS NULL RETURNING id`;
+  }
+  if (action === "unblocked") {
+    return `UPDATE ${table} SET blocked_at=NULL
+            WHERE id=? AND blocked_at IS NOT NULL AND deleted_at IS NULL RETURNING id`;
+  }
+  return `UPDATE ${table} SET deleted_at=CURRENT_TIMESTAMP
+          WHERE id=? AND deleted_at IS NULL RETURNING id`;
+}
+
+function visibilityEventGuard(action: "blocked" | "unblocked" | "deleted") {
+  if (action === "blocked") return "blocked_at IS NULL AND deleted_at IS NULL";
+  if (action === "unblocked") return "blocked_at IS NOT NULL AND deleted_at IS NULL";
+  return "deleted_at IS NULL";
+}
+
 async function mutateReviewVisibility(
   c: AppContext,
   action: "blocked" | "unblocked" | "deleted",
 ) {
-  const id = integer(c.req.param("id"));
-  if (!id) return fail(c, "评价 ID 无效");
+  const target = parsePublicReviewTarget(c.req.param("id"));
+  if (!target) return fail(c, "评价 ID 无效");
+  if (target.kind === "review") {
+    const current = await c.env.DB.prepare(
+      `SELECT id,status,course_id,teacher_id,blocked_at,deleted_at
+       FROM reviews WHERE id=?`,
+    )
+      .bind(target.id)
+      .first<AdminReviewTarget>();
+    if (!current) return fail(c, "评价不存在", 404);
+    if (action !== "deleted" && current.deleted_at)
+      return fail(c, "已删除评价不能变更屏蔽状态", 409);
+    const eventGuard = visibilityEventGuard(action);
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO review_moderation_events(review_id,action,note,actor_session_id)
+         SELECT ?,?,'',? FROM reviews WHERE id=? AND ${eventGuard}`,
+      ).bind(target.id, action, c.get("adminSessionId"), target.id),
+      c.env.DB.prepare(visibilityUpdateSql("reviews", action)).bind(target.id),
+    ]);
+    const changed = results[1].results.length > 0;
+    if (changed && current.status === "approved") {
+      markPublicCatalogCacheChanged(c);
+      await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id, {
+        immediate: action !== "unblocked",
+      });
+    }
+    return c.json({ ok: true, changed });
+  }
+
+  if (target.kind === "historical") {
+    const current = await c.env.DB.prepare(
+      `SELECT course_id,teacher_id,blocked_at,deleted_at
+       FROM public_historical_reviews WHERE id=?`,
+    )
+      .bind(target.id)
+      .first<AdminTextReviewTarget>();
+    if (!current) return fail(c, "评价不存在", 404);
+    if (action !== "deleted" && current.deleted_at)
+      return fail(c, "已删除评价不能变更屏蔽状态", 409);
+    const eventGuard = visibilityEventGuard(action);
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO historical_review_visibility_events(
+           historical_review_id,action,actor_session_id
+         ) SELECT ?,?,? FROM public_historical_reviews WHERE id=? AND ${eventGuard}`,
+      ).bind(target.id, action, c.get("adminSessionId"), target.id),
+      c.env.DB.prepare(
+        visibilityUpdateSql("public_historical_reviews", action),
+      ).bind(target.id),
+    ]);
+    const changed = results[1].results.length > 0;
+    if (changed) {
+      markPublicCatalogCacheChanged(c);
+      await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id, {
+        immediate: action !== "unblocked",
+      });
+    }
+    return c.json({ ok: true, changed });
+  }
+
   const current = await c.env.DB.prepare(
-    `SELECT id,status,course_id,teacher_id,blocked_at,deleted_at
-     FROM reviews WHERE id=?`,
+    `SELECT course_id,teacher_id,blocked_at,deleted_at
+     FROM legacy_reviews WHERE id=?`,
   )
-    .bind(id)
-    .first<AdminReviewTarget>();
+    .bind(target.id)
+    .first<AdminTextReviewTarget>();
   if (!current) return fail(c, "评价不存在", 404);
   if (action !== "deleted" && current.deleted_at)
     return fail(c, "已删除评价不能变更屏蔽状态", 409);
-
-  const updateSql =
-    action === "blocked"
-      ? `UPDATE reviews SET blocked_at=CURRENT_TIMESTAMP
-         WHERE id=? AND blocked_at IS NULL AND deleted_at IS NULL RETURNING id`
-      : action === "unblocked"
-        ? `UPDATE reviews SET blocked_at=NULL
-           WHERE id=? AND blocked_at IS NOT NULL AND deleted_at IS NULL RETURNING id`
-        : `UPDATE reviews SET deleted_at=CURRENT_TIMESTAMP
-           WHERE id=? AND deleted_at IS NULL RETURNING id`;
-  const eventGuard =
-    action === "blocked"
-      ? "blocked_at IS NULL AND deleted_at IS NULL"
-      : action === "unblocked"
-        ? "blocked_at IS NOT NULL AND deleted_at IS NULL"
-        : "deleted_at IS NULL";
+  const eventGuard = visibilityEventGuard(action);
   const results = await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO review_moderation_events(review_id,action,note,actor_session_id)
-       SELECT ?,?,'',? FROM reviews WHERE id=? AND ${eventGuard}`,
-    ).bind(id, action, c.get("adminSessionId"), id),
-    c.env.DB.prepare(updateSql).bind(id),
+      `INSERT INTO legacy_review_visibility_events(
+         legacy_review_id,action,actor_session_id
+       ) SELECT ?,?,? FROM legacy_reviews WHERE id=? AND ${eventGuard}`,
+    ).bind(target.id, action, c.get("adminSessionId"), target.id),
+    c.env.DB.prepare(visibilityUpdateSql("legacy_reviews", action)).bind(
+      target.id,
+    ),
   ]);
   const changed = results[1].results.length > 0;
-  if (changed && current.status === "approved") {
+  if (changed) {
     markPublicCatalogCacheChanged(c);
     await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id, {
       immediate: action !== "unblocked",
@@ -803,8 +877,10 @@ adminRoutes.delete("/api/admin/reviews/:id", (c) =>
   mutateReviewVisibility(c, "deleted"),
 );
 adminRoutes.post("/api/admin/reviews/:id/author-lookup", async (c) => {
-  const id = integer(c.req.param("id"));
-  if (!id) return fail(c, "评价 ID 无效");
+  const target = parsePublicReviewTarget(c.req.param("id"));
+  if (!target || target.kind !== "review")
+    return fail(c, target ? "历史评价没有作者账号" : "评价 ID 无效", target ? 404 : 400);
+  const id = target.id;
   const review = await c.env.DB.prepare(
     `SELECT r.id,r.status,r.blocked_at,r.deleted_at,r.submitter_hash,
        r.author_user_id,r.headline,r.comment,r.created_at,

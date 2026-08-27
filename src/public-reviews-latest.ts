@@ -14,7 +14,11 @@ import {
   publicAuthorFields,
   reservedAuthorSql,
 } from "./public-handle";
-import { guestReviewBindingSql } from "./public-review-visibility";
+import {
+  guestReviewBindingSql,
+  historicalPublicVisibleSql,
+  legacyPublicVisibleSql,
+} from "./public-review-visibility";
 
 const fail = (c: Context, error: string, status = 400) =>
   c.json({ error }, status as 400);
@@ -51,6 +55,7 @@ const latestUnion = `
   FROM public_historical_reviews phr
   JOIN courses c ON c.id=phr.course_id
   JOIN teachers t ON t.id=phr.teacher_id
+  WHERE 1=1${historicalPublicVisibleSql("phr")}
   UNION ALL
   SELECT 'legacy:' || lr.id id, lr.course_id, lr.teacher_id, lr.comment,
     NULL comment_format, '' headline, NULL grade,
@@ -59,7 +64,7 @@ const latestUnion = `
   FROM legacy_reviews lr
   JOIN courses c ON c.id=lr.course_id
   JOIN teachers t ON t.id=lr.teacher_id
-  WHERE lr.status='approved' AND trim(COALESCE(lr.comment,''))<>''
+  WHERE lr.status='approved' AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}
   UNION ALL
   SELECT 'review:' || r.id id, r.course_id, r.teacher_id, r.comment,
     r.comment_format, r.headline, r.grade,
