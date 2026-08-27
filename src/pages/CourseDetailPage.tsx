@@ -710,13 +710,13 @@ export function CourseDetailPage() {
                 <Card.Title className="text-accent">
                   {selectedTeacher.name}
                 </Card.Title>
-                {selectedTeacher.department ? (
-                  <Card.Description>{selectedTeacher.department}</Card.Description>
-                ) : null}
+                <Card.Description>
+                  {selectedTeacher.department || "院系未标注"}
+                </Card.Description>
               </Card.Header>
             </RouterAriaLink>
             {selectedTeacher.official_homepage_url ? (
-              <Card.Footer className="justify-center">
+              <Card.Footer className="justify-start">
                 <OfficialHomepageLink
                   href={selectedTeacher.official_homepage_url}
                 />

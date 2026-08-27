@@ -70,6 +70,11 @@ function TeacherIdentityCard({
         </Card.Description>
       </Card.Header>
       <Card.Content>
+        {teacher.official_homepage_url ? (
+          <div className="mb-3">
+            <OfficialHomepageLink href={teacher.official_homepage_url} />
+          </div>
+        ) : null}
         <dl className="m-0 grid gap-1.5 text-sm">
           <IdentityStat label="任课课程" value={`${courseCount} 门`} />
           <IdentityStat label="得到的评价" value={`${reviewCount} 条`} />
@@ -84,11 +89,6 @@ function TeacherIdentityCard({
           <p className="mt-3 mb-0 text-sm leading-relaxed text-muted">
             {teacher.bio}
           </p>
-        ) : null}
-        {teacher.official_homepage_url ? (
-          <div className="mt-3">
-            <OfficialHomepageLink href={teacher.official_homepage_url} />
-          </div>
         ) : null}
       </Card.Content>
     </Card>
