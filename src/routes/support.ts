@@ -30,7 +30,6 @@ export type StashedReview = {
   scores: unknown;
   overall: number;
   comment: string;
-  term: string;
 };
 export const parseStashedReview = (json: string): StashedReview | null => {
   let value: unknown;
@@ -49,7 +48,6 @@ export const parseStashedReview = (json: string): StashedReview | null => {
     // 暂存的是提交时已消毒的补充说明；HTML 标记不计入 10–1200 字门槛，
     // 这里只按存储上限截断，批准时 snapshotReviewScores 会重新消毒校验。
     comment: clean(object.comment, REVIEW_NOTE_HTML_MAX_LENGTH),
-    term: clean(object.term, 30),
   };
 };
 export const parseTagCsv = (value: unknown) =>

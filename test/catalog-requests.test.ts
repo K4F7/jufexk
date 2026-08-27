@@ -228,7 +228,6 @@ describe("catalog addition requests", () => {
       review: {
         overall: 5,
         comment: "随申请一起提交的评价",
-        term: "2025 秋",
         scores: CURRENT_SCORES,
         schemeKey: "pe",
       },
@@ -272,7 +271,7 @@ describe("catalog addition requests", () => {
     expect(review).toMatchObject({
       status: "approved",
       course_id: catalogBody.items[0].id,
-      term: "2025 秋",
+      term: "",
       scheme_key: "major",
       scheme_version: 4,
       scores: CURRENT_SCORES_JSON,

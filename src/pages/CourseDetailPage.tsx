@@ -197,7 +197,6 @@ export function CourseDetailPage() {
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewSort, setReviewSort] = useState<CourseReviewSort>("recognized");
-  const [reviewTerm, setReviewTerm] = useState("all");
   const [reviewRating, setReviewRating] = useState("all");
   const [filteredReviewTotal, setFilteredReviewTotal] = useState(0);
   const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
@@ -222,17 +221,12 @@ export function CourseDetailPage() {
     null;
   /** 课程到达后只用校验过的任课教师；加载中可先按 URL 教师并行拉评价。 */
   const effectiveTeacherId = course ? selectedTeacher?.id : urlTeacherId;
-  const relationTerms = selectedTeacher?.terms ?? [];
-  const effectiveReviewTerm = relationTerms.includes(reviewTerm)
-    ? reviewTerm
-    : "all";
   let teacherQuery = "";
   if (effectiveTeacherId) {
     const query = new URLSearchParams({
       teacherId: String(effectiveTeacherId),
       sort: reviewSort,
     });
-    if (effectiveReviewTerm !== "all") query.set("term", effectiveReviewTerm);
     if (reviewRating !== "all") query.set("rating", reviewRating);
     teacherQuery = query.toString();
   }
@@ -584,12 +578,6 @@ export function CourseDetailPage() {
             className="mt-2 text-[calc(13/15*1rem)]"
             labels={fourDimLineLabels(selectedTeacher?.dimensionLabels)}
           />
-          {relationTerms.length ? (
-            <p className="mb-0 mt-2 min-w-0 truncate text-[calc(11/15*1rem)] text-muted">
-              学期 {relationTerms.join(" ")}
-            </p>
-          ) : null}
-
           <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[calc(13/15*1rem)] sm:grid-cols-2">
             {metaRows.map(([label, value]) => (
               <div key={label} className="flex gap-2">
@@ -665,12 +653,9 @@ export function CourseDetailPage() {
           <CourseReviewSection
             courseId={course.id}
             teacherId={effectiveTeacherId}
-            terms={relationTerms}
             sort={reviewSort}
-            term={effectiveReviewTerm}
             rating={reviewRating}
             onSortChange={setReviewSort}
-            onTermChange={setReviewTerm}
             onRatingChange={setReviewRating}
             reviews={reviewFeed.reviews}
             total={filteredReviewTotal}

@@ -8,7 +8,7 @@
  * 仅有补充说明入流 · 课程页强调教师 / 教师页强调课程 · 文案「任课评价」·
  * 无作者身份。维度均分等待 #66；历史资料 #69；认可 #70。
  *
- * A — 匿名文字流：身份真链接 · 学期 · 总体评分 · 正文 · 发布时间
+ * A — 匿名文字流：身份真链接 · 总体评分 · 正文 · 发布时间
  *
  * Mounted via CourseDetailPage / TeacherDetailPage when
  * ?module=teaching-reviews-feed&variant=A (DEV only).
@@ -32,8 +32,7 @@ export function isTeachingReviewsFeedVariantKey(
 export type TeachingReviewsFeedEntry = {
   id: number;
   note: string;
-  term: string | null;
-  /** ISO-ish timestamp or null; never invent a semester/date. */
+  /** ISO-ish timestamp or null; never invent a date. */
   publishedAt: string | null;
   /**
    * Available overall score (display contract from #66; not redefined here).
@@ -64,7 +63,7 @@ const VARIANT_HINT: Record<
   A: {
     title: "A — 匿名任课评价文字流",
     lookFor:
-      "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 总体评分 · 学期 · 发布时间 · 无逐维度 Chip · 无维度均分 · 无作者",
+      "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 总体评分 · 发布时间 · 无逐维度 Chip · 无维度均分 · 无作者",
   },
 };
 
@@ -72,14 +71,13 @@ type DemoSource = "demo" | "api";
 
 /**
  * DEMO — wipe after visual freeze (#71).
- * Covers: long note, long teacher/course names, missing term, missing
+ * Covers: long note, long teacher/course names, missing
  * publishedAt, null identity, rating-only excluded from feed.
  */
 const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   {
     id: -101,
     note: "例题扎实，作业量适中。课堂节奏清晰，适合有一定会计基础的同学。期末复习提纲会提前发，开卷但题量大。",
-    term: "2024-2025-2",
     publishedAt: "2025-06-18T10:20:00Z",
     score: 4.6,
     teacherId: 1,
@@ -90,7 +88,6 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   {
     id: -102,
     note: "节奏偏快，建议提前预习。点名不固定；小组报告占比高。给分中等偏上，想刷 GPA 的同学要做好时间管理。",
-    term: "2024-2025-1",
     publishedAt: "2025-01-09T08:00:00Z",
     score: 4,
     teacherId: 2,
@@ -101,7 +98,6 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   {
     id: -103,
     note: "这是一条刻意写得很长的补充说明，用来检查折行与扫描密度：课堂案例多、板书清晰，但作业反馈偏慢；考核以闭卷为主，题型覆盖面广，复习时建议按章节做历年题。选课前如果已经修过相关先修课，会轻松很多；反之则需要额外补基础。整体体验是「收获大、投入也不小」。",
-    term: "2023-2024-2",
     publishedAt: "2024-07-02T14:30:00Z",
     score: 5,
     teacherId: 3,
@@ -112,8 +108,7 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   },
   {
     id: -104,
-    note: "旧数据：只有文字说明，学期字段缺失；发布时间仍诚实显示。",
-    term: null,
+    note: "旧数据：只有文字说明；发布时间仍诚实显示。",
     publishedAt: "2022-12-01T00:00:00Z",
     score: 3,
     teacherId: 4,
@@ -123,8 +118,7 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   },
   {
     id: -105,
-    note: "发布时间与学期均未知时的诚实回退。评分可用；counterpart 身份也缺失时不伪造链接。",
-    term: null,
+    note: "发布时间未知时的诚实回退。评分可用；counterpart 身份也缺失时不伪造链接。",
     publishedAt: null,
     score: 4,
     teacherId: null,
@@ -135,7 +129,6 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   {
     id: -106,
     note: "体育课：强度适中，考核以出勤与技能测试为主。",
-    term: "2024-2025-1",
     publishedAt: "2025-03-20T11:00:00Z",
     score: 4.5,
     teacherId: 6,
@@ -145,8 +138,7 @@ const DEMO_ENTRIES: TeachingReviewsFeedEntry[] = [
   },
   {
     id: -107,
-    note: "无总体评分时只展示身份、学期与正文，不编造分数。",
-    term: "2022-2023-1",
+    note: "无总体评分时只展示身份与正文，不编造分数。",
     publishedAt: "2023-01-15T09:00:00Z",
     score: null,
     teacherId: 7,
@@ -237,7 +229,6 @@ function mapLiveReviews(reviews: Review[]): TeachingReviewsFeedEntry[] {
     .map((r) => ({
       id: r.id,
       note: noteText(r),
-      term: r.term?.trim() ? r.term : null,
       publishedAt:
         typeof (r as { created_at?: string }).created_at === "string"
           ? ((r as { created_at?: string }).created_at as string)
@@ -419,7 +410,6 @@ function FeedEntry({
   mode: "teacher" | "course";
   showSeparator: boolean;
 }) {
-  const term = entry.term || "学期未标注";
   const scoreLabel = formatScore(entry.score);
   const published = formatPublishedAt(entry.publishedAt);
   const identityName =
@@ -430,7 +420,6 @@ function FeedEntry({
   const ariaParts = [
     "任课评价",
     identityName,
-    term,
     scoreLabel ? `总体评分 ${scoreLabel}` : null,
     published,
   ].filter(Boolean);
@@ -441,10 +430,6 @@ function FeedEntry({
       <article className="py-4" aria-label={ariaParts.join(" · ")}>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
           <CounterpartIdentity entry={entry} mode={mode} />
-          <span className="text-muted" aria-hidden>
-            ·
-          </span>
-          <span className="text-muted">{term}</span>
           {scoreLabel ? (
             <>
               <span className="text-muted" aria-hidden>

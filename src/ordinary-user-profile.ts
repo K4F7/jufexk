@@ -20,7 +20,6 @@ type ProfileReviewRow = {
   course_name: string;
   teacher_id: number;
   teacher_name: string;
-  term: string;
   headline: string;
   comment: string;
   created_at: string;
@@ -53,7 +52,7 @@ export async function handleOrdinaryUserProfile(c: Context) {
   const [reviewResult, followResult] = await c.env.DB.batch([
     c.env.DB.prepare(
       `SELECT r.id,r.course_id,c.name course_name,
-              r.teacher_id,t.name teacher_name,r.term,r.headline,r.comment,
+              r.teacher_id,t.name teacher_name,r.headline,r.comment,
               r.created_at,r.status
        FROM reviews r
        JOIN courses c ON c.id=r.course_id

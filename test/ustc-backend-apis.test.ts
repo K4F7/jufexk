@@ -167,7 +167,7 @@ describe("USTC backend APIs (issue #410)", () => {
     expect(names.indexOf(low.courseId)).toBeLessThan(names.indexOf(empty.courseId));
   });
 
-  it("adds relation four-dims, terms, metadata, and extra review fields", async () => {
+  it("adds relation four-dims, metadata, and extra review fields", async () => {
     const stamp = String(Date.now());
     const { courseId, teacherId } = await insertCourseTeacher(`${stamp}-detail`);
     await insertReview({
@@ -204,7 +204,6 @@ describe("USTC backend APIs (issue #410)", () => {
         teachers: Array<{
           id: number;
           dimensionLabels: Array<{ option: string }>;
-          terms: string[];
           follow_count: number;
         }>;
       };
@@ -213,20 +212,18 @@ describe("USTC backend APIs (issue #410)", () => {
     expect(body.course.teaching_type).toBe("");
     expect(body.course.course_level).toBe("");
     expect(body.course.teachers[0]?.dimensionLabels?.[0]?.option).toBe("简单");
-    expect(body.course.teachers[0]?.terms).toEqual(
-      expect.arrayContaining(["2026 春", "2025 秋"]),
-    );
+    expect(body.course.teachers[0]).not.toHaveProperty("terms");
 
     const reviews = await SELF.fetch(
       `${origin}/api/courses/${courseId}/reviews?teacherId=${teacherId}`,
     );
     const reviewBody = await reviews.json<{
-      items: Array<{ overall: number | null; term: string | null; created_at: string | null }>;
+      items: Array<{ overall: number | null; created_at: string | null }>;
     }>();
     expect(reviewBody.items[0]).toMatchObject({
       overall: 4,
-      term: "2026 春",
     });
+    expect(reviewBody.items[0]).not.toHaveProperty("term");
     expect(reviewBody.items[0]?.created_at).toBeTruthy();
   });
 
@@ -254,7 +251,7 @@ describe("USTC backend APIs (issue #410)", () => {
       );
       expect(response.status).toBe(200);
       return response.json<{
-        items: Array<{ comment: string; overall: number; term: string }>;
+        items: Array<{ comment: string; overall: number }>;
         total: number;
         nextCursor: string | null;
       }>();
@@ -267,13 +264,12 @@ describe("USTC backend APIs (issue #410)", () => {
     const rating = await query("sort=rating_desc");
     expect(rating.items.map((item) => item.overall)).toEqual([5, 2]);
 
-    const filtered = await query(
-      `sort=latest&term=${encodeURIComponent("2026 春")}&rating=5`,
-    );
+    const filtered = await query("sort=latest&rating=5");
     expect(filtered.total).toBe(1);
     expect(filtered.items).toEqual([
-      expect.objectContaining({ overall: 5, term: "2026 春" }),
+      expect.objectContaining({ overall: 5 }),
     ]);
+    expect(filtered.items[0]).not.toHaveProperty("term");
 
     const firstPage = await query("sort=rating_desc&pageSize=1");
     expect(firstPage.items.map((item) => item.overall)).toEqual([5]);
@@ -285,44 +281,41 @@ describe("USTC backend APIs (issue #410)", () => {
     expect(secondPage.total).toBe(2);
   });
 
-  it("paginates reviews with a Chinese term cursor", async () => {
+  it("paginates reviews with a Chinese comment cursor", async () => {
     const stamp = String(Date.now());
     const relation = await insertCourseTeacher(`${stamp}-zh-cursor`);
-    const term = "二零二六春季";
     await insertReview({
       ...relation,
-      comment: `中文学期点评甲${stamp}`,
-      term,
+      comment: `中文点评甲${stamp}`,
       createdAt: "2026-03-01 00:00:00",
     });
     await insertReview({
       ...relation,
-      comment: `中文学期点评乙${stamp}`,
-      term,
+      comment: `中文点评乙${stamp}`,
       createdAt: "2026-03-02 00:00:00",
     });
     const first = await SELF.fetch(
-      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&sort=latest&term=${encodeURIComponent(term)}&pageSize=1`,
+      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&sort=latest&pageSize=1`,
     );
     expect(first.status).toBe(200);
     const firstBody = await first.json<{
-      items: Array<{ id: string; comment: string; term: string }>;
+      items: Array<{ id: string; comment: string }>;
       nextCursor: string | null;
       total: number;
     }>();
     expect(firstBody.total).toBe(2);
     expect(firstBody.items).toHaveLength(1);
-    expect(firstBody.items[0]?.term).toBe(term);
+    expect(firstBody.items[0]).not.toHaveProperty("term");
     expect(firstBody.nextCursor).toBeTruthy();
 
     const second = await SELF.fetch(
-      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&sort=latest&term=${encodeURIComponent(term)}&pageSize=1&cursor=${encodeURIComponent(firstBody.nextCursor || "")}`,
+      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&sort=latest&pageSize=1&cursor=${encodeURIComponent(firstBody.nextCursor || "")}`,
     );
     expect(second.status).toBe(200);
     const secondBody = await second.json<typeof firstBody>();
     expect(secondBody.items).toHaveLength(1);
     expect(secondBody.items[0]?.id).not.toBe(firstBody.items[0]?.id);
-    expect(secondBody.items[0]?.term).toBe(term);
+    expect(secondBody.items[0]).not.toHaveProperty("term");
 
     const asciiCursor = btoa(JSON.stringify({ source: 0, key: "0" }));
     const ascii = await SELF.fetch(

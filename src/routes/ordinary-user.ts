@@ -226,9 +226,8 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
   if (!snapshot.ok) return fail(c, snapshot.error);
   if (!(await takeRateLimit(c.env.DB, `review-submit:${ipHash}`, 3600, 5)))
     return fail(c, "提交过于频繁，请稍后再试", 429);
-  const term = offeringId ? clean(course.offering_term, 30) : b.term;
   const dedupeKey = await digest(
-    `${courseId}|${teacherId}|${offeringId || 0}|${term}|${ipHash}`,
+    `${courseId}|${teacherId}|${offeringId || 0}|${ipHash}`,
   );
   await c.env.DB.prepare(
     "DELETE FROM review_dedupe WHERE key=? AND created_at<datetime('now','-30 days')",
@@ -253,7 +252,7 @@ ordinaryUserRoutes.post("/api/reviews", async (c) => {
         snapshot.commentFormat,
         headline,
         grade,
-        term,
+        "",
         ipHash,
         writer.user.id,
         snapshot.schemeKey,
@@ -341,7 +340,6 @@ ordinaryUserRoutes.post("/api/catalog-requests", async (c) => {
       scores: snapshot.scores,
       overall: overall as number,
       comment: snapshot.comment,
-      term: review.term,
     };
   }
   if (!(await takeRateLimit(c.env.DB, `catalog-request:${ipHash}`, 3600, 5)))

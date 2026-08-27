@@ -50,7 +50,6 @@ export const reviewSubmissionSchema = z
     reviewOnly: unknownField.transform(
       (value) => value === true || value === 1 || value === "1",
     ),
-    term: cleanedField(30),
   })
   .passthrough();
 
@@ -59,7 +58,6 @@ export const attachedReviewSchema = z
     overall: ratingField,
     scores: unknownField,
     comment: unknownField,
-    term: cleanedField(30),
   })
   .passthrough();
 

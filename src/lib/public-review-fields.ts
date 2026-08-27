@@ -1,12 +1,5 @@
 import { parseOverallRating } from "./review-overall";
 
-/** Empty catalog/review term strings become null on public payloads. */
-export function publicTerm(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const term = value.trim();
-  return term || null;
-}
-
 export function publicOverall(value: unknown): number | null {
   return parseOverallRating(value);
 }

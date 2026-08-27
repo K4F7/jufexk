@@ -4,8 +4,8 @@
  * 点评区带排序与认可，写点评入口进 /submit 预设关系。
  *
  * 后端 descope（#410 的缺口不在 #402 实现）：目录走 /api/courses 前端展开
- * 关系行；点评条目没有逐条 overall/term/created_at（无星级、无学期、
- * 无学期/评分筛选）；四维档位用 #373 的 dimensionLabels，旧快照显示
+ * 关系行；点评条目没有逐条 overall/created_at（无星级、
+ * 无学期/评分筛选中的学期）；四维档位用 #373 的 dimensionLabels，旧快照显示
  * 维度均分 Chip。
  */
 import { expect, test, type Page } from "@playwright/test";
@@ -19,7 +19,6 @@ const teacherNineReviews = Array.from({ length: 21 }, (_, index) => ({
   teacher_name: "测试教师",
   comment: `匿名评价 ${index + 1}，正文包含足够长的内容用于验证窄屏布局不会溢出或覆盖目录上下文。`,
   overall: index === 0 ? 5 : null,
-  term: index === 0 ? "2026 春" : null,
   created_at: "2026-08-11 02:00:00",
   endorsement_count: 0,
   endorsable: false,
@@ -112,7 +111,6 @@ async function mockApi(page: Page) {
                   { id: "grading", label: "给分好坏", option: "一般" },
                   { id: "gain", label: "收获多少", option: "很多" },
                 ],
-                terms: ["2026 春", "2025 秋"],
                 follow_count: 0,
                 recommend_count: 0,
                 not_recommend_count: 0,
@@ -124,7 +122,6 @@ async function mockApi(page: Page) {
                 review_count: 2,
                 rating: null,
                 dimensionLabels: null,
-                terms: [],
                 follow_count: 0,
                 recommend_count: 0,
                 not_recommend_count: 0,
@@ -263,7 +260,7 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(page.getByText("（21 人评价）")).toBeVisible();
   await expect(page.getByText("课程号：GEN0108")).toBeVisible();
   await expect(page.getByText("课程难度：中等")).toBeVisible();
-  await expect(page.getByText("学期 2026 春 2025 秋")).toBeVisible();
+  await expect(page.getByText("学期 2026 春 2025 秋")).toHaveCount(0);
   await expect(page.getByText("选课类别：")).toBeVisible();
   await expect(page.getByText("通识").first()).toBeVisible();
   await expect(page.getByText("开课单位：")).toBeVisible();
@@ -286,7 +283,7 @@ test("course detail defaults to the most-reviewed relation", async ({
     page.getByRole("button", { name: "写点评" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /排序/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /学期/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /评分/ })).toBeVisible();
   await expect(page.getByText("21 条点评")).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(20);
@@ -298,7 +295,7 @@ test("course detail defaults to the most-reviewed relation", async ({
   // 第一条即 mock 流的第一条 匿名评价 1。
   const first = reviewItems(page).first();
   await expect(first).toContainText("匿名用户");
-  await expect(first).toContainText("2026 春");
+  await expect(first).not.toContainText("2026 春");
   await expect(first).toContainText("2026-08-11");
   await expect(first).toContainText("匿名评价 1");
   await expect(
@@ -567,7 +564,6 @@ test("review controls reload the complete server-side sort and filters", async (
     if (url.searchParams.get("teacherId") !== "9") return route.fallback();
     queries.push(url.search);
     const sort = url.searchParams.get("sort");
-    const term = url.searchParams.get("term");
     const rating = url.searchParams.get("rating");
     const all = [
       {
@@ -576,7 +572,6 @@ test("review controls reload the complete server-side sort and filters", async (
         teacher_id: 9,
         comment: "低分旧点评，补充说明足够长。",
         overall: 2,
-        term: "2025 秋",
         created_at: "2025-09-01 00:00:00",
         endorsement_count: 2,
         endorsable: true,
@@ -587,16 +582,13 @@ test("review controls reload the complete server-side sort and filters", async (
         teacher_id: 9,
         comment: "高分新点评，补充说明足够长。",
         overall: 5,
-        term: "2026 春",
         created_at: "2026-03-01 00:00:00",
         endorsement_count: 9,
         endorsable: true,
       },
     ];
     const filtered = all.filter(
-      (review) =>
-        (!term || review.term === term) &&
-        (!rating || review.overall === Number(rating)),
+      (review) => !rating || review.overall === Number(rating),
     );
     const items =
       sort === "oldest"
@@ -619,14 +611,12 @@ test("review controls reload the complete server-side sort and filters", async (
   await expect(reviewItems(page).first()).toContainText("低分旧点评");
   expect(queries.at(-1)).toContain("sort=oldest");
 
-  await page.getByRole("button", { name: /学期/ }).click();
-  await page.getByRole("option", { name: "2026 春" }).click();
   await page.getByRole("button", { name: /评分/ }).click();
   await page.getByRole("option", { name: "5 星" }).click();
   await expect(reviewItems(page)).toHaveCount(1);
   await expect(reviewItems(page).first()).toContainText("高分新点评");
   await expect(page.getByText("1 条点评")).toBeVisible();
-  expect(queries.at(-1)).toContain("term=2026+%E6%98%A5");
+  expect(queries.at(-1)).not.toContain("term=");
   expect(queries.at(-1)).toContain("rating=5");
 });
 
@@ -855,7 +845,6 @@ test("review items render headline, grade, and all dimension chips when present"
             headline: "一句话总结：值得选",
             grade: "A",
             overall: 5,
-            term: "2026 春",
             created_at: "2026-08-20 12:00:00",
             // v3 五档标签（含考勤松紧）经 dimensionLabels 逐条下发即全部渲染。
             dimensionLabels: [

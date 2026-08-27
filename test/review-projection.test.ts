@@ -238,14 +238,14 @@ describe("public course-teacher review projection", () => {
       );
       expect(reviewItem).toMatchObject({
         overall: 4,
-        term: "2026 春",
         created_at: "2026-08-11 02:00:00",
       });
+      expect(reviewItem).not.toHaveProperty("term");
       const historicalItem = courseReviews.items[0];
       expect(historicalItem).toMatchObject({
         overall: null,
-        term: null,
       });
+      expect(historicalItem).not.toHaveProperty("term");
       expect(historicalItem).toHaveProperty("created_at");
     } finally {
       await env.DB.batch([

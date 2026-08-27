@@ -85,7 +85,6 @@ export function PublicReviews({
                         {review.overall != null ? (
                           <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
                         ) : null}
-                        {review.term ? <span>{review.term}</span> : null}
                         {review.grade ? <span>成绩 {review.grade}</span> : null}
                         {review.created_at ? (
                           <time dateTime={formatReviewDate(review.created_at)}>
