@@ -41,7 +41,12 @@ import { RouterAriaLink } from "../components/RouterAriaLink";
 import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
-import { readDevPreview } from "../lib/dev-preview";
+import {
+  PREVIEW_REVIEW_COMMENTS,
+  previewFilledCourseDetail,
+  previewFilledCourseReviews,
+  readDevPreview,
+} from "../lib/dev-preview";
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { categoryLabel, formatCredits } from "../lib/labels";
 import { reviewAnchorId } from "../lib/review-dimensions";
@@ -255,6 +260,11 @@ export function CourseDetailPage() {
       setError("课程加载失败");
       return;
     }
+    if (preview === PREVIEW_REVIEW_COMMENTS) {
+      setError("");
+      setData(previewFilledCourseDetail(Number(id) || 8));
+      return;
+    }
     let cancelled = false;
     setData(null);
     setError("");
@@ -315,6 +325,14 @@ export function CourseDetailPage() {
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
+    if (preview === PREVIEW_REVIEW_COMMENTS) {
+      const items = previewFilledCourseReviews(Number(id) || 8);
+      reviewFeed.reset(items, null);
+      setFilteredReviewTotal(items.length);
+      setReviewsLoading(false);
+      setReviewsError("");
+      return;
+    }
     if (!id || !effectiveTeacherId) {
       reviewFeed.reset([], null);
       setFilteredReviewTotal(0);
@@ -355,7 +373,7 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted, reviewsVersion]);
+  }, [id, preview, effectiveTeacherId, teacherQuery, reviewFeed.reset, submitted, reviewsVersion]);
 
   /** 管理动作（屏蔽/解除/删除）后：清空评价会话缓存并 bump 版本重拉。 */
   const handleReviewsChanged = useCallback(() => {
