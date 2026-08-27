@@ -1,5 +1,5 @@
 /**
- * Browser coverage for /profile 个人主页 and /notices 全部消息
+ * Browser coverage for /profile 个人主页 and the header 消息 dropdown
  * (frontend for issues #459 / #460). Backend endpoints are mocked; the pages
  * must degrade to a normal load-error alert when they 404.
  */
@@ -67,9 +67,9 @@ function state(overrides: Partial<MockState> = {}): MockState {
     notifications: [
       {
         id: "n1",
-        type: "relation_review",
+        type: "followed_relation_review",
         text: "你关注的「中国传统文化导论」有了新点评",
-        href: "/courses/8?teacher=9",
+        href: "/courses/8?teacher=9#review-101",
         created_at: "2026-08-21 10:00:00",
         read: false,
       },
@@ -77,7 +77,7 @@ function state(overrides: Partial<MockState> = {}): MockState {
         id: "n2",
         type: "review_endorsed",
         text: "你的点评获得了一次认可",
-        href: "/courses/8?teacher=9",
+        href: "/courses/8?teacher=9#review-101",
         created_at: "2026-08-20 08:00:00",
         read: true,
       },
@@ -167,16 +167,15 @@ async function mockApi(page: Page, mock: MockState) {
   });
 }
 
-test("guests are redirected from /notices and /profile to login", async ({
+test("guests are redirected from /profile to login and /notices is gone", async ({
   page,
 }) => {
   await mockApi(page, state({ authenticated: false, unreadCount: null }));
 
   await page.goto("/notices");
-  await expect(page).toHaveURL(/\/login\?from=%2Fnotices$/);
-  await expect(
-    page.getByRole("heading", { name: "登录", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "页面不存在" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "全部消息" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "返回页面图集" })).toHaveCount(0);
 
   await page.goto("/profile");
   await expect(page).toHaveURL(/\/login\?from=%2Fprofile$/);
@@ -301,46 +300,46 @@ test("avatar save failure shows a retryable alert", async ({
   await expect(page.getByText("头像未能保存")).toHaveCount(0);
 });
 
-test("notices page lists messages and marks all as read", async ({ page }) => {
+test("opening the header inbox lists messages and marks all as read", async ({
+  page,
+}) => {
   const mock = state();
   await mockApi(page, mock);
-  await page.goto("/notices");
+  await page.goto("/courses");
 
-  await expect(
-    page.getByRole("heading", { name: "全部消息" }),
-  ).toBeVisible();
-  const first = page.getByRole("link", {
-    name: "你关注的「中国传统文化导论」有了新点评",
-  });
-  await expect(first).toHaveAttribute("href", "/courses/8?teacher=9");
-  await expect(page.getByText("你的点评获得了一次认可")).toBeVisible();
-  await expect(page.getByText("2026-08-21")).toBeVisible();
-  // 未读消息带「新」Chip。
-  await expect(page.getByText("新", { exact: true })).toBeVisible();
-
-  // 打开页面即调用标记已读，顶栏未读角标清零。
+  await expect(page.getByLabel("2 条未读消息")).toBeVisible();
+  await page.getByRole("button", { name: "消息" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText([
+    "你关注的「中国传统文化导论」有了新点评",
+    "你的点评获得了一次认可",
+  ]);
   await expect.poll(() => mock.readCalls).toBe(1);
   await expect(page.getByLabel("2 条未读消息")).toHaveCount(0);
 });
 
-test("notices page shows the empty state and survives a missing API", async ({
+test("header inbox shows the empty state and survives a missing API", async ({
   page,
 }) => {
-  const mock = state({ notifications: [], unreadCount: null });
+  const mock = state({ notifications: [], unreadCount: 0 });
   await mockApi(page, mock);
-  await page.goto("/notices");
-  await expect(page.getByText("还没有消息哦！")).toBeVisible();
+  await page.goto("/courses");
+  await page.getByRole("button", { name: "消息" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText(["还没有消息哦！"]);
   await expect.poll(() => mock.readCalls).toBe(1);
 
   const missing = state({
     notifications: { error: "not found" },
     notificationsStatus: 404,
-    unreadCount: null,
+    unreadCount: 1,
   });
   await mockApi(page, missing);
-  await page.goto("/notices");
-  await expect(page.getByText("消息暂时加载不了")).toBeVisible();
-  await expect(page.getByText("请稍后再试。")).toBeVisible();
+  await page.goto("/latest");
+  await expect(page.getByLabel("1 条未读消息")).toBeVisible();
+  await page.getByRole("button", { name: "消息" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "消息暂时加载不了" }),
+  ).toBeVisible();
+  await expect.poll(() => missing.readCalls).toBe(0);
 });
 
 test("account cluster links to 主页 and 消息 with an unread badge", async ({
@@ -350,7 +349,7 @@ test("account cluster links to 主页 and 消息 with an unread badge", async ({
   await page.goto("/courses");
 
   await expect(page.getByLabel("3 条未读消息")).toBeVisible();
-  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "消息" })).toBeVisible();
   await page.getByRole("button", { name: "账号" }).click();
   await expect(
     page.getByRole("menuitem", { name: "主页" }),
@@ -365,8 +364,21 @@ test("account cluster links to 主页 and 消息 with an unread badge", async ({
   await page.getByRole("menuitem", { name: "主页" }).click();
   await expect(page).toHaveURL(/\/profile$/);
 
-  await page.getByRole("link", { name: "消息" }).click();
-  await expect(page).toHaveURL(/\/notices$/);
+  await page.getByRole("button", { name: "消息" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText([
+    "你关注的「中国传统文化导论」有了新点评",
+    "你的点评获得了一次认可",
+  ]);
+  await expect(
+    page.getByRole("menu", { name: /消息/ }).getByRole("separator"),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "查看全部" })).toHaveCount(0);
+  await page
+    .getByRole("menuitem", {
+      name: "你关注的「中国传统文化导论」有了新点评",
+    })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9#review-101/);
 });
 
 test("account cluster hides the badge when unread-count is unavailable", async ({
@@ -376,7 +388,7 @@ test("account cluster hides the badge when unread-count is unavailable", async (
   await page.goto("/courses");
 
   await expect(page.getByRole("button", { name: "账号" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "消息" })).toBeVisible();
   await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
   await page.getByRole("button", { name: "账号" }).click();
   await expect(
@@ -388,29 +400,68 @@ test("notices preview=filled shows a numeric unread badge on the header icon", a
   page,
 }) => {
   await mockApi(page, state({ authenticated: false, unreadCount: null }));
-  await page.goto("/notices?preview=filled");
+  await page.goto("/courses?preview=filled");
 
-  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "消息" })).toBeVisible();
   await expect(page.getByLabel("2 条未读消息")).toBeVisible();
   await page.getByRole("button", { name: "账号" }).click();
   await expect(page.getByRole("menuitem", { name: /消息/ })).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "消息" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText([
+    "你关注的 中级财务会计（林晓雯） 有新点评",
+    "匿名用户#000002 发布了新任课评价",
+    "匿名用户#000002 关注了你",
+    "有人认可了你对 货币金融学 的点评",
+  ]);
+  await expect(
+    page.getByRole("menu", { name: /消息/ }).getByRole("separator"),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "查看全部" })).toHaveCount(0);
+
+  await page
+    .getByRole("menuitem", { name: "匿名用户#000002 发布了新任课评价" })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=2#review-102/);
+
+  await page.goto("/courses?preview=filled");
+  await page.getByRole("button", { name: "消息" }).click();
+  await page
+    .getByRole("menuitem", { name: "有人认可了你对 货币金融学 的点评" })
+    .click();
+  await expect(page).toHaveURL(/\/courses\/9\?teacher=3#review-201/);
+
+  await page.goto("/courses?preview=filled");
+  await page.getByRole("button", { name: "消息" }).click();
+  await page
+    .getByRole("menuitem", { name: "匿名用户#000002 关注了你" })
+    .click();
+  await expect(page).toHaveURL(/\/u\/000002/);
 });
 
-test("notices preview=empty hides the header unread badge", async ({
+test("notices preview=notices-badge-zero hides the header unread badge", async ({
   page,
 }) => {
   await mockApi(page, state({ authenticated: false, unreadCount: null }));
-  await page.goto("/notices?preview=empty");
+  await page.goto("/courses?preview=notices-badge-zero");
 
-  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "消息" })).toBeVisible();
   await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "消息" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText(["还没有消息哦！"]);
+  await expect(
+    page.getByRole("menu", { name: /消息/ }).getByRole("separator"),
+  ).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "查看全部" })).toHaveCount(0);
 });
 
 test("notices preview=notices-badge shows the header unread count", async ({
   page,
 }) => {
   await mockApi(page, state({ authenticated: false, unreadCount: null }));
-  await page.goto("/notices?preview=notices-badge&atlas=1");
+  await page.goto("/courses?preview=notices-badge&atlas=1");
 
   await expect(page.getByRole("button", { name: "账号" })).toContainText(
     "匿名用户#000001",
@@ -418,12 +469,14 @@ test("notices preview=notices-badge shows the header unread count", async ({
   await expect(page.getByLabel("3 条未读消息")).toBeVisible();
 });
 
-test("notices preview=notices-badge-zero hides the header unread badge", async ({
+test("notices preview=notices-error shows the header inbox error", async ({
   page,
 }) => {
   await mockApi(page, state({ authenticated: false, unreadCount: null }));
-  await page.goto("/notices?preview=notices-badge-zero&atlas=1");
+  await page.goto("/courses?preview=notices-error&atlas=1");
 
-  await expect(page.getByRole("link", { name: "消息" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "消息" })).toBeVisible();
   await expect(page.getByLabel(/条未读消息/)).toHaveCount(0);
+  await page.getByRole("button", { name: "消息" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText(["消息暂时加载不了"]);
 });

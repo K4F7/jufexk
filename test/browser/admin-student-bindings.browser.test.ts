@@ -47,21 +47,6 @@ async function mockAdminApi(page: Page, mock: AdminMock) {
         },
       });
     }
-    if (url.pathname === "/api/announcements") {
-      return route.fulfill({
-        json: {
-          items: [
-            {
-              id: 3,
-              title: "维护通知",
-              content: "今晚维护",
-              author: "站务组",
-              time: "2026-08-21 08:00:00",
-            },
-          ],
-        },
-      });
-    }
     if (url.pathname === "/api/admin/session") {
       if (!mock.adminAuthed) {
         return route.fulfill({
@@ -210,6 +195,8 @@ test("admin hub tabs and account menu reach banner and user mute", async ({
   await page.getByRole("menuitem", { name: "管理后台" }).click();
   await expect(page).toHaveURL(/\/admin$/);
 
+  await expect(page.getByRole("tab", { name: "公告" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "打开公告栏" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Banner" }).click();
   await expect(page).toHaveURL(/\/admin\/banner$/);
   await expect(page.getByRole("heading", { name: "全站 Banner" })).toBeVisible();
@@ -226,19 +213,4 @@ test("admin hub tabs and account menu reach banner and user mute", async ({
   await page.getByRole("button", { name: "前往" }).click();
   await expect(page).toHaveURL(/\/admin\/users\/user-ref-1$/);
   await expect(page.getByText("未禁言")).toBeVisible();
-});
-
-test("announcement list shows the public time field", async ({ page }) => {
-  await mockAdminApi(
-    page,
-    emptyMock({ viewerAuthenticated: true, adminAuthed: true }),
-  );
-  await page.goto("/announcements");
-  await expect(page.getByRole("heading", { name: "维护通知" })).toBeVisible();
-  await expect(page.getByText("发表于 2026-08-21")).toBeVisible();
-  await expect(page.getByRole("button", { name: "发布公告" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "管理首页" })).toHaveAttribute(
-    "href",
-    "/admin",
-  );
 });

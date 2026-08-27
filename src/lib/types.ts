@@ -275,15 +275,6 @@ export type BannerRecord = {
   createdAt: string;
 };
 
-/** 公告栏条目（`GET /api/announcements` 公开只读；管理员经 /api/admin/announcements 维护）。 */
-export type Announcement = {
-  id: number;
-  title: string;
-  content: string;
-  author: string;
-  time: string;
-};
-
 /**
  * 用户禁言状态（`GET /api/admin/users/:id`，仅管理员）。
  * 路径里的 id 来自作者资料邮件的「站内用户 ID」；不回显 email、学号。

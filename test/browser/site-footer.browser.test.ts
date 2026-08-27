@@ -3,7 +3,7 @@ import {
   CONTACT_EMAIL,
   GITHUB_ISSUES_URL,
   GITHUB_REPO_URL,
-  SITE_OFFICIAL_CHANNELS,
+  JUFE_QQ_CHANNEL_URL,
   statusBadgeUrl,
 } from "../../src/lib/site-links";
 
@@ -33,9 +33,6 @@ async function mockPublicApi(page: Page) {
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
       });
-    }
-    if (url.pathname === "/api/announcements") {
-      return route.fulfill({ json: { items: [] } });
     }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
@@ -104,6 +101,8 @@ test("footer site-info links open their pages", async ({ page }) => {
   await footerNav.getByRole("link", { name: "关于我们" }).click();
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.getByRole("heading", { name: "关于我们" })).toBeVisible();
+  await expect(page.getByText(/先前学长学姐做的课评站停了/)).toBeVisible();
+  await expect(page.getByText(/干脆自己写一个/)).toBeVisible();
   await expect(page.getByText(/非官方课程—教师评价站/)).toHaveCount(0);
   await expect(page.getByText(/点评会绑到具体任课老师/)).toHaveCount(0);
   await expect(page.getByText(/公开内容匿名发布，站方可拒绝或撤回/)).toHaveCount(0);
@@ -113,7 +112,9 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page).toHaveURL(/\/contact$/);
   await expect(page.getByRole("heading", { name: "反馈问题" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "联系我们" })).toHaveCount(0);
-  const issues = page.getByRole("link", { name: "前往 GitHub Issues" });
+  await expect(page.getByText(/网站功能有问题或想提建议/)).toBeVisible();
+  await expect(page.getByText(/要投诉某条评论/)).toBeVisible();
+  const issues = page.getByRole("link", { name: "GitHub 开个 issue" });
   await expect(issues).toHaveAttribute("href", GITHUB_ISSUES_URL);
   await expect(issues).toHaveAttribute("target", "_blank");
   const mail = page.getByRole("link", { name: CONTACT_EMAIL });
@@ -128,20 +129,20 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "USTC-iCourse / ustc-course" }),
   ).toHaveCount(0);
-  for (const channel of SITE_OFFICIAL_CHANNELS) {
-    await expect(page.getByRole("link", { name: channel.title })).toHaveAttribute(
-      "href",
-      channel.href,
-    );
-  }
-  await expect(page.getByText("教务处微信公众号：jxufe-jwc")).toBeVisible();
+  await expect(page.getByRole("link", { name: "学校官网" })).toHaveCount(0);
+  await expect(page.getByText("教务处微信公众号：jxufe-jwc")).toHaveCount(0);
+  const qqChannel = page.getByRole("link", { name: JUFE_QQ_CHANNEL_URL });
+  await expect(qqChannel).toHaveAttribute("href", JUFE_QQ_CHANNEL_URL);
+  await expect(qqChannel).toHaveAttribute("target", "_blank");
 
   await footerNav.getByRole("link", { name: "使用条款" }).click();
   await expect(page).toHaveURL(/\/terms$/);
   await expect(page.getByRole("heading", { name: "使用条款" })).toBeVisible();
-  await expect(page.getByText(/不构成学校官方意见/)).toBeVisible();
-  await expect(page.getByText(/任课评价匿名公开/)).toBeVisible();
-  await expect(page.getByText(/站方可以拒绝、编辑或撤回公开内容/)).toBeVisible();
+  await expect(page.getByText(/本站和学校官方无关/)).toBeVisible();
+  await expect(page.getByText(/仅供参考/)).toBeVisible();
+  await expect(page.getByText(/请不要发布违法内容/)).toBeVisible();
+  await expect(page.getByText(/没有事先审核/)).toBeVisible();
+  await expect(page.getByText(/删帖、禁言/)).toBeVisible();
   await expect(page.getByText(/经审核后/)).toHaveCount(0);
-  await expect(page.getByText(/MIT License/)).toBeVisible();
+  await expect(page.getByText(/MIT License/)).toHaveCount(0);
 });

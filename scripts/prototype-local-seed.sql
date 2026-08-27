@@ -3,7 +3,7 @@
 -- API data (not mock components). Never apply this file to production D1.
 -- Apply: pnpm db:local && pnpm db:seed-preview
 -- Safe to re-run: catalog rows use unique keys + INSERT OR IGNORE; preview
--- reviews / announcements / signals with proto- prefixes are replaced.
+-- reviews / signals with proto- prefixes are replaced.
 --
 -- 灌库后从 Vite :5173 打开 /prototype#page-atlas：每个界面可进可出。
 -- 左下角「返回页面图集」。详情页依赖下面这些预览行。
@@ -37,7 +37,6 @@ WHERE user_id IN (
 );
 DELETE FROM reviews WHERE submitter_hash LIKE 'proto-r-%';
 DELETE FROM public_historical_reviews WHERE id LIKE 'proto-hist-%';
-DELETE FROM announcements WHERE author='本地预览';
 
 INSERT OR IGNORE INTO teachers(source_teacher_label, name, department, title, bio) VALUES
   ('林晓雯', '林晓雯', '会计学院', '副教授', '本地预览数据'),
@@ -330,12 +329,8 @@ SELECT 'a0000000000000000000000000000002', c.id, t.id, 'not_recommend'
 FROM courses c JOIN teachers t ON t.source_teacher_label='林晓雯'
 WHERE c.code='ACC2101';
 
-INSERT INTO announcements(title, content, author, created_at) VALUES
-  ('【预览】维护通知', '这是本地预览公告：今晚例行维护，页面仅供对照布局。', '本地预览', '2026-08-20 08:00:00'),
-  ('【预览】欢迎使用本地种子', '无远端目录时可用 pnpm db:seed-preview 灌入这些假数据，便于查看各页面状态。', '本地预览', '2026-08-21 09:00:00');
-
 UPDATE site_banner_current
-SET desktop_html='<p>本地预览种子已加载（桌面）。可打开课程页、最新课评和公告栏查看各状态。</p>',
+SET desktop_html='<p>本地预览种子已加载（桌面）。可打开课程页和最新课评查看各状态。</p>',
     mobile_html='<p>本地预览种子已加载（移动）。</p>',
     updated_at='2026-08-21 09:30:00'
 WHERE id=1;

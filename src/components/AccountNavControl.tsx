@@ -1,14 +1,28 @@
 import { Envelope } from "@gravity-ui/icons";
-import { Badge, Button, Dropdown, Label, buttonVariants } from "@heroui/react";
+import { Badge, Button, Dropdown, Label, Separator, buttonVariants } from "@heroui/react";
+import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAdminSession } from "../hooks/useAdminSession";
 import { useViewer } from "../hooks/useViewer";
-import { useUnreadNotificationCount } from "../hooks/useUnreadNotifications";
 import {
+  groupRecentNotifications,
+  markNotificationsRead,
+  noticeHrefToLocation,
+  useRecentNotifications,
+  useUnreadNotificationCount,
+} from "../hooks/useUnreadNotifications";
+import {
+  previewNotificationInbox,
   previewUnreadNotificationCount,
   readDevPreview,
 } from "../lib/dev-preview";
+import type { UserNotification } from "../lib/types";
+import { LogoutConfirmDialog } from "./LogoutConfirmDialog";
 import { RouterAriaLink } from "./RouterAriaLink";
+
+const EMPTY_NOTICE_KEY = "empty";
+const LOADING_NOTICE_KEY = "loading";
+const UNAVAILABLE_NOTICE_KEY = "unavailable";
 
 /**
  * Low-emphasis login / account entry in the shell nav (issue #139 / #325 / #595 / #609).
@@ -17,8 +31,9 @@ import { RouterAriaLink } from "./RouterAriaLink";
  * accessible name stays 「账号」 so existing tests keep working.
  * Guests always get a real login link through the production CAS password proxy.
  *
- * 登录后顶栏为「消息」图标 + 昵称下拉（#459 / #460 / #607）；下拉含「主页」，
+ * 登录后顶栏为「消息」图标下拉 + 昵称下拉（#459 / #460 / #607）；昵称下拉含「主页」，
  * 管理员会话再多一项「管理后台」。未读角标挂在消息图标上；接口不可用时隐藏。
+ * 信封打开官方 Dropdown：关注课/人的新过审评价在上，其余通知在下。
  */
 export function AccountNavControl() {
   const { viewer, ready } = useViewer();
@@ -26,9 +41,13 @@ export function AccountNavControl() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const unread = useUnreadNotificationCount(viewer.authenticated);
+  const notices = useRecentNotifications(viewer.authenticated);
+  const preview = readDevPreview(searchParams);
   const previewAccount =
-    previewUnreadNotificationCount(readDevPreview(searchParams)) != null;
+    previewUnreadNotificationCount(preview) != null ||
+    previewNotificationInbox(preview) != null;
 
   if (!ready && !previewAccount) return null;
 
@@ -45,21 +64,84 @@ export function AccountNavControl() {
   }
 
   const unreadLabel = unread && unread > 0 ? (unread > 99 ? "99+" : unread) : null;
+  const { followReviews, others } = groupRecentNotifications(notices.items);
+  const statusKey = notices.loading
+    ? LOADING_NOTICE_KEY
+    : !notices.available
+      ? UNAVAILABLE_NOTICE_KEY
+      : notices.items.length === 0
+        ? EMPTY_NOTICE_KEY
+        : null;
 
   return (
     <div className="flex items-center">
       <Badge.Anchor>
-        <RouterAriaLink
-          aria-label="消息"
-          className={`${buttonVariants({
-            isIconOnly: true,
-            size: "sm",
-            variant: "ghost",
-          })} no-underline`}
-          to="/notices"
+        <Dropdown
+          onOpenChange={(open) => {
+            if (!open || previewAccount || !viewer.authenticated) return;
+            if (!notices.available && !notices.loading) return;
+            void markNotificationsRead();
+          }}
         >
-          <Envelope aria-hidden />
-        </RouterAriaLink>
+          <Button
+            aria-label="消息"
+            isIconOnly
+            size="sm"
+            variant="ghost"
+          >
+            <Envelope aria-hidden />
+          </Button>
+          <Dropdown.Popover className="min-w-[256px]" placement="bottom end">
+            <Dropdown.Menu
+              aria-label="消息列表"
+              disabledKeys={statusKey ? [statusKey] : []}
+              onAction={(key) => {
+                const notice = notices.items.find(
+                  (item) => String(item.id) === String(key),
+                );
+                if (notice?.href) navigate(noticeHrefToLocation(notice.href));
+              }}
+            >
+              {notices.loading ? (
+                <Dropdown.Item
+                  id={LOADING_NOTICE_KEY}
+                  textValue="正在加载消息…"
+                >
+                  <Label>正在加载消息…</Label>
+                </Dropdown.Item>
+              ) : !notices.available ? (
+                <Dropdown.Item
+                  id={UNAVAILABLE_NOTICE_KEY}
+                  textValue="消息暂时加载不了"
+                >
+                  <Label>消息暂时加载不了</Label>
+                </Dropdown.Item>
+              ) : notices.items.length === 0 ? (
+                <Dropdown.Item id={EMPTY_NOTICE_KEY} textValue="还没有消息哦！">
+                  <Label>还没有消息哦！</Label>
+                </Dropdown.Item>
+              ) : (
+                <>
+                  {followReviews.length ? (
+                    <Dropdown.Section>
+                      {followReviews.map((notice) => (
+                        <NoticeMenuItem key={String(notice.id)} notice={notice} />
+                      ))}
+                    </Dropdown.Section>
+                  ) : null}
+                  {followReviews.length && others.length ? <Separator /> : null}
+                  {others.length ? (
+                    <Dropdown.Section>
+                      {others.map((notice) => (
+                        <NoticeMenuItem key={String(notice.id)} notice={notice} />
+                      ))}
+                    </Dropdown.Section>
+                  ) : null}
+                </>
+              )}
+            </Dropdown.Menu>
+          </Dropdown.Popover>
+        </Dropdown>
         {unreadLabel ? (
           <Badge color="danger" size="sm" aria-label={`${unread} 条未读消息`}>
             {unreadLabel}
@@ -80,7 +162,7 @@ export function AccountNavControl() {
             onAction={(key) => {
               if (key === "profile") navigate("/profile");
               if (key === "admin") navigate("/admin");
-              if (key === "logout") navigate(viewer.logoutPath);
+              if (key === "logout") setLogoutOpen(true);
             }}
           >
             <Dropdown.Item id="profile" textValue="主页">
@@ -97,6 +179,19 @@ export function AccountNavControl() {
           </Dropdown.Menu>
         </Dropdown.Popover>
       </Dropdown>
+      <LogoutConfirmDialog isOpen={logoutOpen} onOpenChange={setLogoutOpen} />
     </div>
+  );
+}
+
+function NoticeMenuItem({ notice }: { notice: UserNotification }) {
+  return (
+    <Dropdown.Item
+      href={notice.href ?? undefined}
+      id={String(notice.id)}
+      textValue={notice.text}
+    >
+      <Label>{notice.text}</Label>
+    </Dropdown.Item>
   );
 }

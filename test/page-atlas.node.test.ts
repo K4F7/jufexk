@@ -32,7 +32,7 @@ describe("withAtlasParam", () => {
 });
 
 describe("resolveAtlasTargets", () => {
-  it("picks seeded course, empty course, both teachers and a preview announcement", () => {
+  it("picks seeded course, empty course, and both teachers", () => {
     expect(
       resolveAtlasTargets({
         filledCourses: [
@@ -44,17 +44,12 @@ describe("resolveAtlasTargets", () => {
         ],
         emptyCourses: [{ id: 31, name: ATLAS_EMPTY_COURSE_QUERY }],
         teachers: [{ id: 2, name: ATLAS_TEACHER_QUERY }],
-        announcements: [
-          { id: 9, title: "【预览】欢迎使用本地种子" },
-          { id: 8, title: "其他公告" },
-        ],
       }),
     ).toEqual({
       filledCourseId: 8,
       emptyCourseId: 31,
       filledTeacherId: 2,
       secondTeacherId: 4,
-      announcementId: 9,
     });
   });
 });
@@ -66,7 +61,6 @@ describe("listAtlasPages", () => {
       emptyCourseId: 31,
       filledTeacherId: 2,
       secondTeacherId: 4,
-      announcementId: 9,
     });
     const hrefs = pages.map((page) => page.href);
     expect(hrefs).toEqual(
@@ -95,10 +89,6 @@ describe("listAtlasPages", () => {
         "/latest",
         "/latest?preview=empty",
         "/latest?preview=error",
-        "/announcements",
-        "/announcements?preview=empty",
-        "/announcements?preview=error",
-        "/announcements?preview=admin",
         `/u/${ATLAS_PUBLIC_CODE}`,
         `/u/${ATLAS_PUBLIC_CODE}?preview=empty`,
         `/u/${ATLAS_PUBLIC_CODE}?preview=error`,
@@ -120,22 +110,15 @@ describe("listAtlasPages", () => {
         "/profile?preview=empty",
         "/profile?preview=filled",
         "/profile?preview=error",
-        "/notices",
-        "/notices?preview=empty",
-        "/notices?preview=filled",
-        "/notices?preview=notices-badge",
-        "/notices?preview=notices-badge-zero",
-        "/notices?preview=error",
+        "/courses?preview=filled",
+        "/courses?preview=notices-badge",
+        "/courses?preview=notices-badge-zero",
+        "/courses?preview=notices-error",
         "/account?preview=guest",
-        "/logout?preview=confirm",
-        "/logout?preview=done",
-        "/logout?preview=error",
         "/admin?preview=forbidden",
         "/admin",
         "/admin/banner",
         "/admin/admins",
-        "/admin/announcements/new",
-        "/admin/announcements/9",
         `/admin/users/${ATLAS_PREVIEW_USER_ID}`,
         "/about",
         "/contact",
@@ -161,8 +144,5 @@ describe("listAtlasPages", () => {
       `/teachers?q=${encodeURIComponent(ATLAS_TEACHER_QUERY)}`,
     );
     expect(pages.find((page) => page.id === "submit-preset")?.href).toBe("/submit");
-    expect(pages.find((page) => page.id === "admin-announcement-edit")?.href).toBe(
-      "/admin/announcements/new",
-    );
   });
 });

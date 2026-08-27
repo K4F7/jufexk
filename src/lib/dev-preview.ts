@@ -128,7 +128,7 @@ export function previewFilledNotices(): UserNotification[] {
       id: "preview-notice-unread",
       type: "followed_relation_review",
       text: "你关注的 中级财务会计（林晓雯） 有新点评",
-      href: "/courses/8?teacher=2",
+      href: "/courses/8?teacher=2#review-101",
       created_at: "2026-08-21 09:00:00",
       read: false,
     },
@@ -136,7 +136,7 @@ export function previewFilledNotices(): UserNotification[] {
       id: "preview-notice-read",
       type: "review_endorsed",
       text: "有人认可了你对 货币金融学 的点评",
-      href: "/courses/9?teacher=3",
+      href: "/courses/9?teacher=3#review-201",
       created_at: "2026-08-20 08:00:00",
       read: true,
     },
@@ -155,6 +155,8 @@ export function previewFilledNotices(): UserNotification[] {
 export const PREVIEW_NOTICES_BADGE = "notices-badge";
 export const PREVIEW_NOTICES_BADGE_ZERO = "notices-badge-zero";
 export const PREVIEW_NOTICES_BADGE_COUNT = 3;
+/** DEV mock inbox error for the header dropdown. `null` = use the live API. */
+export const PREVIEW_NOTICES_ERROR = "notices-error";
 
 export function previewUnreadNotificationCount(
   preview: string | null,
@@ -167,12 +169,12 @@ export function previewUnreadNotificationCount(
   return null;
 }
 
-/** DEV mock inbox for /notices and the header dropdown. `null` = use the live API. */
+/** DEV mock inbox for the header dropdown. `null` = use the live API. */
 export function previewNotificationInbox(preview: string | null): {
   items: UserNotification[];
   available: boolean;
 } | null {
-  if (preview === "error") return { items: [], available: false };
+  if (preview === PREVIEW_NOTICES_ERROR) return { items: [], available: false };
   if (preview === "empty" || preview === PREVIEW_NOTICES_BADGE_ZERO) {
     return { items: [], available: true };
   }

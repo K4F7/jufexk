@@ -5,7 +5,7 @@ import { Card, Chip, Typography, buttonVariants } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { api } from "../lib/api";
-import type { Announcement, Course, Paginated, Teacher } from "../lib/types";
+import type { Course, Paginated, Teacher } from "../lib/types";
 import {
   ATLAS_EMPTY_COURSE_QUERY,
   ATLAS_FILLED_COURSE_QUERY,
@@ -30,7 +30,6 @@ export function PageAtlas() {
       filledCourses: [],
       emptyCourses: [],
       teachers: [],
-      announcements: [],
     }),
   );
   const [seedReady, setSeedReady] = useState<boolean | null>(null);
@@ -53,15 +52,13 @@ export function PageAtlas() {
       api<Paginated<Teacher>>(
         `/api/teachers?q=${encodeURIComponent(ATLAS_TEACHER_QUERY)}&pageSize=5`,
       ),
-      api<Paginated<Announcement>>("/api/announcements?pageSize=5"),
     ])
-      .then(([filled, empty, teachers, announcements]) => {
+      .then(([filled, empty, teachers]) => {
         if (cancelled) return;
         const next = resolveAtlasTargets({
           filledCourses: filled.items,
           emptyCourses: empty.items,
           teachers: teachers.items,
-          announcements: announcements.items,
         });
         setTargets(next);
         setSeedReady(next.filledCourseId != null && next.emptyCourseId != null);

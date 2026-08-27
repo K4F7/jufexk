@@ -74,7 +74,6 @@ import {
   summaryRecomputeSchema,
   teacherIdsSchema,
 } from "./request-schemas";
-import announcementRoutes from "./announcements";
 import {
   ctaHomepageUrl,
   isAllowedCtaHomepageUrl,
@@ -1858,5 +1857,4 @@ adminRoutes.delete("/api/admin/student-bindings/:id", async (c) => {
   }
   return c.json({ ok: true });
 });
-adminRoutes.route("/", announcementRoutes);
 export default adminRoutes;

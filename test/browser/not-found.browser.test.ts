@@ -7,6 +7,8 @@ async function mockPublicApi(page: Page) {
       return route.fulfill({
         json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
       });
+    if (url.pathname === "/api/reviews/latest")
+      return route.fulfill({ json: { items: [], nextCursor: null } });
     if (url.pathname === "/api/courses")
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },

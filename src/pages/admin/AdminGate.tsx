@@ -10,7 +10,6 @@ import { isDevAtlasSession, readDevPreview } from "../../lib/dev-preview";
 const ADMIN_TABS = [
   { id: "hub", href: "/admin", label: "概览" },
   { id: "banner", href: "/admin/banner", label: "Banner" },
-  { id: "announcements", href: "/announcements", label: "公告" },
   { id: "admins", href: "/admin/admins", label: "学号" },
 ] as const;
 
@@ -20,7 +19,7 @@ const ADMIN_TABS = [
  */
 function AdminForbidden({ authenticated }: { authenticated: boolean }) {
   return (
-    <section className="mx-auto max-w-[480px]">
+    <section className="mx-auto w-full max-w-[480px]">
       <Typography className="m-0 text-[22px] font-bold" type="h1">
         管理后台
       </Typography>
@@ -56,7 +55,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
 
   if (!ready || !viewerReady) {
     return (
-      <section className="mx-auto max-w-[480px]">
+      <section className="mx-auto w-full max-w-[480px]">
         <DetailLoadingStatus label="检查管理员会话…" />
       </section>
     );
@@ -72,12 +71,6 @@ export function AdminGate({ children }: { children: ReactNode }) {
 function adminTabKey(pathname: string): string {
   if (pathname === "/admin/banner") return "banner";
   if (pathname === "/admin/admins") return "admins";
-  if (
-    pathname === "/announcements" ||
-    pathname.startsWith("/admin/announcements/")
-  ) {
-    return "announcements";
-  }
   return "hub";
 }
 
@@ -148,7 +141,7 @@ export function AdminLayout({
 }) {
   return (
     <AdminGate>
-      <section className="mx-auto max-w-[860px]">
+      <section className="mx-auto w-full max-w-[860px]">
         <AdminPageHeader description={description} title={title} />
         <AdminSectionNav />
         {children}

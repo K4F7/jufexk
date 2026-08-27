@@ -56,6 +56,7 @@ function TeacherIdentityCard({
           seed={teacher.id}
           photoSrc={teacher.avatar_url}
           size="lg"
+          className="size-[96px] rounded-full"
           fallback={teacher.name.slice(0, 1)}
         />
         <Typography

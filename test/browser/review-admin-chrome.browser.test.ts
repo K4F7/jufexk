@@ -184,9 +184,7 @@ test("preview=admin does not force course 公告 editor or review chrome on", as
   await expect(page.getByRole("button", { name: "屏蔽" })).toHaveCount(0);
 });
 
-test("announcements preview=admin keeps publish actions without the dock", async ({
-  page,
-}) => {
+test("the old /announcements URL is gone", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/config") {
@@ -199,32 +197,8 @@ test("announcements preview=admin keeps publish actions without the dock", async
         json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
       });
     }
-    if (url.pathname === "/api/admin/session") {
-      return route.fulfill({
-        status: 401,
-        json: { error: "请先用已绑定的学号登录" },
-      });
-    }
     if (url.pathname === "/api/site/banner") {
       return route.fulfill({ json: { desktopHtml: "", mobileHtml: "", updatedAt: null } });
-    }
-    if (url.pathname === "/api/user/notifications/unread-count") {
-      return route.fulfill({ json: { count: 0 } });
-    }
-    if (url.pathname === "/api/announcements") {
-      return route.fulfill({
-        json: {
-          items: [
-            {
-              id: 1,
-              title: "预览公告",
-              content: "公告正文",
-              author: "本地预览",
-              time: "2026-08-24 10:00:00",
-            },
-          ],
-        },
-      });
     }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
@@ -232,9 +206,7 @@ test("announcements preview=admin keeps publish actions without the dock", async
   await page.goto("/announcements?preview=admin", {
     waitUntil: "domcontentloaded",
   });
-  await expect(page.getByRole("heading", { name: "公告栏" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "发布公告" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "编辑" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "删除" })).toBeVisible();
-  await expect(page.locator("[data-review-admin-dock]")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "页面不存在" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "公告栏" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "发布公告" })).toHaveCount(0);
 });

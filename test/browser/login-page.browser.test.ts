@@ -117,6 +117,7 @@ test("direct visit shows the CAS form without extra copy or a back link", async 
   await expect(page.getByLabel("学号")).toBeVisible();
   await expect(page.getByLabel("校园密码")).toBeVisible();
   await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "重置" })).toBeVisible();
   await expect(page.getByRole("button", { name: "本地测试登录" })).toBeVisible();
   await expect(page.getByRole("button", { name: "使用校学生邮箱验证" })).toHaveCount(0);
   await expect(page.getByText("也可以改用校学生邮箱验证")).toHaveCount(0);
@@ -124,6 +125,15 @@ test("direct visit shows the CAS form without extra copy or a back link", async 
   await expect(page.getByText("大多数访问者是游客")).toHaveCount(0);
   await expect(page.getByText("本站不保存校园口令")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "返回继续浏览" })).toHaveCount(0);
+});
+
+test("password form reset clears credentials", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("学号").fill("2202100001");
+  await page.getByLabel("校园密码").fill("secret-pass");
+  await page.getByRole("button", { name: "重置" }).click();
+  await expect(page.getByLabel("学号")).toHaveValue("");
+  await expect(page.getByLabel("校园密码")).toHaveValue("");
 });
 
 test("an authenticated site session can revalidate campus SSO and return to schedule", async ({
@@ -262,6 +272,7 @@ test("submitting campus credentials shows the CAS login control", async ({
   await page.getByLabel("学号").fill("2202100001");
   await page.getByLabel("校园密码").fill("secret-pass");
   await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "重置" })).toBeVisible();
   await expect(page.getByRole("button", { name: "本地测试登录" })).toBeVisible();
 });
 

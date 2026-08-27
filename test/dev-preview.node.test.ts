@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  groupRecentNotifications,
+  noticeHrefToLocation,
+} from "../src/hooks/useUnreadNotifications";
+import {
   DEV_ATLAS_PARAM,
   DEV_PREVIEW_PARAM,
   PREVIEW_NOTICES_BADGE,
   PREVIEW_NOTICES_BADGE_COUNT,
   PREVIEW_NOTICES_BADGE_ZERO,
+  PREVIEW_NOTICES_ERROR,
   PREVIEW_REVIEW_COMMENTS,
   previewFilledCourseDetail,
   previewFilledCourseReviews,
+  previewFilledNotices,
   previewNotificationInbox,
   previewReviewComments,
   previewUnreadNotificationCount,
@@ -53,7 +59,8 @@ describe("DEV preview guards", () => {
 
   it("reuses filled/empty notice mocks for the header dropdown", () => {
     expect(previewNotificationInbox(null)).toBeNull();
-    expect(previewNotificationInbox("error")).toEqual({
+    expect(previewNotificationInbox("error")).toBeNull();
+    expect(previewNotificationInbox(PREVIEW_NOTICES_ERROR)).toEqual({
       items: [],
       available: false,
     });
@@ -76,6 +83,28 @@ describe("DEV preview guards", () => {
     expect(previewNotificationInbox(PREVIEW_NOTICES_BADGE)?.items).toEqual(
       filled?.items,
     );
+    const grouped = groupRecentNotifications(previewFilledNotices());
+    expect(grouped.followReviews.map((item) => item.type)).toEqual([
+      "followed_relation_review",
+      "followed_user_review",
+    ]);
+    expect(grouped.others.map((item) => item.type)).toEqual([
+      "user_followed",
+      "review_endorsed",
+    ]);
+    expect(grouped.followReviews.map((item) => item.href)).toEqual([
+      "/courses/8?teacher=2#review-101",
+      "/courses/8?teacher=2#review-102",
+    ]);
+    expect(grouped.others.map((item) => item.href)).toEqual([
+      "/u/000002",
+      "/courses/9?teacher=3#review-201",
+    ]);
+    expect(noticeHrefToLocation("/courses/8?teacher=2#review-101")).toEqual({
+      pathname: "/courses/8",
+      search: "?teacher=2",
+      hash: "#review-101",
+    });
   });
 
   it("seeds review replies only for DEV preview or atlas", () => {

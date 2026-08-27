@@ -704,6 +704,7 @@ export function CourseDetailPage() {
                   seed={selectedTeacher.id}
                   photoSrc={selectedTeacher.avatar_url}
                   size="lg"
+                  className="size-[96px] rounded-full"
                   fallback={selectedTeacher.name.slice(0, 1)}
                 />
                 <Card.Title className="text-accent">
