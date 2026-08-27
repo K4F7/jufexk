@@ -52,7 +52,10 @@ import {
   publicCategoryOptionLabel,
 } from "../lib/public-categories";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
-import { rankCatalogFuzzyCandidates } from "../lib/catalog-fuzzy-search";
+import {
+  isCatalogFuzzyQueryEligible,
+  rankCatalogFuzzyCandidates,
+} from "../lib/catalog-fuzzy-search";
 import type { CourseSearchCandidate } from "../lib/catalog-search-candidates";
 import { expandCourseRelations } from "../lib/course-relations";
 import type { Course, CourseRelation, Paginated, Teacher } from "../lib/types";
@@ -433,6 +436,7 @@ function GlobalSearchVariantAHeader({
             }),
           );
         }
+        if (!isCatalogFuzzyQueryEligible(query)) return [];
         const candidates = await api<{ items: CourseSearchCandidate[] }>(
           `/api/search/candidates?kind=course&q=${encodeURIComponent(query)}&limit=200`,
           { signal },

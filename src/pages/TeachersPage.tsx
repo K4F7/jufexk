@@ -20,7 +20,10 @@ import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { emptyCatalogPage, readDevPreview } from "../lib/dev-preview";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
-import { rankCatalogFuzzyCandidates } from "../lib/catalog-fuzzy-search";
+import {
+  isCatalogFuzzyQueryEligible,
+  rankCatalogFuzzyCandidates,
+} from "../lib/catalog-fuzzy-search";
 import type { TeacherSearchCandidate } from "../lib/catalog-search-candidates";
 import type { Course, Paginated, Teacher } from "../lib/types";
 
@@ -75,6 +78,7 @@ export function TeachersPage() {
             }),
           );
         }
+        if (!isCatalogFuzzyQueryEligible(query)) return [];
         const candidates = await api<{ items: TeacherSearchCandidate[] }>(
           `/api/search/candidates?kind=teacher&q=${encodeURIComponent(query)}&limit=200`,
           { signal },

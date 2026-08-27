@@ -503,6 +503,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
     : 200;
   const ftsQuery = buildCatalogCandidateFtsQuery(query);
   if (!ftsQuery) {
+    setPublicCatalogCacheHeaders(c);
     return c.json({ items: [], meta: { rows_read: 0, candidate_count: 0 } });
   }
   if (kind === "course") {
@@ -528,6 +529,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
       .bind(ftsQuery, limit)
       .all();
     const rows = (result.results || []) as Array<Record<string, unknown>>;
+    setPublicCatalogCacheHeaders(c);
     return c.json({
       items: rows.map((row) => ({
         id: Number(row.id),
@@ -560,6 +562,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
     .bind(ftsQuery, limit)
     .all();
   const rows = (result.results || []) as Array<Record<string, unknown>>;
+  setPublicCatalogCacheHeaders(c);
   return c.json({
     items: rows.map((row) => ({
       id: Number(row.id),
