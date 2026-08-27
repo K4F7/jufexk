@@ -40,10 +40,18 @@ function fakeClient(options: {
     deptName: string | null;
   }>;
   photo?: CtaPhotoResponse | null;
+  detailPhoto?: string | null;
 }): CtaTeacherClient {
   return {
     async searchTeachers() {
-      return options.candidates ?? [];
+      return {
+        candidates: options.candidates ?? [],
+        truncated: false,
+      };
+    },
+    async fetchTeacherPhotoId() {
+      if (options.detailPhoto !== undefined) return options.detailPhoto;
+      return options.candidates?.[0]?.photo ?? null;
     },
     async fetchPhoto(url) {
       if (options.photo === undefined) {
@@ -283,7 +291,7 @@ describe("admin CTA homepage controls", () => {
           };
         }>(),
     );
-    expect(publicBody.teacher.official_homepage_url).toBeNull();
+    expect(publicBody.teacher.official_homepage_url).toBe(ctaHomepageUrl(99));
     expect(publicBody.teacher.avatar_url).toBeNull();
   });
 });

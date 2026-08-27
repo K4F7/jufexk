@@ -66,6 +66,19 @@ describe("CTA homepage matching", () => {
       kind: "unique",
       candidate: expect.objectContaining({ uid: 19699165 }),
     });
+    expect(
+      chooseCtaMatch(
+        { name: "张曦凤", department: "金融学院" },
+        [
+          {
+            uid: 19699165,
+            realname: "张曦凤",
+            photo: "abc",
+            deptName: "区域国别研究院",
+          },
+        ],
+      ),
+    ).toEqual({ kind: "none" });
 
     const tied = chooseCtaMatch(
       { name: "张强", department: "计算机与人工智能学院" },
@@ -147,6 +160,15 @@ describe("public teacher projection", () => {
       official_homepage_url: ctaHomepageUrl(19699165),
       avatar_url: null,
     });
+    expect(
+      toPublicTeacher({
+        id: 9,
+        homepage_url: ctaHomepageUrl(19699165),
+        homepage_locked: 1,
+        image_locked: 0,
+        avatar_sha256: null,
+      }).official_homepage_url,
+    ).toBe(ctaHomepageUrl(19699165));
     expect(publicTeacher).not.toHaveProperty("cta_uid");
     expect(publicTeacher).not.toHaveProperty("avatar_sha256");
     expect(publicTeacher).not.toHaveProperty("image_locked");

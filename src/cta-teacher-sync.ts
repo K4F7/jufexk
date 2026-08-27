@@ -5,6 +5,7 @@ import {
   ctaHomepageUrl,
   ctaPhotoUrl,
   catalogSearchNames,
+  departmentsCompatible,
   isDefaultCtaAvatarSha256,
   isDefaultCtaAvatarUrl,
   parseCtaHomepageUrl,
@@ -33,8 +34,14 @@ export type CtaPhotoResponse = {
   url: string;
 };
 
+export type CtaSearchResult = {
+  candidates: CtaTeacherCandidate[];
+  truncated: boolean;
+};
+
 export type CtaTeacherClient = {
-  searchTeachers(query: CtaSearchQuery): Promise<CtaTeacherCandidate[]>;
+  searchTeachers(query: CtaSearchQuery): Promise<CtaSearchResult>;
+  fetchTeacherPhotoId(uid: number): Promise<string | null>;
   fetchPhoto(url: string): Promise<CtaPhotoResponse | null>;
 };
 
@@ -61,6 +68,7 @@ export type TeacherCtaSyncResult = {
 
 type SearchTeachersJson = {
   result?: number;
+  totalResult?: number;
   teachersInfos?: Array<{
     uid?: unknown;
     realname?: unknown;
@@ -125,12 +133,48 @@ export function createHttpCtaClient(
         },
         body,
       });
-      if (!response.ok) return [];
+      if (!response.ok) return { candidates: [], truncated: false };
       const json = (await response.json()) as SearchTeachersJson;
-      if (json.result !== 1 || !Array.isArray(json.teachersInfos)) return [];
-      return json.teachersInfos
+      if (json.result !== 1 || !Array.isArray(json.teachersInfos)) {
+        return { candidates: [], truncated: false };
+      }
+      const candidates = json.teachersInfos
         .map(parseCandidate)
         .filter((row): row is CtaTeacherCandidate => row != null);
+      const total = Number(json.totalResult) || candidates.length;
+      return {
+        candidates,
+        truncated: total > candidates.length,
+      };
+    },
+    async fetchTeacherPhotoId(uid) {
+      const body = new URLSearchParams({
+        fid: String(CTA_FID),
+        uid: String(uid),
+        isPreview: "1",
+      });
+      const response = await fetchImpl(`${CTA_ORIGIN}/home/teachInfo`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+      });
+      if (!response.ok) return null;
+      const json = (await response.json()) as { result?: number; data?: unknown };
+      if (json.result !== 1) return null;
+      let payload = json.data;
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload) as unknown;
+        } catch {
+          return null;
+        }
+      }
+      const photo = (payload as { teacherInfo?: { photo?: unknown } } | null)
+        ?.teacherInfo?.photo;
+      return asTrimmedString(photo) || null;
     },
     async fetchPhoto(url) {
       if (isDefaultCtaAvatarUrl(url)) return null;
@@ -155,18 +199,20 @@ export function createHttpCtaClient(
 async function searchCandidates(
   client: CtaTeacherClient,
   name: string,
-): Promise<CtaTeacherCandidate[]> {
+): Promise<CtaSearchResult> {
   const seen = new Set<number>();
   const merged: CtaTeacherCandidate[] = [];
+  let truncated = false;
   for (const teaName of catalogSearchNames(name)) {
     const page = await client.searchTeachers({ teaName });
-    for (const candidate of page) {
+    truncated = truncated || page.truncated;
+    for (const candidate of page.candidates) {
       if (seen.has(candidate.uid)) continue;
       seen.add(candidate.uid);
       merged.push(candidate);
     }
   }
-  return merged;
+  return { candidates: merged, truncated };
 }
 
 async function clearStoredAvatar(db: D1Database, teacherId: number) {
@@ -253,8 +299,17 @@ export async function syncTeacherCtaHomepage(
       uid = parsed.uid;
     }
   } else {
-    const candidates = await searchCandidates(client, teacher.name);
-    const decision = chooseCtaMatch(teacher, candidates);
+    const searched = await searchCandidates(client, teacher.name);
+    let decision = chooseCtaMatch(teacher, searched.candidates);
+    if (
+      searched.truncated &&
+      decision.kind === "unique" &&
+      !departmentsCompatible(teacher.department, decision.candidate.deptName)
+    ) {
+      decision = searched.candidates.length
+        ? { kind: "ambiguous" }
+        : { kind: "none" };
+    }
     if (decision.kind === "unique") {
       match = "unique";
       fid = CTA_FID;
@@ -296,33 +351,42 @@ export async function syncTeacherCtaHomepage(
     };
   }
 
-  if (uid != null && photoId == null) {
-    const candidates = await searchCandidates(client, teacher.name);
-    photoId =
-      candidates.find((candidate) => candidate.uid === uid)?.photo ?? null;
+  if (uid != null) {
+    const detailPhoto = await client.fetchTeacherPhotoId(uid);
+    if (detailPhoto) photoId = detailPhoto;
   }
 
   const photoUrl = photoId ? ctaPhotoUrl(photoId) : null;
   if (!photoUrl) {
-    if (teacher.avatar_sha256) await clearStoredAvatar(db, teacherId);
+    const skippedDefaultAvatar = Boolean(photoId) && !photoUrl;
+    if (skippedDefaultAvatar) await clearStoredAvatar(db, teacherId);
     return {
       teacherId,
       match,
       homepageUrl,
       avatarStored: false,
-      skippedDefaultAvatar: Boolean(photoId) && !photoUrl,
+      skippedDefaultAvatar,
     };
   }
 
   const photo = await client.fetchPhoto(photoUrl);
   if (!photo) {
-    if (teacher.avatar_sha256) await clearStoredAvatar(db, teacherId);
+    if (isDefaultCtaAvatarUrl(photoUrl)) {
+      await clearStoredAvatar(db, teacherId);
+      return {
+        teacherId,
+        match,
+        homepageUrl,
+        avatarStored: false,
+        skippedDefaultAvatar: true,
+      };
+    }
     return {
       teacherId,
       match,
       homepageUrl,
-      avatarStored: false,
-      skippedDefaultAvatar: isDefaultCtaAvatarUrl(photoUrl),
+      avatarStored: Boolean(teacher.avatar_sha256),
+      skippedDefaultAvatar: false,
     };
   }
 

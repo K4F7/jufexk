@@ -107,10 +107,14 @@ export function chooseCtaMatch(
     nameMatchesCatalog(teacher.name, candidate.realname),
   );
   if (nameHits.length === 0) return { kind: "none" };
-  if (nameHits.length === 1) return { kind: "unique", candidate: nameHits[0] };
+  const catalogDepartment = normalizeDepartmentHint(teacher.department);
   const departmentHits = nameHits.filter((candidate) =>
     departmentsCompatible(teacher.department, candidate.deptName),
   );
+  if (nameHits.length === 1) {
+    if (catalogDepartment && departmentHits.length === 0) return { kind: "none" };
+    return { kind: "unique", candidate: nameHits[0] };
+  }
   if (departmentHits.length === 1) {
     return { kind: "unique", candidate: departmentHits[0] };
   }
@@ -174,16 +178,13 @@ export function toPublicTeacher<T extends Record<string, unknown>>(
     delete (publicRow as Record<string, unknown>)[key];
   }
   const id = Number(row.id);
-  const homepageLocked = Number(row.homepage_locked) === 1;
   const imageLocked = Number(row.image_locked) === 1;
   const homepage =
     typeof row.homepage_url === "string" ? row.homepage_url.trim() : "";
   const sha =
     typeof row.avatar_sha256 === "string" ? row.avatar_sha256.trim() : "";
   publicRow.official_homepage_url =
-    !homepageLocked && homepage && isAllowedCtaHomepageUrl(homepage)
-      ? homepage
-      : null;
+    homepage && isAllowedCtaHomepageUrl(homepage) ? homepage : null;
   publicRow.avatar_url =
     Number.isSafeInteger(id) &&
     id > 0 &&
