@@ -101,8 +101,8 @@ test("footer site-info links open their pages", async ({ page }) => {
   await footerNav.getByRole("link", { name: "关于我们" }).click();
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.getByRole("heading", { name: "关于我们" })).toBeVisible();
-  await expect(page.getByText(/先前学长学姐做的课评站停了/)).toBeVisible();
-  await expect(page.getByText(/干脆自己写一个/)).toBeVisible();
+  await expect(page.getByText(/以前的江财课评站和腾讯文档都停止更新了/)).toBeVisible();
+  await expect(page.getByText(/我又特别需要这个，所以就做了/)).toBeVisible();
   await expect(page.getByText(/非官方课程—教师评价站/)).toHaveCount(0);
   await expect(page.getByText(/点评会绑到具体任课老师/)).toHaveCount(0);
   await expect(page.getByText(/公开内容匿名发布，站方可拒绝或撤回/)).toHaveCount(0);
@@ -112,8 +112,8 @@ test("footer site-info links open their pages", async ({ page }) => {
   await expect(page).toHaveURL(/\/contact$/);
   await expect(page.getByRole("heading", { name: "反馈问题" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "联系我们" })).toHaveCount(0);
-  await expect(page.getByText(/网站功能有问题或想提建议/)).toBeVisible();
-  await expect(page.getByText(/要投诉某条评论/)).toBeVisible();
+  await expect(page.getByText(/网站功能问题和建议去提issue/)).toBeVisible();
+  await expect(page.getByText(/投诉评论问题，发邮件/)).toBeVisible();
   const issues = page.getByRole("link", { name: "GitHub 开个 issue" });
   await expect(issues).toHaveAttribute("href", GITHUB_ISSUES_URL);
   await expect(issues).toHaveAttribute("target", "_blank");
@@ -138,11 +138,10 @@ test("footer site-info links open their pages", async ({ page }) => {
   await footerNav.getByRole("link", { name: "使用条款" }).click();
   await expect(page).toHaveURL(/\/terms$/);
   await expect(page.getByRole("heading", { name: "使用条款" })).toBeVisible();
-  await expect(page.getByText(/本站和学校官方无关/)).toBeVisible();
+  await expect(page.getByText(/站点和学校官方无关/)).toBeVisible();
   await expect(page.getByText(/仅供参考/)).toBeVisible();
-  await expect(page.getByText(/请不要发布违法内容/)).toBeVisible();
-  await expect(page.getByText(/没有事先审核/)).toBeVisible();
-  await expect(page.getByText(/删帖、禁言/)).toBeVisible();
+  await expect(page.getByText(/请不要发布违规内容/)).toBeVisible();
+  await expect(page.getByText(/请使用平缓的语言/)).toBeVisible();
   await expect(page.getByText(/经审核后/)).toHaveCount(0);
   await expect(page.getByText(/MIT License/)).toHaveCount(0);
 });
