@@ -16,7 +16,6 @@ export function CatalogRequestPage({ config }: { config: SiteConfig | null }) {
     teacherName: "",
     note: "",
     reviewOverall: "",
-    reviewTerm: "",
     reviewComment: "",
   });
   const [msg, setMsg] = useState("");
@@ -55,7 +54,6 @@ export function CatalogRequestPage({ config }: { config: SiteConfig | null }) {
       if (overall) {
         body.review = {
           overall,
-          term: form.reviewTerm,
           comment: form.reviewComment,
         };
       }
@@ -72,7 +70,6 @@ export function CatalogRequestPage({ config }: { config: SiteConfig | null }) {
         teacherName: "",
         note: "",
         reviewOverall: "",
-        reviewTerm: "",
         reviewComment: "",
       });
       if (widgetRef.current != null) {
@@ -191,15 +188,6 @@ export function CatalogRequestPage({ config }: { config: SiteConfig | null }) {
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="field-label">
-                学期
-                <Input
-                  fullWidth
-                  placeholder="2025 秋"
-                  value={form.reviewTerm}
-                  onChange={(e) => setField("reviewTerm", e.target.value)}
-                />
               </label>
             </div>
             <label className="field-label mt-3">

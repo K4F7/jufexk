@@ -78,7 +78,6 @@ export type Teacher = {
   course_count?: number;
   review_count?: number;
   dimensionLabels?: PublicReviewDimensionLabel[] | null;
-  terms?: string[];
   follow_count?: number;
   recommend_count?: number;
   not_recommend_count?: number;
@@ -108,7 +107,6 @@ export type Review = {
   course_code?: string;
   teacher_name?: string;
   overall: number;
-  term: string | null;
   created_at?: string | null;
   publishedAt?: string | null;
   comment: string;
@@ -158,7 +156,6 @@ export type PublicReview = {
   course_code?: string;
   teacher_name?: string;
   overall?: number | null;
-  term?: string | null;
   created_at?: string | null;
   endorsement_count?: number;
   endorsable?: boolean;
@@ -298,7 +295,6 @@ export type UserProfileReview = {
   course_name: string;
   teacher_id: number;
   teacher_name?: string | null;
-  term?: string | null;
   headline?: string;
   /** 补充说明摘要纯文本，可能已被服务端截断。 */
   comment?: string;

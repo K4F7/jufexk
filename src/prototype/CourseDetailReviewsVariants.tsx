@@ -10,7 +10,7 @@
  * - 投稿绑定课程+任课教师，含 overall，参与评分/投稿数
  * - 历史文字资料独立区块：无 overall，不参与评分/投稿数/排序
  * - 空态文案区分「暂无投稿」与「暂无历史资料」
- * - 投稿条目直接展开：评分、教师、学期、正文、评价维度
+ * - 投稿条目直接展开：评分、教师、正文、评价维度
  *
  * 官方优先：Chip / Separator / Surface / Card / Alert / Description。
  *
@@ -59,7 +59,7 @@ const VARIANT_HINT: Record<
   A: {
     title: "A — 紧凑分隔列表（冻结主体）",
     lookFor:
-      "左大号评分 · 右教师/学期/正文；维度 soft Chip 白胶囊（吸收 B）；条目 Separator；历史独立区 + 历史 Chip",
+      "左大号评分 · 右教师/正文；维度 soft Chip 白胶囊（吸收 B）；条目 Separator；历史独立区 + 历史 Chip",
   },
   B: {
     title: "B — Card 条目栈",
@@ -78,7 +78,6 @@ const DEMO_LEGACY: LegacyReview[] = [
   {
     id: -1,
     teacher_name: "张可",
-    term: "2022-2023-1",
     comment:
       "上课节奏偏快，作业以小组报告为主。期末开卷，复习提纲会提前发。",
     source_label: "腾讯文档 · 历史选课表（演示）",
@@ -86,7 +85,6 @@ const DEMO_LEGACY: LegacyReview[] = [
   {
     id: -2,
     teacher_name: "万钟",
-    term: "2021-2022-2",
     comment:
       "点名不固定，课堂案例多。给分中等偏上，适合想了解会计实务的同学。",
     source_label: "腾讯文档 · 历史选课表（演示）",
@@ -279,7 +277,7 @@ function SubmissionA({ review }: { review: Review }) {
   return (
     <article
       className="grid gap-3 py-4 sm:grid-cols-[4.5rem_1fr] sm:gap-4"
-      aria-label={`学生投稿 ${review.overall}/5 · ${review.teacher_name || "未指定教师"} · ${review.term || "学期未标注"}`}
+      aria-label={`学生投稿 ${review.overall}/5 · ${review.teacher_name || "未指定教师"}`}
     >
       <div className="tabular text-[26px] font-bold leading-none text-accent">
         {review.overall}
@@ -288,12 +286,6 @@ function SubmissionA({ review }: { review: Review }) {
       <div className="min-w-0">
         <p className="m-0 text-sm font-semibold">
           {review.teacher_name || "未指定教师"}
-          <span className="mx-1.5 font-normal text-muted" aria-hidden>
-            ·
-          </span>
-          <span className="font-normal text-muted">
-            {review.term || "学期未标注"}
-          </span>
         </p>
         <p className="my-1.5 text-sm leading-relaxed">{bodyText(review)}</p>
         {/* Frozen combo: A layout + B soft Chip metrics */}
@@ -307,7 +299,7 @@ function LegacyItemA({ row }: { row: LegacyReview }) {
   return (
     <article
       className="grid gap-3 py-4 sm:grid-cols-[4.5rem_1fr] sm:gap-4"
-      aria-label={`历史文字资料 · ${row.teacher_name || "教师资料"} · ${row.term || "学期未标注"}`}
+      aria-label={`历史文字资料 · ${row.teacher_name || "教师资料"}`}
     >
       <div>
         <Chip size="sm" variant="secondary">
@@ -317,14 +309,6 @@ function LegacyItemA({ row }: { row: LegacyReview }) {
       <div className="min-w-0">
         <p className="m-0 text-sm font-semibold">
           {row.teacher_name || "教师资料"}
-          {row.term ? (
-            <>
-              <span className="mx-1.5 font-normal text-muted" aria-hidden>
-                ·
-              </span>
-              <span className="font-normal text-muted">{row.term}</span>
-            </>
-          ) : null}
         </p>
         <p className="my-1.5 text-sm leading-relaxed">{row.comment}</p>
         {row.source_label ? (
@@ -396,16 +380,13 @@ function SubmissionB({ review }: { review: Review }) {
   return (
     <Card
       className="w-full"
-      aria-label={`学生投稿 ${review.overall}/5 · ${review.teacher_name || "未指定教师"} · ${review.term || "学期未标注"}`}
+      aria-label={`学生投稿 ${review.overall}/5 · ${review.teacher_name || "未指定教师"}`}
     >
       <Card.Header className="flex flex-row items-start justify-between gap-3">
         <div className="min-w-0">
           <Card.Title className="text-base">
             {review.teacher_name || "未指定教师"}
           </Card.Title>
-          <Card.Description>
-            {review.term || "学期未标注"}
-          </Card.Description>
         </div>
         <div className="shrink-0 text-right">
           <span className="tabular text-3xl font-bold leading-none text-accent">
@@ -426,7 +407,7 @@ function LegacyItemB({ row }: { row: LegacyReview }) {
   return (
     <article
       className="border-b border-border py-3 last:border-b-0"
-      aria-label={`历史文字资料 · ${row.teacher_name || "教师资料"} · ${row.term || "学期未标注"}`}
+      aria-label={`历史文字资料 · ${row.teacher_name || "教师资料"}`}
     >
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <Chip size="sm" variant="secondary">
@@ -435,9 +416,6 @@ function LegacyItemB({ row }: { row: LegacyReview }) {
         <span className="text-sm font-semibold">
           {row.teacher_name || "教师资料"}
         </span>
-        {row.term ? (
-          <span className="text-sm text-muted">{row.term}</span>
-        ) : null}
       </div>
       <p className="m-0 text-sm leading-relaxed">{row.comment}</p>
       {row.source_label ? (
@@ -514,7 +492,7 @@ function SubmissionC({ review }: { review: Review }) {
   return (
     <article
       className="py-4"
-      aria-label={`学生投稿 ${review.overall}/5 · ${review.teacher_name || "未指定教师"} · ${review.term || "学期未标注"}`}
+      aria-label={`学生投稿 ${review.overall}/5 · ${review.teacher_name || "未指定教师"}`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Chip size="sm" color="accent" variant="soft">
@@ -524,9 +502,6 @@ function SubmissionC({ review }: { review: Review }) {
         </Chip>
         <span className="text-sm font-semibold">
           {review.teacher_name || "未指定教师"}
-        </span>
-        <span className="text-sm text-muted">
-          {review.term || "学期未标注"}
         </span>
       </div>
       <MetricsDl items={items} />
@@ -541,12 +516,11 @@ function LegacyItemC({ row }: { row: LegacyReview }) {
   return (
     <article
       className="py-3"
-      aria-label={`历史文字资料 · ${row.teacher_name || "教师资料"} · ${row.term || "学期未标注"}`}
+      aria-label={`历史文字资料 · ${row.teacher_name || "教师资料"}`}
     >
       <p className="m-0 text-xs font-medium uppercase tracking-wide text-muted">
         归档
         {row.teacher_name ? ` · ${row.teacher_name}` : ""}
-        {row.term ? ` · ${row.term}` : ""}
       </p>
       <p className="mt-1 mb-0 text-sm leading-relaxed">{row.comment}</p>
       {row.source_label ? (

@@ -68,7 +68,7 @@ export function AdminReviews() {
         </select>
         <Input
           className="min-w-[220px] flex-1"
-          placeholder="课程、教师、学期或内容"
+          placeholder="课程、教师或内容"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
@@ -102,7 +102,7 @@ export function AdminReviews() {
             {r.course_name} · {r.teacher_name || "未指定教师"} · {r.overall}/5
           </b>
           <p className="my-1 text-muted">
-            {r.term} · {r.comment || r.teaching || "无补充内容"}
+            {r.comment || r.teaching || "无补充内容"}
           </p>
           <small className="text-muted">
             {r.status}

@@ -361,13 +361,13 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     /** Prefer a real course with reviews; teacher projection via /teachers/:id. */
     livePath: "/courses/3",
     notes:
-      "Issue #71（承接 #68）· 视觉冻结闸门。单强提案 A：Separator 紧凑流 · 课程页强调教师 / 教师页强调课程 · 仅有补充说明入流 · 总体评分 + 学期 + 发布时间 · 无逐维度 Chip / 无维度均分（#66）/ 无作者。确认后写入 foundations；生产由独立 frontend MVP Issue 重写。",
+      "Issue #71（承接 #68）· 视觉冻结闸门。单强提案 A：Separator 紧凑流 · 课程页强调教师 / 教师页强调课程 · 仅有补充说明入流 · 总体评分 + 发布时间 · 无逐维度 Chip / 无维度均分（#66）/ 无作者。确认后写入 foundations；生产由独立 frontend MVP Issue 重写。",
     variants: [
       {
         key: "A",
         name: "匿名文字流",
         summary:
-          "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 学期 · 总体评分 · 正文 · 发布时间；无逐维度 Chip / 无维度均分 / 无作者。",
+          "标题「任课评价」· 共 N 份评分 / M 条有补充说明 · 身份真链接 · 总体评分 · 正文 · 发布时间；无逐维度 Chip / 无维度均分 / 无作者。",
       },
     ],
   },

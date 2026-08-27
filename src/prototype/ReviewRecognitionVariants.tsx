@@ -16,7 +16,7 @@
  *
  * 控件用标准 Button（issue 明确要求）而非 ToggleButton：isPending 在
  * ToggleButton 上无官方对应；selected 状态经 aria-pressed 暴露。
- * 条目结构沿用 #71 文字流（身份 · 学期 · 总体评分 / 正文 / footer），
+ * 条目结构沿用 #71 文字流（身份 · 总体评分 / 正文 / footer），
  * 认可控件只加入 footer，不改条目其余部分。
  *
  * Mounted via CourseDetailPage when ?module=review-recognition&variant=A|B|C (DEV only).
@@ -49,7 +49,6 @@ type DemoEntry = {
   id: number;
   teacherId: number | null;
   teacherName: string;
-  term: string | null;
   /** 总体评分（#66 展示契约，1-5，0.5 步进）；null 表示该评价无评分 */
   score: number | null;
   publishedAt: string | null;
@@ -100,7 +99,6 @@ const DEMO_ENTRIES: DemoEntry[] = [
     id: -301,
     teacherId: 1,
     teacherName: "林晓雯",
-    term: "2024-2025-2",
     score: 4.6,
     publishedAt: "2025-06-18T10:20:00Z",
     note: "（演示 · 零计数）例题扎实，作业量适中。这条评价还没有人认可：按钮不显示计数，也不带任何负面视觉。",
@@ -112,7 +110,6 @@ const DEMO_ENTRIES: DemoEntry[] = [
     id: -302,
     teacherId: 2,
     teacherName: "陈启明",
-    term: "2024-2025-1",
     score: 4,
     publishedAt: "2025-01-09T08:00:00Z",
     note: "（演示 · 非零计数）节奏偏快，建议提前预习。点「认可」后计数乐观 +1，stub 约 0.7 秒后确认；再点一次撤回。",
@@ -124,7 +121,6 @@ const DEMO_ENTRIES: DemoEntry[] = [
     id: -303,
     teacherId: 3,
     teacherName: "王若舟",
-    term: "2023-2024-2",
     score: 5,
     publishedAt: "2024-07-02T14:30:00Z",
     note: "（演示 · 已认可）课堂案例多、板书清晰。我已认可这条评价：按钮呈按下态；再点一次进入撤回中，stub 确认后恢复未认可。",
@@ -136,7 +132,6 @@ const DEMO_ENTRIES: DemoEntry[] = [
     id: -304,
     teacherId: 4,
     teacherName: "赵敏",
-    term: "2022-2023-1",
     score: 3,
     publishedAt: "2023-01-15T09:00:00Z",
     note: "（演示 · 大计数）三位数认可用于检查 footer 对齐与折行；计数原样显示，不引入缩写或封顶。",
@@ -148,7 +143,6 @@ const DEMO_ENTRIES: DemoEntry[] = [
     id: -305,
     teacherId: 7,
     teacherName: "何清",
-    term: "2022-2023-1",
     score: 4,
     publishedAt: "2023-02-20T09:00:00Z",
     note: "（演示 · 失败恢复）这条的 stub 建立总是失败：点「认可」先乐观 +1，随后恢复服务器确认的计数并给出错误提示。",
@@ -160,7 +154,6 @@ const DEMO_ENTRIES: DemoEntry[] = [
     id: -306,
     teacherId: 6,
     teacherName: "周慧",
-    term: "2024-2025-1",
     score: 4.5,
     publishedAt: "2025-03-20T11:00:00Z",
     note: "（演示 · 慢网络建立中）这条的 stub 永不返回：点「认可」后一直停在建立中，按钮保持禁用，无法重复激活。",
@@ -172,7 +165,6 @@ const DEMO_ENTRIES: DemoEntry[] = [
     id: -307,
     teacherId: 8,
     teacherName: "吴桐",
-    term: "2024-2025-1",
     score: null,
     publishedAt: "2025-04-02T09:30:00Z",
     note: "（演示 · 慢网络撤回中）我已认可且 stub 永不返回：点「已认可」后一直停在撤回中。",
@@ -432,12 +424,10 @@ function RecognitionEntry({
   state: RecognitionState;
   onPress: () => void;
 }) {
-  const term = entry.term || "学期未标注";
   const scoreLabel = formatScore(entry.score);
   const ariaParts = [
     "任课评价",
     entry.teacherName,
-    term,
     scoreLabel ? `总体评分 ${scoreLabel}` : null,
   ].filter(Boolean);
 
@@ -456,10 +446,6 @@ function RecognitionEntry({
             {entry.teacherName}
           </span>
         )}
-        <span className="text-muted" aria-hidden>
-          ·
-        </span>
-        <span className="text-muted">{term}</span>
         {scoreLabel ? (
           <>
             <span className="text-muted" aria-hidden>

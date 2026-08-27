@@ -33,7 +33,6 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
   const [offeringId, setOfferingId] = useState("");
   const [teacherId, setTeacherId] = useState("");
   const [overall, setOverall] = useState("");
-  const [term, setTerm] = useState("");
   const [comment, setComment] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState("");
@@ -126,7 +125,6 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         `/api/offerings/${offeringId}`,
       );
       setTeachers(d.teachers || []);
-      if (!term && d.offering.term) setTerm(d.offering.term);
     })().catch((e) => setMsg(e.message));
   }, [offeringId]);
 
@@ -163,7 +161,6 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
         teacherId,
         offeringId: offeringId || undefined,
         overall,
-        term,
         comment,
         website: "",
         turnstileToken,
@@ -183,7 +180,6 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
       setOfferingId("");
       setTeacherId("");
       setOverall("");
-      setTerm("");
       setComment("");
       setFields({});
       if (widgetRef.current != null) {
@@ -423,15 +419,6 @@ export function SubmitPage({ config }: { config: SiteConfig | null }) {
 
         {step === 3 ? (
           <>
-            <label className="field-label">
-              学期（选填）
-              <Input
-                fullWidth
-                placeholder="2025 秋"
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-              />
-            </label>
             <label className="field-label">
               补充说明（选填）
               <TextArea

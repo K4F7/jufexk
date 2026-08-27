@@ -86,9 +86,6 @@ function ProfileReviewItem({ review }: { review: UserProfileReview }) {
           </time>
         ) : null}
       </header>
-      {review.term ? (
-        <p className="m-0 mt-0.5 text-xs text-muted">{review.term}</p>
-      ) : null}
       {excerpt ? (
         <p className="m-0 mt-1 line-clamp-2 text-sm">{excerpt}</p>
       ) : null}

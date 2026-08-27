@@ -385,7 +385,7 @@ adminRoutes.get("/api/admin/reviews", async (c) => {
     status = clean(c.req.query("status"), 20) || "pending",
     searchGroup = andSearchTerms(
       parseSearchTerms(clean(c.req.query("q"), 80)),
-      `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("t.name")} OR ${likeSql("r.comment")} OR ${likeSql("r.teaching")} OR ${likeSql("r.term")}`,
+      `${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("t.name")} OR ${likeSql("r.comment")} OR ${likeSql("r.teaching")}`,
     );
   if (!["pending", "approved", "rejected", "all"].includes(status))
     return fail(c, "无效审核状态");
@@ -402,7 +402,7 @@ adminRoutes.get("/api/admin/reviews", async (c) => {
         r.assessment,r.teaching,r.clarity,r.knowledge,r.overall,
         r.interest,r.practicality,r.workload_score,r.fairness,r.organization,
         r.comment,r.comment_format,r.headline,r.grade,
-        r.term,r.status,r.blocked_at,r.deleted_at,r.moderator_note,r.created_at,r.reviewed_at,
+        r.status,r.blocked_at,r.deleted_at,r.moderator_note,r.created_at,r.reviewed_at,
         r.scheme_key,r.scheme_version,
         c.name course_name,c.code,t.name teacher_name
        FROM reviews r JOIN courses c ON c.id=r.course_id
@@ -565,7 +565,7 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
         stashed.overall,
         snapshot.comment,
         snapshot.commentFormat,
-        stashed.term || "",
+        "",
         request.submitter_hash,
         request.author_user_id,
         snapshot.schemeKey,

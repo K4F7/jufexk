@@ -735,7 +735,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
     await env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId).run();
   });
 
-  it("uses the offering term for review dedupe and persistence", async () => {
+  it("ignores submitted review term and still dedupes by offering", async () => {
     const code = unique("TERM");
     const courseId = await insertCourse(code);
     await env.DB.prepare(
@@ -783,7 +783,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       await env.DB.prepare("SELECT term FROM reviews WHERE offering_id=?")
         .bind(offeringId)
         .first(),
-    ).toEqual({ term: "2026 秋" });
+    ).toEqual({ term: "" });
     await env.DB.prepare("DELETE FROM reviews WHERE offering_id=?").bind(offeringId).run();
     await env.DB.prepare("DELETE FROM offerings WHERE id=?").bind(offeringId).run();
     await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();

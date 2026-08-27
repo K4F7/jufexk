@@ -1,12 +1,12 @@
 /**
  * 课程页点评区（Issue #402，对齐 icourse）：标题「点评」+ 计数 + 蓝色「写点评」；
- * 排序、学期、评分用 secondary Select 单行「标签：当前值」，由服务端排序/筛选；条目为官方占位
- * 头像 + 匿名用户 + 星级 + 学期 + 四维档位 + 正文 + 认可（Issue #431）。
+ * 排序、评分用 secondary Select 单行「标签：当前值」，由服务端排序/筛选；条目为官方占位
+ * 头像 + 匿名用户 + 星级 + 四维档位 + 正文 + 认可（Issue #431）。
  *
  * 四维档位标签由 #373 公开流投影按条目下发（dimensionLabels），有则渲染
  * 中文档位 Chip；旧 1–5 规则快照继续显示维度均分 Chip；两者都没有的历史
- * 行不渲染维度行。逐条星级 / 学期 / 日期与学期、评分筛选依赖 #410 的
- * 投影字段（overall/term/created_at），未下发前不渲染对应控件。
+ * 行不渲染维度行。逐条星级 / 日期与评分筛选依赖 #410 的
+ * 投影字段（overall/created_at），未下发前不渲染对应控件。
  */
 import {
   Alert,
@@ -135,9 +135,6 @@ const CourseReviewItem = memo(function CourseReviewItem({
           {review.overall != null ? (
             <Stars rating={review.overall} className="text-[calc(13/15*1rem)]" />
           ) : null}
-          {review.term ? (
-            <span className="font-normal text-muted">{review.term}</span>
-          ) : null}
           {review.grade ? (
             <span className="font-normal text-muted">成绩 {review.grade}</span>
           ) : null}
@@ -209,12 +206,9 @@ const CourseReviewItem = memo(function CourseReviewItem({
 export function CourseReviewSection({
   courseId,
   teacherId,
-  terms = [],
   sort,
-  term,
   rating,
   onSortChange,
-  onTermChange,
   onRatingChange,
   reviews,
   total,
@@ -229,13 +223,9 @@ export function CourseReviewSection({
   courseId: number;
   /** 当前选中的任课教师；为空（课程无教师）时隐藏写点评入口。 */
   teacherId: number | null;
-  /** 该关系的学期列表，与头部共用。 */
-  terms?: string[];
   sort: CourseReviewSort;
-  term: string;
   rating: string;
   onSortChange: (value: CourseReviewSort) => void;
-  onTermChange: (value: string) => void;
   onRatingChange: (value: string) => void;
   reviews: PublicReview[];
   /** 该关系的公开文字评价总数。 */
@@ -287,15 +277,6 @@ export function CourseReviewSection({
           items={SORT_ITEMS}
         />
         <FilterSelect
-          label="学期"
-          value={term}
-          onChange={onTermChange}
-          items={[
-            { id: "all", label: "全部" },
-            ...terms.map((term) => ({ id: term, label: term })),
-          ]}
-        />
-        <FilterSelect
           label="评分"
           value={rating}
           onChange={onRatingChange}
@@ -316,7 +297,7 @@ export function CourseReviewSection({
           <Card.Header>
             <Card.Title>暂无评价</Card.Title>
             <Card.Description>
-              {teacherId && (term !== "all" || rating !== "all")
+              {teacherId && rating !== "all"
                 ? "没有符合当前筛选条件的点评。"
                 : teacherId
                   ? "成为第一位评价这位老师这门课的同学。"

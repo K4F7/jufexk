@@ -94,11 +94,11 @@ describe("ordinary-user profile", () => {
       course_name: "测试课程",
       teacher_id: 1,
       teacher_name: "测试教师",
-      term: "2026 春",
       headline: "我的总结",
       status: "pending",
       created_at: "2026-08-24 10:00:00",
     });
+    expect(body.reviews[0]).not.toHaveProperty("term");
     expect(String(body.reviews[0]?.comment)).not.toContain("<p>");
     expect(String(body.reviews[0]?.comment)).toHaveLength(181);
     expect(String(body.reviews[0]?.comment).endsWith("…")).toBe(true);

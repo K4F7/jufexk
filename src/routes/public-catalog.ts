@@ -40,13 +40,9 @@ import {
   publicGrade,
   publicHeadline,
   publicOverall,
-  publicTerm,
 } from "../lib/public-review-fields";
 import { relationDimensionKey } from "../lib/relation-four-dims";
-import {
-  loadCourseRelationTerms,
-  loadRelationDimensionLabels,
-} from "../lib/relation-projections";
+import { loadRelationDimensionLabels } from "../lib/relation-projections";
 import {
   queryPublicCourseRelations,
   queryPublicCourses,
@@ -198,7 +194,6 @@ type PublicReviewSort =
   | "rating_asc";
 type PublicReviewQuery = {
   sort: PublicReviewSort;
-  term: string;
   rating: number | null;
 };
 const publicReviewPageSize = (c: AppContext) =>
@@ -253,10 +248,6 @@ const getPublicReviewPage = async (
   const teacherBinds = teacherId ? [teacherId] : [];
   const filterParts: string[] = [];
   const filterBinds: unknown[] = [];
-  if (query?.term) {
-    filterParts.push("term=?");
-    filterBinds.push(query.term);
-  }
   if (query?.rating != null) {
     filterParts.push("overall=?");
     filterBinds.push(query.rating);
@@ -279,7 +270,7 @@ const getPublicReviewPage = async (
   };
   const order = query ? orderConfig[query.sort] : null;
   const queryKey = query
-    ? JSON.stringify([query.sort, query.term, query.rating])
+    ? JSON.stringify([query.sort, query.rating])
     : "";
   const orderedCursor =
     query && cursor && "order" in cursor && cursor.query === queryKey
@@ -300,7 +291,7 @@ const getPublicReviewPage = async (
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
          headline,grade,
          course_name,course_code,teacher_name,endorsement_count,
-         scheme_key,scheme_version,scores,overall,term,created_at,
+         scheme_key,scheme_version,scores,overall,created_at,
          author_public_code,author_avatar_key,blocked_at,
          COUNT(*) OVER() filtered_total
        FROM (
@@ -310,7 +301,7 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
-           NULL overall,NULL term,phr.imported_at created_at,
+           NULL overall,phr.imported_at created_at,
            ${reservedAuthorSql}, NULL blocked_at
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
@@ -323,7 +314,7 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            0 endorsement_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
-           NULL overall,NULLIF(trim(COALESCE(lr.term,'')),'') term,lr.created_at,
+           NULL overall,lr.created_at,
            ${reservedAuthorSql}, NULL blocked_at
          FROM legacy_reviews lr
          JOIN courses c ON c.id=lr.course_id
@@ -337,7 +328,7 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
            r.scheme_key,r.scheme_version,r.scores,
-           r.overall,NULLIF(trim(COALESCE(r.term,'')),'') term,r.created_at,
+           r.overall,r.created_at,
            ${authoredReviewAuthorSql}, r.blocked_at
          FROM reviews r
          JOIN courses c ON c.id=r.course_id
@@ -409,7 +400,6 @@ const getPublicReviewPage = async (
             headline: publicHeadline(review.headline),
             ...(grade == null ? {} : { grade }),
             overall: publicOverall(review.overall),
-            term: publicTerm(review.term),
             created_at: publicCreatedAt(review.created_at),
             ...publicAuthorFields(review),
             ...(dimensionAverage == null ? {} : { dimensionAverage }),
@@ -797,7 +787,6 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
           review_count: 0,
           rating: null,
           dimensionLabels: null,
-          terms: [],
           ...(signals.get(`${virtual.id}:${teacher.id}`) ?? {
             follow_count: 0,
             recommend_count: 0,
@@ -869,12 +858,11 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
     rating?: number | null;
   }>;
   const teacherIds = typedTeachers.map((teacher) => teacher.id);
-  const [dimMap, termMap, signalMap] = await Promise.all([
+  const [dimMap, signalMap] = await Promise.all([
     loadRelationDimensionLabels(
       c.env.DB,
       teacherIds.map((teacherId) => ({ courseId: id, teacherId })),
     ),
-    loadCourseRelationTerms(c.env.DB, id, teacherIds),
     loadRelationSignalPayloads(
       c.env.DB,
       teacherIds.map((teacherId) => ({ courseId: id, teacherId })),
@@ -897,7 +885,6 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
         ...teacher,
         dimensionLabels:
           dimMap.get(relationDimensionKey(id, teacher.id)) ?? null,
-        terms: termMap.get(teacher.id) ?? [],
         ...(signalMap.get(`${id}:${teacher.id}`) ?? {
           follow_count: 0,
           recommend_count: 0,
@@ -927,13 +914,10 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
   const rating = rawRating ? integer(rawRating) : null;
   if (rawRating && (rating == null || rating < 1 || rating > 5))
     return fail(c, "评价评分参数无效", 400);
-  const hasReviewQuery = Boolean(
-    rawSort || c.req.query("term") || c.req.query("rating"),
-  );
+  const hasReviewQuery = Boolean(rawSort || c.req.query("rating"));
   const reviewQuery: PublicReviewQuery | null = hasReviewQuery
     ? {
         sort: (rawSort as PublicReviewSort) || "recognized",
-        term: clean(c.req.query("term"), 40),
         rating,
       }
     : null;
