@@ -305,7 +305,7 @@ describe("review endorsement API", () => {
     expect(row?.count).toBe(1);
   });
 
-  it("rejects pending, rejected, historical, score-only and missing targets", async () => {
+  it("rejects pending, rejected, score-only and missing targets", async () => {
     const session = await viewerSession("user-endorse-eligibility");
     const pending = await insertReview({
       comment: "待审核补充说明",
@@ -316,19 +316,30 @@ describe("review endorsement API", () => {
       status: "rejected",
     });
     const scoreOnly = await insertReview({ comment: "   " });
-    const historicalId = await insertHistorical("历史评价不可认可");
-    const legacyId = await insertLegacy("资料评价不可认可");
 
-    for (const target of [
-      pending,
-      rejected,
-      scoreOnly,
-      `historical:${historicalId}`,
-      `legacy:${legacyId}`,
-      9_999_999,
-    ]) {
+    for (const target of [pending, rejected, scoreOnly, 9_999_999]) {
       const response = await putEndorsement(target, session);
       expect(response.status, String(target)).toBe(404);
+    }
+  });
+
+  it("creates and withdraws endorsements on historical and legacy text reviews", async () => {
+    const session = await viewerSession("user-endorse-historical");
+    const historicalId = await insertHistorical("历史评价可以认可");
+    const legacyId = await insertLegacy("资料评价可以认可");
+    for (const target of [`historical:${historicalId}`, `legacy:${legacyId}`]) {
+      const created = await putEndorsement(target, session);
+      expect(created.status, target).toBe(200);
+      await expect(created.json()).resolves.toEqual({
+        endorsementCount: 1,
+        viewerEndorsed: true,
+      });
+      const withdrawn = await deleteEndorsement(target, session);
+      expect(withdrawn.status, target).toBe(200);
+      await expect(withdrawn.json()).resolves.toEqual({
+        endorsementCount: 0,
+        viewerEndorsed: false,
+      });
     }
   });
 
@@ -360,7 +371,7 @@ describe("review endorsement API", () => {
     expect(anonymousReview).not.toHaveProperty("viewer_endorsed");
     expect(anonymousHistorical).toMatchObject({
       endorsement_count: 0,
-      endorsable: false,
+      endorsable: true,
     });
     const publicJson = JSON.stringify(anonymousBody);
     expect(publicJson).not.toContain("user-endorse-public-a");
@@ -389,7 +400,7 @@ describe("review endorsement API", () => {
         (review) => review.id === `historical:${historicalId}`,
       ),
     ).toMatchObject({
-      endorsable: false,
+      endorsable: true,
       viewer_endorsed: false,
     });
   });

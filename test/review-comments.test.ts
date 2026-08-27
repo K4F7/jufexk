@@ -387,4 +387,36 @@ describe("review comments API", () => {
       viewerEndorsed: false,
     });
   });
+
+  it("lists and stores replies on a public historical review", async () => {
+    const historicalId = `comment-hist-${crypto.randomUUID()}`;
+    await env.DB.prepare(
+      `INSERT INTO public_historical_reviews(
+         id,course_id,teacher_id,comment,package_contract,
+         approved_package_manifest_sha256,approved_catalog_content_sha256
+       ) VALUES(?,?,?,?,?,?,?)`,
+    )
+      .bind(
+        historicalId,
+        1,
+        1,
+        "历史评价可以回复",
+        "legacy-historical-production-freeze-v1",
+        "a".repeat(64),
+        "b".repeat(64),
+      )
+      .run();
+    const publicId = `historical:${historicalId}`;
+    const session = await ordinaryWriteSession("comment-historical-author");
+    const created = await postComment(publicId, session, "学长这条说得对");
+    expect(created.status).toBe(200);
+    const listed = await listComments(publicId);
+    expect(listed.response.status).toBe(200);
+    expect(listed.body.items).toEqual([
+      expect.objectContaining({
+        body: "学长这条说得对",
+        parentId: null,
+      }),
+    ]);
+  });
 });

@@ -21,7 +21,7 @@ const teacherNineReviews = Array.from({ length: 21 }, (_, index) => ({
   overall: index === 0 ? 5 : null,
   created_at: "2026-08-11 02:00:00",
   endorsement_count: 0,
-  endorsable: false,
+  endorsable: true,
 }));
 
 const teacherTenReviews = [1, 2].map((index) => ({
@@ -33,7 +33,7 @@ const teacherTenReviews = [1, 2].map((index) => ({
   teacher_name: "另一位教师",
   comment: `另一位教师的评价 ${index}，用于验证同课切换教师时的对照与缓存恢复。`,
   endorsement_count: 0,
-  endorsable: false,
+  endorsable: true,
 }));
 
 async function mockApi(page: Page) {
@@ -291,8 +291,7 @@ test("course detail defaults to the most-reviewed relation", async ({
     reviewRequests.filter((search) => search.includes("teacherId=9")),
   ).toHaveLength(1);
 
-  // 条目：匿名用户 + 正文；历史行没有认可按钮。默认排序保持后端流顺序：
-  // 第一条即 mock 流的第一条 匿名评价 1。
+  // 条目：匿名用户 + 正文；历史行也有认可 / 评论 / 分享。
   const first = reviewItems(page).first();
   await expect(first).toContainText("匿名用户");
   await expect(first.getByText("必选")).toBeVisible();
@@ -301,7 +300,13 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(first).toContainText("匿名评价 1");
   await expect(
     first.getByRole("button", { name: /认可/ }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await expect(
+    first.getByRole("button", { name: /评论/ }),
+  ).toBeVisible();
+  await expect(
+    first.getByRole("button", { name: "分享" }),
+  ).toBeVisible();
   await expect(
     first.getByRole("button", { name: "学过" }),
   ).toHaveCount(0);

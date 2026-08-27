@@ -1,5 +1,9 @@
 import { escapeHtml, reviewHtmlToText } from "./html";
-import { guestReviewBindingSql } from "./public-review-visibility";
+import {
+  guestReviewBindingSql,
+  historicalPublicVisibleSql,
+  legacyPublicVisibleSql,
+} from "./public-review-visibility";
 import { readSecret, type SecretBinding } from "./secrets";
 
 /**
@@ -75,14 +79,20 @@ async function collectRelationReviewTexts(
   const { results } = await db
     .prepare(
       `SELECT source_order,recognition,created_at,comment FROM (
-         SELECT 0 source_order,phr.id row_id,0 recognition,phr.imported_at created_at,phr.comment
+         SELECT 0 source_order,phr.id row_id,
+           (SELECT COUNT(*) FROM historical_review_endorsements e
+            WHERE e.historical_review_id=phr.id) recognition,
+           phr.imported_at created_at,phr.comment
          FROM public_historical_reviews phr
-         WHERE phr.course_id=? AND phr.teacher_id=?
+         WHERE phr.course_id=? AND phr.teacher_id=?${historicalPublicVisibleSql("phr")}
          UNION ALL
-         SELECT 1 source_order,lr.id row_id,0 recognition,lr.created_at created_at,lr.comment
+         SELECT 1 source_order,lr.id row_id,
+           (SELECT COUNT(*) FROM legacy_review_endorsements e
+            WHERE e.legacy_review_id=lr.id) recognition,
+           lr.created_at created_at,lr.comment
          FROM legacy_reviews lr
          WHERE lr.course_id=? AND lr.teacher_id=? AND lr.status='approved'
-           AND trim(COALESCE(lr.comment,''))<>''
+           AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}
          UNION ALL
          SELECT 2 source_order,r.id row_id,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) recognition,
@@ -394,10 +404,11 @@ export async function listQualifyingSummaryRelations(
       `WITH public_texts AS (
          SELECT phr.course_id, phr.teacher_id, phr.comment AS comment
          FROM public_historical_reviews phr
+         WHERE 1=1${historicalPublicVisibleSql("phr")}
          UNION ALL
          SELECT lr.course_id, lr.teacher_id, lr.comment
          FROM legacy_reviews lr
-         WHERE lr.status='approved' AND trim(COALESCE(lr.comment,''))<>''
+         WHERE lr.status='approved' AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}
          UNION ALL
          SELECT r.course_id, r.teacher_id, r.comment
          FROM reviews r

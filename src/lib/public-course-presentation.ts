@@ -345,11 +345,14 @@ export function publicBrowseFamilySql(alias = "c"): string {
 
 export function publicPeHasTextReviewSql(alias: string): string {
   return `EXISTS(
-    SELECT 1 FROM public_historical_reviews phr WHERE phr.course_id=${alias}.id
+    SELECT 1 FROM public_historical_reviews phr
+     WHERE phr.course_id=${alias}.id
+       AND phr.deleted_at IS NULL AND phr.blocked_at IS NULL
     UNION ALL
     SELECT 1 FROM legacy_reviews lr
      WHERE lr.course_id=${alias}.id AND lr.status='approved'
        AND trim(COALESCE(lr.comment,''))<>''
+       AND lr.deleted_at IS NULL AND lr.blocked_at IS NULL
     UNION ALL
     SELECT 1 FROM reviews r
      WHERE r.course_id=${alias}.id AND r.status='approved'

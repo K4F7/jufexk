@@ -1,9 +1,8 @@
 /**
  * Course review footer: date + 认可 / 评论 / 分享, and the
  * HeroUI comments Surface. 认可 uses the live endorsement API. 回复默认收起，
- * 点评论按钮展开并拉取 /api/reviews/:id/comments（当前评价）；DEV atlas /
- * preview 与历史评价保持本地种子回复。回复他人的评论会展开回复区并聚焦输入框；
- * 顶层回复通知评价作者、回复他人的回复通知被回复者（review_comment_replied）。
+ * 点评论按钮展开并拉取 /api/reviews/:id/comments；DEV atlas / preview
+ * 保持本地种子回复。回复他人的评论会展开回复区并聚焦输入框。
  */
 import {
   ArrowShapeTurnUpRight,

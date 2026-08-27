@@ -1,9 +1,9 @@
 /**
- * 任课评价回复（评论区）：当前评价（review:NNN）下的公开回复。
- * GET 公开（游客视图排除仅限登录评价的回复）；POST/DELETE 走普通用户写闸门。
- * 顶层回复经 0046 触发器通知评价作者，回复他人的回复通知被回复者
- * （review_comment_replied），与认可/关注消息共用 user_notifications 收件箱。
+ * 评价回复（评论区）：公开文字流条目（review: / historical: / legacy:）下的回复。
+ * GET 公开；POST/DELETE 走普通用户写闸门。当前任课评价的顶层回复经触发器
+ * 通知作者；历史评价没有作者，只通知被回复者。
  */
+import { parsePublicReviewTarget } from "./lib/public-review-id";
 import { resolveOrdinaryUser } from "./ordinary-user-authentication";
 import {
   isOrdinaryUserAuthenticated,
@@ -12,10 +12,11 @@ import {
 import { ensureUserPublicHandle } from "./public-handle";
 import {
   guestReviewBindingSql,
+  historicalPublicVisibleSql,
+  legacyPublicVisibleSql,
   publicReviewBindingSql,
 } from "./public-review-visibility";
 import {
-  parseCurrentReviewId,
   parseIdempotencyKey,
   readIdempotency,
   saveIdempotency,
@@ -97,19 +98,40 @@ async function decorateCommentEndorsements(
 }
 
 /** 与公开文字流一致的评价可见性；游客额外排除 login_only。 */
-async function loadCommentableReview(
+async function loadCommentableTarget(
   db: D1Database,
-  reviewId: number,
+  publicId: string,
   guest: boolean,
 ) {
+  const target = parsePublicReviewTarget(publicId);
+  if (!target) return null;
+  if (target.kind === "review") {
+    return db
+      .prepare(
+        `SELECT r.id FROM reviews r
+         WHERE r.id=? AND r.status='approved' AND trim(COALESCE(r.comment,''))<>''
+         ${guest ? guestReviewBindingSql : publicReviewBindingSql}`,
+      )
+      .bind(target.id)
+      .first();
+  }
+  if (target.kind === "historical") {
+    return db
+      .prepare(
+        `SELECT id FROM public_historical_reviews phr
+         WHERE phr.id=?${historicalPublicVisibleSql("phr")}`,
+      )
+      .bind(target.id)
+      .first();
+  }
   return db
     .prepare(
-      `SELECT r.id FROM reviews r
-       WHERE r.id=? AND r.status='approved' AND trim(COALESCE(r.comment,''))<>''
-       ${guest ? guestReviewBindingSql : publicReviewBindingSql}`,
+      `SELECT id FROM legacy_reviews lr
+       WHERE lr.id=? AND lr.status='approved'
+         AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}`,
     )
-    .bind(reviewId)
-    .first<{ id: number }>();
+    .bind(target.id)
+    .first();
 }
 
 function parseParentCommentId(raw: unknown): number | null | undefined {
@@ -120,11 +142,11 @@ function parseParentCommentId(raw: unknown): number | null | undefined {
 }
 
 export async function handleListReviewComments(c: AppContext) {
-  const reviewId = parseCurrentReviewId(c.req.param("id"));
-  if (!reviewId) return fail(c, "评价不存在", 404);
+  const target = parsePublicReviewTarget(c.req.param("id"));
+  if (!target) return fail(c, "评价不存在", 404);
   const viewer = await resolveOrdinaryUser(c);
   const guest = !viewer || !isOrdinaryUserAuthenticated(viewer);
-  const review = await loadCommentableReview(c.env.DB, reviewId, guest);
+  const review = await loadCommentableTarget(c.env.DB, target.publicId, guest);
   if (!review) return fail(c, "评价不存在", 404);
   const { results } = await c.env.DB.prepare(
     `SELECT rc.id, rc.body, rc.parent_comment_id AS parentCommentId,
@@ -133,10 +155,10 @@ export async function handleListReviewComments(c: AppContext) {
             author.avatar_key AS authorAvatarKey
      FROM review_comments rc
      JOIN users author ON author.id = rc.author_user_id
-     WHERE rc.review_id=? AND rc.deleted_at IS NULL
+     WHERE rc.public_id=? AND rc.deleted_at IS NULL
      ORDER BY rc.created_at ASC, rc.id ASC`,
   )
-    .bind(reviewId)
+    .bind(target.publicId)
     .all<CommentRow>();
   const items = await decorateCommentEndorsements(
     c.env.DB,
@@ -153,8 +175,8 @@ export async function handleCreateReviewComment(c: AppContext) {
     "当前账号无法回复",
   );
   if ("error" in auth) return auth.error;
-  const reviewId = parseCurrentReviewId(c.req.param("id"));
-  if (!reviewId) return fail(c, "评价不存在或不可回复", 404);
+  const target = parsePublicReviewTarget(c.req.param("id"));
+  if (!target) return fail(c, "评价不存在或不可回复", 404);
   const idempotencyKey = parseIdempotencyKey(c.req.header("Idempotency-Key"));
   if (!idempotencyKey) return fail(c, "缺少有效的幂等键", 400);
   let payload: { body?: unknown; parentCommentId?: unknown };
@@ -173,7 +195,7 @@ export async function handleCreateReviewComment(c: AppContext) {
   const requestDigest = await digest(
     JSON.stringify({
       operation: COMMENT_CREATE_OPERATION,
-      reviewId,
+      publicId: target.publicId,
       body,
       parentCommentId,
     }),
@@ -190,13 +212,13 @@ export async function handleCreateReviewComment(c: AppContext) {
     return c.json(JSON.parse(replay.response_json));
   }
 
-  const review = await loadCommentableReview(c.env.DB, reviewId, false);
+  const review = await loadCommentableTarget(c.env.DB, target.publicId, false);
   if (!review) return fail(c, "评价不存在或不可回复", 404);
   if (parentCommentId != null) {
     const parent = await c.env.DB.prepare(
-      "SELECT id FROM review_comments WHERE id=? AND review_id=? AND deleted_at IS NULL",
+      "SELECT id FROM review_comments WHERE id=? AND public_id=? AND deleted_at IS NULL",
     )
-      .bind(parentCommentId, reviewId)
+      .bind(parentCommentId, target.publicId)
       .first();
     if (!parent) return fail(c, "回复目标不存在", 404);
   }
@@ -205,10 +227,16 @@ export async function handleCreateReviewComment(c: AppContext) {
 
   const handle = await ensureUserPublicHandle(c.env.DB, auth.user);
   const inserted = await c.env.DB.prepare(
-    `INSERT INTO review_comments(review_id,parent_comment_id,author_user_id,body)
-     VALUES(?,?,?,?)`,
+    `INSERT INTO review_comments(public_id,review_id,parent_comment_id,author_user_id,body)
+     VALUES(?,?,?,?,?)`,
   )
-    .bind(reviewId, parentCommentId, auth.user.id, body)
+    .bind(
+      target.publicId,
+      target.kind === "review" ? target.id : null,
+      parentCommentId,
+      auth.user.id,
+      body,
+    )
     .run();
   const id = Number(inserted.meta.last_row_id);
   const created = await c.env.DB.prepare(
@@ -247,14 +275,14 @@ export async function handleDeleteReviewComment(c: AppContext) {
     "当前账号无法删除回复",
   );
   if ("error" in auth) return auth.error;
-  const reviewId = parseCurrentReviewId(c.req.param("id"));
+  const target = parsePublicReviewTarget(c.req.param("id"));
   const commentId = integer(c.req.param("commentId"));
-  if (!reviewId || !commentId) return fail(c, "回复不存在", 404);
+  if (!target || !commentId) return fail(c, "回复不存在", 404);
   const own = await c.env.DB.prepare(
     `SELECT id FROM review_comments
-     WHERE id=? AND review_id=? AND author_user_id=? AND deleted_at IS NULL`,
+     WHERE id=? AND public_id=? AND author_user_id=? AND deleted_at IS NULL`,
   )
-    .bind(commentId, reviewId, auth.user.id)
+    .bind(commentId, target.publicId, auth.user.id)
     .first();
   if (!own) return fail(c, "回复不存在", 404);
   await c.env.DB.prepare(
