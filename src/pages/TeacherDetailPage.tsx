@@ -5,11 +5,9 @@
  * Right: identity Card (avatar / name / department / course, review, scores).
  *
  * 教师页不展示跨课程评价流；评价只在课程页按任课关系查看。
- *
- * Back restores teacher-catalog URL state (drops prototype params if any).
  * Issue #482 · docs/ui/foundations.md §详情体验.
  */
-import { Breadcrumbs, Card, Typography } from "@heroui/react";
+import { Card, Typography } from "@heroui/react";
 import { TeacherIdentityName } from "../components/TeacherIdentityName";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
@@ -19,7 +17,6 @@ import {
   DetailErrorAlert,
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
-import { RouterAriaLink } from "../components/RouterAriaLink";
 import { readDevPreview } from "../lib/dev-preview";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { api } from "../lib/api";
@@ -64,12 +61,7 @@ function TeacherIdentityCard({
         <Card.Description>
           {teacher.department || "院系未标注"}
         </Card.Description>
-        <div className="w-full min-w-0">
-          <TeacherHomepageLine
-            officialUrl={teacher.official_homepage_url}
-            teacherId={teacher.id}
-          />
-        </div>
+        <TeacherHomepageLine officialUrl={teacher.official_homepage_url} />
       </Card.Header>
       <Card.Content>
         <dl className="m-0 grid gap-1.5 text-sm">
@@ -141,26 +133,10 @@ export function TeacherDetailPage() {
   const courses = data.courses ?? [];
   const courseCount = t.course_count ?? courses.length;
 
-  /** Restore catalog filters; drop prototype module/variant if present. */
-  const catalogHref = (() => {
-    const sp = new URLSearchParams(location.search);
-    sp.delete("module");
-    sp.delete("variant");
-    const q = sp.toString();
-    return q ? `/teachers?${q}` : "/teachers";
-  })();
-
   return (
     <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <nav aria-label="面包屑">
-          <Breadcrumbs>
-            <Breadcrumbs.Item href={catalogHref}>教师目录</Breadcrumbs.Item>
-            <Breadcrumbs.Item>{t.name}</Breadcrumbs.Item>
-          </Breadcrumbs>
-        </nav>
-
-        <section className="mt-3 mb-6" aria-labelledby="teacher-courses-heading">
+        <section className="mb-6" aria-labelledby="teacher-courses-heading">
           <Typography
             className="m-0 text-[calc(18/15*1rem)] font-bold leading-snug"
             id="teacher-courses-heading"
@@ -178,12 +154,6 @@ export function TeacherDetailPage() {
           courseCount={courseCount}
           reviewCount={data.reviewCount}
         />
-        <RouterAriaLink
-          className="block text-center text-[calc(12/15*1rem)] text-muted no-underline"
-          to={catalogHref}
-        >
-          ← 返回教师目录
-        </RouterAriaLink>
       </aside>
     </div>
   );

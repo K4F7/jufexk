@@ -407,30 +407,30 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     id: "global-search",
     title: "页内目录搜索 vs 导航栏全局搜索",
     question:
-      "导航栏要不要加一个统一搜索入口，还是把能力留在页内搜索（#286）+ 空态救援（#287）就够？",
+      "导航栏要不要加一个统一搜索入口，还是把能力留在页内搜索（#286）就够？",
     status: "exploring",
     preview: "live",
     livePath: "/courses",
     notes:
-      "Issue #303 · throwaway prototype，不改生产默认。数据走现网 /api/courses、/api/teachers 的 q。若选出 B 或 C，另开 frontend 票再落地。",
+      "Issue #303 · throwaway prototype，不改生产默认。列表只走 /courses；教师建议点进 /teachers/:id。若选出 B 或 C，另开 frontend 票再落地。",
     variants: [
       {
         key: "A",
         name: "维持页内",
         summary:
-          "无顶栏搜索。第一次：进目录页 → 页内 SearchField 输入。搜错实体：空态 #287 跨目录链接。",
+          "无顶栏搜索。第一次：进课程目录 → 页内 SearchField 输入。",
       },
       {
         key: "B",
         name: "顶栏分组建议",
         summary:
-          "顶栏 Modal + Autocomplete，课程/教师各最多 5 条。点选进详情，回车进当前目录 ?q=。窄屏用图标开 Modal。",
+          "顶栏 Modal + Autocomplete，课程/教师各最多 5 条。点选进详情，回车进课程目录 ?q=。窄屏用图标开 Modal。",
       },
       {
         key: "C",
         name: "顶栏只跳转",
         summary:
-          "顶栏 SearchField 回车进当前目录；结果上方「也在另一目录中搜」Link。比 B 轻，比 A 多常驻入口。",
+          "顶栏 SearchField 回车进课程目录。比 B 轻，比 A 多常驻入口。",
       },
     ],
   },

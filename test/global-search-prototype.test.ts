@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   catalogDetailHref,
-  catalogKindFromPath,
   catalogSearchHref,
-  crossCatalogHintLabel,
-  oppositeCatalog,
   parseGlobalSearchVariant,
   takeSuggestions,
 } from "../src/prototype/global-search";
@@ -20,22 +17,14 @@ describe("parseGlobalSearchVariant", () => {
 });
 
 describe("catalog navigation hrefs", () => {
-  it("treats teacher routes as the teacher catalog and everything else as courses", () => {
-    expect(catalogKindFromPath("/teachers")).toBe("teachers");
-    expect(catalogKindFromPath("/teachers/12")).toBe("teachers");
-    expect(catalogKindFromPath("/courses")).toBe("courses");
-    expect(catalogKindFromPath("/courses/3")).toBe("courses");
-    expect(catalogKindFromPath("/")).toBe("courses");
-  });
-
-  it("builds a catalog ?q= link that keeps prototype params and drops filters", () => {
+  it("builds a course catalog ?q= link that keeps prototype params and drops filters", () => {
     const params = new URLSearchParams(
       "q=旧词&category=sports&page=3&module=global-search&variant=B",
     );
-    expect(catalogSearchHref("teachers", " 张三 ", params)).toBe(
-      "/teachers?q=%E5%BC%A0%E4%B8%89&module=global-search&variant=B",
+    expect(catalogSearchHref(" 张三 ", params)).toBe(
+      "/courses?q=%E5%BC%A0%E4%B8%89&module=global-search&variant=B",
     );
-    expect(catalogSearchHref("courses", "", params)).toBe(
+    expect(catalogSearchHref("", params)).toBe(
       "/courses?module=global-search&variant=B",
     );
   });
@@ -47,17 +36,6 @@ describe("catalog navigation hrefs", () => {
     );
     expect(catalogDetailHref("teachers", 12, params)).toBe(
       "/teachers/12?module=global-search&variant=B",
-    );
-  });
-
-  it("points the C-variant hint at the opposite catalog", () => {
-    expect(oppositeCatalog("courses")).toBe("teachers");
-    expect(oppositeCatalog("teachers")).toBe("courses");
-    expect(crossCatalogHintLabel("courses", "张三")).toBe(
-      "也在教师资料中搜「张三」",
-    );
-    expect(crossCatalogHintLabel("teachers", "导论")).toBe(
-      "也在课程目录中搜「导论」",
     );
   });
 });

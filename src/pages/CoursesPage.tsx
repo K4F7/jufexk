@@ -7,8 +7,7 @@
  * 数据走 GET /api/courses?view=relations（一行一条课程×教师）。
  * 支持 sort=rating；分页总数按关系行计。
  *
- * DEV-only: ?module=global-search&variant=A 保留页内搜索头（#303 对照），
- * variant=C 保留跨目录提示链接。
+ * DEV-only: ?module=global-search&variant=A 保留页内搜索头（#303 对照）。
  */
 import {
   Label,
@@ -21,8 +20,6 @@ import {
   type Key,
 } from "@heroui/react";
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -30,7 +27,6 @@ import {
 } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
-  CatalogEmptyRescueLink,
   CatalogResultsStates,
   type CatalogResultsCopy,
 } from "../components/CatalogResultsStates";
@@ -41,7 +37,6 @@ import {
 import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import { shouldOfferCatalogRescue } from "../lib/catalog-empty-rescue";
 import { emptyCatalogPage, readDevPreview } from "../lib/dev-preview";
 import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import {
@@ -58,7 +53,7 @@ import {
 } from "../lib/catalog-fuzzy-search";
 import type { CourseSearchCandidate } from "../lib/catalog-search-candidates";
 import { expandCourseRelations } from "../lib/course-relations";
-import type { Course, CourseRelation, Paginated, Teacher } from "../lib/types";
+import type { Course, CourseRelation, Paginated } from "../lib/types";
 
 function asRelationRows(
   items: Array<CourseRelation | Course>,
@@ -102,15 +97,6 @@ const RELATION_CATALOG_COPY: CatalogResultsCopy = {
   totalUnit: "条",
 };
 
-/** DEV-only: global-search A/B/C compare (issue #303; not production). */
-const GlobalSearchHintLazy = import.meta.env.DEV
-  ? lazy(() =>
-      import("../prototype/GlobalSearchVariants").then((m) => ({
-        default: m.GlobalSearchCrossCatalogHint,
-      })),
-    )
-  : null;
-
 function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
   const [params] = useSearchParams();
   return useMemo(() => {
@@ -141,7 +127,6 @@ export function CoursesPage() {
   const [loading, setLoading] = useState(true);
   /** Bumps to re-fetch the current catalog query (retry / force-reload). */
   const [reloadToken, setReloadToken] = useState(0);
-  const [rescueTotal, setRescueTotal] = useState<number | null>(null);
 
   // Stale bookmarks may still carry pe/required/elective; those 400 on the API.
   // general / major / public_basic 都是通识课，保留深链。
@@ -202,44 +187,6 @@ export function CoursesPage() {
     };
   }, [queryString, reloadToken, preview]);
 
-  const offerRescue =
-    data != null &&
-    shouldOfferCatalogRescue({
-      itemCount: data.items.length,
-      query: q,
-      extraFilters: Boolean(category),
-    });
-
-  useEffect(() => {
-    if (!offerRescue) {
-      setRescueTotal(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    let cancelled = false;
-    const query = new URLSearchParams({
-      q,
-      page: "1",
-      pageSize: "1",
-    });
-
-    api<Paginated<Teacher>>(`/api/teachers?${query}`, {
-      signal: controller.signal,
-    })
-      .then((result) => {
-        if (!cancelled) setRescueTotal(result.total);
-      })
-      .catch(() => {
-        if (!cancelled) setRescueTotal(null);
-      });
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [offerRescue, q]);
-
   function update(next: Record<string, string>, replace = false) {
     const sp = new URLSearchParams(params);
     for (const [key, value] of Object.entries(next)) {
@@ -264,13 +211,6 @@ export function CoursesPage() {
     update({ q: "", category: "", sort: "", page: "1" }, true);
   }
 
-  const rescue =
-    rescueTotal && rescueTotal > 0 ? (
-      <CatalogEmptyRescueLink to={`/teachers?q=${encodeURIComponent(q)}`}>
-        教师资料有 {rescueTotal} 位匹配，去查看
-      </CatalogEmptyRescueLink>
-    ) : undefined;
-
   const results = (
     <CatalogResultsStates
       loading={loading}
@@ -287,7 +227,6 @@ export function CoursesPage() {
       onRetry={() => setReloadToken((n) => n + 1)}
       onClearFilters={clearFilters}
       copy={RELATION_CATALOG_COPY}
-      rescue={rescue}
     >
       {data ? (
         <div>
@@ -401,11 +340,6 @@ export function CoursesPage() {
         </div>
       </header>
       {filterBox}
-      {globalSearchVariant === "C" && q && GlobalSearchHintLazy ? (
-        <Suspense fallback={null}>
-          <GlobalSearchHintLazy catalog="courses" query={q} />
-        </Suspense>
-      ) : null}
       {results}
     </section>
   );

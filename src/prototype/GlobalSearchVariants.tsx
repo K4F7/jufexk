@@ -1,11 +1,11 @@
 /**
  * PROTOTYPE — global-search variants (throwaway; not production-ready).
  *
- * Question: 导航栏要不要加统一搜索入口，还是页内搜索（#286）+ 空态救援（#287）就够？
+ * Question: 导航栏要不要加统一搜索入口，还是页内搜索（#286）就够？
  *
- * A — 维持页内：无顶栏搜索；第一次查询靠目录页 SearchField；搜错实体走 #287 空态链接。
- * B — 顶栏统一入口：Modal + Autocomplete 分组课程/教师（各最多 5 条）；点选进详情，回车进当前目录 ?q=。
- * C — 顶栏只跳转：SearchField 回车进当前目录，结果上方官方 Link 指向另一目录。
+ * A — 维持页内：无顶栏搜索；第一次查询靠目录页 SearchField。
+ * B — 顶栏统一入口：Modal + Autocomplete 分组课程/教师（各最多 5 条）；点选进详情，回车进课程目录 ?q=。
+ * C — 顶栏只跳转：SearchField 回车进课程目录。
  *
  * Mounted via AppShell / catalog pages when ?module=global-search&variant=A|B|C (DEV only).
  */
@@ -21,17 +21,13 @@ import {
   SearchField,
   Separator,
 } from "@heroui/react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { CatalogEmptyRescueLink } from "../components/CatalogResultsStates";
+import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import type { Course, Paginated, Teacher } from "../lib/types";
 import {
   catalogDetailHref,
-  catalogKindFromPath,
   catalogSearchHref,
-  crossCatalogHintLabel,
-  oppositeCatalog,
   takeSuggestions,
   type CatalogKind,
   type GlobalSearchVariantKey,
@@ -48,32 +44,28 @@ const VARIANT_NOTES: Record<GlobalSearchVariantKey, { title: string; first: stri
   {
     A: {
       title: "A — 维持页内",
-      first: "第一次查询：2 次点击 + 输入。点导航进课程或教师页 → 点页内搜索框 → 输入。无顶栏入口。",
-      recover: "搜错实体：1 次点击。等空态出现后，点 #287「另一目录有 N 条匹配」链接。",
+      first: "第一次查询：2 次点击 + 输入。点导航进课程页 → 点页内搜索框 → 输入。无顶栏入口。",
+      recover: "搜错实体：等空态出现后改关键词或类别。",
     },
     B: {
       title: "B — 顶栏分组建议",
-      first: "第一次查询：1 次点击 + 输入 + 1 次点选或回车。点顶栏搜索（窄屏先点图标打开 Modal）→ 输入 → 点建议进详情，或回车进当前目录 ?q=。",
-      recover: "搜错实体：1 次点击另一分组；或回车后点空态 #287。",
+      first: "第一次查询：1 次点击 + 输入 + 1 次点选或回车。点顶栏搜索（窄屏先点图标打开 Modal）→ 输入 → 点建议进详情，或回车进课程目录 ?q=。",
+      recover: "搜错实体：点另一分组进教师详情；或回车进课程目录 ?q=。",
     },
     C: {
       title: "C — 顶栏只跳转",
-      first: "第一次查询：1 次点击 + 输入 + 回车。点顶栏搜索（窄屏先点图标）→ 输入 → 回车，落到当前所在目录 ?q=。",
-      recover: "搜错实体：1 次点击结果上方「也在另一目录中搜」官方 Link，不必等空态。",
+      first: "第一次查询：1 次点击 + 输入 + 回车。点顶栏搜索（窄屏先点图标）→ 输入 → 回车，落到课程目录 ?q=。",
+      recover: "搜错实体：改关键词后回车，仍落到课程目录。",
     },
   };
 
 function useCatalogNavigation() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [params] = useSearchParams();
-  const kind = catalogKindFromPath(location.pathname);
 
   return {
-    kind,
-    params,
-    goToCatalog(query: string, target: CatalogKind = kind) {
-      navigate(catalogSearchHref(target, query, params));
+    goToCatalog(query: string) {
+      navigate(catalogSearchHref(query, params));
     },
     goToDetail(target: CatalogKind, id: number) {
       navigate(catalogDetailHref(target, id, params));
@@ -149,7 +141,7 @@ function GroupedAutocomplete({
   autoFocus?: boolean;
   onPicked?: () => void;
 }) {
-  const { kind, goToCatalog, goToDetail } = useCatalogNavigation();
+  const { goToCatalog, goToDetail } = useCatalogNavigation();
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(autoFocus);
   const { courses, teachers, ready } = useGroupedSuggestions(value);
@@ -158,7 +150,7 @@ function GroupedAutocomplete({
 
   function submitCatalog(next = value) {
     onPicked?.();
-    goToCatalog(next, kind);
+    goToCatalog(next);
   }
 
   return (
@@ -259,12 +251,12 @@ function JumpSearchField({
   autoFocus?: boolean;
   onPicked?: () => void;
 }) {
-  const { kind, goToCatalog } = useCatalogNavigation();
+  const { goToCatalog } = useCatalogNavigation();
   const [value, setValue] = useState("");
 
   function submit(next = value) {
     onPicked?.();
-    goToCatalog(next, kind);
+    goToCatalog(next);
   }
 
   return (
@@ -365,32 +357,6 @@ function CompareNote({ variant }: { variant: GlobalSearchVariantKey }) {
       <p className="m-0 mt-1">{note.first}</p>
       <p className="m-0 mt-1">{note.recover}</p>
     </aside>
-  );
-}
-
-export function GlobalSearchCrossCatalogHint({
-  catalog,
-  query,
-}: {
-  catalog: CatalogKind;
-  query: string;
-}) {
-  const [params] = useSearchParams();
-  const trimmed = query.trim();
-  const target = oppositeCatalog(catalog);
-  const href = useMemo(
-    () => catalogSearchHref(target, trimmed, params),
-    [params, target, trimmed],
-  );
-
-  if (!trimmed) return null;
-
-  return (
-    <p className="mb-3 text-sm" data-prototype-global-search-hint="">
-      <CatalogEmptyRescueLink to={href}>
-        {crossCatalogHintLabel(catalog, trimmed)}
-      </CatalogEmptyRescueLink>
-    </p>
   );
 }
 

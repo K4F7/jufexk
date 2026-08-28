@@ -7,6 +7,7 @@ import {
   Routes,
   useHref,
   useNavigate,
+  useSearchParams,
 } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { AdminSessionProvider } from "./hooks/useAdminSession";
@@ -35,7 +36,6 @@ import {
 } from "./pages/SiteInfoPages";
 import { SubmitPage } from "./pages/SubmitPage";
 import { TeacherDetailPage } from "./pages/TeacherDetailPage";
-import { TeachersPage } from "./pages/TeachersPage";
 
 const THEME_STORAGE_KEY = "jufexk-theme";
 
@@ -70,6 +70,17 @@ function DevPrototypeMount() {
  * Router instead of full-page reloads, so in-page state such as the course
  * review cache and scroll position survives row toggles (Issue #202).
  */
+function TeachersListRedirect() {
+  const [params] = useSearchParams();
+  const q = params.get("q")?.trim();
+  return (
+    <Navigate
+      replace
+      to={q ? `/courses?q=${encodeURIComponent(q)}` : "/courses"}
+    />
+  );
+}
+
 function RacClientNavigation({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   return (
@@ -165,7 +176,7 @@ export function App() {
               <Route path="/courses/:id" element={<CourseDetailPage />} />
               <Route path="/latest" element={<LatestPage />} />
               <Route path="/schedule" element={<SchedulePage />} />
-              <Route path="/teachers" element={<TeachersPage />} />
+              <Route path="/teachers" element={<TeachersListRedirect />} />
               <Route path="/teachers/:id" element={<TeacherDetailPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/account" element={<AccountPage />} />

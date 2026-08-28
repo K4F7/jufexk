@@ -208,7 +208,9 @@ test("empty review stream still uses the frozen empty copy", async ({ page }) =>
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("course teacher card opens the teacher page", async ({ page }) => {
+test("course teacher card hides a missing official homepage", async ({
+  page,
+}) => {
   await page.route("**/api/courses/8", (route) =>
     route.fulfill({
       json: { course: COURSE, reviewCount: 0 },
@@ -218,48 +220,44 @@ test("course teacher card opens the teacher page", async ({ page }) => {
     (url) => url.pathname === "/api/courses/8/reviews",
     (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
   );
-  await page.route("**/api/teachers/9", (route) =>
+  await page.goto("/courses/8?teacher=9");
+  const aside = page.locator("aside");
+  await expect(aside.getByText("测试教师", { exact: true })).toBeVisible();
+  await expect(aside.getByText("教师主页：")).toHaveCount(0);
+  await expect(
+    aside.getByRole("link", { name: /教师主页/ }),
+  ).toHaveCount(0);
+  await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+});
+
+test("course teacher card keeps an official CTA homepage", async ({ page }) => {
+  const officialUrl =
+    "https://example.com/home/teacherInfo/detail?fid=1&uid=2";
+  await page.route("**/api/courses/8", (route) =>
     route.fulfill({
       json: {
-        teacher: {
-          id: 9,
-          name: "测试教师",
-          department: "人文学院",
-          title: "讲师",
-          bio: "",
-          course_count: 1,
+        course: {
+          ...COURSE,
+          teachers: [
+            {
+              id: 9,
+              name: "测试教师",
+              review_count: 0,
+              official_homepage_url: officialUrl,
+            },
+          ],
         },
-        courses: [
-          {
-            id: 8,
-            code: "GEN0108",
-            name: "中国传统文化导论",
-            category: "general",
-            department: "人文学院",
-            rating: 4.2,
-            review_count: 3,
-          },
-        ],
-        reviews: [],
-        reviewCount: 3,
-        nextReviewCursor: null,
+        reviewCount: 0,
       },
     }),
   );
   await page.route(
-    (url) => url.pathname === "/api/teachers/9/reviews",
+    (url) => url.pathname === "/api/courses/8/reviews",
     (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
   );
   await page.goto("/courses/8?teacher=9");
-  await page.getByRole("link", { name: "测试教师的教师主页" }).click();
-  await expect(page).toHaveURL(/\/teachers\/9$/);
-  await expect(
-    page.getByRole("heading", { name: "课程（共 1 门）" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "测试教师", exact: true, level: 1 }),
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: /中国传统文化导论/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "评价" })).toHaveCount(0);
-  await expect(page.getByRole("list", { name: "评价列表" })).toHaveCount(0);
+  const homepage = page.getByRole("link", { name: `教师主页：${officialUrl}` });
+  await expect(homepage).toBeVisible();
+  await expect(homepage).toHaveAttribute("href", officialUrl);
+  await expect(homepage).toHaveAttribute("target", "_blank");
 });

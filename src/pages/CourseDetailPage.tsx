@@ -695,37 +695,28 @@ export function CourseDetailPage() {
         {selectedTeacher ? (
           <Card aria-label="任课教师">
             <Card.Header className="items-center gap-1 text-center">
-              <RouterAriaLink
-                aria-label={`${selectedTeacher.name}的教师主页`}
-                className="flex! w-full! flex-col! items-center gap-1 rounded-none! no-underline hover:bg-transparent hover:no-underline!"
-                to={`/teachers/${selectedTeacher.id}`}
+              <AnonymousAvatar
+                seed={selectedTeacher.id}
+                photoSrc={selectedTeacher.avatar_url}
+                size="lg"
+                className="size-[96px] rounded-full"
+                fallback={selectedTeacher.name.slice(0, 1)}
+              />
+              <Typography
+                className="m-0 min-w-0 text-[calc(22/15*1rem)] font-bold leading-tight"
+                render={({ children, ...domProps }) => (
+                  <span {...domProps}>{children}</span>
+                )}
+                type="h1"
               >
-                <AnonymousAvatar
-                  seed={selectedTeacher.id}
-                  photoSrc={selectedTeacher.avatar_url}
-                  size="lg"
-                  className="size-[96px] rounded-full"
-                  fallback={selectedTeacher.name.slice(0, 1)}
-                />
-                <Typography
-                  className="m-0 min-w-0 text-[calc(22/15*1rem)] font-bold leading-tight text-accent"
-                  render={({ children, ...domProps }) => (
-                    <span {...domProps}>{children}</span>
-                  )}
-                  type="h1"
-                >
-                  {selectedTeacher.name}
-                </Typography>
-                <Card.Description>
-                  {selectedTeacher.department || "院系未标注"}
-                </Card.Description>
-              </RouterAriaLink>
-              <div className="w-full min-w-0">
-                <TeacherHomepageLine
-                  officialUrl={selectedTeacher.official_homepage_url}
-                  teacherId={selectedTeacher.id}
-                />
-              </div>
+                {selectedTeacher.name}
+              </Typography>
+              <Card.Description>
+                {selectedTeacher.department || "院系未标注"}
+              </Card.Description>
+              <TeacherHomepageLine
+                officialUrl={selectedTeacher.official_homepage_url}
+              />
             </Card.Header>
           </Card>
         ) : null}
