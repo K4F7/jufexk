@@ -1,6 +1,6 @@
 /**
- * Browser coverage for the Issue #402 courses page: USTC 对齐的浅蓝筛选框
- * （课程类别行）、一行一条课程×教师关系条目（/api/courses 前端展开）、
+ * Browser coverage for the Issue #402 courses page: USTC 对齐的类别与排序
+ * 浏览框、一行一条课程×教师关系条目（/api/courses 前端展开）、
  * 分页与骨架/空态。
  *
  * 关系级评分/点评数、四维档位与「排序方式：课程评分」走
@@ -152,7 +152,7 @@ test("filter box shows the category row and rating sort", async ({
   await expect(
     page.getByRole("heading", { name: "课程列表" }),
   ).toBeVisible();
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   await expect(filterBox.getByText("课程类别：")).toBeVisible();
   for (const label of [
     "全部",
@@ -189,7 +189,7 @@ test("sort buttons toggle rating without changing default review-count params", 
   await mockCatalogApi(page);
   await page.goto("/courses");
 
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   await expect(page).not.toHaveURL(/[?&]sort=/);
 
   await filterBox.getByRole("radio", { name: "课程评分", exact: true }).click();
@@ -203,7 +203,7 @@ test("search query relabels the default sort as 相关度", async ({ page }) => 
   await mockCatalogApi(page);
   await page.goto("/courses?q=中国");
 
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   await expect(
     filterBox.getByRole("radio", { name: "相关度", exact: true }),
   ).toBeVisible();
@@ -260,8 +260,8 @@ test("relation rows show rating, review count, and four-dim labels @mobile-smoke
   // 整行是指向 课程×教师 详情的链接。
   await expect(first).toHaveAttribute("href", /\/courses\/8\?.*teacher=9/);
 
-  // HeroUI Link 默认 w-fit；目录行必须拉齐筛选框所在的内容区全宽。
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  // HeroUI Link 默认 w-fit；目录行必须拉齐浏览框所在的内容区全宽。
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   const rowBox = await first.boundingBox();
   const filterBounds = await filterBox.boundingBox();
   expect(rowBox).toBeTruthy();
@@ -276,7 +276,7 @@ test("category row filters the relation list", async ({ page }) => {
   await mockCatalogApi(page);
   await page.goto("/courses");
 
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   await filterBox.getByRole("radio", { name: "体育" }).click();
   await expect(page).toHaveURL(/category=sports/);
   await expect(page.getByRole("link", { name: /篮球/ })).toBeVisible();
@@ -291,9 +291,37 @@ test("category row filters the relation list", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("filtered empty state names the active filters and clears them", async ({
+test("category-only empty uses the true empty-catalog copy", async ({
   page,
 }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/config")
+      return route.fulfill({
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
+      });
+    if (url.pathname === "/api/user/session")
+      return route.fulfill({
+        json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
+      });
+    if (url.pathname === "/api/courses") {
+      return route.fulfill({
+        json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: "not mocked" } });
+  });
+  await page.goto("/courses?category=sports");
+
+  const empty = page.getByRole("status").filter({ hasText: "目录暂无课程数据" });
+  await expect(empty).toBeVisible();
+  await expect(empty).toContainText("目录还在整理，请稍后再来看看。");
+  await expect(empty).not.toContainText("筛选");
+  await expect(empty).not.toContainText("没有找到匹配");
+  await expect(empty.getByRole("button")).toHaveCount(0);
+});
+
+test("search-miss empty names the query and clears it", async ({ page }) => {
   await mockCatalogApi(page);
   await page.goto("/courses?q=网球&category=sports");
 
@@ -301,10 +329,11 @@ test("filtered empty state names the active filters and clears them", async ({
     .getByRole("status")
     .filter({ hasText: "没有找到匹配「网球」的课程" });
   await expect(empty).toBeVisible();
-  await expect(empty).toContainText("关键词“网球”");
-  await expect(empty).toContainText("体育");
+  await expect(empty).toContainText("试试换个关键词。");
+  await expect(empty).not.toContainText("筛选");
+  await expect(empty).not.toContainText("体育");
 
-  await empty.getByRole("button", { name: "清空筛选" }).click();
+  await empty.getByRole("button", { name: "清空搜索" }).click();
   await expect(page).not.toHaveURL(/[?&]q=/);
   await expect(page).not.toHaveURL(/category=/);
   await expect(
@@ -323,7 +352,7 @@ test("first load shows skeleton rows and keeps the header height stable @mobile-
   await expect(page.getByRole("status", { name: "加载中…" })).toBeVisible();
   await expect(page.locator("[data-catalog-skeleton-row]")).toHaveCount(20);
   await expect(
-    page.getByRole("search", { name: "课程目录筛选" }),
+    page.getByRole("region", { name: "课程类别与排序" }),
   ).toBeVisible();
   // 加载态必须是关系行骨架，不能再闪旧四列表（课程/教师/院系/投稿）。
   await expect(page.getByRole("columnheader", { name: "课程" })).toHaveCount(0);
@@ -345,14 +374,14 @@ test("first load shows skeleton rows and keeps the header height stable @mobile-
   expect(before?.height).toBe(after?.height);
 });
 
-test("out-of-range deep-linked page keeps the filter box usable as a way back", async ({
+test("out-of-range deep-linked page keeps the browse box usable as a way back", async ({
   page,
 }) => {
   await mockCatalogApi(page, { emptyBeyondFirstPage: true });
   await page.goto("/courses?page=2");
 
-  // 越界页没有条目：筛选框仍在，切换类别即回到第 1 页。
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  // 越界页没有条目：浏览框仍在，切换类别即回到第 1 页。
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   await expect(
     filterBox.getByRole("radio", { name: "体育" }),
   ).toBeEnabled();

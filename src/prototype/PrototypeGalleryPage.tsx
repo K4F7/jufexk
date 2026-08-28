@@ -120,8 +120,8 @@ function PrototypeGalleryContent() {
           先用下方页面图集进出每个真实界面，对照现行 UI。模块变体仍一次只回答一个视觉问题，挂在真实路由上。
         </p>
         <p className="m-0 text-xs text-muted">
-          顺序见 docs/ui/foundations.md · 当前优先：目录后续收藏/条件密度（issue
-          #63 · module=catalog-followup）· 启动：
+          顺序见 docs/ui/foundations.md · 当前优先：页内 vs 顶栏搜索（issue
+          #303 · module=global-search）· 启动：
           <code className="rounded bg-default px-1">pnpm prototype</code>
           （API 另开{" "}
           <code className="rounded bg-default px-1">pnpm dev</code>）
@@ -154,7 +154,7 @@ function PrototypeGalleryContent() {
           <p className="m-0 mt-1 text-muted">{module.question}</p>
           <p className="m-0 mt-2 text-xs text-muted">
             该模块在真实页面上下文预览。请从上方变体链接进入对应路由，底部切换条可循环
-            A/B/C。课程详情摘要挂在 /courses/:id。
+            A/B/C。评价流与认可对照挂在 /courses/:id；顶栏搜索对照挂在 /courses。
           </p>
           {module.livePath ? (
             <p className="m-0 mt-2">

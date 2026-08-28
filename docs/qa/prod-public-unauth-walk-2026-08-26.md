@@ -4,8 +4,13 @@ Unauthenticated first-visit walk of **https://courses.sein.moe**.
 Headless Chromium via `node scripts/prod-public-smoke.mjs` (Playwright 1.62.1).
 Viewport 1280×800. No login, no review POST, no 导师 / Tencent sheets.
 
-Reconnaissance-then-action: `networkidle` → wait for catalog idle copy
-（`正在更新课程目录…` / `课程加载中…`）→ screenshot → inspect roles → act.
+Reconnaissance-then-action: `networkidle` → wait for catalog idle →
+screenshot → inspect roles → act.
+
+Superseded / production now: first-load uses `CourseRelationRow` skeletons
+（`加载中…`）, not `正在更新课程目录…`. Category-empty copy is
+`目录暂无课程数据`; only top-bar `q` is a search-miss. The observations
+below are a 2026-08-26 snapshot.
 
 Raw machine report: `output/playwright/prod-public-smoke/report.json`
 (gitignored). Screenshots are written under that directory's `artifacts/`

@@ -11,13 +11,13 @@
 - 保留现有 Vite、React Router、Cloudflare Worker、D1、API 与业务状态逻辑。
 - HeroUI 官方 Vite Template 只作为布局、导航、主题切换和视觉原语的 donor，不整体迁移。
 - 不使用 HeroUI Pro。
-- 当前批次只设计和验收桌面端：以 1440×900 为主，兼顾 1280×720。移动端不在本批范围。
+- 目录与公共壳已覆盖窄屏折行；`/schedule` 只做电脑端，见 [ADR-0030](../adr/0030-schedule-desktop-only.md)。
 
 ## 品牌与主题
 
 - 使用 HeroUI Theme Builder 导出的官方 Sky preset 作为亮色和暗色主题基础。
 - Sky 是品牌与主要交互色。成功、警告和危险继续使用各自的语义色，不能被 Sky 覆盖。
-- **已视觉冻结（sky-tokens，#422 重开后）**：官方 Sky A 画布——HeroUI 默认浅灰底 `oklch(0.9702 0 0)`、官方 Sky accent、亮色 `--foreground: var(--eclipse)` 黑字；0.5rem 半径与默认阴影，`link=foreground`。不再使用 C 的天空色表面 tint。实现见 `src/styles/globals.css`。
+- **已视觉冻结（sky-tokens，#422 重开后）**：官方 Sky A 画布——HeroUI 默认浅灰底 `oklch(0.9702 0 0)`、官方 Sky accent、亮色 `--foreground: var(--eclipse)` 黑字；0.5rem 半径与默认阴影，`link=foreground`。不再使用 C 的天空色表面 tint。实现见 `src/styles/globals.css`。DEV 对照仍在 Gallery `?module=sky-tokens`。
 - 初次访问跟随系统主题；用户切换亮暗模式后记住手动选择。
 - 主题开关采用官方示例式亮暗图标交互。
 - 使用 HeroUI 官方组件语言；后续模块可在已冻结 token 上继续压缩留白与信息密度。
@@ -26,64 +26,58 @@
 ## 路由与公共框架
 
 - `/` 重定向到 `/courses`，访问网站后立即看到课程目录，不经过独立 Landing Page。
-- 公共顶部导航包含课程、教师、「写评价」和主题切换；不显示重复的首页入口。
+- 公共顶部导航：左簇品牌 · `课程` / `课评` / 外链 `导师` · 居中顶栏搜索 · 右登录 + 主题切换。排课模拟只在 DEV 与预览站出现。不显示重复的首页入口。
 - 品牌链接和课程导航均指向课程目录。
+- 顶栏搜索提交到 `/courses?q=`（`AppShell` 的 `ShellCourseSearch`）。页内目录搜索头不是生产默认；DEV 可用 `?module=global-search` 对照 #303。
+- 「写评价」不在主导航；从课程页「写点评」进入。本阶段投稿仍不要求先在导航里露出入口。
 - 公共内容容器在桌面端约为 1520px。
-- 首批统一范围包括公共 Shell、课程目录、教师目录、课程详情和教师详情。
-- 「写评价」始终在导航中，不因校园认证或登录状态隐藏；本阶段投稿不要求登录。
+- 首批统一范围包括公共 Shell、课程目录、课程详情和教师详情。公开教师列表已下线：`/teachers` 重定向到 `/courses`（带 `q` 时带到课程目录）。
+- DEV 仍挂载 Prototype Gallery（`/prototype`，含 page-atlas）以及 live 对照 `shell-nav`、`global-search`。Gallery、Prototype 参数和切换器不得出现在生产构建中。
 
 ## 目录体验
 
 ### 课程目录
 
-- 保留搜索、课程类别、院系、任课教师筛选和分页。
-- 搜索关键词匹配课程名、课号或教师名；首批不增加异步 Autocomplete。
-- 排序控件（Issue #203）：「投稿数优先（默认）/ 课名」，经 URL `sort=name` 深链；默认仍按学生投稿数降序。任课教师筛选收敛为单个可搜索 ComboBox（输入即检索全部教师，取代搜索框 + 下拉双控件与前 50 位说明）；院系筛改为目录去重非空院系的 Select，无可用选项时不渲染。
-- 结果表视觉冻结为 **四列折叠（原型 B）**：课程（课名 + 类别 Chip · 课号次行）、教师、院系、投稿；实现见 `src/components/CourseResultTable.tsx`。
-- 课程界面不展示课程级评分（评分严格绑定 教师×课程，Issue #140）：结果表末列仅显示公开投稿数；教师列默认单行、内容超出一行时行内「展开/折叠」切换以保持行高一致；院系列单行不换行。
-- 默认按学生投稿数降序，再按课程名排序。
-- 教师姓名是真实链接，进入该课程×教师评价页（`/courses/:id?teacher=`，Issue #265）；行内其他区域进入课程详情（任课教师表）；课程名亦为真实链接。课程页内教师姓名链接仍进教师详情（Issue #252）。
-- 整行导航不能牺牲课程名和教师名链接的键盘语义及新标签页能力。
-- 筛选条件和页码保存在 URL；进入详情再返回时恢复完整目录状态。
-- 分页与状态采用冻结的 **精简页脚 A**（上一页 / 页码 / 下一页 · 共 N 门），见 `CatalogResultsStates`。
-- **整页集成（视觉冻结）**：Shell C · 搜索 C · 筛选 D · 结果表 B · 状态 A 在 `/courses` 串联；模块外间距可微调，不得暗中改已冻结模块内部。
-- **收藏 / 本专业（Prototype 决策记录 · Issue #73，承接 #63）**：三个状态分开记录，不得混淆——
-  - **Prototype 已交付（可丢弃）**：A/B/C 仅 DEV，`?module=catalog-followup&variant=A|B|C` 挂在真实 `/courses`；收藏为内存演示，「本专业」为 stub（≈ `category=major`），不写真实数据；变体 URL 可复制，切换变体保留目录查询状态。
-  - **用户已选择 C（2026-08-17）**：条件密度——无筛选七列粗扫、有筛选（含仅收藏 / 本专业）四列折叠——加可移除 Tag 收藏清单、筛选下「仅收藏 / 本专业」Toggle 与行内星标；取代 #63 记录的「A + C Tag、不采用条件密度」意向。生产实现任务仍未创建。
-  - **生产未实现**：不在当前 MVP；用户确认进入生产后另建 frontend 与 backend 实现 Issue，账号、持久化与目录查询契约必须分开标记。
-- **条件密度（已随 #73 选择 C）**：无筛选七列 / 有筛选四列的条件切换已被用户选择；生产仍统一四列 B，直至另建的生产实现工单落地。
+- 标题为「课程列表」，计数为「共 N 条」（按课程×教师关系行）。加载中计数行用骨架占位，避免 CLS。
+- 生产搜索只在顶栏。关键词匹配课程名、课号或教师名；提交后落到 `/courses?q=`。
+- 浏览框（`CoursesPage` 内联 Surface）：课程类别 pills（全部 / 通识 / 数学 / 思政 / 英语 / 体育）与排序 pills（评价数量默认 / 课程评分 `sort=rating`）。有 `q` 时默认排序按钮文案改为「相关度」。类别与排序是浏览切换，不算「筛选」。
+- 院系 / 教师工具条已下线，不再作为生产目录控件。
+- 结果是一行一条课程×教师：`CourseRelationRow`（课名（老师） / 星级+评价样本 / 四维档位）。数据走 `GET /api/courses?view=relations`。已删除的四列 `CourseResultTable` 与七列粗扫表都不是现行 UI。
+- 评分按任课关系展示（课程×教师），不是课程级总分。无评价时显示「暂无评价」。
+- 整行进入该课程×教师评价页（`/courses/:id?teacher=`）。
+- 类别、排序和页码保存在 URL；进入详情再返回时恢复目录状态。
+- 分页与状态见 `CatalogResultsStates`：官方 `Pagination`（上一页 / 页码 / 下一页 · 共 N 条）。
+- **空态**：只有顶栏 `q` 算搜索未命中（「没有找到匹配…」+ 清空搜索）。类别无结果与真·无目录数据都用「目录暂无课程数据」。
+- **加载**：首次进入用与关系行同形的骨架（20 行 + 分页占位），`aria-label="加载中…"`。已有数据再刷新时保持当前列表，不再出现「正在更新课程目录」或表上 Spinner。
+- **收藏 / 本专业（历史决策 · Issue #73，承接 #63）**：2026-08-17 用户在已删除的 DEV 原型里选过条件密度方案 C。生产从未实现，对应 Gallery 模块与变体文件已删除。确认进入生产后另建 frontend / backend Issue。
 
 ### 教师目录
 
-- 教师目录**沿用**课程目录冻结语言，不单独开 A/B/C：`CatalogSearchHeader` C · `CatalogResultsStates` A · 折叠结果表（教师领域列）。
-- 列：教师（姓名）· 院系 · 投稿 · 课程数；实现见 `src/components/TeacherResultTable.tsx`。前台不展示职称（Issue #148）。
-- 教师界面不展示教师级跨课程聚合评分（评分严格绑定 教师×课程，Issue #153）：结果表投稿列仅显示公开投稿数。默认按投稿数降序，再按姓名排序。
-- 搜索匹配姓名或院系；条件与页码保存在 URL。
+- 公开教师列表已下线。`/teachers` 重定向到 `/courses`（保留 `q`）。教师详情仍在 `/teachers/:id`。
+- 评分仍严格绑定教师×课程；教师详情不展示跨课程聚合评分（Issue #153），前台不展示职称（Issue #148）。
 
 ## 详情体验
 
 - 领域约束：学生投稿绑定**课程 + 任课教师**（见 CONTEXT），不是「只评课」也不是「只评老师」。课程级与教师级跨课程汇总评分都只是任课关系上投稿的聚合，单独「只看课」或「只看老师」的决策价值有限。
-- **课程详情页**：保留为目录行导航落点。顶部摘要沿用 Prototype **B** 的左身份 / 右 Surface 布局（Issue #115）；自 Issue #140 起右 Surface 仅显示公开评价数，不再展示课程级评分，评分由「任课教师」区块按任课关系拆分展示。
+- **课程详情页**：保留为目录行导航落点。顶部摘要为左身份 / 右 Surface；自 Issue #140 起右 Surface 仅显示公开评价数，不再展示课程级评分，评分由「任课教师」区块按任课关系拆分展示。
 - 课程详情和教师详情均采用单页纵向信息架构，不使用 Dashboard 式多张统计卡或不必要的 Tabs；内容容器收窄到约 880px 阅读宽度。
 - 课程顶部使用紧凑摘要区：左身份（类别 Chip、课程名、课号、院系），右评价数 Surface（公开文字评价数，无课程级评分）；任课教师独立成表（教师姓名链接 · 院系 · 评分/投稿），按任课关系展示评分/投稿（Issue #239 将 #221/#223 的 Card 网格退回密表，与 `TeacherCourseTable` 对齐）。选中教师后摘要补上当前任课教师姓名链接与院系，右 Surface 改为该课程×教师评价数（Issue #289）；仍不把教师表缩进摘要。
 - **课程详情页教师表与评价流互斥（Issue #252）**：`/courses/:id` 只显示任课教师表（提示「选择一位任课教师，查看这位老师在这门课的评价。」，不出现评价流）；点击教师行进入 `/courses/:id?teacher=<id>` 后只显示该课程×教师评价流，「返回任课教师」去掉参数回到教师表。选中后不渲染教师列表；当前老师改由摘要身份行展示（Issue #289）。切换教师先回表再点另一行；会话缓存仍恢复已加载页。教师姓名链接进入教师详情页。课程评价 API：`/api/courses/:id` 返回课程、教师列表、评价总数，以及按教师键索引的任课关系 AI 总结（空总结不出现）；`/api/courses/:id/reviews` 带 `teacherId` 时按 课程×教师 过滤，不带时仍返回该课全部公开评价（页面不再使用该无参视图）。
 - 教师详情同样不出现跨课程聚合评分数字（Issue #153）；右 Surface 仅显示公开文字评价数。评分只出现在「任课课程」表的教师×课程行。不以星阵、环形图或进度条为主。
 - 学生投稿为统一匿名文字流（Issue #68/#90）：正文以装饰引号为视觉锚点，`Separator` 分隔，分段加载；单条不展示评分与评价维度（历史评价无 overall，统一流保持现代/历史一致，见 CONTEXT §历史评价）。身份行按页面上下文取舍（2026-08-17 用户决策）：课程页评价按 课程×教师 收敛后整流同属所选教师，条目不再重复教师身份「昵称」；教师详情不再展示跨课程评价流。
 - 历史文字资料匿名并入统一文字流：不包含 overall，不参与评分与排序统计，不公开历史来源；评价流空态文案统一为「暂无评价」。
-- **教师详情（视觉冻结 · 模块 11）**：单页纵向，沿用课程详情冻结语言，**不单开 A/B/C**。
+- **教师详情（视觉冻结 · 模块 11）**：单页纵向，沿用课程详情冻结语言，**不单开 A/B/C**。DEV live 对照：`?module=teacher-detail`。
   - **摘要 B**：左身份（姓名 / 院系 / 任课门数 / 简介）· 右 Surface 仅显示公开评价数（#153 移除教师级聚合评分；#148 不展示职称）。
   - **任课课程表**：课程域折叠列（课名+类别 Chip · 课号次行 / 院系 / 评分·投稿）；真实课程链接；实现见 `TeacherCourseTable`。
   - **相关投稿**：教师详情不再展示跨课程评价流；评价只在课程页按任课关系查看。
-  - 返回教师目录保留 URL 状态。
+  - 返回教师目录的旧链接触发 `/teachers` → `/courses`。
 
 ## 页面状态与生产质量
 
-- 课程目录状态视觉冻结为 **精简页脚（原型 A）**，首次加载自 Issue #205 起改为镜像结果表的骨架行（替代居中 Spinner），标题旁计数行恒占高度（加载中显示骨架条，避免 CLS）；有数据刷新时表上轻量 Spinner 行；错误虚线框 + 重试；空结果区分筛选无匹配与真·无目录数据，筛选空提供清除；分页为上一页 / 页码 / 下一页并显示总数。实现见 `src/components/CatalogResultsStates.tsx`。
+- 课程目录状态由 `src/components/CatalogResultsStates.tsx` 实现：首次加载为关系行骨架（Issue #205 / #418）；已有数据刷新时保持列表、无 Spinner；错误用官方 Alert + 重试；空态只把顶栏 `q` 当搜索未命中，其余空结果用「目录暂无课程数据」；分页为上一页 / 页码 / 下一页并显示「共 N 条」。
 - 请求失败提供重试操作。
-- 筛选无结果提供清除筛选操作。
-- 目录确实没有数据时使用与筛选无结果不同的文案。
-- 生产完成状态要求键盘可以完成导航、筛选和分页，焦点清晰，读屏可以识别表格、加载、错误、当前导航和行内链接。
-- **后续意向（未实现）**：完整页码条 + 表骨架（原型 B）或底栏状态条（原型 C）可在目录集成阶段再评估，本批不切换。
+- 搜索未命中提供清空搜索。
+- 生产完成状态要求键盘可以完成导航、浏览切换和分页，焦点清晰，读屏可以识别列表、加载、错误、当前导航和行内链接。
 
 ## Prototype 原则
 
@@ -93,7 +87,7 @@ Prototype 用可操作、可丢弃的代码快速回答一个明确的 UI 问题
 
 - 主要模块挂载在现有真实路由与真实页面上下文中。
 - 使用真实只读 API 和实际数据。
-- 搜索、筛选、分页、课程/教师跳转、加载、错误和空结果应当可以实际操作或观察。
+- 搜索、浏览切换、分页、课程/教师跳转、加载、错误和空结果应当可以实际操作或观察。
 - 涉及学生投稿、审核、删除、导入等写操作时，使用内存状态、桩响应或明确的只读模式，不修改真实数据。
 - Prototype 以帮助用户作出视觉决定为完成标准，不提前建设生产抽象或完整测试体系。
 
@@ -126,19 +120,19 @@ Prototype 用可操作、可丢弃的代码快速回答一个明确的 UI 问题
 - 主要模块从 Gallery 进入真实课程或教师页面上下文；
 - 页面底部使用浮动切换条循环切换变体（通常 A/B/C）；
 - **组件官方优先**（见根目录 `AGENTS.md`）：变体优先比较不同官方组件或官方 variant，不自造控件皮肤；
-- 切换变体时保留搜索、筛选和分页参数；
+- 切换变体时保留搜索、浏览和分页参数；
 - URL 可复制，刷新后仍停留在同一变体；
 - 小型组件可以在 Gallery 中单独并排展示；
 - Gallery、Prototype 参数和切换器不得出现在生产构建中。
+
+已删除、不要再对照的 Gallery 模块：`catalog-search`、`catalog-filters`、`course-table`、`catalog-states`、`course-detail-summary`、`course-detail-reviews`、`catalog-followup`。对应变体文件已从 `src/prototype/` 移除。
 
 ### 模块粒度
 
 这里的「UI 模块」指用户可感知、具有独立职责和状态的产品区域，例如：
 
-- 公共 Shell 与顶部导航；
-- 目录标题与搜索；
-- 筛选工具；
-- 课程结果表；
+- 公共 Shell 与顶部导航（含顶栏搜索）；
+- 课程目录浏览框与关系行；
 - 分页与页面状态；
 - 详情摘要；
 - 学生投稿条目。
@@ -151,13 +145,13 @@ HeroUI Button、Chip、Input 等基础 primitive 通常不是独立的 Prototype
 - 如果模块不存在真实结构分歧，可以只做一个可操作方案供确认，不为了凑数制造差异。
 - 用户可以选择一个完整变体，也可以明确组合不同变体的局部方案。
 
-课程目录首轮比较：
+当前仍在 Gallery 的探索模块：
 
-- **Variant A — 单行高密度工作台**：搜索和所有筛选集中在表格上方，表格是绝对主体。
-- **Variant B — 左侧筛选栏**：筛选条件垂直排列在左侧，课程结果表位于右侧。
-- **Variant C — 搜索优先分层布局**：宽搜索框是第一操作，常用类别作为快捷入口，院系和教师进入高级筛选区。
+- **global-search（#303）**：页内目录搜索 vs 导航栏全局搜索。不改生产默认（生产已是顶栏搜索）。
+- **teaching-reviews-feed（#71，承接 #68）**：任课评价文字流。
+- **review-recognition（#74，承接 #70）**：任课评价认可交互。DEV 内存 stub。
 
-三个变体使用相同的真实数据、表格列、筛选能力和分页行为，只比较信息架构与主要操作路径。
+仍挂载的对照 / 图集：`sky-tokens`、`shell-nav`、`teacher-detail`、page-atlas。
 
 ## 逐模块推进与冻结
 
@@ -179,37 +173,34 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 
 ### 冻结记录
 
-本文维护每个模块的状态、胜出方案、确认原因、允许变化以及 Prototype 分支或提交引用。尚未开始的模块不提前标记状态。
+本文维护每个模块的状态、胜出方案、确认原因、允许变化以及 Prototype 分支或提交引用。尚未开始的模块不提前标记状态。已删除的 throwaway 变体不再当作现行对照。
 
 | UI 模块 | 状态 | 胜出方案 | 确认原因 | Prototype 引用 |
 | --- | --- | --- | --- | --- |
-| Sky 主题 token | 视觉冻结 | **官方 Sky A 画布**：HeroUI 默认浅灰底 / 白表面 / 中性边框；官方 Sky accent（官网主按钮蓝）；亮色 eclipse 黑字；0.5rem 半径 / 默认阴影 / `link=foreground`。不再取 C 的天空色 tint | #422 用户对照 HeroUI 官网 hero，要求底色用官方浅灰、换用该蓝、黑字；重开原 A+C 冻结 | `src/prototype/themes/sky-tokens.css` · 生产：`src/styles/globals.css` · Issue #422 |
-| 公共 Shell 与顶部导航 | 视觉冻结 | **C — Button 导航**：左簇字标品牌（无「选」方标）· HeroUI `Button` size=`sm`、当前 `secondary` / 非当前 `ghost` · 右校名 + `ThemeToggle` · 顶栏 `min-h-14` + `bg-surface/95` sticky | 用户在官方 A/B/C 三版中确认 C；与主题开关同属 Button 圆角语系 | 生产：`src/components/AppShell.tsx` · 原型对照：`src/prototype/ShellNavVariants.tsx` C |
-| 目录标题与搜索 | 视觉冻结 | **C — 同行工具条**：左 `h1` 标题 + 门数（xs muted）；右 HeroUI `SearchField` `variant=secondary` 全宽；无独立 SectionHead | 用户在 A/B/C 三版中确认 C | 生产：`src/components/CatalogSearchHeader.tsx` · 原型对照：`src/prototype/CatalogSearchVariants.tsx` C |
-| 筛选工具 | 视觉冻结 | **D — A+C 组合**：院系 / 教师搜索 / 教师 Select / 清空 紧贴上方搜索；其下类别 `Button` secondary/ghost 快捷条；扩展位留给未来收藏，生产不展示不可用「即将」入口 | 用户倾向 A+C，确认 D 顺序（类别下移、次级筛选上贴搜索） | 生产：#402 起改为 `src/pages/CoursesPage.tsx` 内联浅蓝筛选框（课程类别行；旧 `CatalogFilters.tsx` 已随工具条下线删除） · 原型对照：`src/prototype/CatalogFiltersVariants.tsx` D |
-| 课程结果表 | 视觉冻结 | **B — 课程优先折叠（高密度）**：四列；课名+类别 Chip 同行、课号次行；末列仅显示公开投稿数 `N 投`（#140 移除课程级评分）；教师列默认单行、溢出时行内展开/折叠；院系单行；课程名与教师为真实 Link；整行进课程详情 | 用户确认 B 结构；压紧行高后采用；A 的七列适合无筛选粗浏览，作后续意向不写进本批生产；#140 明确评分严格绑定 教师×课程、课程界面不出现评分 | 生产：`src/components/CourseResultTable.tsx` · 原型对照：`src/prototype/CourseTableVariants.tsx` B · Issue #140 |
-| 分页及加载、错误、空状态 | 视觉冻结 | **A — 精简页脚**：上一页/页码/下一页 + 共 N 门；首次 Spinner；刷新轻量行；错误虚线框+重试；空态分筛选/真空并提供清除 | 用户在 A/B/C 中确认 A | 生产：`src/components/CatalogResultsStates.tsx` · 原型对照：`src/prototype/CatalogStatesVariants.tsx` A |
-| 课程目录整页集成 | 视觉冻结 | **冻结栈串联**：Shell C · 搜索 C · 筛选 D · 结果表 B · 状态 A；`/courses` 生产路径 | 各子模块已用户确认；本步做整页对齐与文案/间距收口，无新结构变体 | 生产：`src/pages/CoursesPage.tsx` + 上述冻结组件 |
-| 教师目录适配 | 视觉冻结 | **课程语言迁移**：搜索 C · 状态 A · 四列折叠表（姓名 / 院系 / 投稿 / 课程数）；#153 移除教师级聚合评分，投稿列仅显示公开投稿数；#148 不展示职称 | foundations 规定不单开变体；与课程目录视觉一致、字段保持教师域；评分严格绑定 教师×课程 | 生产：`src/pages/TeachersPage.tsx` · `TeacherResultTable.tsx` · Issue #153 · #148 |
-| 课程详情摘要 | 视觉冻结 | **B — 左身份 / 右评价数**：类别 Chip + 课程名 + 课号/院系 · 右 Surface 仅显示公开评价数（#140 移除课程级评分数字）；未选教师下接「任课教师」关系表，选中后只显示该教师评价流（#252），摘要补当前老师姓名链接与院系，评价数改为该课程×教师（#289） | 评价必须绑定课程+任课教师（见 CONTEXT）；#115 明确重开并落地生产；#140 课程界面不出现评分；#239 密表；#252 教师表与评价流互斥；#289 互斥后摘要仍要有当前老师 | 生产：`CourseDetailPage.tsx` · `DetailSummary.tsx` · `CourseTeacherTable.tsx` · 原型：`src/prototype/CourseDetailSummaryVariants.tsx` B · Issue #60 → #115 → #140 → #239 → #252 → #289 |
-| 学生投稿条目与历史文字资料 | 视觉冻结 | **统一匿名文字流**（#68/#90 取代 A+B 条目）：装饰引号 + 正文 + `Separator` + 分段加载；单条不展示评分/维度，历史文字匿名并入同一流，空态「暂无评价」；身份行按页面上下文取舍——课程×教师 流不重复教师身份（2026-08-17 用户决策）；教师详情不再展示跨课程评价流 | 历史评价无 overall（见 CONTEXT），统一文字流保证现代/历史一致；课程页评价按 课程×教师 收敛后教师「昵称」成为冗余噪音；原 A 结构 + B 维度 soft Chip 保留于原型对照 | 生产：`PublicReviews.tsx` · 原型：`CourseDetailReviewsVariants.tsx` A+B · Issue #61 → #68/#90；`ReviewCard`/`LegacyReviews` 死代码于 #115 移除 |
-| 教师详情与任课课程表 | 视觉冻结 | **课程详情语言迁移**：摘要 B（左身份/右评价数 Surface，#153 移除教师级聚合评分）· 任课表课程域折叠（评分按 教师×课程 展示）· 教师详情不再展示跨课程评价流 | foundations 规定不单开变体；与详情冻结语言一致、字段保持课程域；评分严格绑定 教师×课程 | 生产：`TeacherDetailPage.tsx` · `DetailSummary.tsx` · `TeacherCourseTable.tsx` · Issue #62 · 摘要评价数 Surface 落地于 #115 → #153 |
-| 目录后续：收藏与条件密度 | Prototype 已交付 · 用户已选择（生产未实现） | **C — 条件密度 + Tag 清单**：无筛选七列粗扫 / 有筛选（含仅收藏、本专业）四列折叠 · 可移除 Tag 收藏清单 · 筛选下「仅收藏 / 本专业」Toggle · 行内星标（ToggleButton render prop） | 2026-08-17 用户在 DEV 原型比较 A/B/C 后选择 C，取代 #63 的「A + C Tag」意向。生产未实现、不在 MVP；确认进入生产后另建 frontend/backend Issue，账号、持久化、目录查询契约分开标记 | DEV：`?module=catalog-followup&variant=C` · `src/prototype/CatalogFollowupVariants.tsx` · Issue #73（决策记录，承接 #63） |
+| Sky 主题 token | 视觉冻结 | **官方 Sky A 画布**：HeroUI 默认浅灰底 / 白表面 / 中性边框；官方 Sky accent（官网主按钮蓝）；亮色 eclipse 黑字；0.5rem 半径 / 默认阴影 / `link=foreground`。不再取 C 的天空色 tint | #422 用户对照 HeroUI 官网 hero，要求底色用官方浅灰、换用该蓝、黑字；重开原 A+C 冻结 | DEV：Gallery `sky-tokens` · `src/prototype/themes/sky-tokens.css` · 生产：`src/styles/globals.css` · Issue #422 |
+| 公共 Shell 与顶部导航 | 视觉冻结（生产已演进） | Button 导航语系仍用 C：左簇字标 · `Button` `sm` 当前 `secondary` / 非当前 `ghost`。生产现为 **课程 / 课评 / 外链导师** + 居中顶栏搜索 + 右登录与主题；不再把「教师」「写评价」放进主导航 | 用户确认过 C 的 Button 语系；#402 后导航与搜索按 USTC 评课社区对齐演进 | 生产：`src/components/AppShell.tsx` · DEV 对照：`src/prototype/ShellNavVariants.tsx`（`?module=shell-nav`） |
+| 目录标题与搜索 | 生产完成 | 页内标题「课程列表」+「共 N 条」；搜索在顶栏。`CatalogSearchHeader` 只留给 DEV `global-search` A | 生产默认不再用页内同行搜索头 | 生产：`AppShell` `ShellCourseSearch` · `CoursesPage` 标题行 · DEV：`?module=global-search` · Issue #303 |
+| 目录浏览框 | 生产完成 | 类别 pills + 排序 pills，写在 `CoursesPage`。院系 / 教师工具条已删除 | #402 起目录按关系行浏览，不再用旧筛选工具条 | 生产：`src/pages/CoursesPage.tsx` |
+| 课程目录结果 | 生产完成 | **关系行**：`CourseRelationRow`（课名（老师） / 星级+评价 / 四维）。评分绑定课程×教师 | 四列折叠表与七列粗扫都已从生产与 Gallery 删除 | 生产：`src/components/CourseRelationRow.tsx` · `GET /api/courses?view=relations` |
+| 分页及加载、错误、空状态 | 生产完成 | 精简页脚 + 首次骨架；刷新不转圈；空态只把顶栏 `q` 当搜索未命中 | 用户确认过精简页脚；#205/#418 把首次 Spinner 换成关系行骨架；「正在更新课程目录」已下线 | 生产：`src/components/CatalogResultsStates.tsx` |
+| 课程目录整页 | 生产完成 | 顶栏搜索 · 标题+计数 · 浏览框 · 关系行 · `CatalogResultsStates` | 旧冻结栈（搜索 C · 筛选 D · 四列表 B）已不描述现行 `/courses` | 生产：`src/pages/CoursesPage.tsx` |
+| 教师目录适配 | 已下线 | `/teachers` 重定向到 `/courses`。旧四列表与 `TeachersPage` 不再是公开入口 | 公开面只保留课程目录 + 教师详情 | 路由：`TeachersListRedirect` · 详情：`TeacherDetailPage` |
+| 课程详情摘要 | 视觉冻结 | **B — 左身份 / 右评价数**：类别 Chip + 课程名 + 课号/院系 · 右 Surface 仅显示公开评价数；未选教师下接「任课教师」关系表，选中后只显示该教师评价流（#252），摘要补当前老师姓名链接与院系，评价数改为该课程×教师（#289） | 评价必须绑定课程+任课教师（见 CONTEXT）；#115 落地生产；#140 课程界面不出现评分；#239 密表；#252 教师表与评价流互斥；#289 互斥后摘要仍要有当前老师 | 生产：`CourseDetailPage.tsx` · `DetailSummary.tsx` · `CourseTeacherTable.tsx` · Issue #60 → #115 → #140 → #239 → #252 → #289 |
+| 学生投稿条目与历史文字资料 | 视觉冻结 · 评价流仍在探索 | **统一匿名文字流**（#68/#90）：装饰引号 + 正文 + `Separator` + 分段加载；单条不展示评分/维度；课程×教师流不重复教师身份；教师详情不再展示跨课程评价流 | 历史评价无 overall（见 CONTEXT）；课程页评价按 课程×教师 收敛后教师「昵称」是冗余噪音 | 生产：`PublicReviews.tsx` · 探索：Gallery `teaching-reviews-feed` · Issue #61 → #68/#90/#71 |
+| 教师详情与任课课程表 | 视觉冻结 | **课程详情语言迁移**：摘要 B · 任课表课程域折叠（评分按 教师×课程）· 教师详情不再展示跨课程评价流 | foundations 规定不单开 A/B/C | 生产：`TeacherDetailPage.tsx` · `DetailSummary.tsx` · `TeacherCourseTable.tsx` · DEV：`?module=teacher-detail` · Issue #62 · #115 → #153 |
+| 任课评价认可 | 探索中 | A/B/C 比较 footer 认可按钮位置与计数 | #74 承接 #70；DEV 内存 stub，不写生产接口 | DEV：`?module=review-recognition` · `src/prototype/ReviewRecognitionVariants.tsx` |
+| 页内 vs 顶栏搜索 | 探索中 | A 维持页内 / B 顶栏分组建议 / C 顶栏只跳转。生产默认已是顶栏搜索 | #303 对照用，不改生产默认 | DEV：`?module=global-search` · `src/prototype/GlobalSearchVariants.tsx` |
+| 目录后续：收藏与条件密度 | 历史决策 · 原型已删 | 用户曾选 C（条件密度 + Tag 清单）。生产未实现 | 2026-08-17 选 C，取代 #63 的「A + C Tag」意向。throwaway 已从 Gallery 删除 | Issue #73（决策记录，承接 #63）。不要再打开 `catalog-followup` |
 
-### 首轮顺序
+### 当前顺序
 
-1. Sky 主题 token
-2. 公共 Shell 与顶部导航
-3. 目录标题与搜索
-4. 筛选工具
-5. 课程结果表
-6. 分页及加载、错误、空状态
-7. 课程目录整页集成
-8. 教师目录适配
-9. ~~课程详情摘要~~ → **B 视觉冻结，#115 落地生产**（Issue #60 → #115）
-10. ~~学生投稿条目与历史文字资料~~ → **统一匿名文字流 视觉冻结**（Issue #61 → #68/#90）
-11. ~~教师详情与任课课程表~~ → **课程语言迁移 视觉冻结**（Issue #62）
-12. ~~目录后续：收藏入口 + 条件密度~~ → **C 条件密度 + Tag 清单（用户已选择）**（Issue #73，承接 #63）；生产未实现、不在 MVP，确认进入生产后另开 frontend/backend
+1. Sky 主题 token（冻结）
+2. 公共 Shell 与顶部导航（冻结语系；生产已演进）
+3. 课程目录整页（生产：顶栏搜索 + 浏览框 + `CourseRelationRow` + `CatalogResultsStates`）
+4. 课程详情摘要（冻结，#115）
+5. 学生投稿条目（冻结文案流；`teaching-reviews-feed` 仍探索）
+6. 教师详情与任课课程表（冻结，#62）
+7. **探索中**：`global-search`（#303）· `teaching-reviews-feed`（#71）· `review-recognition`（#74）
 
 ## Prototype 选择后的处理
 
