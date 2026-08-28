@@ -45,7 +45,7 @@ function navSelectedKey(_pathname: string): "courses" {
   return "courses";
 }
 
-/** Keep module/variant when jumping 课程↔教师 so the shell prototype stays live. */
+/** Keep module/variant when jumping so the shell prototype stays live. */
 function withPrototypeParams(path: string, params: URLSearchParams) {
   const moduleId = params.get(PROTOTYPE_MODULE_PARAM);
   const variant = params.get(PROTOTYPE_VARIANT_PARAM);

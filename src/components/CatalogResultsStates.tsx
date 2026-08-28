@@ -15,13 +15,11 @@ import {
   Alert,
   Button,
   Card,
-  Link,
   Pagination,
   Skeleton,
   Spinner,
 } from "@heroui/react";
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
 import { REVIEW_DIMENSIONS } from "../lib/review-dimensions";
 
 export type CatalogResultsCopy = {
@@ -76,8 +74,6 @@ export type CatalogResultsStatesProps = {
   onClearFilters: () => void;
   children: ReactNode;
   copy?: CatalogResultsCopy;
-  /** Optional empty-state extra action. */
-  rescue?: ReactNode;
 };
 
 /** Matches the public catalog default `pageSize` so first-load height
@@ -166,14 +162,12 @@ function EmptyPanel({
   emptyFilters,
   onClearFilters,
   copy,
-  rescue,
 }: {
   hasFilters: boolean;
   emptyQuery?: string;
   emptyFilters?: string[];
   onClearFilters: () => void;
   copy: CatalogResultsCopy;
-  rescue?: ReactNode;
 }) {
   const title = hasFilters
     ? copy.emptyFilteredTitle(emptyQuery)
@@ -191,45 +185,14 @@ function EmptyPanel({
         <Card.Title>{title}</Card.Title>
         <Card.Description>{desc}</Card.Description>
       </Card.Header>
-      {rescue || hasFilters ? (
+      {hasFilters ? (
         <Card.Footer className="flex-wrap gap-2">
-          {rescue ? <p className="m-0 text-sm">{rescue}</p> : null}
-          {hasFilters ? (
-            <Button size="sm" variant="secondary" onPress={onClearFilters}>
-              {copy.clearLabel}
-            </Button>
-          ) : null}
+          <Button size="sm" variant="secondary" onPress={onClearFilters}>
+            {copy.clearLabel}
+          </Button>
         </Card.Footer>
       ) : null}
     </Card>
-  );
-}
-
-/** SPA rescue link: official Link + React Router NavLink (same as AppShell). */
-export function CatalogEmptyRescueLink({
-  to,
-  children,
-}: {
-  to: string;
-  children: ReactNode;
-}) {
-  return (
-    <Link
-      href={to}
-      render={(domProps) => (
-        <NavLink
-          {...(domProps as object)}
-          className={
-            typeof domProps.className === "string"
-              ? domProps.className
-              : undefined
-          }
-          to={to}
-        />
-      )}
-    >
-      {children}
-    </Link>
   );
 }
 
@@ -328,7 +291,6 @@ export function CatalogResultsStates({
   onClearFilters,
   children,
   copy = COURSE_CATALOG_COPY,
-  rescue,
 }: CatalogResultsStatesProps) {
   if (error && !hasPayload) {
     return (
@@ -357,7 +319,6 @@ export function CatalogResultsStates({
         emptyFilters={emptyFilters}
         onClearFilters={onClearFilters}
         copy={copy}
-        rescue={rescue}
       />
     );
   }

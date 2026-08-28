@@ -93,7 +93,7 @@ test.beforeEach(async ({ page }) => {
   await mockCatalogApi(page);
 });
 
-test("variant A keeps search on the catalog page and documents the empty-state rescue", async ({
+test("variant A keeps search on the catalog page", async ({
   page,
 }) => {
   await page.goto("/courses?module=global-search&variant=A");

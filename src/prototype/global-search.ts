@@ -1,6 +1,7 @@
 /**
  * PROTOTYPE — global-search URL helpers (throwaway; not production-ready).
- * Seams for catalog kind, ?q= jumps, detail links, and suggestion caps.
+ * Seams for ?q= jumps, detail links, and suggestion caps.
+ * The public list is courses only; teacher hits go to /teachers/:id.
  */
 
 export const GLOBAL_SEARCH_MODULE = "global-search";
@@ -27,23 +28,8 @@ export function parseGlobalSearchVariant(
   return isGlobalSearchVariantKey(key) ? key : "A";
 }
 
-export function catalogKindFromPath(pathname: string): CatalogKind {
-  if (pathname === "/teachers" || pathname.startsWith("/teachers/")) {
-    return "teachers";
-  }
-  return "courses";
-}
-
-export function oppositeCatalog(kind: CatalogKind): CatalogKind {
-  return kind === "courses" ? "teachers" : "courses";
-}
-
-export function catalogListPath(kind: CatalogKind): string {
-  return kind === "teachers" ? "/teachers" : "/courses";
-}
-
 export function catalogDetailPath(kind: CatalogKind, id: number): string {
-  return `${catalogListPath(kind)}/${id}`;
+  return kind === "teachers" ? `/teachers/${id}` : `/courses/${id}`;
 }
 
 function withPrototypeParams(
@@ -63,11 +49,10 @@ function withPrototypeParams(
 }
 
 export function catalogSearchHref(
-  kind: CatalogKind,
   query: string,
   params: URLSearchParams,
 ): string {
-  return withPrototypeParams(catalogListPath(kind), params, query);
+  return withPrototypeParams("/courses", params, query);
 }
 
 export function catalogDetailHref(
@@ -80,14 +65,4 @@ export function catalogDetailHref(
 
 export function takeSuggestions<T>(items: T[], limit = 5): T[] {
   return items.slice(0, limit);
-}
-
-export function crossCatalogHintLabel(
-  kind: CatalogKind,
-  query: string,
-): string {
-  const q = query.trim();
-  return kind === "courses"
-    ? `也在教师资料中搜「${q}」`
-    : `也在课程目录中搜「${q}」`;
 }
