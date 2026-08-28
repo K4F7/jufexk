@@ -6,7 +6,6 @@ import {
   Description,
   Form,
   Input,
-  InputGroup,
   InputOTP,
   Label,
   REGEXP_ONLY_DIGITS,
@@ -708,19 +707,13 @@ export function LoginPage() {
                       }}
                     >
                       <Label>校园密码</Label>
-                      <InputGroup variant="primary">
-                        <InputGroup.Input
-                          aria-describedby={
-                            passwordInvalid ? "password-error" : undefined
-                          }
-                          placeholder="请输入统一身份认证平台登录密码"
-                        />
-                        {busy ? (
-                          <InputGroup.Suffix>
-                            <Spinner className="size-4" />
-                          </InputGroup.Suffix>
-                        ) : null}
-                      </InputGroup>
+                      <Input
+                        aria-describedby={
+                          passwordInvalid ? "password-error" : undefined
+                        }
+                        placeholder="请输入统一身份认证平台登录密码"
+                        variant="primary"
+                      />
                     </TextField>
                     <span
                       className="field-error"

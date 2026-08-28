@@ -329,6 +329,12 @@ test("CAS submit shows a pending button while waiting", async ({
   await expect(page.getByRole("button", { name: "正在登录…" })).toBeVisible();
   await expect(page.getByLabel("学号")).toBeDisabled();
   await expect(page.getByLabel("校园密码")).toBeDisabled();
+  await expect(
+    page
+      .locator("[data-slot='textfield']")
+      .filter({ has: page.getByLabel("校园密码") })
+      .locator("[data-slot='spinner']"),
+  ).toHaveCount(0);
 
   releaseCas();
   await expect(page).toHaveURL(/\/courses$/);
