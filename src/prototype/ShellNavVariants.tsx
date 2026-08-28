@@ -31,7 +31,6 @@ export function isShellNavVariantKey(key: string): key is ShellNavVariantKey {
 
 const NAV_LINKS = [
   { id: "courses", to: "/courses", label: "课程" },
-  { id: "teachers", to: "/teachers", label: "教师" },
 ] as const;
 
 function brandName(config: SiteConfig | null) {
@@ -42,10 +41,7 @@ function uniName(config: SiteConfig | null) {
   return config?.universityName || "江西财经大学";
 }
 
-function navSelectedKey(pathname: string): "courses" | "teachers" {
-  if (pathname === "/teachers" || pathname.startsWith("/teachers/")) {
-    return "teachers";
-  }
+function navSelectedKey(_pathname: string): "courses" {
   return "courses";
 }
 
@@ -120,7 +116,7 @@ function OfficialTabsNav({
   variant,
 }: {
   params: URLSearchParams;
-  selectedKey: "courses" | "teachers";
+  selectedKey: "courses";
   variant: "primary" | "secondary";
 }) {
   return (

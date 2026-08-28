@@ -314,7 +314,8 @@ test("course detail defaults to the most-reviewed relation", async ({
   // 右栏：老师卡 + 其他老师 + 这位老师的其他课。
   const aside = page.locator("aside");
   await expect(aside.getByText("测试教师", { exact: true })).toBeVisible();
-  await expect(aside.getByText("教师主页：暂无")).toHaveCount(0);
+  await expect(aside.getByText("教师主页：")).toHaveCount(0);
+  await expect(aside.getByRole("link", { name: /教师主页/ })).toHaveCount(0);
   await expect(
     aside.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
   ).toHaveCount(1);
@@ -484,7 +485,7 @@ test("course without teachers keeps an honest header and no write entry", async 
   await expect(
     page.getByRole("button", { name: "写点评" }),
   ).toHaveCount(0);
-  await expect(page.getByText("教师主页：暂无")).toHaveCount(0);
+  await expect(page.getByText("教师主页：")).toHaveCount(0);
   await expect(
     page.getByRole("status").filter({ hasText: "暂无评价" }),
   ).toBeVisible();
@@ -729,43 +730,9 @@ test("scheme snapshot reviews show one dimension-average chip", async ({
   await expect(page.getByText("点名频率")).toHaveCount(0);
 });
 
-test("teacher catalog lists teachers and detail omits the review stream", async ({
-  page,
-}) => {
+test("teacher detail omits the review stream", async ({ page }) => {
   await page.route("**/api/teachers**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/teachers") {
-      const searched = url.searchParams.has("q") && url.searchParams.get("q") !== "";
-      const items = [
-        {
-          id: 9,
-          name: "测试教师",
-          department: "人文学院",
-          title: "讲师",
-          review_count: 21,
-          rating: 4.6,
-          course_count: 1,
-        },
-        {
-          id: 11,
-          name: "零评价教师",
-          department: "测试学院",
-          title: "讲师",
-          review_count: 0,
-          rating: null,
-          course_count: 0,
-        },
-      ];
-      return route.fulfill({
-        json: {
-          items: searched ? [items[1], items[0]] : items,
-          page: 1,
-          pageSize: 20,
-          total: 2,
-          pages: 1,
-        },
-      });
-    }
     if (url.pathname === "/api/teachers/9")
       return route.fulfill({
         json: {
@@ -797,12 +764,9 @@ test("teacher catalog lists teachers and detail omits the review stream", async 
     return route.fallback();
   });
 
-  await page.goto("/teachers");
-  const grid = page.getByRole("grid", { name: "教师资料" });
-  await expect(grid.getByRole("row").nth(1)).toContainText("测试教师");
-  await expect(grid.getByRole("row").nth(1)).toContainText(/21.*投/);
-
   await page.goto("/teachers/9");
+  await expect(page.getByRole("navigation", { name: "面包屑" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "教师目录" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "评价" })).toHaveCount(0);
   await expect(page.getByRole("list", { name: "评价列表" })).toHaveCount(0);
   await expect(reviewItems(page)).toHaveCount(0);

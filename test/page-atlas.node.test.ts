@@ -80,9 +80,6 @@ describe("listAtlasPages", () => {
         "/courses/31",
         `/courses/${ATLAS_MISSING_ID}`,
         "/courses/1?preview=error",
-        "/teachers",
-        `/teachers?q=${encodeURIComponent(ATLAS_NO_MATCH_QUERY)}`,
-        "/teachers?preview=error",
         "/teachers/2",
         `/teachers/${ATLAS_MISSING_ID}`,
         "/teachers/1?preview=error",
@@ -141,7 +138,7 @@ describe("listAtlasPages", () => {
       `/courses?q=${encodeURIComponent(ATLAS_FILLED_COURSE_QUERY)}`,
     );
     expect(pages.find((page) => page.id === "teacher-detail")?.href).toBe(
-      `/teachers?q=${encodeURIComponent(ATLAS_TEACHER_QUERY)}`,
+      `/courses?q=${encodeURIComponent(ATLAS_TEACHER_QUERY)}`,
     );
     expect(pages.find((page) => page.id === "submit-preset")?.href).toBe("/submit");
   });

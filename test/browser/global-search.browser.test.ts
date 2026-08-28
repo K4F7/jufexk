@@ -132,14 +132,14 @@ test("variant B mounts a grouped Autocomplete in the shell @mobile-smoke", async
   }
 });
 
-test("variant C jumps to the current catalog and shows the opposite-catalog link @mobile-smoke", async ({
+test("variant C jumps to the current catalog @mobile-smoke", async ({
   page,
 }, testInfo) => {
   await page.goto("/courses?q=%E5%BC%A0&module=global-search&variant=C");
   await expect(page.getByRole("note").getByText("C — 顶栏只跳转")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "也在教师资料中搜「张」" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   if (isMobile(testInfo.project.name)) {
     await page.getByRole("button", { name: "搜索当前目录" }).click();

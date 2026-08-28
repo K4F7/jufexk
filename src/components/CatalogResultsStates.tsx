@@ -3,14 +3,13 @@
  *
  * - First load: 20 skeleton rows + pagination reserve, matching the public
  *   catalog pageSize so the list height does not jump (Issue #205). Course
- *   pending uses CourseRelationRow-shaped Skeleton rows (Issue #418); teacher
- *   pending still matches TeacherResultTable.
+ *   pending uses CourseRelationRow-shaped Skeleton rows (Issue #418).
  * - Refresh with data: compact Spinner line above the results
  * - Error: official Alert + 重试
  * - Empty: official Card; distinct copy for filters vs true empty catalog
  * - Pagination: official Pagination + 共 N {unit}
  *
- * Entity-specific wording via `copy` (courses vs teachers).
+ * Entity-specific wording via `copy`.
  */
 import {
   Alert,
@@ -20,7 +19,6 @@ import {
   Pagination,
   Skeleton,
   Spinner,
-  Table,
 } from "@heroui/react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -57,20 +55,6 @@ export const COURSE_CATALOG_COPY: CatalogResultsCopy = {
   totalUnit: "门",
 };
 
-export const TEACHER_CATALOG_COPY: CatalogResultsCopy = {
-  errorTitle: "教师资料加载失败",
-  refreshingLabel: "正在更新教师资料…",
-  emptyFilteredTitle: (query) =>
-    query
-      ? `没有找到匹配「${query}」的教师`
-      : "没有符合搜索条件的教师",
-  emptyFilteredDesc: "试试调整姓名或院系关键词。",
-  emptyCatalogTitle: "暂无教师资料",
-  emptyCatalogDesc: "目录还在整理，请稍后再来看看。",
-  clearLabel: "清空搜索",
-  totalUnit: "位",
-};
-
 export type CatalogResultsStatesProps = {
   loading: boolean;
   /** True after first successful payload (items may still be empty). */
@@ -92,10 +76,8 @@ export type CatalogResultsStatesProps = {
   onClearFilters: () => void;
   children: ReactNode;
   copy?: CatalogResultsCopy;
-  /** Opposite-catalog hint when this catalog is empty (Issue #287). */
+  /** Optional empty-state extra action. */
   rescue?: ReactNode;
-  /** First-load chrome: course = relation list; teacher = result table. */
-  skeleton?: "course" | "teacher";
 };
 
 /** Matches the public catalog default `pageSize` so first-load height
@@ -130,65 +112,19 @@ function CourseRelationSkeletonRows({ rowCount }: { rowCount: number }) {
   );
 }
 
-/** Teacher first-load still matches TeacherResultTable chrome. */
-function TeacherTableSkeleton({ rowCount }: { rowCount: number }) {
-  return (
-    <Table className="dense-table">
-      <Table.ScrollContainer>
-        <Table.Content aria-label="教师资料" className="min-w-[640px]">
-          <Table.Header>
-            <Table.Column isRowHeader>教师</Table.Column>
-            <Table.Column>院系</Table.Column>
-            <Table.Column>投稿</Table.Column>
-            <Table.Column>课程数</Table.Column>
-          </Table.Header>
-          <Table.Body>
-            {Array.from({ length: rowCount }).map((_, index) => (
-              <Table.Row
-                key={index}
-                id={`catalog-skeleton-${index}`}
-                data-catalog-skeleton-row=""
-              >
-                <Table.Cell>
-                  <Skeleton className="h-4 w-24 rounded" />
-                </Table.Cell>
-                <Table.Cell>
-                  <Skeleton className="h-4 w-28 rounded" />
-                </Table.Cell>
-                <Table.Cell>
-                  <Skeleton className="h-4 w-10 rounded" />
-                </Table.Cell>
-                <Table.Cell>
-                  <Skeleton className="h-4 w-10 rounded" />
-                </Table.Cell>
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table.Content>
-      </Table.ScrollContainer>
-    </Table>
-  );
-}
-
 /** First-load placeholder + pagination so row/footer height matches
  * the loaded catalog (Issue #205). */
 function CatalogSkeleton({
-  variant,
   rowCount,
   totalUnit,
 }: {
-  variant: "course" | "teacher";
   rowCount: number;
   totalUnit: string;
 }) {
   return (
     <div role="status" aria-label="加载中…">
       <span className="sr-only">加载中…</span>
-      {variant === "course" ? (
-        <CourseRelationSkeletonRows rowCount={rowCount} />
-      ) : (
-        <TeacherTableSkeleton rowCount={rowCount} />
-      )}
+      <CourseRelationSkeletonRows rowCount={rowCount} />
       <PaginationFooter
         currentPage={1}
         totalPages={1}
@@ -393,7 +329,6 @@ export function CatalogResultsStates({
   children,
   copy = COURSE_CATALOG_COPY,
   rescue,
-  skeleton = "course",
 }: CatalogResultsStatesProps) {
   if (error && !hasPayload) {
     return (
@@ -408,7 +343,6 @@ export function CatalogResultsStates({
   if (loading && !hasPayload) {
     return (
       <CatalogSkeleton
-        variant={skeleton}
         rowCount={CATALOG_SKELETON_ROWS}
         totalUnit={copy.totalUnit}
       />
@@ -431,7 +365,6 @@ export function CatalogResultsStates({
   if (!hasPayload) {
     return (
       <CatalogSkeleton
-        variant={skeleton}
         rowCount={CATALOG_SKELETON_ROWS}
         totalUnit={copy.totalUnit}
       />

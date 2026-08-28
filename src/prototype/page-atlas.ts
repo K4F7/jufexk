@@ -106,7 +106,7 @@ function courseHref(id: number | null, query: string, teacherId?: number | null)
 }
 
 function teacherHref(id: number | null, query: string) {
-  return id == null ? `/teachers?q=${encodeURIComponent(query)}` : `/teachers/${id}`;
+  return id == null ? `/courses?q=${encodeURIComponent(query)}` : `/teachers/${id}`;
 }
 
 export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGroup[] {
@@ -237,27 +237,6 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           title: "课程详情 · 加载失败",
           description: "DEV mock：课程加载失败",
           href: "/courses/1?preview=error",
-          access: "public",
-        },
-        {
-          id: "teachers",
-          title: "教师目录",
-          description: "教师列表与搜索",
-          href: "/teachers",
-          access: "public",
-        },
-        {
-          id: "teachers-empty",
-          title: "教师目录 · 搜索空态",
-          description: "真实 D1：姓名无匹配",
-          href: `/teachers?q=${encodeURIComponent(ATLAS_NO_MATCH_QUERY)}`,
-          access: "public",
-        },
-        {
-          id: "teachers-error",
-          title: "教师目录 · 加载失败",
-          description: "DEV mock：教师资料加载失败",
-          href: "/teachers?preview=error",
           access: "public",
         },
         {
