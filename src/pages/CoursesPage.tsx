@@ -1,8 +1,8 @@
 /**
  * 课程目录 /courses — USTC 评课社区对齐（Issue #402）：
- * 标题「课程列表」；浅蓝筛选框（课程类别行）；一行一条课程×教师任课
+ * 标题「课程列表」；类别与排序浏览框；一行一条课程×教师任课
  * 关系（CourseRelationRow）；分页沿用 URL ?page=。
- * 页内搜索已上移到顶栏居中搜索；院系/教师筛选随旧工具条下线。
+ * 搜索在顶栏；只有 ?q= 算筛选。院系/教师工具条已下线。
  *
  * 数据走 GET /api/courses?view=relations（一行一条课程×教师）。
  * 支持 sort=rating；分页总数按关系行计。
@@ -44,7 +44,6 @@ import {
   isGeneralEducationFilter,
   isPublicCatalogCategory,
   PUBLIC_CATEGORY_OPTIONS,
-  publicCategoryOptionLabel,
 } from "../lib/public-categories";
 import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
 import {
@@ -87,13 +86,12 @@ function categoryToggleKey(category: string): string {
 
 const RELATION_CATALOG_COPY: CatalogResultsCopy = {
   errorTitle: "课程目录加载失败",
-  refreshingLabel: "正在更新课程目录…",
   emptyFilteredTitle: (query) =>
-    query ? `没有找到匹配「${query}」的课程` : "没有符合筛选条件的课程",
-  emptyFilteredDesc: "试试调整关键词或类别。",
+    query ? `没有找到匹配「${query}」的课程` : "没有找到匹配的课程",
+  emptyFilteredDesc: "试试换个关键词。",
   emptyCatalogTitle: "目录暂无课程数据",
   emptyCatalogDesc: "目录还在整理，请稍后再来看看。",
-  clearLabel: "清空筛选",
+  clearLabel: "清空搜索",
   totalUnit: "条",
 };
 
@@ -197,17 +195,13 @@ export function CoursesPage() {
     setParams(sp, { replace });
   }
 
-  const hasFilters = Boolean(q || category || sort);
+  // 类别与排序是浏览切换，不算「筛选」；
+  // 只有顶栏关键词才走「没有找到匹配」空态，其余空结果跟无数据。
+  const hasSearchQuery = Boolean(q);
   const currentPage = data?.pages ? Math.min(data.page, data.pages) : 1;
   const totalPages = data?.pages || 1;
-  /** 空状态文案点名全部生效筛选（关键词 / 类别）。 */
-  const activeFilterLabels = [
-    q ? `关键词“${q}”` : "",
-    category ? publicCategoryOptionLabel(category) : "",
-    sort === "rating" ? "课程评分" : "",
-  ].filter(Boolean);
 
-  function clearFilters() {
+  function clearSearch() {
     update({ q: "", category: "", sort: "", page: "1" }, true);
   }
 
@@ -217,15 +211,14 @@ export function CoursesPage() {
       hasPayload={data != null}
       error={error}
       itemCount={data?.items.length ?? 0}
-      hasFilters={hasFilters}
+      hasFilters={hasSearchQuery}
       emptyQuery={q || undefined}
-      emptyFilters={activeFilterLabels}
       currentPage={currentPage}
       totalPages={totalPages}
       total={data?.total ?? 0}
       onPageChange={(nextPage) => update({ page: String(nextPage) })}
       onRetry={() => setReloadToken((n) => n + 1)}
-      onClearFilters={clearFilters}
+      onClearFilters={clearSearch}
       copy={RELATION_CATALOG_COPY}
     >
       {data ? (
@@ -242,11 +235,11 @@ export function CoursesPage() {
     </CatalogResultsStates>
   );
 
-  const filterBox = (
+  const browseBox = (
     <Surface
-      aria-label="课程目录筛选"
+      aria-label="课程类别与排序"
       className="mb-3 flex flex-col gap-2 p-3"
-      role="search"
+      role="region"
       variant="secondary"
     >
       <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
@@ -312,7 +305,7 @@ export function CoursesPage() {
     return (
       <section>
         <GlobalSearchVariantAHeader q={q} update={update} />
-        {filterBox}
+        {browseBox}
         {results}
       </section>
     );
@@ -339,7 +332,7 @@ export function CoursesPage() {
           ) : null}
         </div>
       </header>
-      {filterBox}
+      {browseBox}
       {results}
     </section>
   );

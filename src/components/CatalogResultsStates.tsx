@@ -4,9 +4,9 @@
  * - First load: 20 skeleton rows + pagination reserve, matching the public
  *   catalog pageSize so the list height does not jump (Issue #205). Course
  *   pending uses CourseRelationRow-shaped Skeleton rows (Issue #418).
- * - Refresh with data: compact Spinner line above the results
+ * - Refresh with data: keep the current list; no Spinner
  * - Error: official Alert + 重试
- * - Empty: official Card; distinct copy for filters vs true empty catalog
+ * - Empty: official Card; search-miss vs true empty catalog
  * - Pagination: official Pagination + 共 N {unit}
  *
  * Entity-specific wording via `copy`.
@@ -17,7 +17,6 @@ import {
   Card,
   Pagination,
   Skeleton,
-  Spinner,
 } from "@heroui/react";
 import type { ReactNode } from "react";
 import { REVIEW_DIMENSIONS } from "../lib/review-dimensions";
@@ -25,31 +24,25 @@ import { REVIEW_DIMENSIONS } from "../lib/review-dimensions";
 export type CatalogResultsCopy = {
   /** e.g. 课程目录加载失败 */
   errorTitle: string;
-  /** e.g. 正在更新课程目录… */
-  refreshingLabel: string;
-  /** Filtered empty title; receives active query when present */
+  /** Search-miss title; receives the active query when present */
   emptyFilteredTitle: (query?: string) => string;
   emptyFilteredDesc: string;
   emptyCatalogTitle: string;
   emptyCatalogDesc: string;
-  /** Button on filtered empty — 清空筛选 / 清空搜索 */
+  /** Button on search-miss empty — 清空搜索 */
   clearLabel: string;
-  /** Pagination unit after total — 门 / 位 */
+  /** Pagination unit after total — 条 / 门 / 位 */
   totalUnit: string;
 };
 
 export const COURSE_CATALOG_COPY: CatalogResultsCopy = {
   errorTitle: "课程目录加载失败",
-  refreshingLabel: "正在更新课程目录…",
   emptyFilteredTitle: (query) =>
-    query
-      ? `没有找到匹配「${query}」的课程`
-      : "没有符合筛选条件的课程",
-  emptyFilteredDesc: "试试调整关键词、类别或教师筛选。",
+    query ? `没有找到匹配「${query}」的课程` : "没有找到匹配的课程",
+  emptyFilteredDesc: "试试换个关键词。",
   emptyCatalogTitle: "目录暂无课程数据",
   emptyCatalogDesc: "目录还在整理，请稍后再来看看。",
-  // 与筛选工具条按钮同文案（Issue #276）。
-  clearLabel: "清空筛选",
+  clearLabel: "清空搜索",
   totalUnit: "门",
 };
 
@@ -62,10 +55,6 @@ export type CatalogResultsStatesProps = {
   hasFilters: boolean;
   /** Active search keyword for empty-state copy */
   emptyQuery?: string;
-  /** Labels of every active filter (keyword/category/department/teacher) so
-   *  the filtered empty state names them all instead of only the keyword
-   *  (Issue #276). */
-  emptyFilters?: string[];
   currentPage: number;
   totalPages: number;
   total: number;
@@ -159,25 +148,18 @@ function ErrorPanel({
 function EmptyPanel({
   hasFilters,
   emptyQuery,
-  emptyFilters,
   onClearFilters,
   copy,
 }: {
   hasFilters: boolean;
   emptyQuery?: string;
-  emptyFilters?: string[];
   onClearFilters: () => void;
   copy: CatalogResultsCopy;
 }) {
   const title = hasFilters
     ? copy.emptyFilteredTitle(emptyQuery)
     : copy.emptyCatalogTitle;
-  // 叠了多个筛时空文案点名全部生效筛选，不只提关键词（Issue #276）。
-  const desc = hasFilters
-    ? emptyFilters?.length
-      ? `试试调整或清空当前筛选：${emptyFilters.join("、")}。`
-      : copy.emptyFilteredDesc
-    : copy.emptyCatalogDesc;
+  const desc = hasFilters ? copy.emptyFilteredDesc : copy.emptyCatalogDesc;
 
   return (
     <Card role="status">
@@ -282,7 +264,6 @@ export function CatalogResultsStates({
   itemCount,
   hasFilters,
   emptyQuery,
-  emptyFilters,
   currentPage,
   totalPages,
   total,
@@ -316,7 +297,6 @@ export function CatalogResultsStates({
       <EmptyPanel
         hasFilters={hasFilters}
         emptyQuery={emptyQuery}
-        emptyFilters={emptyFilters}
         onClearFilters={onClearFilters}
         copy={copy}
       />
@@ -334,16 +314,6 @@ export function CatalogResultsStates({
 
   return (
     <div aria-busy={loading}>
-      {loading ? (
-        <div
-          className="mb-2 flex items-center gap-2 text-sm text-muted"
-          role="status"
-          aria-live="polite"
-        >
-          <Spinner size="sm" />
-          {copy.refreshingLabel}
-        </div>
-      ) : null}
       {error ? (
         <Alert className="mb-2" status="danger">
           <Alert.Indicator />

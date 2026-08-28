@@ -193,7 +193,7 @@ test("category row exposes 通识课 instead of 专业课/公共课 and filters 
   page,
 }) => {
   await page.goto("/courses");
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   await expect(
     filterBox.getByRole("radio", { name: "全部", exact: true }),
   ).toBeVisible();
@@ -274,7 +274,7 @@ test("sports category deep link still works", async ({ page }) => {
 test("major and public_basic deep links keep working as 通识课", async ({
   page,
 }) => {
-  const filterBox = page.getByRole("search", { name: "课程目录筛选" });
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
 
   await page.goto("/courses?category=major");
   await expect(page).toHaveURL(/category=major/);

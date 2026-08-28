@@ -140,7 +140,7 @@ CI 不导出含学生投稿的 D1 数据，避免敏感备份进入 GitHub Artif
 ```
 ├── src/                    # Worker 入口（Hono）与 React 前端
 │   ├── pages/              # 课程、教师、详情、登录、账号等页面
-│   ├── components/         # AppShell、结果表格、评价区等组件
+│   ├── components/         # AppShell、目录关系行、评价区等组件
 │   ├── lib/                # 认证、Turnstile、评价规则、标签等共享逻辑
 │   ├── hooks/              # 公开评价分页、当前查看者等 React hooks
 │   └── prototype/          # UI 原型变体（HeroUI v3）
