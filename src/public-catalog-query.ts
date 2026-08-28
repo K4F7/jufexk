@@ -450,9 +450,12 @@ export async function queryPublicCourses(
     exact: ["c.name", "c.code", `(${publicBrowseFamilySql("c")})`, `(${displayNameSql})`],
     exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"],
     prefix: ["c.name", "c.code", `(${displayNameSql})`],
+    prefixPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE $LITERAL || '%' ESCAPE '\\')"],
     substring: ["c.name", "c.code", `(${displayNameSql})`],
+    substringPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE '%' || $LITERAL || '%' ESCAPE '\\')"],
     pinyin: "pcc.pinyin_text",
     teacher: ["c.department", "pcc.teacher_variant_text"],
+    teacherExactPredicates: ["instr(pcc.teacher_variant_text, char(31) || $TERM || char(31)) > 0"],
   }, "course", args.length);
   const relevanceOrder = `${sharedRanking.sql},review_count DESC,c.name,c.code,c.id`;
   const searchRankArgs = sharedRanking.args;
@@ -571,7 +574,9 @@ export async function queryPublicCourseRelations(
     exact: ["c.name", "c.code", `(${publicBrowseFamilySql("c")})`, `(${displayNameSql})`],
     exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"],
     prefix: ["c.name", "c.code", `(${displayNameSql})`],
+    prefixPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE $LITERAL || '%' ESCAPE '\\')"],
     substring: ["c.name", "c.code", `(${displayNameSql})`],
+    substringPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE '%' || $LITERAL || '%' ESCAPE '\\')"],
     pinyin: "pcc.pinyin_text",
     teacher: ["t.name", "t.source_teacher_label", "c.department"],
   }, "relation", args.length);
