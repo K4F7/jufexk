@@ -645,7 +645,13 @@ publicCatalogRoutes.get("/api/teachers", async (c) => {
   const args = searchGroup.args;
   const teacherRanking = buildCatalogSearchRanking(
     searchTerms,
-    { exact: ["t.name"], prefix: ["t.name"], substring: ["t.name"], pinyin: "pts.pinyin_text", teacher: ["t.department"] },
+    {
+      exact: ["t.name"],
+      prefix: ["t.name"],
+      substring: ["t.name"],
+      pinyin: "pts.pinyin_text",
+      teacher: ["t.department"],
+    },
     "teacher",
     args.length,
   );
@@ -852,7 +858,17 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
   const args = searchGroup.args;
   const optionRanking = buildCatalogSearchRanking(
     searchTerms,
-    { exact: ["c.name", "c.code"], exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"], prefix: ["c.name", "c.code"], substring: ["c.name", "c.code"], pinyin: "pcc.pinyin_text", teacher: ["c.department", "pcc.teacher_variant_text"] },
+    {
+      exact: ["c.name", "c.code"],
+      exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"],
+      prefix: ["c.name", "c.code"],
+      prefixPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE $LITERAL || '%' ESCAPE '\\')"],
+      substring: ["c.name", "c.code"],
+      substringPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE '%' || $LITERAL || '%' ESCAPE '\\')"],
+      pinyin: "pcc.pinyin_text",
+      teacher: ["c.department", "pcc.teacher_variant_text"],
+      teacherExactPredicates: ["instr(pcc.teacher_variant_text, char(31) || $TERM || char(31)) > 0"],
+    },
     "option",
     args.length,
   );
