@@ -22,6 +22,7 @@ import {
   saveIdempotency,
 } from "./review-endorsements";
 import { digest, fail, integer, takeRateLimit } from "./routes/support";
+import { readVoteActorId } from "./review-vote-actor";
 import type { AppContext } from "./routes/types";
 
 export const COMMENT_CREATE_OPERATION = "review-comment.create";
@@ -163,7 +164,7 @@ export async function handleListReviewComments(c: AppContext) {
   const items = await decorateCommentEndorsements(
     c.env.DB,
     results.map(mapComment),
-    viewer?.id ?? null,
+    await readVoteActorId(c),
   );
   return c.json({ items });
 }

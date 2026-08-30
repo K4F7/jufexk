@@ -1,23 +1,28 @@
-import { ThumbsUp, ThumbsUpFill } from "@gravity-ui/icons";
+import { ThumbsDown, ThumbsDownFill, ThumbsUp, ThumbsUpFill } from "@gravity-ui/icons";
 import { Alert, Button, Spinner } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ApiError, api } from "../lib/api";
 import {
+  challengeButtonLabel,
   recognitionButtonLabel,
   recognitionButtonText,
 } from "../lib/recognition";
-import type { EndorsementState, PublicReview, ReviewComment } from "../lib/types";
-import { RouterAriaLink } from "./RouterAriaLink";
+import type {
+  EndorsementState,
+  PublicReview,
+  ReviewComment,
+  ReviewStanceState,
+} from "../lib/types";
 
 type Pending = "create" | "withdraw" | null;
+type StanceSide = "recognition" | "challenge";
 
 export type ReviewRecognitionAppearance = "label" | "icon";
 
 export function useReviewRecognition({
   review,
   ready,
-  authenticated,
   loginPath,
   onUnauthenticated,
 }: {
@@ -29,11 +34,15 @@ export function useReviewRecognition({
 }) {
   const confirmedCount = review.endorsement_count || 0;
   const confirmedEndorsed = !!review.viewer_endorsed;
+  const confirmedChallengeCount = review.challenge_count || 0;
+  const confirmedChallenged = !!review.viewer_challenged;
   const [count, setCount] = useState(confirmedCount);
   const [endorsed, setEndorsed] = useState(confirmedEndorsed);
+  const [challengeCount, setChallengeCount] = useState(confirmedChallengeCount);
+  const [challenged, setChallenged] = useState(confirmedChallenged);
+  const [pendingSide, setPendingSide] = useState<StanceSide | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loginPrompted, setLoginPrompted] = useState(false);
   const location = useLocation();
   const loginTarget = `${loginPath}?from=${encodeURIComponent(
     location.pathname + location.search,
@@ -42,55 +51,85 @@ export function useReviewRecognition({
   useEffect(() => {
     setCount(confirmedCount);
     setEndorsed(confirmedEndorsed);
-  }, [review.id, confirmedCount, confirmedEndorsed]);
+    setChallengeCount(confirmedChallengeCount);
+    setChallenged(confirmedChallenged);
+  }, [
+    review.id,
+    confirmedCount,
+    confirmedEndorsed,
+    confirmedChallengeCount,
+    confirmedChallenged,
+  ]);
 
-  const press = async () => {
+  const pressSide = async (side: StanceSide) => {
     if (pending || !ready) return;
-    if (!authenticated) {
-      setLoginPrompted(true);
-      return;
-    }
 
-    const action: Exclude<Pending, null> = endorsed ? "withdraw" : "create";
-    const snapshot = { count, endorsed };
-    setEndorsed(action === "create");
-    setCount(count + (action === "create" ? 1 : -1));
+    const active = side === "recognition" ? endorsed : challenged;
+    const action: Exclude<Pending, null> = active ? "withdraw" : "create";
+    const snapshot = { count, endorsed, challengeCount, challenged };
+    if (side === "recognition") {
+      setEndorsed(action === "create");
+      setCount(count + (action === "create" ? 1 : -1));
+      if (action === "create" && challenged) {
+        setChallenged(false);
+        setChallengeCount(Math.max(0, challengeCount - 1));
+      }
+    } else {
+      setChallenged(action === "create");
+      setChallengeCount(challengeCount + (action === "create" ? 1 : -1));
+      if (action === "create" && endorsed) {
+        setEndorsed(false);
+        setCount(Math.max(0, count - 1));
+      }
+    }
+    setPendingSide(side);
     setPending(action);
     setError(null);
-    setLoginPrompted(false);
 
     try {
-      const result = await api<EndorsementState>(
-        `/api/reviews/${review.id}/endorsement`,
+      const result = await api<ReviewStanceState>(
+        `/api/reviews/${review.id}/${side === "recognition" ? "endorsement" : "challenge"}`,
         {
           method: action === "create" ? "PUT" : "DELETE",
           headers: { "Idempotency-Key": crypto.randomUUID() },
         },
       );
-      setCount(result.endorsementCount);
-      setEndorsed(result.viewerEndorsed);
+      setCount(result.endorsementCount || 0);
+      setEndorsed(!!result.viewerEndorsed);
+      setChallengeCount(result.challengeCount || 0);
+      setChallenged(!!result.viewerChallenged);
     } catch (cause) {
       setCount(snapshot.count);
       setEndorsed(snapshot.endorsed);
+      setChallengeCount(snapshot.challengeCount);
+      setChallenged(snapshot.challenged);
       if (cause instanceof ApiError && cause.status === 401) {
         onUnauthenticated();
-        setLoginPrompted(true);
-        setError(null);
-      } else {
-        setError("认可失败，已恢复服务器确认的计数。请重试。");
       }
+      setError(
+        side === "recognition"
+          ? "认可失败，已恢复服务器确认的计数。请重试。"
+          : "质疑失败，已恢复服务器确认的计数。请重试。",
+      );
     } finally {
+      setPendingSide(null);
       setPending(null);
     }
   };
 
   return {
-    state: { pending, endorsed, count },
+    state: { pending: pendingSide === "recognition" ? pending : null, endorsed, count },
+    challenge: {
+      pending: pendingSide === "challenge" ? pending : null,
+      challenged,
+      count: challengeCount,
+    },
+    busy: pending !== null,
     ready,
     error,
-    loginPrompted,
     loginTarget,
-    press,
+    press: () => pressSide("recognition"),
+    pressChallenge: () => pressSide("challenge"),
   };
 }
 
@@ -99,7 +138,6 @@ export function useCommentRecognition({
   comment,
   preview,
   ready,
-  authenticated,
   loginPath,
   onUnauthenticated,
 }: {
@@ -117,7 +155,6 @@ export function useCommentRecognition({
   const [endorsed, setEndorsed] = useState(confirmedEndorsed);
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loginPrompted, setLoginPrompted] = useState(false);
   const location = useLocation();
   const loginTarget = `${loginPath}?from=${encodeURIComponent(
     location.pathname + location.search,
@@ -134,12 +171,7 @@ export function useCommentRecognition({
       const action: Exclude<Pending, null> = endorsed ? "withdraw" : "create";
       setEndorsed(action === "create");
       setCount(count + (action === "create" ? 1 : -1));
-      setLoginPrompted(false);
       setError(null);
-      return;
-    }
-    if (!authenticated) {
-      setLoginPrompted(true);
       return;
     }
 
@@ -149,7 +181,6 @@ export function useCommentRecognition({
     setCount(count + (action === "create" ? 1 : -1));
     setPending(action);
     setError(null);
-    setLoginPrompted(false);
 
     try {
       const result = await api<EndorsementState>(
@@ -166,11 +197,8 @@ export function useCommentRecognition({
       setEndorsed(snapshot.endorsed);
       if (cause instanceof ApiError && cause.status === 401) {
         onUnauthenticated();
-        setLoginPrompted(true);
-        setError(null);
-      } else {
-        setError("认可失败，已恢复服务器确认的计数。请重试。");
       }
+      setError("认可失败，已恢复服务器确认的计数。请重试。");
     } finally {
       setPending(null);
     }
@@ -180,7 +208,6 @@ export function useCommentRecognition({
     state: { pending, endorsed, count },
     ready,
     error,
-    loginPrompted,
     loginTarget,
     press,
   };
@@ -191,12 +218,14 @@ export function ReviewRecognitionButton({
   noun = "评价",
   state,
   ready,
+  busy,
   onPress,
 }: {
   appearance?: ReviewRecognitionAppearance;
   noun?: string;
   state: { pending: Pending; endorsed: boolean; count: number };
   ready: boolean;
+  busy?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -204,7 +233,7 @@ export function ReviewRecognitionButton({
       size="sm"
       variant="ghost"
       isPending={state.pending !== null}
-      isDisabled={!ready}
+      isDisabled={!ready || !!busy}
       aria-pressed={state.endorsed}
       aria-label={recognitionButtonLabel({ ...state, noun })}
       className="aria-pressed:bg-accent-soft aria-pressed:text-accent"
@@ -238,36 +267,62 @@ export function ReviewRecognitionButton({
   );
 }
 
-export function ReviewRecognitionAlerts({
-  error,
-  loginPrompted,
-  loginTarget,
-  noun = "评价",
+export function ReviewChallengeButton({
+  state,
+  ready,
+  busy,
+  onPress,
 }: {
-  error: string | null;
-  loginPrompted: boolean;
-  loginTarget: string;
-  noun?: string;
+  state: { pending: Pending; challenged: boolean; count: number };
+  ready: boolean;
+  busy?: boolean;
+  onPress: () => void;
 }) {
   return (
-    <>
-      {error ? (
-        <Alert className="mt-1.5" role="alert" status="danger">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>认可失败</Alert.Title>
-            <Alert.Description>{error}</Alert.Description>
-          </Alert.Content>
-        </Alert>
-      ) : null}
-      {loginPrompted ? (
-        <p role="status" className="mb-0 mt-1.5 text-xs text-muted">
-          <RouterAriaLink to={loginTarget}>使用普通用户登录</RouterAriaLink>
-          后才能认可{noun}。
-        </p>
-      ) : null}
-    </>
+    <Button
+      size="sm"
+      variant="ghost"
+      isPending={state.pending !== null}
+      isDisabled={!ready || !!busy}
+      aria-pressed={state.challenged}
+      aria-label={challengeButtonLabel(state)}
+      className="aria-pressed:bg-accent-soft aria-pressed:text-accent"
+      onPress={onPress}
+    >
+      {({ isPending }) => (
+        <>
+          {isPending ? (
+            <Spinner color="current" size="sm" />
+          ) : state.challenged ? (
+            <ThumbsDownFill aria-hidden />
+          ) : (
+            <ThumbsDown aria-hidden />
+          )}
+          {state.count > 0 ? (
+            <span className="tabular">{state.count}</span>
+          ) : null}
+        </>
+      )}
+    </Button>
   );
+}
+
+export function ReviewRecognitionAlerts({
+  error,
+}: {
+  error: string | null;
+  noun?: string;
+}) {
+  const failedChallenge = error?.startsWith("质疑") ?? false;
+  return error ? (
+    <Alert className="mt-1.5" role="alert" status="danger">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Title>{failedChallenge ? "质疑失败" : "认可失败"}</Alert.Title>
+        <Alert.Description>{error}</Alert.Description>
+      </Alert.Content>
+    </Alert>
+  ) : null;
 }
 
 export function ReviewRecognitionControl({
@@ -301,15 +356,22 @@ export function ReviewRecognitionControl({
         appearance={appearance}
         state={recognition.state}
         ready={recognition.ready}
+        busy={recognition.challenge.pending !== null}
         onPress={() => {
           void recognition.press();
         }}
       />
-      <ReviewRecognitionAlerts
-        error={recognition.error}
-        loginPrompted={recognition.loginPrompted}
-        loginTarget={recognition.loginTarget}
-      />
+      {appearance === "icon" ? (
+        <ReviewChallengeButton
+          state={recognition.challenge}
+          ready={recognition.ready}
+          busy={recognition.state.pending !== null}
+          onPress={() => {
+            void recognition.pressChallenge();
+          }}
+        />
+      ) : null}
+      <ReviewRecognitionAlerts error={recognition.error} />
     </div>
   );
 }

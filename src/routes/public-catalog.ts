@@ -60,12 +60,9 @@ import {
 import { handleLatestPublicReviews } from "../public-reviews-latest";
 import { handleListReviewComments } from "../review-comments";
 import { decoratePublicReviews } from "../review-endorsements";
+import { readVoteActorId } from "../review-vote-actor";
 import { loadRelationSignalPayloads } from "../relation-signals";
-import { resolveOrdinaryUser } from "../ordinary-user-authentication";
-import {
-  isLoopbackWorkerRequest,
-  isOrdinaryUserAuthenticated,
-} from "../ordinary-user-write-authorization";
+import { isLoopbackWorkerRequest } from "../ordinary-user-write-authorization";
 import {
   authoredReviewAuthorSql,
   authoredReviewJoinSql,
@@ -309,7 +306,7 @@ const getPublicReviewPage = async (
     .prepare(
       `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
          headline,grade,
-         course_name,course_code,teacher_name,endorsement_count,
+         course_name,course_code,teacher_name,endorsement_count,challenge_count,
          scheme_key,scheme_version,scores,overall,created_at,
          author_public_code,author_avatar_key,blocked_at,
          COUNT(*) OVER() filtered_total
@@ -320,6 +317,8 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM historical_review_endorsements e
             WHERE e.historical_review_id=phr.id) endorsement_count,
+           (SELECT COUNT(*) FROM historical_review_challenges e
+            WHERE e.historical_review_id=phr.id) challenge_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
            NULL overall,phr.imported_at created_at,
            ${reservedAuthorSql}, phr.blocked_at
@@ -334,6 +333,8 @@ const getPublicReviewPage = async (
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM legacy_review_endorsements e
             WHERE e.legacy_review_id=lr.id) endorsement_count,
+           (SELECT COUNT(*) FROM legacy_review_challenges e
+            WHERE e.legacy_review_id=lr.id) challenge_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
            NULL overall,lr.created_at,
            ${reservedAuthorSql}, lr.blocked_at
@@ -348,6 +349,7 @@ const getPublicReviewPage = async (
            r.headline,r.grade,
            c.name course_name,c.code course_code,t.name teacher_name,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
+           (SELECT COUNT(*) FROM review_challenges e WHERE e.review_id=r.id) challenge_count,
            r.scheme_key,r.scheme_version,r.scores,
            r.overall,r.created_at,
            ${authoredReviewAuthorSql}, r.blocked_at
@@ -457,10 +459,7 @@ const getPublicReviewPage = async (
         : null,
   };
 };
-const publicReviewViewerId = async (c: AppContext) => {
-  const viewer = await resolveOrdinaryUser(c);
-  return viewer && isOrdinaryUserAuthenticated(viewer) ? viewer.id : null;
-};
+const publicReviewViewerId = async (c: AppContext) => readVoteActorId(c);
 const getPublicReviewPageFor = async (
   c: AppContext,
   subject: "course_id" | "teacher_id",

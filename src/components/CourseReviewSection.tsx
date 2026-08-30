@@ -39,6 +39,10 @@ import { parseHandlePublicCode } from "../public-handle";
 import type { PublicReview, ReviewComment } from "../lib/types";
 import { FourDimLine } from "./FourDimLine";
 import { ReviewActionBar } from "./ReviewActionBar";
+import { ReviewFoldedBody } from "./ReviewFoldedBody";
+import {
+  useReviewRecognition,
+} from "./ReviewRecognitionControl";
 import { ReviewAuthor } from "./ReviewAuthor";
 import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
 import { ReviewAdminControls } from "./ReviewAdminControls";
@@ -142,6 +146,13 @@ const CourseReviewItem = memo(function CourseReviewItem({
   previewComposer: boolean;
 }) {
   const date = formatReviewDate(review.created_at);
+  const recognition = useReviewRecognition({
+    review,
+    ready,
+    authenticated,
+    loginPath,
+    onUnauthenticated,
+  });
   return (
     <article
       id={reviewAnchorId(review.id)}
@@ -171,34 +182,41 @@ const CourseReviewItem = memo(function CourseReviewItem({
           此评价已被屏蔽，公开列表不再展示，仅管理员可见。
         </p>
       ) : null}
-      {review.dimensionLabels?.length ? (
-        <FourDimLine
-          className="mt-1.5"
-          labels={fourDimLineLabels(review.dimensionLabels)}
-        />
-      ) : typeof review.dimensionAverage === "number" ? (
-        <div className="mt-1.5">
-          <Chip size="sm" variant="soft">
-            <Chip.Label>
-              维度均分 {review.dimensionAverage.toFixed(1)}
-            </Chip.Label>
-          </Chip>
+      <ReviewFoldedBody
+        endorsementCount={recognition.state.count}
+        challengeCount={recognition.challenge.count}
+        viewerChallenged={recognition.challenge.challenged}
+      >
+        {review.dimensionLabels?.length ? (
+          <FourDimLine
+            className="mt-1.5"
+            labels={fourDimLineLabels(review.dimensionLabels)}
+          />
+        ) : typeof review.dimensionAverage === "number" ? (
+          <div className="mt-1.5">
+            <Chip size="sm" variant="soft">
+              <Chip.Label>
+                维度均分 {review.dimensionAverage.toFixed(1)}
+              </Chip.Label>
+            </Chip>
+          </div>
+        ) : null}
+        <div className="mt-2">
+          <ReviewNoteContent
+            comment={review.comment}
+            commentFormat={review.comment_format}
+          />
         </div>
-      ) : null}
-      <div className="mt-2">
-        <ReviewNoteContent
-          comment={review.comment}
-          commentFormat={review.comment_format}
-        />
-      </div>
-      {review.grade ? (
-        <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
-          成绩：{review.grade}
-        </p>
-      ) : null}
+        {review.grade ? (
+          <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
+            成绩：{review.grade}
+          </p>
+        ) : null}
+      </ReviewFoldedBody>
       <ReviewActionBar
         review={review}
         date={date}
+        recognition={recognition}
         ready={ready}
         authenticated={authenticated}
         loginPath={loginPath}

@@ -162,8 +162,10 @@ export type PublicReview = {
   overall?: number | null;
   created_at?: string | null;
   endorsement_count?: number;
+  challenge_count?: number;
   endorsable?: boolean;
   viewer_endorsed?: boolean;
+  viewer_challenged?: boolean;
   /** Present only for stored snapshots whose scheme version still averages dimensions. */
   dimensionAverage?: number;
   /** Present only for stored snapshots whose scheme version publishes tier labels. */
@@ -225,6 +227,13 @@ export type RelationSignalState = {
 export type EndorsementState = {
   endorsementCount: number;
   viewerEndorsed: boolean;
+};
+
+export type ReviewStanceState = {
+  endorsementCount: number;
+  challengeCount: number;
+  viewerEndorsed: boolean;
+  viewerChallenged: boolean;
 };
 
 export type PublicReviewPage<T = PublicReview> = {

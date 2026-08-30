@@ -56,7 +56,7 @@ async function mockApi(page: Page, mock: MockState) {
         return fulfillJson(route, { error: "boom" }, 500);
       return fulfillJson(route, {
         authenticated: mock.authenticated,
-        csrfToken: mock.authenticated ? "csrf-user" : undefined,
+        csrfToken: "csrf-user",
         loginPath: "/login",
         logoutPath: "/logout",
         ...(mock.authenticated
@@ -120,7 +120,12 @@ async function mockApi(page: Page, mock: MockState) {
     if (endorsement && request.method() === "PUT") {
       if (mock.endorsement401)
         return fulfillJson(route, { error: "请先登录后再认可" }, 401);
-      return fulfillJson(route, { endorsementCount: 1, viewerEndorsed: true });
+      return fulfillJson(route, {
+        endorsementCount: 1,
+        viewerEndorsed: true,
+        challengeCount: 0,
+        viewerChallenged: false,
+      });
     }
     return fulfillJson(route, { error: "not mocked" }, 404);
   });
@@ -223,7 +228,7 @@ test("the old /logout URL is gone", async ({ page }) => {
   expect(mock.logoutCalls).toBe(0);
 });
 
-test("a 401 on a write clears the viewer state and shows the login guide", async ({
+test("a 401 on a write clears the viewer state without a vote login prompt", async ({
   page,
 }) => {
   await mockApi(
@@ -236,12 +241,10 @@ test("a 401 on a write clears the viewer state and shows the login guide", async
   await page
     .getByRole("button", { name: "认可这条评价，还没有人认可" })
     .click();
-  const prompt = page.getByRole("status").filter({ hasText: "后才能认可评价" });
+  await expect(page.getByRole("alert")).toContainText("认可失败");
+  await expect(page.getByText("后才可互动")).toHaveCount(0);
   await expect(
-    prompt.getByRole("link", { name: "使用普通用户登录" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "登录", exact: true }),
+    page.getByRole("banner").getByRole("link", { name: "登录", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "账号", exact: true }),

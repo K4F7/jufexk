@@ -1,5 +1,5 @@
 /**
- * Course review footer: date + 认可 / 评论 / 分享, and the
+ * Course review footer: date + 认可 / 质疑 / 评论 / 分享, and the
  * HeroUI comments Surface. 认可 uses the live endorsement API. 回复默认收起，
  * 点评论按钮展开并拉取 /api/reviews/:id/comments；DEV atlas / preview
  * 保持本地种子回复。回复他人的评论会展开回复区并聚焦输入框。
@@ -34,6 +34,7 @@ import { AnonymousAvatar } from "./AnonymousAvatar";
 import { DetailLoadingStatus } from "./DetailFeedback";
 import { RouterAriaLink } from "./RouterAriaLink";
 import {
+  ReviewChallengeButton,
   ReviewRecognitionAlerts,
   ReviewRecognitionButton,
   useCommentRecognition,
@@ -57,6 +58,7 @@ function commentSnippet(body: string, max = 20): string {
 export function ReviewActionBar({
   review,
   date,
+  recognition,
   ready,
   authenticated,
   loginPath,
@@ -69,6 +71,7 @@ export function ReviewActionBar({
 }: {
   review: PublicReview;
   date: string;
+  recognition: ReturnType<typeof useReviewRecognition>;
   ready: boolean;
   authenticated: boolean;
   loginPath: string;
@@ -81,13 +84,6 @@ export function ReviewActionBar({
   /** dock 开关打开后才渲染 preview `viewerOwned` 的回复删除。 */
   showAdminControls?: boolean;
 }) {
-  const recognition = useReviewRecognition({
-    review,
-    ready,
-    authenticated,
-    loginPath,
-    onUnauthenticated,
-  });
   const comments = useReviewComments({
     review,
     seedComments,
@@ -167,14 +163,25 @@ export function ReviewActionBar({
         ) : null}
         <Toolbar aria-label="评价动作">
           {endorsable ? (
-            <ReviewRecognitionButton
-              appearance="icon"
-              state={recognition.state}
-              ready={recognition.ready}
-              onPress={() => {
-                void recognition.press();
-              }}
-            />
+            <>
+              <ReviewRecognitionButton
+                appearance="icon"
+                state={recognition.state}
+                ready={recognition.ready}
+                busy={recognition.challenge.pending !== null}
+                onPress={() => {
+                  void recognition.press();
+                }}
+              />
+              <ReviewChallengeButton
+                state={recognition.challenge}
+                ready={recognition.ready}
+                busy={recognition.state.pending !== null}
+                onPress={() => {
+                  void recognition.pressChallenge();
+                }}
+              />
+            </>
           ) : null}
           {comments.live || previewComposer ? (
             <Button
@@ -205,11 +212,7 @@ export function ReviewActionBar({
         </Toolbar>
       </div>
       {endorsable ? (
-        <ReviewRecognitionAlerts
-          error={recognition.error}
-          loginPrompted={recognition.loginPrompted}
-          loginTarget={recognition.loginTarget}
-        />
+        <ReviewRecognitionAlerts error={recognition.error} />
       ) : null}
       {open ? (
         <ReviewCommentsPanel
@@ -312,12 +315,7 @@ function CommentRowActions({
           </Button>
         ) : null}
       </div>
-      <ReviewRecognitionAlerts
-        error={recognition.error}
-        loginPrompted={recognition.loginPrompted}
-        loginTarget={recognition.loginTarget}
-        noun="回复"
-      />
+      <ReviewRecognitionAlerts error={recognition.error} noun="回复" />
     </div>
   );
 }
