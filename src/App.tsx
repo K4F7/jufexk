@@ -87,13 +87,10 @@ const PrototypeGalleryPage = import.meta.env.DEV
 
 function RouteFallback() {
   return (
-    <p
-      className="flex flex-col items-center gap-2 py-10 text-center text-[calc(13/15*1rem)] text-muted"
-      role="status"
-    >
+    <div className="flex flex-col items-center gap-2 py-10" role="status">
       <Spinner size="sm" />
-      加载中…
-    </p>
+      <span className="text-xs text-muted">加载中…</span>
+    </div>
   );
 }
 
