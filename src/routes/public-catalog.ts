@@ -626,7 +626,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
 publicCatalogRoutes.get("/api/courses", async (c) => {
   const relations = clean(c.req.query("view"), 20) === "relations";
   const cacheable = relations
-    ? isPublicCatalogCacheableRequest(c)
+    ? isPublicCourseListCacheableRequest(c)
     : isPublicCourseListCacheableRequest(c);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);

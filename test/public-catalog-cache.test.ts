@@ -9,6 +9,7 @@ import {
   PUBLIC_DETAIL_CACHE_CONTROL,
   PUBLIC_DETAIL_CACHE_TAG,
   purgePublicCatalogCache,
+  isPublicCourseListCacheableRequest,
   setPublicCatalogCacheHeaders,
 } from "../src/lib/public-catalog-cache";
 
@@ -81,12 +82,14 @@ describe("public catalog cache headers", () => {
     expect(JSON.stringify(body)).not.toContain("admin");
   });
 
-  it("keeps relation lists BYPASS with the guest voter marker", async () => {
+  it("caches relation lists with the guest voter marker", async () => {
     const response = await SELF.fetch(`${origin}/api/courses?view=relations&pageSize=1`, {
       headers: { Cookie: "jufexk_voter=abc" },
     });
     expect(response.status).toBe(200);
-    isNotPublicCatalogCache(response);
+    isPublicCatalogCache(response);
+    const body = await response.json<Record<string, unknown>>();
+    expect(JSON.stringify(body)).not.toContain("viewer_");
   });
 
   it.each([
@@ -122,6 +125,14 @@ describe("public catalog cache helpers", () => {
     });
     expect(headers.get("Cache-Control")).toBe(PUBLIC_CATALOG_CACHE_CONTROL);
     expect(headers.get("Cache-Tag")).toBe(PUBLIC_CATALOG_CACHE_TAG);
+  });
+
+  it("allows only the voter marker for anonymous course-list caching", () => {
+    const request = (cookie?: string) => ({
+      req: { header: (name: string) => name === "Cookie" ? cookie : undefined },
+    });
+    expect(isPublicCourseListCacheableRequest(request("jufexk_voter=abc"))).toBe(true);
+    expect(isPublicCourseListCacheableRequest(request("jufexk_voter=abc; jufexk_user_session=abc"))).toBe(false);
   });
 
   it("purges the public-catalog tag when the runtime supports it", async () => {

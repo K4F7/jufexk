@@ -52,9 +52,18 @@ export function AnonymousAvatar({
     (avatarKey != null
       ? officialAvatarSrc(avatarKey)
       : placeholderAvatarSrc(seed ?? 0));
+  // Keep the intrinsic image box aligned with HeroUI's sm/md/lg defaults;
+  // callers that override the outer Avatar size still own that layout box.
+  const dimension = size === "sm" ? 32 : size === "lg" ? 48 : 40;
   return (
     <Avatar size={size} className={className} aria-hidden>
-      <Avatar.Image alt="" src={src} />
+      <Avatar.Image
+        alt=""
+        height={dimension}
+        loading="lazy"
+        src={src}
+        width={dimension}
+      />
       <Avatar.Fallback>{fallback}</Avatar.Fallback>
     </Avatar>
   );

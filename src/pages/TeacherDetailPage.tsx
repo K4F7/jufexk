@@ -15,10 +15,10 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import { TeacherHomepageLine } from "../components/OfficialHomepageLink";
 import {
-  DetailErrorAlert,
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
 import { previewFilledTeacherDetail, readDevPreviewOrFilled } from "../lib/dev-preview";
+import { DetailErrorAlert } from "../components/DetailErrorAlert";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { api } from "../lib/api";
 import { getCatalogData } from "../lib/catalog-data-cache";

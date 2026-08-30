@@ -7,7 +7,7 @@ import { Button, Card, Separator, Spinner, Typography } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
-import { DetailErrorAlert } from "../components/DetailFeedback";
+import { DetailErrorAlert } from "../components/DetailErrorAlert";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useMediaQuery } from "../hooks/useMediaQuery";

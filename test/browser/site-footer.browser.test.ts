@@ -43,7 +43,7 @@ test.beforeEach(async ({ page }) => mockPublicApi(page));
 test("footer exposes GitHub, feedback, and site-info links", async ({
   page,
 }) => {
-  await page.goto("/courses");
+  await page.goto("/courses", { waitUntil: "domcontentloaded" });
 
   const footer = page.getByRole("contentinfo");
   const footerNav = footer.getByRole("navigation", { name: "页脚" });
@@ -111,7 +111,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
 });
 
 test("footer site-info links open their pages", async ({ page }) => {
-  await page.goto("/courses");
+  await page.goto("/courses", { waitUntil: "domcontentloaded" });
   const footerNav = page
     .getByRole("contentinfo")
     .getByRole("navigation", { name: "页脚" });

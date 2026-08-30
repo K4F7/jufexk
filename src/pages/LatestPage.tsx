@@ -2,11 +2,11 @@
  * 最新课评 /latest：全站公开文字评价，按发表时间倒序。
  * 数据走 GET /api/reviews/latest（游标分页）。折叠只出现在课程×教师评价页。
  */
-import { Button, Card, Spinner, Typography } from "@heroui/react";
+import { Button, Card, Skeleton, Spinner, Typography } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ReviewAuthor } from "../components/ReviewAuthor";
-import { DetailErrorAlert } from "../components/DetailFeedback";
+import { DetailErrorAlert } from "../components/DetailErrorAlert";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useLoadMoreOnVisible } from "../hooks/useLoadMoreOnVisible";
@@ -117,9 +117,7 @@ export function LatestPage() {
       {error && items.length === 0 ? (
         <DetailErrorAlert title="最新课评加载失败" message={error} />
       ) : loading && items.length === 0 ? (
-        <p className="py-10 text-center text-[calc(13/15*1rem)] text-muted" role="status">
-          正在加载最新课评…
-        </p>
+        <LatestReviewSkeleton />
       ) : items.length === 0 ? (
         <Card role="status">
           <Card.Header>
@@ -178,7 +176,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const date = formatReviewDate(review.created_at);
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
-    <article className="min-w-0 border-b border-separator py-3 last:border-b-0 sm:py-5">
+    <article className="min-h-[13rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:py-5">
       <header className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 sm:flex sm:flex-wrap sm:justify-between sm:gap-x-3 sm:gap-y-0">
         <span className="col-start-1 row-start-1 inline-flex min-w-0 items-center text-[calc(13/15*1rem)] font-medium text-foreground">
           <ReviewAuthor
@@ -186,7 +184,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
             avatarKey={review.author_avatar_key}
           />
         </span>
-        <p className="col-start-2 row-start-1 mb-0 mt-0 min-w-0 text-[calc(13/15*1rem)] leading-6 sm:order-3 sm:mt-2 sm:w-full sm:basis-full">
+        <p className="col-start-2 row-start-1 mb-0 mt-0 min-h-12 min-w-0 text-[calc(13/15*1rem)] leading-6 sm:order-3 sm:mt-2 sm:w-full sm:basis-full">
           <span className="text-muted">点评了 </span>
           <RouterAriaLink
             to={`/courses/${review.course_id}?teacher=${review.teacher_id}`}
@@ -224,5 +222,29 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
         查看全文
       </RouterAriaLink>
     </article>
+  );
+}
+
+function LatestReviewSkeleton() {
+  return (
+    <div role="status" aria-label="正在加载最新课评">
+      {[0, 1, 2].map((row) => (
+        <article
+          className="min-h-[13rem] border-b border-separator py-5 last:border-b-0"
+          key={row}
+        >
+          <header className="flex min-h-8 items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-28 rounded" />
+            </div>
+            <Skeleton className="h-3 w-20 rounded" />
+          </header>
+          <Skeleton className="mt-3 h-4 w-3/4 rounded" />
+          <Skeleton className="mt-3 h-[4.5rem] w-full rounded" />
+          <Skeleton className="mt-3 h-4 w-16 rounded" />
+        </article>
+      ))}
+    </div>
   );
 }

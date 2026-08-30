@@ -87,7 +87,7 @@ export function SiteBanner({ banner }: { banner: SiteBannerValue | null }) {
   return (
     <section
       aria-label="全站公告"
-      className="mx-auto w-full max-w-[1520px] px-4 pt-2 sm:px-5 xl:px-4"
+      className="mx-auto min-h-14 w-full max-w-[1520px] px-4 pt-2 sm:min-h-16 sm:px-5 xl:px-4"
       data-site-banner
     >
       {banner.mobileHtml ? (

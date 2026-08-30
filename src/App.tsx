@@ -15,13 +15,15 @@ import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
-import { CoursesPage } from "./pages/CoursesPage";
 import { LatestPage } from "./pages/LatestPage";
 
 const THEME_STORAGE_KEY = "jufexk-theme";
 
 const AccountPage = lazy(() =>
   import("./pages/AccountPage").then((m) => ({ default: m.AccountPage })),
+);
+const CoursesPage = lazy(() =>
+  import("./pages/CoursesPage").then((m) => ({ default: m.CoursesPage })),
 );
 const AdminBannerPage = lazy(() =>
   import("./pages/admin/AdminBannerPage").then((m) => ({ default: m.AdminBannerPage })),
