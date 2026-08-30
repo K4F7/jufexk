@@ -5,7 +5,8 @@ import { TIER3_QUESTIONS } from "../review-score-fixtures";
  * 写评价（Issue #402 + #400 + #447）：入口只从课程页「写点评」；表单对齐 icourse ——
  * 课×师已知时用「点评 · 课名（教师）」卡片头；四道三档、
  * 1–5 半星推荐度（默认必填）、纯文本详细评价、选填数字成绩、可保存草稿；
- * 「只写点评不评分」问卷仍显示，评分与推荐度改为可选。
+ * 「只写点评不评分」问卷仍显示，评分与推荐度改为可选；勾选后推荐度星星不位移。
+ * 带 courseId 进入时等当前 scheme，不先画旧题。详细评价下有官方 Description 说明。
  * 从课程页带入的课/老师不再重选；投稿一律匿名。
  * 线下课与 mooc 同一套四道题；发布成功回到该 课程×教师 的详情页。一句话总结字段已下线。
  *
@@ -340,7 +341,9 @@ test("icourse-aligned form appears immediately @mobile-smoke", async ({
   await expect(page.getByText("Select an item")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
   await expect(page.getByPlaceholder("选填")).toBeVisible();
-  await expect(page.getByText("选填。分享成绩，方便同学们综合判断。")).toBeVisible();
+  await expect(
+    page.getByText("可选. 分享你的成绩有助于同学们进行更全面的判断."),
+  ).toBeVisible();
   await expect(
     page.getByText("可以搜索课名、老师或课号，再选出对应的课。"),
   ).toBeVisible();
@@ -351,6 +354,14 @@ test("icourse-aligned form appears immediately @mobile-smoke", async ({
     page.getByRole("textbox", { name: "一句话总结本课" }),
   ).toHaveCount(0);
   await expect(noteEditor(page)).toBeVisible();
+  await expect(
+    page.getByText("请畅所欲言, 从讲课方式到作业考试都谈谈."),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "测评内容理想上应当富有事实且描述全面. 比如一门课讲得好但考试很难, 二者都说出来更有利于同学们做出全面的选择和判断. 学弟学妹(和挣扎的学长学姐)感谢你们.",
+    ),
+  ).toBeVisible();
   await expect(noteEditor(page).locator("[data-placeholder]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "加粗" })).toHaveCount(0);
   await expect(page.getByText("已通过人机验证")).toHaveCount(0);
@@ -390,6 +401,62 @@ test("deep link prefills course and teacher on the form", async ({
   await expect(page.getByRole("combobox", { name: "课程" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /任课教师/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
+});
+
+test("preset submit waits for the course scheme instead of painting a fallback questionnaire", async ({
+  page,
+}) => {
+  await mockSubmitApi(page);
+  let releaseCourse: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseCourse = resolve;
+  });
+  await page.route("**/api/courses/8", async (route) => {
+    await gate;
+    return route.fulfill({
+      json: { course: courseDetail, reviewCount: 0 },
+    });
+  });
+
+  await page.goto("/submit?courseId=8&teacherId=9");
+  await expect(page.getByRole("status", { name: "问卷加载中" })).toBeVisible();
+  await expect(page.getByRole("grid", { name: "课程难度" })).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "作业多少" })).toHaveCount(0);
+  await expect(page.getByRole("grid", { name: "考勤松紧" })).toHaveCount(0);
+  await expect(page.getByRole("radiogroup", { name: "上课表现" })).toHaveCount(0);
+  await expect(page.getByRole("radiogroup", { name: "点名频率" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "写评价" })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "课程" })).toHaveCount(0);
+
+  releaseCourse();
+  await expectOfflineQuestions(page);
+  await expect(
+    page.getByRole("region", {
+      name: "点评 · 中国传统文化导论（测试教师）",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("status", { name: "问卷加载中" })).toHaveCount(0);
+});
+
+test("skip-rating checkbox does not shift the overall stars", async ({
+  page,
+}) => {
+  await mockSubmitApi(page);
+  await page.goto("/submit?courseId=8&teacherId=9");
+  const firstStar = page
+    .getByRole("radiogroup", { name: "推荐度" })
+    .getByRole("radio", { name: "1 星", exact: true });
+  await expect(firstStar).toBeVisible();
+  const before = await firstStar.boundingBox();
+  await clickLabeledCheckbox(page, "只写点评不评分");
+  await expect(
+    page.getByRole("checkbox", { name: "只写点评不评分" }),
+  ).toBeChecked();
+  const after = await firstStar.boundingBox();
+  expect(before).toBeTruthy();
+  expect(after).toBeTruthy();
+  expect(Math.abs((after?.x ?? 0) - (before?.x ?? 0))).toBeLessThan(1);
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(1);
 });
 
 test("save keeps a draft for the same course and teacher", async ({ page }) => {
