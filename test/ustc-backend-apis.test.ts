@@ -280,6 +280,13 @@ describe("USTC backend APIs (issue #410)", () => {
     });
     await insertReview({
       ...relation,
+      comment: `半星点评${stamp}`,
+      overall: 4.5,
+      term: "2025 冬",
+      createdAt: "2025-12-01 00:00:00",
+    });
+    await insertReview({
+      ...relation,
       comment: `高分新点评${stamp}`,
       overall: 5,
       term: "2026 春",
@@ -299,27 +306,33 @@ describe("USTC backend APIs (issue #410)", () => {
     };
 
     const oldest = await query("sort=oldest");
-    expect(oldest.total).toBe(2);
-    expect(oldest.items.map((item) => item.overall)).toEqual([2, 5]);
+    expect(oldest.total).toBe(3);
+    expect(oldest.items.map((item) => item.overall)).toEqual([2, 4.5, 5]);
 
-    const rating = await query("sort=rating_desc");
-    expect(rating.items.map((item) => item.overall)).toEqual([5, 2]);
+    const rejected = await SELF.fetch(
+      `${origin}/api/courses/${relation.courseId}/reviews?teacherId=${relation.teacherId}&sort=rating_desc`,
+    );
+    expect(rejected.status).toBe(400);
 
-    const filtered = await query("sort=latest&rating=5");
-    expect(filtered.total).toBe(1);
-    expect(filtered.items).toEqual([
-      expect.objectContaining({ overall: 5 }),
+    const fourStar = await query("sort=latest&rating=4");
+    expect(fourStar.total).toBe(1);
+    expect(fourStar.items).toEqual([
+      expect.objectContaining({ overall: 4.5 }),
     ]);
+
+    const filtered = await query("sort=latest&rating=4,5");
+    expect(filtered.total).toBe(2);
+    expect(filtered.items.map((item) => item.overall)).toEqual([5, 4.5]);
     expect(filtered.items[0]).not.toHaveProperty("term");
 
-    const firstPage = await query("sort=rating_desc&pageSize=1");
+    const firstPage = await query("sort=latest&pageSize=1");
     expect(firstPage.items.map((item) => item.overall)).toEqual([5]);
-    expect(firstPage.total).toBe(2);
+    expect(firstPage.total).toBe(3);
     const secondPage = await query(
-      `sort=rating_desc&pageSize=1&cursor=${encodeURIComponent(firstPage.nextCursor || "")}`,
+      `sort=latest&pageSize=1&cursor=${encodeURIComponent(firstPage.nextCursor || "")}`,
     );
-    expect(secondPage.items.map((item) => item.overall)).toEqual([2]);
-    expect(secondPage.total).toBe(2);
+    expect(secondPage.items.map((item) => item.overall)).toEqual([4.5]);
+    expect(secondPage.total).toBe(3);
   });
 
   it("paginates reviews with a Chinese comment cursor", async () => {

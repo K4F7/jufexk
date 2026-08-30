@@ -52,10 +52,8 @@ const CATEGORY_PILLS = [
 ];
 
 const REVIEW_SORTS = [
-  { id: "review-sort-latest", option: "最新发布" },
-  { id: "review-sort-oldest", option: "最早发布" },
-  { id: "review-sort-rating-desc", option: "评分最高" },
-  { id: "review-sort-rating-asc", option: "评分最低" },
+  { id: "review-sort-latest", option: "从新到旧" },
+  { id: "review-sort-oldest", option: "从旧到新" },
   { id: "review-sort-recognized", option: "认可最多" },
 ];
 
@@ -426,7 +424,6 @@ async function runHttpMatrix() {
     ["http-review-recognized", `teacherId=${teacherId}&sort=recognized`],
     ["http-review-latest", `teacherId=${teacherId}&sort=latest`],
     ["http-review-oldest", `teacherId=${teacherId}&sort=oldest`],
-    ["http-review-rating-desc", `teacherId=${teacherId}&sort=rating_desc`],
     ["http-review-rating-5", `teacherId=${teacherId}&sort=recognized&rating=5`],
     ["http-review-rating-1", `teacherId=${teacherId}&sort=recognized&rating=1`],
   ]) {
@@ -818,7 +815,7 @@ async function runWalk(browser) {
       group: "review-filter",
       prepare: async (heat) => {
         if (heat === "cold") return;
-        const away = sort.option === "认可最多" ? "最新发布" : "认可最多";
+        const away = sort.option === "认可最多" ? "从新到旧" : "认可最多";
         await openSelectOption(page, "点评筛选", away);
         await waitReviewsIdle(page);
       },

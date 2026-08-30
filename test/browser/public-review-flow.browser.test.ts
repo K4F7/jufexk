@@ -587,6 +587,16 @@ test("review controls reload the complete server-side sort and filters", async (
         endorsable: true,
       },
       {
+        id: "review:3",
+        course_id: 8,
+        teacher_id: 9,
+        comment: "四点五星点评，补充说明足够长。",
+        overall: 4.5,
+        created_at: "2025-12-01 00:00:00",
+        endorsement_count: 4,
+        endorsable: true,
+      },
+      {
         id: "review:2",
         course_id: 8,
         teacher_id: 9,
@@ -597,37 +607,50 @@ test("review controls reload the complete server-side sort and filters", async (
         endorsable: true,
       },
     ];
+    const stars = rating
+      ? rating.split(",").map(Number).filter((star) => star >= 1 && star <= 5)
+      : [];
+    const allowed = stars.flatMap((star) =>
+      star === 5 ? [5] : [star, star + 0.5],
+    );
     const filtered = all.filter(
-      (review) => !rating || review.overall === Number(rating),
+      (review) => !stars.length || allowed.includes(review.overall),
     );
     const items =
-      sort === "oldest"
-        ? filtered
-        : sort === "rating_asc"
-          ? [...filtered].sort((a, b) => a.overall - b.overall)
-          : [...filtered].reverse();
+      sort === "oldest" ? filtered : [...filtered].reverse();
     return route.fulfill({
       json: { items, nextCursor: null, total: items.length },
     });
   });
 
   await page.goto("/courses/8?teacher=9");
-  await expect(reviewItems(page)).toHaveCount(2);
+  await expect(reviewItems(page)).toHaveCount(3);
   await expect(reviewItems(page).first()).toContainText("高分新点评");
   expect(queries.at(-1)).toContain("sort=recognized");
 
   await page.getByRole("button", { name: /排序/ }).click();
-  await page.getByRole("option", { name: "最早发布" }).click();
+  await page.getByRole("option", { name: "从旧到新" }).click();
   await expect(reviewItems(page).first()).toContainText("低分旧点评");
   expect(queries.at(-1)).toContain("sort=oldest");
 
   await page.getByRole("button", { name: /评分/ }).click();
-  await page.getByRole("option", { name: "5 星" }).click();
+  await page.getByRole("option", { name: "4 星" }).click();
   await expect(reviewItems(page)).toHaveCount(1);
-  await expect(reviewItems(page).first()).toContainText("高分新点评");
+  await expect(reviewItems(page).first()).toContainText("四点五星点评");
   await expect(page.getByText("1 条点评")).toBeVisible();
+  expect(queries.at(-1)).toContain("rating=4");
+
+  const fiveStar = page.getByRole("option", { name: "5 星" });
+  if (await fiveStar.isVisible()) {
+    await fiveStar.click();
+  } else {
+    await page.getByRole("button", { name: /评分/ }).click();
+    await fiveStar.click();
+  }
+  await expect(reviewItems(page)).toHaveCount(2);
+  await expect(page.getByText("2 条点评")).toBeVisible();
   expect(queries.at(-1)).not.toContain("term=");
-  expect(queries.at(-1)).toContain("rating=5");
+  expect(decodeURIComponent(queries.at(-1) ?? "")).toMatch(/rating=(?:4,5|5,4)/);
 });
 
 test("rich-text notes render sanitized markup, plain notes stay plain", async ({
