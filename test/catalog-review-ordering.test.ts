@@ -124,7 +124,7 @@ describe("visible text review catalog ordering", () => {
     const body = await response.json<{ items: Array<{ id: number; review_count: number }> }>();
 
     expect(body.items.map(({ id, review_count }) => [id, review_count])).toEqual([
-      [popularCourseId, 3],
+      [popularCourseId, 2],
       [exactCourseId, 1],
       [zeroCourseId, 0],
     ]);
@@ -160,7 +160,7 @@ describe("visible text review catalog ordering", () => {
     const ids = browse.items.map((item) => item.id);
     expect(ids.indexOf(popularTeacherId)).toBeLessThan(ids.indexOf(exactTeacherId));
     expect(ids.indexOf(exactTeacherId)).toBeLessThan(ids.indexOf(zeroTeacherId));
-    expect(browse.items.find((item) => item.id === popularTeacherId)?.review_count).toBe(3);
+    expect(browse.items.find((item) => item.id === popularTeacherId)?.review_count).toBe(2);
     expect(browse.items.find((item) => item.id === zeroTeacherId)?.review_count).toBe(0);
     expect(browse.items.every((item) => !("rating" in item))).toBe(true);
 
@@ -175,7 +175,7 @@ describe("visible text review catalog ordering", () => {
       await SELF.fetch(`${origin}/api/courses/${popularCourseId}`)
     ).json<{ course: { teachers: Array<{ id: number; review_count: number }> } }>();
     expect(course.course.teachers.map(({ id, review_count }) => [id, review_count])).toEqual([
-      [popularTeacherId, 3],
+      [popularTeacherId, 2],
       [exactTeacherId, 0],
       [zeroTeacherId, 0],
       [tiedTeacherId, 0],

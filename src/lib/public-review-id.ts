@@ -1,9 +1,7 @@
-/** Public review stream ids: review:1 / historical:x / legacy:2. */
-
+/** Public review stream ids: review:1 / historical:x. */
 export type PublicReviewTarget =
   | { kind: "review"; id: number; publicId: string }
-  | { kind: "historical"; id: string; publicId: string }
-  | { kind: "legacy"; id: number; publicId: string };
+  | { kind: "historical"; id: string; publicId: string };
 
 const HISTORICAL_ID = /^[A-Za-z0-9._-]+$/;
 
@@ -35,13 +33,6 @@ export function parsePublicReviewTarget(
       id: historical[1],
       publicId: `historical:${historical[1]}`,
     };
-  }
-  const legacy = /^legacy:(\d+)$/.exec(value);
-  if (legacy) {
-    const id = Number(legacy[1]);
-    return Number.isSafeInteger(id) && id > 0
-      ? { kind: "legacy", id, publicId: `legacy:${id}` }
-      : null;
   }
   return null;
 }

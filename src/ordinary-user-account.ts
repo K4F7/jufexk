@@ -41,9 +41,6 @@ export async function handleRequestOrdinaryUserDeletion(c: Context) {
       "DELETE FROM historical_review_endorsements WHERE user_id=?",
     ).bind(user.id),
     c.env.DB.prepare(
-      "DELETE FROM legacy_review_endorsements WHERE user_id=?",
-    ).bind(user.id),
-    c.env.DB.prepare(
       "DELETE FROM review_comment_endorsements WHERE user_id=?",
     ).bind(user.id),
     c.env.DB.prepare("DELETE FROM review_challenges WHERE user_id=?").bind(
@@ -51,9 +48,6 @@ export async function handleRequestOrdinaryUserDeletion(c: Context) {
     ),
     c.env.DB.prepare(
       "DELETE FROM historical_review_challenges WHERE user_id=?",
-    ).bind(user.id),
-    c.env.DB.prepare(
-      "DELETE FROM legacy_review_challenges WHERE user_id=?",
     ).bind(user.id),
     c.env.DB.prepare("DELETE FROM relation_follows WHERE user_id=?").bind(
       user.id,

@@ -40,10 +40,3 @@ export const historicalPublicVisibleSql = (alias = "phr") =>
 /** 管理员可见已屏蔽历史评价，仍排除软删除。 */
 export const historicalNotDeletedSql = (alias = "phr") =>
   ` AND ${alias}.deleted_at IS NULL`;
-
-/** 已批准历史资料行：未屏蔽、未删除。 */
-export const legacyPublicVisibleSql = (alias = "lr") =>
-  ` AND ${alias}.deleted_at IS NULL AND ${alias}.blocked_at IS NULL`;
-
-export const legacyNotDeletedSql = (alias = "lr") =>
-  ` AND ${alias}.deleted_at IS NULL`;

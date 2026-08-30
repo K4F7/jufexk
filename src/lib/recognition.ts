@@ -4,7 +4,7 @@ export function isEndorsableReview(review: PublicReview) {
   if (typeof review.endorsable === "boolean") return review.endorsable;
   return (
     typeof review.id === "string" &&
-    /^(?:review:\d+|historical:[A-Za-z0-9._-]+|legacy:\d+)$/.test(review.id)
+    /^(?:review:\d+|historical:[A-Za-z0-9._-]+)$/.test(review.id)
   );
 }
 

@@ -199,34 +199,7 @@ async function mutateReviewVisibility(
     return c.json({ ok: true, changed });
   }
 
-  const current = await c.env.DB.prepare(
-    `SELECT course_id,teacher_id,blocked_at,deleted_at
-     FROM legacy_reviews WHERE id=?`,
-  )
-    .bind(target.id)
-    .first<AdminTextReviewTarget>();
-  if (!current) return fail(c, "评价不存在", 404);
-  if (action !== "deleted" && current.deleted_at)
-    return fail(c, "已删除评价不能变更屏蔽状态", 409);
-  const eventGuard = visibilityEventGuard(action);
-  const results = await c.env.DB.batch([
-    c.env.DB.prepare(
-      `INSERT INTO legacy_review_visibility_events(
-         legacy_review_id,action,actor_session_id
-       ) SELECT ?,?,? FROM legacy_reviews WHERE id=? AND ${eventGuard}`,
-    ).bind(target.id, action, c.get("adminSessionId"), target.id),
-    c.env.DB.prepare(visibilityUpdateSql("legacy_reviews", action)).bind(
-      target.id,
-    ),
-  ]);
-  const changed = results[1].results.length > 0;
-  if (changed) {
-    markPublicCatalogCacheChanged(c);
-    await scheduleRelationSummaryRecompute(c, current.course_id, current.teacher_id, {
-      immediate: action !== "unblocked",
-    });
-  }
-  return c.json({ ok: true, changed });
+  return fail(c, "评价 ID 无效");
 }
 
 async function clientIpHash(c: AppContext) {
@@ -971,138 +944,6 @@ adminRoutes.get("/api/admin/reviews/:id/events", async (c) => {
     ).results,
   );
 });
-adminRoutes.get("/api/admin/legacy-reviews", async (c) => {
-  const { page, size } = pageArgs(c),
-    status = clean(c.req.query("status"), 20) || "pending",
-    batchId = clean(c.req.query("batchId"), 80),
-    searchGroup = andSearchTerms(
-      parseSearchTerms(clean(c.req.query("q"), 100)),
-      `${likeSql("lr.comment")} OR ${likeSql("lr.raw_ocr_text")} OR ${likeSql("lr.ocr_course_name")} OR ${likeSql("lr.ocr_teacher_name")} OR ${likeSql("lr.source_file")} OR ${likeSql("lr.term")} OR ${likeSql("c.name")} OR ${likeSql("c.code")} OR ${likeSql("t.name")}`,
-    );
-  if (!["pending", "approved", "rejected", "all"].includes(status))
-    return fail(c, "无效历史审核状态");
-  const searchFilter = searchGroup.sql ? ` AND ${searchGroup.sql}` : "";
-  const where = `(?='all' OR lr.status=?) AND (?='' OR lr.import_batch_id=?)${searchFilter}`;
-  const values = [status, status, batchId, batchId, ...searchGroup.args];
-  const total = await c.env.DB.prepare(
-    `SELECT COUNT(*) n FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id WHERE ${where}`,
-  )
-    .bind(...values)
-    .first<{ n: number }>();
-  const { results } = await c.env.DB.prepare(
-    `SELECT lr.id,lr.import_batch_id,lr.source_file,lr.sheet_name,lr.source_row,lr.raw_ocr_text,
-      lr.ocr_confidence,lr.inherited_from,lr.ocr_course_name,lr.course_id,lr.ocr_teacher_name,
-      lr.teacher_id,lr.offering_id,lr.category,lr.comment,lr.term,lr.source_type,lr.source_label,
-      lr.status,lr.duplicate_group,lr.duplicate_action,lr.review_note,
-      lr.moderator_note,lr.created_at,lr.reviewed_at,
-      c.name course_name,c.code,t.name teacher_name
-     FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id
-     WHERE ${where} ORDER BY lr.created_at DESC,lr.id DESC LIMIT ? OFFSET ?`,
-  )
-    .bind(...values, size, (page - 1) * size)
-    .all();
-  return c.json({
-    items: results,
-    total: total?.n || 0,
-    page,
-    pages: Math.max(1, Math.ceil((total?.n || 0) / size)),
-  });
-});
-adminRoutes.get("/api/admin/legacy-reviews/:id", async (c) => {
-  const id = integer(c.req.param("id"));
-  const review = await c.env.DB.prepare(
-    `SELECT lr.*,c.name course_name,c.code,t.name teacher_name,o.section offering_section
-     FROM legacy_reviews lr LEFT JOIN courses c ON c.id=lr.course_id LEFT JOIN teachers t ON t.id=lr.teacher_id
-     LEFT JOIN offerings o ON o.id=lr.offering_id WHERE lr.id=?`,
-  )
-    .bind(id)
-    .first();
-  if (!review) return fail(c, "历史评价不存在", 404);
-  return c.json(review);
-});
-adminRoutes.patch("/api/admin/legacy-reviews/:id", async (c) => {
-  const id = integer(c.req.param("id"));
-  const parsedBody = moderationSchema.safeParse(await c.req.json<unknown>());
-  if (!parsedBody.success) return fail(c, "无效状态");
-  const { status, note } = parsedBody.data;
-  if (!["approved", "rejected"].includes(status)) return fail(c, "无效状态");
-  if (status === "rejected" && !note) return fail(c, "驳回时必须填写理由");
-  const current = await c.env.DB.prepare(
-    "SELECT status,course_id,teacher_id FROM legacy_reviews WHERE id=?",
-  )
-    .bind(id)
-    .first<{
-      status: string;
-      course_id: number | null;
-      teacher_id: number | null;
-    }>();
-  if (!current) return fail(c, "历史评价不存在", 404);
-  if (current.status !== "pending") return fail(c, "历史评价已经审核", 409);
-  const approvalBindingGuard =
-    status === "approved"
-      ? ` AND EXISTS(
-         SELECT 1 FROM legacy_reviews candidate
-         JOIN courses course
-           ON course.id=candidate.course_id AND course.category=candidate.category
-         JOIN teachers teacher ON teacher.id=candidate.teacher_id
-         JOIN course_teachers relation
-           ON relation.course_id=candidate.course_id
-          AND relation.teacher_id=candidate.teacher_id
-         WHERE candidate.id=legacy_reviews.id
-           AND (
-             candidate.offering_id IS NULL OR EXISTS(
-               SELECT 1 FROM offerings offering
-               JOIN offering_teachers assigned
-                 ON assigned.offering_id=offering.id
-                AND assigned.teacher_id=candidate.teacher_id
-               WHERE offering.id=candidate.offering_id
-                 AND offering.course_id=candidate.course_id
-                 AND trim(offering.term)=trim(candidate.term)
-             )
-           )
-       )`
-      : "";
-  const results = await c.env.DB.batch([
-    c.env.DB.prepare(
-      `UPDATE legacy_reviews
-       SET status=?,moderator_note=?,reviewed_at=CURRENT_TIMESTAMP
-       WHERE id=? AND status='pending'${approvalBindingGuard}
-       RETURNING id`,
-    ).bind(status, note, id),
-    c.env.DB.prepare(
-      `INSERT OR IGNORE INTO legacy_review_moderation_events(legacy_review_id,action,note,actor_session_id)
-       SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM legacy_reviews WHERE id=? AND status=?)`,
-    ).bind(id, status, note, c.get("adminSessionId"), id, status),
-  ]);
-  if (!results[0].results.length)
-    return fail(c, "历史评价绑定已经失效，或评价已经审核", 409);
-  if (status === "approved") markPublicCatalogCacheChanged(c);
-  // 历史评价批准引入公开文字（去抖）；驳回立刻按新集合重算（#401）。
-  await scheduleRelationSummaryRecompute(
-    c,
-    current.course_id,
-    current.teacher_id,
-    {
-      immediate: status === "rejected",
-    },
-  );
-  return c.json({ ok: true, id, status });
-});
-adminRoutes.get("/api/admin/legacy-reviews/:id/events", async (c) => {
-  const id = integer(c.req.param("id"));
-  if (
-    !(await c.env.DB.prepare("SELECT 1 FROM legacy_reviews WHERE id=?")
-      .bind(id)
-      .first())
-  )
-    return fail(c, "历史评价不存在", 404);
-  const { results } = await c.env.DB.prepare(
-    "SELECT id,action,note,created_at FROM legacy_review_moderation_events WHERE legacy_review_id=? ORDER BY created_at DESC,id DESC",
-  )
-    .bind(id)
-    .all();
-  return c.json(results);
-});
 adminRoutes.get("/api/admin/offerings", async (c) =>
   c.json(
     (
@@ -1160,13 +1001,9 @@ adminRoutes.post("/api/admin/offerings", async (c) => {
       .first<{ course_id: number; term: string; section: string }>();
     if (!existing) return fail(c, "开课班不存在", 404);
     const used = await c.env.DB.prepare(
-      `SELECT 1 used FROM reviews WHERE offering_id=?
-       UNION ALL
-       SELECT 1 FROM legacy_reviews
-       WHERE offering_id=? AND status IN('pending','approved')
-       LIMIT 1`,
+      `SELECT 1 used FROM reviews WHERE offering_id=? LIMIT 1`,
     )
-      .bind(offeringId, offeringId)
+      .bind(offeringId)
       .first();
     if (
       used &&
@@ -1179,14 +1016,9 @@ adminRoutes.post("/api/admin/offerings", async (c) => {
       `SELECT 1 FROM reviews
        WHERE offering_id=? AND teacher_id IS NOT NULL
          AND teacher_id NOT IN (${teacherIds.map(() => "?").join(",")})
-       UNION ALL
-       SELECT 1 FROM legacy_reviews
-       WHERE offering_id=? AND status IN('pending','approved')
-         AND teacher_id IS NOT NULL
-         AND teacher_id NOT IN (${teacherIds.map(() => "?").join(",")})
        LIMIT 1`,
     )
-      .bind(offeringId, ...teacherIds, offeringId, ...teacherIds)
+      .bind(offeringId, ...teacherIds)
       .first();
     if (removedReviewedTeacher)
       return fail(c, "已有评价的教师不能从开课班移除", 409);
@@ -1235,13 +1067,9 @@ adminRoutes.post("/api/admin/offerings", async (c) => {
 adminRoutes.delete("/api/admin/offerings/:id", async (c) => {
   const id = integer(c.req.param("id"));
   const used = await c.env.DB.prepare(
-    `SELECT id FROM reviews WHERE offering_id=?
-     UNION ALL
-     SELECT id FROM legacy_reviews
-     WHERE offering_id=? AND status IN('pending','approved')
-     LIMIT 1`,
+    `SELECT id FROM reviews WHERE offering_id=? LIMIT 1`,
   )
-    .bind(id, id)
+    .bind(id)
     .first();
   if (used) return fail(c, "已有评价的开课班不能删除", 409);
   await c.env.DB.prepare("DELETE FROM offerings WHERE id=?").bind(id).run();
@@ -1352,16 +1180,6 @@ adminRoutes.post("/api/admin/courses", async (c) => {
   const nextTeaching = teachingType ?? existing?.teaching_type ?? "";
   const nextLevel = courseLevel ?? existing?.course_level ?? "";
   if (id) {
-    if (category !== existing!.category) {
-      const legacyCategoryDependency = await c.env.DB.prepare(
-        `SELECT 1 FROM legacy_reviews
-         WHERE course_id=? AND status IN('pending','approved') LIMIT 1`,
-      )
-        .bind(id)
-        .first();
-      if (legacyCategoryDependency)
-        return fail(c, "已有待审或已批准历史评价，不能修改课程类别", 409);
-    }
     const currentRelations = (
       await c.env.DB.prepare(
         "SELECT teacher_id FROM course_teachers WHERE course_id=?",
@@ -1385,13 +1203,9 @@ adminRoutes.post("/api/admin/courses", async (c) => {
         const placeholders = removed.map(() => "?").join(",");
         const reviewDependency = await c.env.DB.prepare(
           `SELECT 1 FROM reviews WHERE course_id=? AND teacher_id IN (${placeholders})
-           UNION ALL
-           SELECT 1 FROM legacy_reviews
-           WHERE course_id=? AND status IN('pending','approved')
-             AND teacher_id IN (${placeholders})
            LIMIT 1`,
         )
-          .bind(id, ...removed, id, ...removed)
+          .bind(id, ...removed)
           .first();
         const offeringDependency = await c.env.DB.prepare(
           `SELECT 1 FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id
@@ -1541,12 +1355,6 @@ adminRoutes.delete("/api/admin/courses/:id", async (c) => {
     .bind(id)
     .first();
   if (used) return fail(c, "已有评价的课程不能删除", 409);
-  const legacyUsed = await c.env.DB.prepare(
-    "SELECT id FROM legacy_reviews WHERE course_id=? AND status IN('pending','approved') LIMIT 1",
-  )
-    .bind(id)
-    .first();
-  if (legacyUsed) return fail(c, "已有审核通过的历史评价，不能删除", 409);
   const catalogReference = await c.env.DB.prepare(
     "SELECT id FROM catalog_requests WHERE created_course_id=? LIMIT 1",
   )
@@ -1719,12 +1527,6 @@ adminRoutes.delete("/api/admin/teachers/:id", async (c) => {
     .bind(id)
     .first();
   if (used) return fail(c, "已有评价的教师不能删除", 409);
-  const legacyUsed = await c.env.DB.prepare(
-    "SELECT id FROM legacy_reviews WHERE teacher_id=? AND status IN('pending','approved') LIMIT 1",
-  )
-    .bind(id)
-    .first();
-  if (legacyUsed) return fail(c, "已有审核通过的历史评价，不能删除", 409);
   const catalogReference = await c.env.DB.prepare(
     "SELECT id FROM catalog_requests WHERE created_teacher_id=? LIMIT 1",
   )
@@ -1785,13 +1587,9 @@ adminRoutes.put("/api/admin/courses/:id/teachers", async (c) => {
     const placeholders = removed.map(() => "?").join(",");
     const reviewDependency = await c.env.DB.prepare(
       `SELECT 1 FROM reviews WHERE course_id=? AND teacher_id IN (${placeholders})
-       UNION ALL
-       SELECT 1 FROM legacy_reviews
-       WHERE course_id=? AND status IN('pending','approved')
-         AND teacher_id IN (${placeholders})
        LIMIT 1`,
     )
-      .bind(courseId, ...removed, courseId, ...removed)
+      .bind(courseId, ...removed)
       .first();
     const offeringDependency = await c.env.DB.prepare(
       `SELECT 1 FROM offerings o JOIN offering_teachers ot ON ot.offering_id=o.id

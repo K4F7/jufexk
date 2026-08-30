@@ -83,8 +83,6 @@ import {
   guestReviewBindingSql,
   historicalNotDeletedSql,
   historicalPublicVisibleSql,
-  legacyNotDeletedSql,
-  legacyPublicVisibleSql,
   publicReviewBindingSql,
   reviewNotDeletedBindingSql,
 } from "../public-review-visibility";
@@ -283,9 +281,6 @@ const getPublicReviewPage = async (
   const historicalBinding = includeBlocked
     ? historicalNotDeletedSql("phr")
     : historicalPublicVisibleSql("phr");
-  const legacyBinding = includeBlocked
-    ? legacyNotDeletedSql("lr")
-    : legacyPublicVisibleSql("lr");
   /** 课程页评价按 课程×教师 作用域展示：选定教师时追加逐分支过滤。 */
   const teacherFilter = (alias: string) =>
     teacherId ? ` AND ${alias}.teacher_id=?` : "";
@@ -356,23 +351,6 @@ const getPublicReviewPage = async (
          JOIN teachers t ON t.id=phr.teacher_id
          WHERE phr.${subject}=?${teacherFilter("phr")}${historicalBinding}
          UNION ALL
-         SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
-           lr.course_id,lr.teacher_id,lr.comment,NULL comment_format,
-           '' headline,NULL grade,
-           c.name course_name,c.code course_code,t.name teacher_name,
-           (SELECT COUNT(*) FROM legacy_review_endorsements e
-            WHERE e.legacy_review_id=lr.id) endorsement_count,
-           (SELECT COUNT(*) FROM legacy_review_challenges e
-            WHERE e.legacy_review_id=lr.id) challenge_count,
-           NULL scheme_key,NULL scheme_version,NULL scores,
-           NULL overall,lr.created_at,
-           ${reservedAuthorSql}, lr.blocked_at
-         FROM legacy_reviews lr
-         JOIN courses c ON c.id=lr.course_id
-         JOIN teachers t ON t.id=lr.teacher_id
-         WHERE lr.${subject}=? AND lr.status='approved'
-           AND trim(COALESCE(lr.comment,''))<>''${teacherFilter("lr")}${legacyBinding}
-         UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,r.comment_format,
            r.headline,r.grade,
@@ -392,8 +370,6 @@ const getPublicReviewPage = async (
        ${pageSql}`,
     )
     .bind(
-      id,
-      ...teacherBinds,
       id,
       ...teacherBinds,
       id,

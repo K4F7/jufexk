@@ -255,7 +255,7 @@ describe("public list projection plan", () => {
     }
   });
 
-  it("counts public text reviews from three sources under shared visibility rules", async () => {
+  it("counts public text reviews from historical and current sources under shared visibility rules", async () => {
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO teachers(id,source_teacher_label,name)
@@ -333,7 +333,7 @@ describe("public list projection plan", () => {
         `SELECT review_count FROM public_review_counts
          WHERE course_id=57430 AND teacher_id=57431`,
       ).first<{ review_count: number }>();
-      expect(count?.review_count).toBe(3);
+      expect(count?.review_count).toBe(2);
     } finally {
       await env.DB.prepare(
         "DELETE FROM public_historical_reviews WHERE id='hist-574'",

@@ -349,11 +349,6 @@ export function publicPeHasTextReviewSql(alias: string): string {
      WHERE phr.course_id=${alias}.id
        AND phr.deleted_at IS NULL AND phr.blocked_at IS NULL
     UNION ALL
-    SELECT 1 FROM legacy_reviews lr
-     WHERE lr.course_id=${alias}.id AND lr.status='approved'
-       AND trim(COALESCE(lr.comment,''))<>''
-       AND lr.deleted_at IS NULL AND lr.blocked_at IS NULL
-    UNION ALL
     SELECT 1 FROM reviews r
      WHERE r.course_id=${alias}.id AND r.status='approved'
        AND r.blocked_at IS NULL AND r.deleted_at IS NULL

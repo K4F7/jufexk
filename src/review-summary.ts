@@ -2,7 +2,6 @@ import { escapeHtml, reviewHtmlToText } from "./html";
 import {
   guestReviewBindingSql,
   historicalPublicVisibleSql,
-  legacyPublicVisibleSql,
 } from "./public-review-visibility";
 import { readSecret, type SecretBinding } from "./secrets";
 
@@ -68,7 +67,7 @@ type SummaryReviewInput = {
 
 /**
  * 收集某任课关系下进入公开流的全部文字评价：已批准且绑定有效的任课评价、
- * 已批准历史评价、公开历史评价；按认可数降序、再按时间降序。
+ * 公开历史评价；按认可数降序、再按时间降序。
  * 投稿中、驳回、未公开的一律不进。
  */
 async function collectRelationReviewTexts(
@@ -86,14 +85,6 @@ async function collectRelationReviewTexts(
          FROM public_historical_reviews phr
          WHERE phr.course_id=? AND phr.teacher_id=?${historicalPublicVisibleSql("phr")}
          UNION ALL
-         SELECT 1 source_order,lr.id row_id,
-           (SELECT COUNT(*) FROM legacy_review_endorsements e
-            WHERE e.legacy_review_id=lr.id) recognition,
-           lr.created_at created_at,lr.comment
-         FROM legacy_reviews lr
-         WHERE lr.course_id=? AND lr.teacher_id=? AND lr.status='approved'
-           AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}
-         UNION ALL
          SELECT 2 source_order,r.id row_id,
            (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) recognition,
            r.created_at created_at,r.comment
@@ -103,7 +94,7 @@ async function collectRelationReviewTexts(
        ) summary_sources
        ORDER BY recognition DESC,created_at DESC,source_order,row_id`,
     )
-    .bind(courseId, teacherId, courseId, teacherId, courseId, teacherId)
+    .bind(courseId, teacherId, courseId, teacherId)
     .all<{
       source_order: number;
       recognition: number;
@@ -393,7 +384,7 @@ export type QualifyingSummaryRelation = {
 };
 
 /**
- * SQL 近似门槛：公开历史评 + 已批准历史评 + 已批准任课评。
+ * SQL 近似门槛：公开历史评 + 已批准任课评。
  * 用原文 LENGTH，可能略宽于纯文本门槛；最终仍由 recomputeRelationSummary 判定。
  */
 export async function listQualifyingSummaryRelations(
@@ -405,10 +396,6 @@ export async function listQualifyingSummaryRelations(
          SELECT phr.course_id, phr.teacher_id, phr.comment AS comment
          FROM public_historical_reviews phr
          WHERE 1=1${historicalPublicVisibleSql("phr")}
-         UNION ALL
-         SELECT lr.course_id, lr.teacher_id, lr.comment
-         FROM legacy_reviews lr
-         WHERE lr.status='approved' AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}
          UNION ALL
          SELECT r.course_id, r.teacher_id, r.comment
          FROM reviews r
