@@ -199,7 +199,7 @@ async function pickOverall(page: Page, value: string) {
 }
 
 async function clickLabeledCheckbox(page: Page, name: string) {
-  await page.getByRole("checkbox", { name, exact: true }).click();
+  await page.getByText(name, { exact: true }).click();
 }
 
 async function answerTier3AndOverall(

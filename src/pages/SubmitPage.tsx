@@ -200,85 +200,93 @@ function OverallStarRating({
   const caption = overallCaption(shown);
   return (
     <div className="flex min-w-0 w-full flex-wrap items-center gap-3">
-      <RadioGroup
-        isDisabled={disabled}
-        isRequired={required}
-        className="w-full flex-col gap-1"
-        name="overall"
-        orientation="horizontal"
-        value={value}
-        onChange={onChange}
-      >
-        <div className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <Label
-            isDisabled={disabled}
-            isRequired={required}
-            className={
-              required
-                ? "m-0 leading-6"
-                : `m-0 leading-6 ${REQUIRED_MARK_RESERVE} after:invisible`
-            }
-          >
-            推荐度
-          </Label>
-          <div className="flex w-full max-w-full flex-row flex-wrap items-center gap-1 sm:contents">
-          <div
-            className="inline-flex h-6 items-center max-sm:h-11"
-            onPointerLeave={() => {
-              if (!disabled) setPreview(null);
-            }}
-          >
-          {[1, 2, 3, 4, 5].map((star) => {
-            const leftValue = String(star - 0.5);
-            const rightValue = String(star);
-            return (
-              <span key={star} className="relative inline-flex size-6 items-center justify-center text-accent max-sm:size-11">
-                <StarGlyph
-                  className="pointer-events-none !size-6"
-                  fill={starFill(selected || null, star)}
-                />
-                <Radio
-                  className="absolute inset-y-0 left-0 w-1/2"
-                  value={leftValue}
+      <div className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <RadioGroup
+          isDisabled={disabled}
+          isRequired={required}
+          className="min-w-0 flex-1 flex-col gap-1"
+          name="overall"
+          orientation="horizontal"
+          value={value}
+          onChange={onChange}
+        >
+          <div className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <Label
+              isDisabled={disabled}
+              isRequired={required}
+              className={
+                required
+                  ? "m-0 leading-6"
+                  : `m-0 leading-6 ${REQUIRED_MARK_RESERVE} after:invisible`
+              }
+            >
+              推荐度
+            </Label>
+            <div className="flex w-full max-w-full flex-row flex-wrap items-center gap-1 sm:contents">
+              <div
+                className="inline-flex h-6 items-center max-sm:h-11"
+                onPointerLeave={() => {
+                  if (!disabled) setPreview(null);
+                }}
+              >
+                {[1, 2, 3, 4, 5].map((star) => {
+                  const leftValue = String(star - 0.5);
+                  const rightValue = String(star);
+                  return (
+                    <span
+                      key={star}
+                      className="relative inline-flex size-6 items-center justify-center text-accent max-sm:size-11"
+                    >
+                      <StarGlyph
+                        className="pointer-events-none !size-6"
+                        fill={starFill(selected || null, star)}
+                      />
+                      <Radio
+                        className="absolute inset-y-0 left-0 w-1/2"
+                        value={leftValue}
+                      >
+                        <Radio.Content
+                          className="size-full"
+                          onPointerEnter={() => {
+                            if (!disabled) setPreview(leftValue);
+                          }}
+                        >
+                          <span className="sr-only">{leftValue} 星</span>
+                        </Radio.Content>
+                      </Radio>
+                      <Radio
+                        className="absolute inset-y-0 right-0 w-1/2"
+                        value={rightValue}
+                      >
+                        <Radio.Content
+                          className="size-full"
+                          onPointerEnter={() => {
+                            if (!disabled) setPreview(rightValue);
+                          }}
+                        >
+                          <span className="sr-only">{rightValue} 星</span>
+                        </Radio.Content>
+                      </Radio>
+                    </span>
+                  );
+                })}
+              </div>
+              {caption ? (
+                <p
+                  className="m-0 whitespace-nowrap text-sm text-muted"
+                  aria-live="polite"
                 >
-                  <Radio.Content
-                    className="size-full"
-                    onPointerEnter={() => {
-                      if (!disabled) setPreview(leftValue);
-                    }}
-                  >
-                    <span className="sr-only">{leftValue} 星</span>
-                  </Radio.Content>
-                </Radio>
-                <Radio
-                  className="absolute inset-y-0 right-0 w-1/2"
-                  value={rightValue}
-                >
-                  <Radio.Content
-                    className="size-full"
-                    onPointerEnter={() => {
-                      if (!disabled) setPreview(rightValue);
-                    }}
-                  >
-                    <span className="sr-only">{rightValue} 星</span>
-                  </Radio.Content>
-                </Radio>
-              </span>
-            );
-          })}
-        </div>
-            {caption ? (
-              <p className="m-0 whitespace-nowrap text-sm text-muted" aria-live="polite">
-                {caption}
-              </p>
-            ) : (
-              <p className="sr-only" aria-live="polite" />
-            )}
-            {accessory}
+                  {caption}
+                </p>
+              ) : (
+                <p className="sr-only" aria-live="polite" />
+              )}
+            </div>
           </div>
-        </div>
-        <FieldError>请选择推荐度</FieldError>
-      </RadioGroup>
+          <FieldError>请选择推荐度</FieldError>
+        </RadioGroup>
+        {accessory}
+      </div>
     </div>
   );
 }
