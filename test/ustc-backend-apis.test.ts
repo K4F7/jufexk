@@ -419,10 +419,10 @@ describe("USTC backend APIs (issue #410)", () => {
     expect(more.items[0]?.comment).toBe(`较旧最新流${stamp}`);
   });
 
-  it("omits public-fold reviews from the latest stream but keeps them on the course list", async () => {
+  it("keeps public-fold reviews in the latest stream and on the course list", async () => {
     const stamp = String(Date.now());
     const visible = await insertCourseTeacher(`${stamp}-latest-fold-ok`);
-    const folded = await insertCourseTeacher(`${stamp}-latest-fold-hide`);
+    const folded = await insertCourseTeacher(`${stamp}-latest-fold-threshold`);
     const tied = await insertCourseTeacher(`${stamp}-latest-fold-tie`);
     const minority = await insertCourseTeacher(`${stamp}-latest-fold-min`);
     await insertReview({
@@ -476,33 +476,22 @@ describe("USTC backend APIs (issue #410)", () => {
         .run();
     }
 
-    const firstPage = await latestComments(1);
-    expect(firstPage.items.map((item) => item.comment)).toEqual([
-      `课评流可见${stamp}`,
-    ]);
-    expect(firstPage.nextCursor).toBeTruthy();
-
-    const secondPage = await latestComments(2, firstPage.nextCursor || "");
-    expect(secondPage.items.map((item) => item.comment)).toEqual([
-      `平票仍出现${stamp}`,
-      `未达阈值仍出现${stamp}`,
-    ]);
-    expect(
-      [...firstPage.items, ...secondPage.items].some((item) =>
-        item.comment.includes("折叠演示：不受欢迎"),
-      ),
-    ).toBe(false);
-
     const wide = await latestComments(50);
     expect(wide.items.some((item) => item.comment === `课评流可见${stamp}`)).toBe(
       true,
     );
     expect(
       wide.items.some((item) => item.comment === `折叠演示：不受欢迎${stamp}`),
-    ).toBe(false);
+    ).toBe(true);
     expect(wide.items.some((item) => item.comment === `历史折叠${stamp}`)).toBe(
-      false,
+      true,
     );
+    expect(wide.items.some((item) => item.comment === `平票仍出现${stamp}`)).toBe(
+      true,
+    );
+    expect(
+      wide.items.some((item) => item.comment === `未达阈值仍出现${stamp}`),
+    ).toBe(true);
 
     const course = await SELF.fetch(
       `${origin}/api/courses/${folded.courseId}/reviews?teacherId=${folded.teacherId}`,

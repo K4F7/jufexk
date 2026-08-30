@@ -31,6 +31,17 @@ const LATEST = [
     comment: "课堂气氛好，考试不难。",
     created_at: "2026-08-11 02:00:00",
   },
+  {
+    id: "review:91",
+    course_id: 8,
+    teacher_id: 9,
+    course_name: "中国茶文化和茶艺",
+    course_code: "GEN0201",
+    teacher_name: "艾晓玉",
+    comment: "折叠正文仍应出现在课评流。",
+    headline: "折叠演示：不受欢迎",
+    created_at: "2026-08-10 00:00:00",
+  },
 ];
 
 async function mockShellApi(page: Page) {
@@ -52,7 +63,7 @@ async function mockShellApi(page: Page) {
         });
       }
       return route.fulfill({
-        json: { items: [LATEST[0]], nextCursor: "next-latest" },
+        json: { items: [LATEST[0], LATEST[2]], nextCursor: "next-latest" },
       });
     }
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers")
@@ -169,14 +180,14 @@ test("latest author and date share a header row on desktop and mobile", async ({
   await expect(page.getByRole("link", { name: "更多" })).toHaveCount(0);
 });
 
-test("latest feed does not show public-fold reviews or fold chrome", async ({
+test("latest feed shows threshold-folded reviews without 收起 chrome", async ({
   page,
 }) => {
   await mockShellApi(page);
   await page.goto("/latest");
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
+  await expect(page.getByText("折叠演示：不受欢迎")).toBeVisible();
   await expect(page.getByText(REVIEW_FOLD_LABEL)).toHaveCount(0);
-  await expect(page.getByText("折叠演示：不受欢迎")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: REVIEW_PUBLIC_FOLD_EXPAND_LABEL }),
   ).toHaveCount(0);
