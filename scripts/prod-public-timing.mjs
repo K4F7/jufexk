@@ -7,6 +7,10 @@
  * and course-page review filters. Each scenario runs once cold then twice
  * warm (same context; catalog GETs have s-maxage=60).
  *
+ * Audience is mainland China. Client wall clock from this Cloud Agent
+ * (typically Cloudflare IAD) includes overseas RTT and is not a user
+ * metric. Interpret Server-Timing `app` / `query` for origin cost.
+ *
  * Read-only against production. Does not change product UI, CSS, or copy.
  * Idle waits observe existing a11y hooks (catalog skeleton
  * `[role=status][aria-label=加载中…]`, #418) and already-shipped /latest

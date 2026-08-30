@@ -5,8 +5,8 @@
 > 第二轮后见 [load-speed-2026-08-30-after-round2.md](./load-speed-2026-08-30-after-round2.md)。
 
 未登录实测 **https://courses.sein.moe**。
-Cloud Agent 出口在 Cloudflare `IAD` / `cf-placement: local-EWR`（美东），不是校园网或国内宽带。
-这是单点远端样本，不是 RUM。
+用户在大陆。本探针出口在 Cloudflare `IAD`，墙钟含海外 RTT，**不当作用户指标**。
+有 `Server-Timing` 之后以 `app` / `query` 为准。这是单点样本，不是 RUM。
 
 计时：`pnpm run timing:prod-public` → `scripts/prod-public-timing.mjs`。
 原始 JSON：`output/playwright/prod-public-timing/report.json`（gitignore）。
@@ -125,8 +125,8 @@ PROD_PUBLIC_ORIGIN=https://jufexk-preview.<account>.workers.dev pnpm run timing:
 2. **课程详情稳定 ~1.05s 且永不缓存。** 打开任课关系页比再搜一次还慢。
 3. **点评筛选首次 ~0.5–0.8s API、可见可到 ~1.2s。** `no-store`。回到已选过的排序/星级走 React 会话缓存，几乎不打网。
 4. **体育 pill 与体育第 2 页偏慢（1.5–1.6s）。** 与虚拟体育行合并一致；通识第 2 页只要 358ms。
-5. **课评流 ~300ms 可接受。** union 没有目录那种秒级尖峰。
-6. **`/api/admin/session` 401 每页约 50ms。** 不挡目录，但是公开页固定噪音。
+5. **课评流没有目录那种秒级尖峰。** 探针墙钟 ~300ms 含美东 RTT，不当作用户指标。
+6. **`/api/admin/session` 401** 当时探针约 50ms。不挡目录；大陆用户侧更短。
 7. **未命中搜索（870ms）快于命中（1.2–1.5s）。** 有命中才走完整相关度 CASE / 名称变体 `EXISTS`。
 
 ## 建议（本轮不实现）

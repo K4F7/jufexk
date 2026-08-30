@@ -6,8 +6,8 @@
 （`perf: optimize public catalog loading and caching`，跟 [#705](https://github.com/K4F7/jufexk/issues/705)）。
 
 未登录实测 **https://courses.sein.moe**。
-同一套 `pnpm run timing:prod-public`，同一 Cloud Agent 出口（`cf-ray` 仍经 `IAD`）。
-本次 `cf-placement` 常见 `remote-SIN`。仍是单点远端样本，不是 RUM。
+用户在大陆。本探针出口经 `IAD`，墙钟含海外 RTT，**不当作用户指标**。
+以 Worker `app` 为准。`cf-placement` 常见 `remote-SIN`。不是 RUM。
 
 **不改生产站 UI。** `src/` 本轮为零 diff。
 
@@ -29,8 +29,9 @@
 ## 方法
 
 与基线相同：每条 API 冷 1 次 + 热 2 次。
-墙钟是客户端 `fetch` 全程；`app` 是 Worker `Server-Timing`（不含边缘到本机的 RTT）。
-热中位仍约 **10–12ms HIT**。下表 **冷墙钟** 与基线比。
+墙钟是本探针 `fetch` 全程，含海外 RTT，不当作用户指标。
+`app` 是 Worker `Server-Timing`。用户结论只认 `app`。
+热中位 HIT 约 **10–12ms**（边缘，大陆同样量级）。
 
 ## 对比（毫秒）
 
@@ -86,7 +87,7 @@ HTTP 矩阵先打过一遍，边缘多半已热。浏览器里部分目录请求
 - 体育列表现为 **2 条 / 1 页**（响应约 563 B）。基线「体育第 2 页」当时还有数据（约 1.6s）；本次 page=2 是空页（55 B / Worker 54ms），**不能当成同类加速**。
 - 课程详情冷 **1.08s → 0.35s**，热 **12ms**（基线热仍是 1s+ BYPASS）。
 - 点评「认可最多」冷仍约 0.7s（Worker 664ms），但热从 **700ms → 13ms**。
-- 最新课评 Worker 只要 **14ms**；~280ms 墙钟几乎是美东 RTT。`no-store` 没变。
+- 最新课评 Worker **14ms**。探针墙钟 ~280ms 是美东 RTT，大陆用户看不到。`no-store` 没变。
 
 还慢、且这次没吃到同样红利的：
 
@@ -94,15 +95,15 @@ HTTP 矩阵先打过一遍，边缘多半已热。浏览器里部分目录请求
 2. **课号搜索** 无 Cookie 的 HTTP 冷路径 Worker **1264ms**（墙钟 1403，比基线还略差）。同一跑次里 Playwright 稍后打到 **485ms BYPASS**——预计算后台重建已经完成，但带投票 Cookie 仍不进共享缓存。
 3. **点评「认可最多」「评分最高」** 源站仍 **0.7s**；缓存只救回访。
 4. **浏览器目录常 BYPASS**，游客一旦有投票 Cookie，60s CDN 帮不上忙。
-5. **`/api/admin/session` 401** 墙钟从 50ms 升到 **~280ms**（`app=0`，像是 placement / 握手，不是业务查询）。公开页第一次仍会打。
+5. **`/api/admin/session` 401** Worker `app=0`。探针墙钟 ~280ms 是海外 RTT，不是业务查询，也不是大陆用户会付的价。
 
 ## 建议（仍不改可见加载文案）
 
 1. 通识、体育首页和课号搜索：看 `Server-Timing` 对上的 SQL（类别过滤 + 虚拟体育行 / code 精确+FTS）。这三块现在是公开目录的尾巴。
 2. 「认可最多」排序的点评查询（`endorsement_count`）值得单独收。缓存已经托住热路径。
 3. 评估 `jufexk_voter` 是否必须让**目录列表** BYPASS。投票态只影响点评动作时，列表可以继续共享。
-4. `/latest` 可维持 `no-store`；墙钟已是 RTT。国内用户会更好看。
-5. 公开壳的 admin session：第一次 280ms 401 仍在。能延后到进 `/admin` 最好。
+4. `/latest` Worker 已是十几毫秒，可维持 `no-store`。不要按本探针的海外墙钟判断课评流慢。
+5. 公开壳的 admin session：Worker 已是 0ms。匿名详情能不打最好；不要按本探针 280ms 墙钟排优先级。
 
 ## 源码（优化后）
 
