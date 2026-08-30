@@ -177,6 +177,85 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     ],
   },
   {
+    id: "public-user-follow",
+    title: "公开主页关注按钮位置与强调",
+    question:
+      "公开主页右侧「公开编号」卡片里，关注按钮放在哪里、用哪个 HeroUI 官方 variant/size 最合适？",
+    status: "production-done",
+    preview: "live",
+    livePath: "/u/000000",
+    winner: "J",
+    notes:
+      "J 已写入 PublicUserPage：ghost + PersonPlus，已关注 secondary「取消关注」，Separator 在 header 与统计之间。关注走 PUT/DELETE /api/u/:code/follow，并接入 user_followed / followed_user_review。",
+    variants: [
+      {
+        key: "A",
+        name: "昵称下 · primary",
+        summary: "默认尺寸主按钮，放在昵称与统计之间。",
+      },
+      {
+        key: "B",
+        name: "昵称下 · primary sm",
+        summary: "同一位置，按钮小一号。",
+      },
+      {
+        key: "C",
+        name: "昵称下 · secondary",
+        summary: "同一位置，次一级强调。",
+      },
+      {
+        key: "D",
+        name: "昵称下 · outline",
+        summary: "同一位置，描边更轻。",
+      },
+      {
+        key: "E",
+        name: "昵称下 · ghost",
+        summary: "同一位置，最轻。",
+      },
+      {
+        key: "F",
+        name: "统计下方 · primary",
+        summary: "原布局：按钮回到卡片底部。",
+      },
+      {
+        key: "G",
+        name: "标题行右侧 · primary sm",
+        summary: "小主按钮与昵称同一行，靠右。",
+      },
+      {
+        key: "H",
+        name: "ghost sm 融入统计区",
+        summary: "按钮作为统计区第一行，与统计同高同距。",
+      },
+      {
+        key: "I",
+        name: "统计行内动作",
+        summary: "左侧标签「关注这个用户」，右侧 ghost 按钮。",
+      },
+      {
+        key: "J",
+        name: "E + PersonPlus 图标",
+        summary: "生产方案：ghost 按钮带人形加号，下方带分隔线。",
+      },
+      {
+        key: "K",
+        name: "H + PersonPlus 图标",
+        summary: "统计区第一行 ghost sm 带人形加号。",
+      },
+      {
+        key: "L",
+        name: "E + Heart 图标",
+        summary: "ghost 按钮带空心心形。",
+      },
+      {
+        key: "M",
+        name: "头像靠左 · PersonPlus 居右",
+        summary: "头像与昵称左对齐，右侧只放一个 PersonPlus 图标按钮。",
+      },
+    ],
+  },
+  {
     id: "global-search",
     title: "页内目录搜索 vs 导航栏全局搜索",
     question:

@@ -78,6 +78,9 @@ test("reserved handle page shows 学长学姐 copy and follow plus course count"
   expect(avatarBox!.y + avatarBox!.height).toBeLessThanOrEqual(handleBox!.y);
   expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
   await expect(page.getByText("来自以前的学长学姐的评价").first()).toBeVisible();
+  await expect(
+    profileCard.getByText("来自以前的学长学姐的评价"),
+  ).toHaveCount(0);
   await expect(profileCard.getByText("点评了", { exact: true })).toBeVisible();
   await expect(profileCard.getByText("3 门课程")).toBeVisible();
   await expect(profileCard.getByText("50 门课程")).toHaveCount(0);
@@ -242,4 +245,49 @@ test("follow error stays on the loaded profile", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
   await expect(page.getByText("公开主页加载失败")).toHaveCount(0);
+});
+
+test("self profile hides the follow button", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/config")
+      return route.fulfill({
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
+      });
+    if (url.pathname === "/api/user/session")
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          csrfToken: "csrf-user",
+          loginPath: "/login",
+          logoutPath: "/logout",
+        },
+      });
+    if (url.pathname === "/api/u/000002" && route.request().method() === "GET")
+      return route.fulfill({
+        json: {
+          public_code: 2,
+          handle: "匿名用户#000002",
+          avatar_key: 2,
+          reserved: false,
+          followable: false,
+          viewer_followed: false,
+          viewer_is_self: true,
+          note: null,
+          review_count: 0,
+          following_count: 0,
+          follower_count: 0,
+          reviews: [],
+        },
+      });
+    return route.fulfill({ status: 404, json: { error: "not mocked" } });
+  });
+
+  await page.goto("/u/000002");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "匿名用户#000002" }),
+  ).toBeVisible();
+  await expect(page.locator('[aria-label="公开编号"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "关注" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "取消关注" })).toHaveCount(0);
 });

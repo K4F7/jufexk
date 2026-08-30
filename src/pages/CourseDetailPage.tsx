@@ -723,7 +723,9 @@ export function CourseDetailPage() {
                 )}
                 type="h1"
               >
-                {selectedTeacher.name}
+                <RouterAriaLink to={`/teachers/${selectedTeacher.id}`}>
+                  {selectedTeacher.name}
+                </RouterAriaLink>
               </Typography>
               <Card.Description>
                 {selectedTeacher.department || "院系未标注"}
