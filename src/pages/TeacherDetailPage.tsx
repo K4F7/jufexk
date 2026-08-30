@@ -11,6 +11,7 @@ import { Card, Typography } from "@heroui/react";
 import { TeacherIdentityName } from "../components/TeacherIdentityName";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import { TeacherHomepageLine } from "../components/OfficialHomepageLink";
 import {
@@ -72,6 +73,7 @@ function TeacherIdentityCard({
   reviewCount: number;
 }) {
   const stats = identityStats(courseCount, reviewCount, teacher.rating);
+  const isLg = useMediaQuery("(min-width: 64rem)");
 
   return (
     <Card aria-label="教师资料">
@@ -92,20 +94,23 @@ function TeacherIdentityCard({
         </div>
       </Card.Header>
       <Card.Content>
-        <dl className="m-0 hidden min-w-0 gap-1.5 text-sm lg:grid">
-          {stats.map((item) => (
-            <IdentityStat key={item.label} label={item.label} value={item.value} />
-          ))}
-        </dl>
-        <dl className="m-0 grid grid-cols-2 gap-x-3 gap-y-2 text-center lg:hidden">
-          {stats.map((item) => (
-            <IdentityStatCompact
-              key={item.label}
-              label={item.label}
-              value={item.value}
-            />
-          ))}
-        </dl>
+        {isLg ? (
+          <dl className="m-0 grid min-w-0 gap-1.5 text-sm">
+            {stats.map((item) => (
+              <IdentityStat key={item.label} label={item.label} value={item.value} />
+            ))}
+          </dl>
+        ) : (
+          <dl className="m-0 grid grid-cols-2 gap-x-3 gap-y-2 text-center">
+            {stats.map((item) => (
+              <IdentityStatCompact
+                key={item.label}
+                label={item.label}
+                value={item.value}
+              />
+            ))}
+          </dl>
+        )}
         {teacher.bio ? (
           <p className="mt-3 mb-0 min-w-0 break-words text-sm leading-relaxed text-muted">
             {teacher.bio}

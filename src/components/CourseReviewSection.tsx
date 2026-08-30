@@ -29,6 +29,7 @@ import { useViewer } from "../hooks/useViewer";
 import {
   isDevAtlasSession,
   previewReviewComments,
+  readDevPreview,
   readDevPreviewOrFilled,
 } from "../lib/dev-preview";
 import { fourDimLineLabels } from "../lib/dimension-labels";
@@ -336,12 +337,13 @@ export function CourseReviewSection({
   const { authed: adminAuthed } = useAdminSession();
   const searchParams = new URLSearchParams(location.search);
   const preview = readDevPreviewOrFilled(searchParams);
+  const rawPreview = readDevPreview(searchParams);
   const atlas = isDevAtlasSession(searchParams);
   const previewComposer = preview != null || atlas;
   const viewerPublicCode = parseHandlePublicCode(viewer.handle);
   const showAdminDock = resolveReviewAdminDockVisible({
     adminAuthed,
-    preview,
+    preview: rawPreview,
   });
   const { visible: adminChromeVisible, setVisible: setAdminChromeVisible } =
     useReviewAdminChrome();

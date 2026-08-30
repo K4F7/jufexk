@@ -26,6 +26,7 @@ import {
   HEROUI_AVATAR_PLACEHOLDERS,
 } from "../components/AnonymousAvatar";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import {
@@ -202,6 +203,7 @@ function ProfileIdentityCard({
   reviewCount,
   savingAvatar,
   statValue,
+  isMd,
   onRetryAvatar,
   onSelectAvatar,
   onAvatarOpenChange,
@@ -216,6 +218,7 @@ function ProfileIdentityCard({
   reviewCount: number;
   savingAvatar: boolean;
   statValue: boolean;
+  isMd: boolean;
   onRetryAvatar: () => void;
   onSelectAvatar: (key: number) => void;
   onAvatarOpenChange: (open: boolean) => void;
@@ -247,7 +250,7 @@ function ProfileIdentityCard({
           {heading}
         </Card.Title>
       </Card.Header>
-      <Separator className="md:hidden" />
+      {isMd ? null : <Separator />}
       <Card.Content>
         {avatarError ? (
           <Alert className="mb-3" status="danger">
@@ -261,42 +264,45 @@ function ProfileIdentityCard({
             </Button>
           </Alert>
         ) : null}
-        <dl className="m-0 hidden gap-3 text-sm md:grid">
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">关注了</dt>
-            <dd className="m-0 tabular">{following} 人</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">被关注</dt>
-            <dd className="m-0 tabular">{followers} 人</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">关注了</dt>
-            <dd className="m-0 tabular">{courses} 门课程</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">点评了</dt>
-            <dd className="m-0 tabular">{reviews} 门课程</dd>
-          </div>
-        </dl>
-        <dl className="m-0 grid grid-cols-4 text-center md:hidden">
-          <div className="min-w-0">
-            <dd className="m-0 font-medium tabular">{following}</dd>
-            <dt className="text-[calc(12/15*1rem)] text-muted">关注</dt>
-          </div>
-          <div className="min-w-0">
-            <dd className="m-0 font-medium tabular">{followers}</dd>
-            <dt className="text-[calc(12/15*1rem)] text-muted">被关注</dt>
-          </div>
-          <div className="min-w-0">
-            <dd className="m-0 font-medium tabular">{courses}</dd>
-            <dt className="text-[calc(12/15*1rem)] text-muted">关注课</dt>
-          </div>
-          <div className="min-w-0">
-            <dd className="m-0 font-medium tabular">{reviews}</dd>
-            <dt className="text-[calc(12/15*1rem)] text-muted">点评</dt>
-          </div>
-        </dl>
+        {isMd ? (
+          <dl className="m-0 grid gap-3 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">关注了</dt>
+              <dd className="m-0 tabular">{following} 人</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">被关注</dt>
+              <dd className="m-0 tabular">{followers} 人</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">关注了</dt>
+              <dd className="m-0 tabular">{courses} 门课程</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">点评了</dt>
+              <dd className="m-0 tabular">{reviews} 门课程</dd>
+            </div>
+          </dl>
+        ) : (
+          <dl className="m-0 grid grid-cols-4 text-center">
+            <div className="min-w-0">
+              <dd className="m-0 font-medium tabular">{following}</dd>
+              <dt className="text-[calc(12/15*1rem)] text-muted">关注</dt>
+            </div>
+            <div className="min-w-0">
+              <dd className="m-0 font-medium tabular">{followers}</dd>
+              <dt className="text-[calc(12/15*1rem)] text-muted">被关注</dt>
+            </div>
+            <div className="min-w-0">
+              <dd className="m-0 font-medium tabular">{courses}</dd>
+              <dt className="text-[calc(12/15*1rem)] text-muted">关注课</dt>
+            </div>
+            <div className="min-w-0">
+              <dd className="m-0 font-medium tabular">{reviews}</dd>
+              <dt className="text-[calc(12/15*1rem)] text-muted">点评</dt>
+            </div>
+          </dl>
+        )}
       </Card.Content>
     </Card>
   );
@@ -327,6 +333,7 @@ function ProfileFollowList({ follows }: { follows: UserProfileFollow[] }) {
 export function ProfilePage() {
   const { viewer, ready, applySession } = useViewer();
   const [searchParams] = useSearchParams();
+  const isMd = useMediaQuery("(min-width: 48rem)");
   const preview = readDevPreviewOrFilled(searchParams);
   const skipGate = isDevAtlasSession(searchParams) || preview === "filled";
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -500,7 +507,7 @@ export function ProfilePage() {
           </p>
         ) : (
           <>
-            <div className="md:hidden">
+            {!isMd ? (
               <Tabs>
                 <Tabs.ListContainer>
                   <Tabs.List aria-label="点评与关注">
@@ -536,55 +543,51 @@ export function ProfilePage() {
                   )}
                 </Tabs.Panel>
               </Tabs>
-            </div>
+            ) : (
+              <>
+                <section aria-labelledby="profile-reviews-heading">
+                  <Card className="min-w-0">
+                    <Card.Header className="gap-3">
+                      <Card.Title id="profile-reviews-heading">
+                        点评（{reviewCount} 门）
+                      </Card.Title>
+                      {reviews.length === 0 ? (
+                        <Card.Description>
+                          快去写点评吧～先到
+                          <RouterAriaLink to="/courses">课程列表</RouterAriaLink>
+                          找到你上过的课。
+                        </Card.Description>
+                      ) : null}
+                    </Card.Header>
+                    {reviews.length > 0 ? (
+                      <Card.Content className="pt-0">
+                        <ProfileReviewList reviews={reviews} />
+                      </Card.Content>
+                    ) : null}
+                  </Card>
+                </section>
 
-            <section
-              aria-labelledby="profile-reviews-heading"
-              className="hidden md:block"
-            >
-              <Card className="min-w-0">
-                <Card.Header className="gap-3">
-                  <Card.Title id="profile-reviews-heading">
-                    点评（{reviewCount} 门）
-                  </Card.Title>
-                  {reviews.length === 0 ? (
-                    <Card.Description>
-                      快去写点评吧～先到
-                      <RouterAriaLink to="/courses">课程列表</RouterAriaLink>
-                      找到你上过的课。
-                    </Card.Description>
-                  ) : null}
-                </Card.Header>
-                {reviews.length > 0 ? (
-                  <Card.Content className="pt-0">
-                    <ProfileReviewList reviews={reviews} />
-                  </Card.Content>
-                ) : null}
-              </Card>
-            </section>
-
-            <section
-              aria-labelledby="profile-follows-heading"
-              className="hidden md:block"
-            >
-              <Card className="min-w-0">
-                <Card.Header className="gap-3">
-                  <Card.Title id="profile-follows-heading">
-                    关注（{followCount} 门）
-                  </Card.Title>
-                  {follows.length === 0 ? (
-                    <Card.Description>
-                      还没有关注的课程。在课程页点「关注」，有新点评时会收到消息。
-                    </Card.Description>
-                  ) : null}
-                </Card.Header>
-                {follows.length > 0 ? (
-                  <Card.Content className="pt-0">
-                    <ProfileFollowList follows={follows} />
-                  </Card.Content>
-                ) : null}
-              </Card>
-            </section>
+                <section aria-labelledby="profile-follows-heading">
+                  <Card className="min-w-0">
+                    <Card.Header className="gap-3">
+                      <Card.Title id="profile-follows-heading">
+                        关注（{followCount} 门）
+                      </Card.Title>
+                      {follows.length === 0 ? (
+                        <Card.Description>
+                          还没有关注的课程。在课程页点「关注」，有新点评时会收到消息。
+                        </Card.Description>
+                      ) : null}
+                    </Card.Header>
+                    {follows.length > 0 ? (
+                      <Card.Content className="pt-0">
+                        <ProfileFollowList follows={follows} />
+                      </Card.Content>
+                    ) : null}
+                  </Card>
+                </section>
+              </>
+            )}
           </>
         )}
       </div>
