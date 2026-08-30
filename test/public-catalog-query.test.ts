@@ -170,6 +170,50 @@ describe("公开目录查询 module", () => {
     expect(wildcard.items.map((item) => item.name)).not.toContain(math);
   });
 
+  it("虚拟体育课程按名称排序时遵守 pageSize 并跨页保留", async () => {
+    const stamp = `缝体育${Date.now()}`;
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+    )
+      .bind("黄丽萍", "黄丽萍", department)
+      .run();
+    const teacher = await env.DB.prepare(
+      "SELECT id FROM teachers WHERE name=? ORDER BY id LIMIT 1",
+    )
+      .bind("黄丽萍")
+      .first<{ id: number }>();
+    const courseId = await insertCourse(`PCQ-PE-${stamp}`, `瑜伽课程${stamp}`);
+    await env.DB.prepare("UPDATE courses SET category='sports',scheme_key='pe' WHERE id=?")
+      .bind(courseId)
+      .run();
+    if (teacher) await bindTeacher(courseId, Number(teacher.id));
+
+    const first = await queryPublicCourses(
+      env.DB,
+      courseQuery({ q: "瑜伽", category: "sports", sort: "name", pageSize: 1 }),
+    );
+    expect(first.items).toHaveLength(1);
+    expect(first.pages).toBeGreaterThanOrEqual(2);
+
+    const pages = [first.items];
+    for (let page = 2; page <= first.pages; page += 1) {
+      const next = await queryPublicCourses(
+        env.DB,
+        courseQuery({
+          q: "瑜伽",
+          category: "sports",
+          sort: "name",
+          pageSize: 1,
+          page,
+        }),
+      );
+      expect(next.items.length).toBeLessThanOrEqual(1);
+      pages.push(next.items);
+    }
+    expect(pages.flat().some((item) => item.id === 800001)).toBe(true);
+    expect(pages.flat().some((item) => item.id === courseId)).toBe(true);
+  });
+
   it("查询任课关系列表时返回完整公开投影，精确教师名只留下该教师", async () => {
     const stamp = `缝关系${Date.now()}`;
     const firstTeacher = `${stamp}甲师`;

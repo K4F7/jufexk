@@ -4,8 +4,9 @@
  *
  * Measures user-visible ready time and matching public API Resource Timing
  * for search, 主导航, category pills, catalog pagination, /latest load-more,
- * and course-page review filters. Each scenario runs once cold then twice
- * warm (same context; catalog GETs have s-maxage=60).
+ * and course-page review filters. Each scenario runs once cold then a
+ * configurable number of warm repeats (same context; catalog GETs have
+ * s-maxage=60).
  *
  * Read-only against production. Does not change product UI, CSS, or copy.
  * Idle waits observe existing a11y hooks (catalog skeleton
@@ -31,7 +32,10 @@ const OUT = join(ROOT, "output/playwright/prod-public-timing");
 const ARTIFACTS =
   process.env.PROD_PUBLIC_TIMING_ARTIFACTS ?? join(OUT, "artifacts");
 // Keep one cold request, then enough warm samples for stable p50/p95/p99.
-const WARM_REPEATS = 20;
+const configuredWarmRepeats = Number(process.env.PROD_PUBLIC_WARM_REPEATS || "20");
+const WARM_REPEATS = Number.isFinite(configuredWarmRepeats)
+  ? Math.min(200, Math.max(1, Math.trunc(configuredWarmRepeats)))
+  : 20;
 const ACTION_TIMEOUT_MS = 60_000;
 
 const SEARCH_CASES = [
@@ -68,6 +72,8 @@ mkdirSync(ARTIFACTS, { recursive: true });
 
 const measurements = [];
 const notes = [];
+const allCollector = [];
+let activeProfile = "unknown";
 let shotIndex = 0;
 
 function apiKind(urlString) {
@@ -158,6 +164,7 @@ function attachCollector(page) {
       durationMs: resource?.durationMs ?? null,
       ttfbMs: resource?.ttfbMs ?? null,
       cfCacheStatus: headers["cf-cache-status"] ?? null,
+      serverTiming: headers["server-timing"] ?? null,
       cacheControl: headers["cache-control"] ?? null,
       cfRay: headers["cf-ray"] ?? null,
       contentLength: headers["content-length"]
@@ -317,10 +324,12 @@ async function timeGet(url) {
     wallMs: Date.now() - started,
     status: response.status,
     cfCacheStatus: response.headers.get("cf-cache-status"),
+    serverTiming: response.headers.get("server-timing"),
     cacheControl: response.headers.get("cache-control"),
     cfRay: response.headers.get("cf-ray"),
     contentLength: body.byteLength,
     json,
+    rowsRead: Number(json?.meta?.rows_read) || null,
   };
 }
 
@@ -348,6 +357,8 @@ async function runHttpMatrix() {
           status: result.status,
           contentLength: result.contentLength,
           cacheControl: result.cacheControl,
+          serverTiming: result.serverTiming,
+          rowsRead: result.rowsRead,
         };
         rows.push(row);
         console.log(
@@ -439,6 +450,33 @@ async function runHttpMatrix() {
   return { total, pages, detailId, teacherId, rows };
 }
 
+function summarizeHttp(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    if (!groups.has(row.id)) groups.set(row.id, []);
+    groups.get(row.id).push(row);
+  }
+  return [...groups.entries()].map(([id, entries]) => {
+    const warm = entries.filter((row) => row.heat.startsWith("warm"));
+    const values = warm.map((row) => row.primaryWallMs);
+    return {
+      id,
+      group: entries[0]?.group,
+      warmRepeats: warm.length,
+      ok: entries.every((row) => row.ok),
+      coldWallMs: entries.find((row) => row.heat === "cold")?.primaryWallMs ?? null,
+      warmP50Ms: percentile(values, 0.5),
+      warmP95Ms: percentile(values, 0.95),
+      warmP99Ms: percentile(values, 0.99),
+      warmMaxMs: Math.max(0, ...values.filter((value) => Number.isFinite(value))),
+      coldCache: entries.find((row) => row.heat === "cold")?.cfCacheStatus ?? [],
+      warmCache: warm.flatMap((row) => row.cfCacheStatus),
+      serverTiming: entries.find((row) => row.heat === "cold")?.serverTiming ?? null,
+      rowsRead: entries.find((row) => row.heat === "cold")?.rowsRead ?? null,
+    };
+  });
+}
+
 async function gotoLatest(page) {
   await page.goto(`${ORIGIN}/latest`, {
     waitUntil: "domcontentloaded",
@@ -480,10 +518,25 @@ async function submitSearch(page, query) {
 async function openSelectOption(page, groupName, option) {
   const group = page.getByRole("group", { name: groupName });
   const trigger = group.getByRole("button").first();
-  await trigger.click();
+  if ((await trigger.getAttribute("aria-expanded")) === "true")
+    await page.keyboard.press("Escape").catch(() => {});
+  await trigger.click({ force: true });
   const optionLocator = page.getByRole("option", { name: option, exact: true });
   await optionLocator.waitFor({ timeout: 10_000 });
-  await optionLocator.click();
+  await optionLocator.click({ force: true });
+  await page.keyboard.press("Escape").catch(() => {});
+}
+
+async function openRatingOption(page, option) {
+  const group = page.getByRole("group", { name: "点评筛选" });
+  const trigger = group.getByRole("button").nth(1);
+  if ((await trigger.getAttribute("aria-expanded")) === "true")
+    await page.keyboard.press("Escape").catch(() => {});
+  await trigger.click({ force: true });
+  const optionLocator = page.getByRole("option", { name: option, exact: true });
+  await optionLocator.waitFor({ timeout: 10_000 });
+  await optionLocator.click({ force: true });
+  await page.keyboard.press("Escape").catch(() => {});
 }
 
 async function shot(page, name) {
@@ -503,6 +556,7 @@ async function measure(page, collector, {
   id,
   group,
   heat,
+  profile,
   action,
   waitReady,
   primaryKinds,
@@ -523,6 +577,7 @@ async function measure(page, collector, {
   const primary = pickPrimary(apis, primaryKinds);
   const extras = apis.filter((event) => !primaryKinds.includes(event.kind));
   const row = {
+    profile,
     id,
     group,
     heat,
@@ -561,6 +616,7 @@ async function runColdWarm(page, collector, spec) {
         id: spec.id,
         group: spec.group,
         heat,
+        profile: spec.profile ?? activeProfile,
         ok: false,
         error: `prepare: ${reason?.message || reason}`,
         visibleMs: null,
@@ -577,6 +633,7 @@ async function runColdWarm(page, collector, spec) {
     }
     await measure(page, collector, {
       ...spec,
+      profile: spec.profile ?? activeProfile,
       heat,
     });
   }
@@ -595,7 +652,8 @@ async function navigationTiming(page) {
   });
 }
 
-async function runWalk(browser) {
+async function runWalk(browser, profile) {
+  activeProfile = profile;
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     locale: "zh-CN",
@@ -603,6 +661,19 @@ async function runWalk(browser) {
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 jufexk-prod-public-timing",
   });
   await context.route("**/*", async (route) => {
+    const routeUrl = new URL(route.request().url());
+    if (profile === "clean" && routeUrl.pathname === "/api/user/session") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          authenticated: false,
+          loginPath: "/login",
+          logoutPath: "/logout",
+        }),
+      });
+      return;
+    }
     const violation = forbiddenRequest(route.request());
     if (violation) {
       await route.abort("blockedbyclient");
@@ -833,15 +904,11 @@ async function runWalk(browser) {
         if (heat === "cold") return;
         const away = rating.option === "全部" ? "5 星" : "全部";
         const group = page.getByRole("group", { name: "点评筛选" });
-        const triggers = group.getByRole("button");
-        await triggers.nth(1).click();
-        await page.getByRole("option", { name: away, exact: true }).click();
+        await openRatingOption(page, away);
         await waitReviewsIdle(page);
       },
       action: async () => {
-        const group = page.getByRole("group", { name: "点评筛选" });
-        await group.getByRole("button").nth(1).click();
-        await page.getByRole("option", { name: rating.option, exact: true }).click();
+        await openRatingOption(page, rating.option);
       },
       waitReady: () => waitReviewsIdle(page),
       primaryKinds: ["reviews"],
@@ -849,16 +916,21 @@ async function runWalk(browser) {
   }
   await shot(page, "review-filters");
 
+  const profileMeasurements = measurements.filter(
+    (row) => (row.profile || activeProfile) === profile,
+  );
   const byId = new Map();
-  for (const row of measurements) {
-    if (!byId.has(row.id)) byId.set(row.id, []);
-    byId.get(row.id).push(row);
+  for (const row of profileMeasurements) {
+    const key = `${row.profile || profile}:${row.id}`;
+    if (!byId.has(key)) byId.set(key, []);
+    byId.get(key).push(row);
   }
-  const summary = [...byId.entries()].map(([id, rows]) => {
+  const summary = [...byId.entries()].map(([key, rows]) => {
     const cold = rows.find((row) => row.heat === "cold");
     const warm = rows.filter((row) => row.heat.startsWith("warm"));
     return {
-      id,
+      id: rows[0]?.id || key,
+      profile: rows[0]?.profile || activeProfile,
       group: rows[0]?.group,
       ok: rows.every((row) => row.ok),
       coldVisibleMs: cold?.visibleMs ?? null,
@@ -888,6 +960,17 @@ async function runWalk(browser) {
     };
   });
 
+  allCollector.push(...collector.map((event) => ({
+      profile,
+      kind: event.kind,
+      status: event.status,
+      wallMs: event.wallMs,
+      durationMs: event.durationMs,
+      ttfbMs: event.ttfbMs,
+      cfCacheStatus: event.cfCacheStatus,
+      serverTiming: event.serverTiming,
+      url: event.url,
+    })));
   const report = {
     origin: ORIGIN,
     ranAt: new Date().toISOString(),
@@ -896,15 +979,7 @@ async function runWalk(browser) {
     notes,
     summary,
     measurements,
-    collector: collector.map((event) => ({
-      kind: event.kind,
-      status: event.status,
-      wallMs: event.wallMs,
-      durationMs: event.durationMs,
-      ttfbMs: event.ttfbMs,
-      cfCacheStatus: event.cfCacheStatus,
-      url: event.url,
-    })),
+    collector: allCollector,
   };
   console.log(`UI walk scenarios=${summary.length}`);
   return report;
@@ -925,15 +1000,21 @@ async function main() {
     console.log("HTTP matrix (does not touch production UI)");
     http = await runHttpMatrix();
   }
-  let ui = { summary: [], measurements: [], collector: [], notes: [] };
-  const browser = await chromium.launch({ headless: true });
-  try {
-    ui = await runWalk(browser);
-  } catch (reason) {
-    notes.push({ id: "ui-walk-error", error: String(reason?.message || reason) });
-    console.log(`UI walk aborted: ${reason?.message || reason}`);
-  } finally {
-    await browser.close();
+  const uiReports = [];
+  if (!process.env.SKIP_UI) {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      // Keep a genuinely clean context (the user-session route is fulfilled
+      // locally, so no voter cookie can be set) and a normal guest context which
+      // establishes the anonymous jufexk_voter marker.
+      uiReports.push(await runWalk(browser, "clean"));
+      uiReports.push(await runWalk(browser, "voter"));
+    } catch (reason) {
+      notes.push({ id: "ui-walk-error", error: String(reason?.message || reason) });
+      console.log(`UI walk aborted: ${reason?.message || reason}`);
+    } finally {
+      await browser.close();
+    }
   }
   const report = {
     origin: ORIGIN,
@@ -941,17 +1022,18 @@ async function main() {
     viewport: { width: 1280, height: 800 },
     warmRepeats: WARM_REPEATS,
     productUiUnchanged: true,
-    notes: [...(http.notes ?? []), ...notes, ...(ui.notes ?? [])],
+    notes: [...(http.notes ?? []), ...notes],
     http: {
       catalogTotal: http.total,
       catalogPages: http.pages,
       detailId: http.detailId,
       teacherId: http.teacherId,
       rows: http.rows,
+      summary: summarizeHttp(http.rows),
     },
-    summary: ui.summary,
-    measurements: ui.measurements ?? measurements,
-    collector: ui.collector ?? [],
+    summary: uiReports.flatMap((entry) => entry.summary ?? []),
+    measurements,
+    collector: allCollector,
   };
   await writeReport(report);
   if (
@@ -962,4 +1044,4 @@ async function main() {
   }
 }
 
-await main();\n
+await main();

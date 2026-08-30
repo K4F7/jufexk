@@ -29,6 +29,7 @@ import {
 } from "../lib/review-schemes";
 import {
   isPublicCatalogCacheableRequest,
+  isPublicCourseListCacheableRequest,
   setPublicCatalogCacheHeaders,
 } from "../lib/public-catalog-cache";
 import {
@@ -83,6 +84,8 @@ import {
   guestReviewBindingSql,
   historicalNotDeletedSql,
   historicalPublicVisibleSql,
+  legacyNotDeletedSql,
+  legacyPublicVisibleSql,
   publicReviewBindingSql,
   reviewNotDeletedBindingSql,
 } from "../public-review-visibility";
@@ -98,6 +101,7 @@ import {
   parseTagCsv,
   publicCourseRawName,
   skipTurnstile,
+  markServerTiming,
   windowedPage,
   withMappedCourseNames,
   withPublicCourseCategory,
@@ -107,14 +111,18 @@ import type { AppContext } from "./types";
 
 const publicCatalogRoutes = new Hono<AppEnv>();
 
-function publicPrecomputeReadOptions(c: AppContext): PublicPrecomputeReadOptions {
+function publicPrecomputeReadOptions(
+  c: AppContext,
+  cacheable = isPublicCatalogCacheableRequest(c),
+): PublicPrecomputeReadOptions {
   // Miniflare's deterministic test binding expects writes to be visible on the
   // immediately following read; production has no test auth binding.
   if (c.env.ORDINARY_USER_TEST_AUTH_SECRET) return {};
-  if (!isPublicCatalogCacheableRequest(c)) return {};
+  if (!cacheable) return {};
   return {
     mode: "stale",
     waitUntil: (promise) => c.executionCtx.waitUntil(promise),
+    recordTiming: (name, durationMs) => markServerTiming(c, name, durationMs),
   };
 }
 
@@ -218,7 +226,7 @@ const loadVirtualPeSportItems = async (
 // 任课评价公开可见性规则与全站公开投影共用。
 const publicReviewBinding = publicReviewBindingSql;
 type PublicReviewCursor =
-  | { source: number; key: string }
+  | { source: number; key: string; total?: number }
   | {
       source: number;
       key: string;
@@ -270,6 +278,7 @@ const getPublicReviewPage = async (
   teacherId: number | null = null,
   query: PublicReviewQuery | null = null,
   includeBlocked = false,
+  recordTiming?: (name: string, durationMs: number) => void,
 ) => {
   const cursorSource = cursor && "source" in cursor ? cursor.source : -1;
   const cursorKey = cursor && "key" in cursor ? cursor.key : "";
@@ -281,6 +290,9 @@ const getPublicReviewPage = async (
   const historicalBinding = includeBlocked
     ? historicalNotDeletedSql("phr")
     : historicalPublicVisibleSql("phr");
+  const legacyBinding = includeBlocked
+    ? legacyNotDeletedSql("lr")
+    : legacyPublicVisibleSql("lr");
   /** 课程页评价按 课程×教师 作用域展示：选定教师时追加逐分支过滤。 */
   const teacherFilter = (alias: string) =>
     teacherId ? ` AND ${alias}.teacher_id=?` : "";
@@ -321,124 +333,169 @@ const getPublicReviewPage = async (
          OR (${order?.expression}=? AND
            (source_order>? OR (source_order=? AND sort_key>?))))`
     : "";
-  const pageSql = query
-    ? `WHERE ${filterParts.length ? filterParts.join(" AND ") : "1=1"}${orderedCursorSql}
-       ORDER BY ${order?.expression} ${order?.direction},source_order,sort_key LIMIT ?`
-    : `WHERE source_order>? OR (source_order=? AND sort_key>?)
-       ORDER BY source_order,sort_key LIMIT ?`;
-  const { results } = await db
-    .prepare(
-      `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
-         headline,grade,
-         course_name,course_code,teacher_name,endorsement_count,challenge_count,
-         scheme_key,scheme_version,scores,overall,created_at,
-         author_public_code,author_avatar_key,blocked_at,
-         COUNT(*) OVER() filtered_total
-       FROM (
+  const reviewUnion = `
          SELECT 0 source_order,phr.id sort_key,'historical:' || phr.id id,
            phr.course_id,phr.teacher_id,phr.comment,NULL comment_format,
            '' headline,NULL grade,
            c.name course_name,c.code course_code,t.name teacher_name,
-           (SELECT COUNT(*) FROM historical_review_endorsements e
-            WHERE e.historical_review_id=phr.id) endorsement_count,
-           (SELECT COUNT(*) FROM historical_review_challenges e
-            WHERE e.historical_review_id=phr.id) challenge_count,
+           COALESCE(signal.endorsement_count,0) endorsement_count,
+           COALESCE(signal.challenge_count,0) challenge_count,
            NULL scheme_key,NULL scheme_version,NULL scores,
            NULL overall,phr.imported_at created_at,
            ${reservedAuthorSql}, phr.blocked_at
          FROM public_historical_reviews phr
          JOIN courses c ON c.id=phr.course_id
          JOIN teachers t ON t.id=phr.teacher_id
+         LEFT JOIN public_review_signal_counts signal
+           ON signal.source_kind='historical' AND signal.source_id=CAST(phr.id AS TEXT)
          WHERE phr.${subject}=?${teacherFilter("phr")}${historicalBinding}
+         UNION ALL
+         SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
+           lr.course_id,lr.teacher_id,lr.comment,NULL comment_format,
+           '' headline,NULL grade,
+           c.name course_name,c.code course_code,t.name teacher_name,
+           COALESCE(signal.endorsement_count,0) endorsement_count,
+           COALESCE(signal.challenge_count,0) challenge_count,
+           NULL scheme_key,NULL scheme_version,NULL scores,
+           NULL overall,lr.created_at,
+           ${reservedAuthorSql}, lr.blocked_at
+         FROM legacy_reviews lr
+         JOIN courses c ON c.id=lr.course_id
+         JOIN teachers t ON t.id=lr.teacher_id
+         LEFT JOIN public_review_signal_counts signal
+           ON signal.source_kind='legacy' AND signal.source_id=CAST(lr.id AS TEXT)
+         WHERE lr.${subject}=? AND lr.status='approved'
+           AND trim(COALESCE(lr.comment,''))<>''${teacherFilter("lr")}${legacyBinding}
          UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,r.comment_format,
            r.headline,r.grade,
            c.name course_name,c.code course_code,t.name teacher_name,
-           (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
-           (SELECT COUNT(*) FROM review_challenges e WHERE e.review_id=r.id) challenge_count,
+           COALESCE(signal.endorsement_count,0) endorsement_count,
+           COALESCE(signal.challenge_count,0) challenge_count,
            r.scheme_key,r.scheme_version,r.scores,
            r.overall,r.created_at,
            ${authoredReviewAuthorSql}, r.blocked_at
          FROM reviews r
          JOIN courses c ON c.id=r.course_id
          JOIN teachers t ON t.id=r.teacher_id
+         LEFT JOIN public_review_signal_counts signal
+           ON signal.source_kind='review' AND signal.source_id=CAST(r.id AS TEXT)
          ${authoredReviewJoinSql}
          WHERE r.${subject}=? AND r.status='approved'
            AND trim(COALESCE(r.comment,''))<>''${reviewBinding}${teacherFilter("r")}
-       ) public_reviews
-       ${pageSql}`,
-    )
-    .bind(
-      id,
-      ...teacherBinds,
-      id,
-      ...teacherBinds,
-      ...(query
-        ? [
-            ...filterBinds,
-            ...(orderedCursor
-              ? [
-                  orderedCursor.order,
-                  orderedCursor.order,
-                  orderedCursor.source,
-                  orderedCursor.source,
-                  orderedCursor.key,
-                ]
-              : []),
-            size + 1,
-          ]
-        : [cursorSource, cursorSource, cursorKey, size + 1]),
-    )
-    .all();
-  const typedResults = results as Array<
+       `;
+  const filterSql = filterParts.length ? filterParts.join(" AND ") : "1=1";
+  const pageSql = query
+    ? `WHERE ${filterSql}${orderedCursorSql}
+       ORDER BY ${order?.expression} ${order?.direction},source_order,sort_key LIMIT ?`
+    : `WHERE source_order>? OR (source_order=? AND sort_key>?)
+       ORDER BY source_order,sort_key LIMIT ?`;
+  const baseBinds = [
+    id,
+    ...teacherBinds,
+    id,
+    ...teacherBinds,
+    id,
+    ...teacherBinds,
+  ];
+  const needsCount = query
+    ? !(orderedCursor && "total" in orderedCursor)
+    : !(cursor && "total" in cursor);
+  const countPromise = needsCount
+    ? db
+        .prepare(`SELECT COUNT(*) n FROM (${reviewUnion}) public_reviews WHERE ${filterSql}`)
+        .bind(...baseBinds, ...filterBinds)
+        .first<{ n: number }>()
+    : Promise.resolve({
+        n: Number(
+          ((query ? orderedCursor : cursor) as { total?: number } | null)?.total,
+        ) || 0,
+      });
+  const queryStarted = performance.now();
+  const [pageResult, countResult] = await Promise.all([
+    db
+      .prepare(
+        `SELECT source_order,sort_key,id,course_id,teacher_id,comment,comment_format,
+         headline,grade,
+         course_name,course_code,teacher_name,endorsement_count,challenge_count,
+         scheme_key,scheme_version,scores,overall,created_at,
+         author_public_code,author_avatar_key,blocked_at
+         FROM (${reviewUnion}) public_reviews
+         ${pageSql}`,
+      )
+      .bind(
+        ...baseBinds,
+        ...(query
+          ? [
+              ...filterBinds,
+              ...(orderedCursor
+                ? [
+                    orderedCursor.order,
+                    orderedCursor.order,
+                    orderedCursor.source,
+                    orderedCursor.source,
+                    orderedCursor.key,
+                  ]
+                : []),
+              size + 1,
+            ]
+          : [cursorSource, cursorSource, cursorKey, size + 1]),
+      )
+      .all(),
+    countPromise,
+  ]);
+  recordTiming?.("query", performance.now() - queryStarted);
+  const typedResults = (pageResult.results || []) as Array<
     Record<string, unknown> & { source_order: number; sort_key: string }
   >;
   const hasMore = typedResults.length > size;
   const page = typedResults.slice(0, size);
   const last = page.at(-1);
-  return {
-    items: await decoratePublicReviews(
-      db,
-      page.map(
-        ({
-          source_order: _source,
-          sort_key: _key,
-          scheme_key: schemeKey,
-          scheme_version: schemeVersion,
+  const projectionStarted = performance.now();
+  const decoratedItems = await decoratePublicReviews(
+    db,
+    page.map(
+      ({
+        source_order: _source,
+        sort_key: _key,
+        scheme_key: schemeKey,
+        scheme_version: schemeVersion,
+        scores,
+        grade: rawGrade,
+        blocked_at: blockedAt,
+        ...review
+      }) => {
+        const dimensionAverage = publicDimensionAverage({
+          schemeKey,
+          schemeVersion,
           scores,
-          filtered_total: _filteredTotal,
-          grade: rawGrade,
-          blocked_at: blockedAt,
-          ...review
-        }) => {
-          const dimensionAverage = publicDimensionAverage({
-            schemeKey,
-            schemeVersion,
-            scores,
-          });
-          const dimensionLabels = publicDimensionLabels({
-            schemeKey,
-            schemeVersion,
-            scores,
-          });
-          const grade = publicGrade(rawGrade);
-          return {
-            ...review,
-            headline: publicHeadline(review.headline),
-            ...(grade == null ? {} : { grade }),
-            overall: publicOverall(review.overall),
-            created_at: publicCreatedAt(review.created_at),
-            ...publicAuthorFields(review),
-            ...(dimensionAverage == null ? {} : { dimensionAverage }),
-            ...(dimensionLabels == null ? {} : { dimensionLabels }),
-            ...(includeBlocked && blockedAt ? { blocked: true } : {}),
-          };
-        },
-      ),
-      viewerUserId,
+        });
+        const dimensionLabels = publicDimensionLabels({
+          schemeKey,
+          schemeVersion,
+          scores,
+        });
+        const grade = publicGrade(rawGrade);
+        return {
+          ...review,
+          headline: publicHeadline(review.headline),
+          ...(grade == null ? {} : { grade }),
+          overall: publicOverall(review.overall),
+          created_at: publicCreatedAt(review.created_at),
+          ...publicAuthorFields(review),
+          ...(dimensionAverage == null ? {} : { dimensionAverage }),
+          ...(dimensionLabels == null ? {} : { dimensionLabels }),
+          ...(includeBlocked && blockedAt ? { blocked: true } : {}),
+        };
+      },
     ),
-    total: orderedCursor?.total ?? Number(page[0]?.filtered_total ?? 0),
+    viewerUserId,
+  );
+  recordTiming?.("projection", performance.now() - projectionStarted);
+  return {
+    items: decoratedItems,
+    total: Number(countResult?.n) || 0,
     nextCursor:
       hasMore && last
         ? encodePublicReviewCursor(
@@ -453,9 +510,13 @@ const getPublicReviewPage = async (
                         ? String(last.created_at ?? "")
                         : String(last.created_at ?? "9999-12-31 23:59:59"),
                   query: queryKey,
-                  total: orderedCursor?.total ?? Number(page[0]?.filtered_total ?? 0),
+                  total: Number(countResult?.n) || 0,
                 }
-              : { source: last.source_order, key: last.sort_key },
+              : {
+                  source: last.source_order,
+                  key: last.sort_key,
+                  total: Number(countResult?.n) || 0,
+                },
           )
         : null,
   };
@@ -481,6 +542,7 @@ const getPublicReviewPageFor = async (
     teacherId,
     query,
     cacheable ? false : await hasValidAdminSession(c),
+    (name, durationMs) => markServerTiming(c, name, durationMs),
   );
 publicCatalogRoutes.get("/api/config", async (c) => {
   const turnstileSecret = await readSecret(c.env.TURNSTILE_SECRET);
@@ -594,7 +656,10 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
   });
 });
 publicCatalogRoutes.get("/api/courses", async (c) => {
-  const cacheable = isPublicCatalogCacheableRequest(c);
+  const relations = clean(c.req.query("view"), 20) === "relations";
+  const cacheable = relations
+    ? isPublicCatalogCacheableRequest(c)
+    : isPublicCourseListCacheableRequest(c);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const cat = clean(c.req.query("category"), 20);
@@ -610,7 +675,7 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
     department,
     teacherId,
   };
-  if (clean(c.req.query("view"), 20) === "relations") {
+  if (relations) {
     const viewerId = cacheable ? null : await publicReviewViewerId(c);
     const sortRaw = clean(c.req.query("sort"), 20);
     const query: PublicRelationListQuery = {
@@ -618,12 +683,14 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
       sort:
         sortRaw === "name" ? "name" : sortRaw === "rating" ? "rating" : "reviews",
     };
+    const queryStarted = performance.now();
     const result = await queryPublicCourseRelations(
       c.env.DB,
       query,
       viewerId,
-      publicPrecomputeReadOptions(c),
+      publicPrecomputeReadOptions(c, cacheable),
     );
+    markServerTiming(c, "query", performance.now() - queryStarted);
     if (cacheable) setPublicCatalogCacheHeaders(c, "list");
     return c.json(result);
   }
@@ -632,11 +699,13 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
     ...listQuery,
     sort: clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews",
   };
+  const queryStarted = performance.now();
   const result = await queryPublicCourses(
     c.env.DB,
     query,
-    publicPrecomputeReadOptions(c),
+    publicPrecomputeReadOptions(c, cacheable),
   );
+  markServerTiming(c, "query", performance.now() - queryStarted);
   if (cacheable) setPublicCatalogCacheHeaders(c, "list");
   return c.json(result);
 });
@@ -1117,7 +1186,7 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
   const hasReviewQuery = Boolean(rawSort || c.req.query("rating"));
   const reviewQuery: PublicReviewQuery | null = hasReviewQuery
     ? {
-        sort: (rawSort as PublicReviewSort) || "latest",
+        sort: (rawSort as PublicReviewSort) || "recognized",
         rating,
       }
     : null;

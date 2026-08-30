@@ -92,7 +92,6 @@ export type PublicRelationListItem = {
 } & RelationSignalCounts &
   Partial<RelationSignalViewer>;
 
-type WindowedRow = { window_total?: number };
 type RelationRow = {
   course_id: number;
   code: string;
@@ -109,24 +108,6 @@ type ExactTeacherHits = {
   matchedTerms: Set<string>;
   active: boolean;
 };
-
-const stripWindowTotal = <T extends WindowedRow>(row: T) => {
-  const { window_total: _total, ...rest } = row;
-  return rest;
-};
-
-const windowedPage = async <T extends WindowedRow>(
-  rows: T[],
-  page: number,
-  fallbackTotal: () => Promise<number>,
-) => ({
-  items: rows.map(stripWindowTotal),
-  total: rows.length
-    ? Number(rows[0].window_total) || 0
-    : page > 1
-      ? await fallbackTotal()
-      : 0,
-});
 
 const withPublicCourseItem = <
   T extends { name?: unknown; category?: unknown },
@@ -442,14 +423,39 @@ export async function queryPublicCourses(
       ),
     "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
   );
-  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${indexedSearchGroup.sql ? ` AND ${indexedSearchGroup.sql}` : ""}`;
-  const args = [
+  const baseWhere = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}`;
+  const baseArgs = [
     ...categoryFilter.args,
     department,
     department,
     ...(teacherId === null ? [] : [teacherId]),
-    ...indexedSearchGroup.args,
   ];
+  let where = `${baseWhere}${indexedSearchGroup.sql ? ` AND ${indexedSearchGroup.sql}` : ""}`;
+  let args = [...baseArgs, ...indexedSearchGroup.args];
+
+  // Exact course-code queries are common and do not need FTS/ranking work, but
+  // only take the fast path after confirming the code exists and matches all
+  // visibility/category/department/teacher filters.
+  const exactCodeTerm =
+    searchTerms.length === 1 && /^[A-Za-z0-9_-]+$/.test(searchTerms[0])
+      ? searchTerms[0]
+      : null;
+  let exactCodeMatched = false;
+  if (exactCodeTerm) {
+    const exact = await db
+      .prepare(
+        `SELECT c.id FROM courses c ${publicCourseCanonicalJoin}
+         LEFT JOIN course_teachers ct ON ct.course_id=c.id
+         WHERE ${baseWhere} AND c.code=? LIMIT 1`,
+      )
+      .bind(...baseArgs, exactCodeTerm)
+      .first();
+    if (exact) {
+      exactCodeMatched = true;
+      where = `${baseWhere} AND c.code=?`;
+      args = [...baseArgs, exactCodeTerm];
+    }
+  }
   const countJoins =
     teacherId === null
       ? publicCourseCanonicalJoin
@@ -474,15 +480,64 @@ export async function queryPublicCourses(
     teacher: ["c.department", "pcc.teacher_variant_text"],
     teacherExactPredicates: ["instr(pcc.teacher_variant_text, char(31) || $TERM || char(31)) > 0"],
   }, "course", args.length);
-  const relevanceOrder = `${sharedRanking.sql},review_count DESC,c.name,c.code,c.id`;
-  const searchRankArgs = sharedRanking.args;
-  const { results } = await db
-    .prepare(
-      `SELECT c.*,
+  const relevanceOrder = exactCodeMatched
+    ? "review_count DESC,c.name,c.code,c.id"
+    : `${sharedRanking.sql},review_count DESC,c.name,c.code,c.id`;
+  const searchRankArgs = exactCodeMatched ? [] : sharedRanking.args;
+  const virtualItems =
+    !query.category || query.category === "sports"
+      ? await loadVirtualPeSportItems(db, searchTerms, teacherId, department)
+      : [];
+  const mergeName = virtualItems.length > 0 && sort === "name";
+  let extrasAll = virtualItems;
+  let pageExtras: PublicCourseListItem[] = [];
+  let realOffset = (page - 1) * size;
+  let realLimit = size;
+  if (mergeName) {
+    extrasAll = [...virtualItems].sort(byNameCodeId);
+    const values = extrasAll.map(() => "(?,?,?)").join(",");
+    const { results } = await db
+      .prepare(
+        `WITH extras(id,sort_name,sort_code) AS (VALUES ${values})
+         SELECT extras.id,COUNT(*) n
+         FROM courses c
+         ${countJoins}
+         JOIN extras ON 1=1
+         WHERE ${where}
+           AND (c.name < extras.sort_name
+             OR (c.name = extras.sort_name AND c.code < extras.sort_code)
+             OR (c.name = extras.sort_name AND c.code = extras.sort_code AND c.id < extras.id))
+         GROUP BY extras.id`,
+      )
+      .bind(
+        ...extrasAll.flatMap((item) => [item.id, item.name, item.code]),
+        ...args,
+      )
+      .all<{ id: number; n: number }>();
+    const realBeforeById = new Map(
+      (results || []).map((row) => [Number(row.id), Number(row.n) || 0]),
+    );
+    const realBefore = extrasAll.map(
+      (item) => realBeforeById.get(item.id) || 0,
+    );
+    const extraIndexes = extraMergedIndexes(realBefore);
+    const window = mergedNameRealWindow(realOffset, size, extraIndexes);
+    realOffset = window.offset;
+    realLimit = window.limit;
+    pageExtras = extrasAll.filter((_, index) =>
+      window.extraIndexesOnPage.includes(extraIndexes[index]),
+    );
+  }
+  const [pageResult, countResult] = await Promise.all([
+    realLimit === 0
+      ? Promise.resolve({ results: [] as unknown[] })
+      : db
+          .prepare(
+            `SELECT c.id,c.code,c.name,c.category,c.department,c.credits,c.description,
+       c.created_at,c.scheme_key,c.enrollment_category,c.teaching_type,c.course_level,
        GROUP_CONCAT(DISTINCT t.id || ':' || t.name) teacher_refs,
        GROUP_CONCAT(DISTINCT t.name) teachers,
-       COALESCE(course_review_counts.review_count,0) review_count,
-       COUNT(*) OVER() window_total
+       COALESCE(course_review_counts.review_count,0) review_count
       FROM courses c
       ${publicCourseCanonicalJoin}
       LEFT JOIN course_teachers ct ON ct.course_id=c.id
@@ -492,36 +547,36 @@ export async function queryPublicCourses(
      GROUP BY c.id
      ORDER BY ${sort === "name" ? "c.name,c.code,c.id" : relevanceOrder}
      LIMIT ? OFFSET ?`,
-    )
-    .bind(
-      ...args,
-      ...(sort === "name" ? [] : searchRankArgs),
-      size,
-      (page - 1) * size,
-    )
-    .all();
-  const pageRows = await windowedPage(
-    results as WindowedRow[],
-    page,
-    courseCount,
-  );
-  const virtualItems =
-    !query.category || query.category === "sports"
-      ? await loadVirtualPeSportItems(db, searchTerms, teacherId, department)
-      : [];
-  const listed = pageRows.items.map((row) =>
+            )
+            .bind(
+              ...args,
+              ...(sort === "name" || exactCodeMatched ? [] : searchRankArgs),
+              realLimit + 1,
+              realOffset,
+            )
+            .all(),
+    courseCount(),
+  ]);
+  const pageRows = {
+    items: (pageResult.results || []) as Array<Record<string, unknown>>,
+    total: Number(countResult) || 0,
+  };
+  const listed = pageRows.items.slice(0, realLimit).map((row) =>
     withPublicCourseItem(row as PublicCourseListItem),
   );
-  const extras = virtualItems.filter(
-    (item) => !listed.some((row) => row.name === item.name),
-  );
-  const totalCount = pageRows.total + extras.length;
-  const firstPage =
-    sort === "name"
-      ? [...listed, ...extras].sort(byNameCodeId)
-      : [...listed, ...extras];
+  const realTotal = pageRows.total;
+  const extras = mergeName
+    ? pageExtras
+    : extrasAll.slice(
+        Math.max(0, realOffset - realTotal),
+        Math.max(0, realOffset - realTotal) + Math.max(0, size - listed.length),
+      );
+  const totalCount = realTotal + extrasAll.length;
+  const items = mergeName
+    ? [...listed, ...pageExtras].sort(byNameCodeId).slice(0, size)
+    : [...listed, ...extras].slice(0, size);
   return {
-    items: page === 1 ? firstPage : listed,
+    items,
     page,
     pageSize: size,
     total: totalCount,
@@ -660,18 +715,36 @@ export async function queryPublicCourseRelations(
     }
     extrasAll = [...extrasAll].sort(byNameCodeTeacher);
     const sortKeySql = publicRelationNameSortKeySql("c", "t");
-    const realBefore: number[] = [];
-    for (const extra of extrasAll) {
-      const row = await db
+    const realBefore = extrasAll.length
+      ? extrasAll.map(() => 0)
+      : [];
+    if (extrasAll.length) {
+      const values = extrasAll.map(() => "(?,?,?)").join(",");
+      const { results } = await db
         .prepare(
-          `SELECT COUNT(*) n
-         ${relationFrom}
-         WHERE ${where}
-           AND ${sortKeySql} < ?`,
+          `WITH extras(course_id,teacher_id,sort_key) AS (VALUES ${values})
+           SELECT extras.course_id,extras.teacher_id,COUNT(*) n
+           ${relationFrom}
+           JOIN extras ON 1=1
+           WHERE ${where}
+             AND ${sortKeySql} < extras.sort_key
+           GROUP BY extras.course_id,extras.teacher_id`,
         )
-        .bind(...args, publicRelationNameSortKey(extra))
-        .first();
-      realBefore.push(Number((row as { n?: number } | null)?.n) || 0);
+        .bind(
+          ...extrasAll.flatMap((extra) => [
+            extra.course_id,
+            extra.teacher_id,
+            publicRelationNameSortKey(extra),
+          ]),
+          ...args,
+        )
+        .all<{ course_id: number; teacher_id: number; n: number }>();
+      const counts = new Map(
+        (results || []).map((row) => [`${row.course_id}:${row.teacher_id}`, Number(row.n) || 0]),
+      );
+      extrasAll.forEach((extra, index) => {
+        realBefore[index] = counts.get(`${extra.course_id}:${extra.teacher_id}`) || 0;
+      });
     }
     const extraIndexes = extraMergedIndexes(realBefore);
     const window = mergedNameRealWindow(start, size, extraIndexes);
@@ -682,16 +755,15 @@ export async function queryPublicCourseRelations(
     );
   }
 
-  const { results } =
+  const [pageResult, countResult] = await Promise.all([
     realLimit === 0
-      ? { results: [] }
-      : await db
+      ? Promise.resolve({ results: [] as unknown[] })
+      : db
           .prepare(
             `SELECT c.id course_id,c.code,c.name,c.category,c.department,
        t.id teacher_id,t.name teacher_name,
        rel_rating.rating,
        COALESCE(rel_counts.review_count,0) review_count
-       , COUNT(*) OVER() window_total
       FROM courses c
       ${publicCourseCanonicalJoin}
       LEFT JOIN course_teachers ct ON ct.course_id=c.id
@@ -707,13 +779,15 @@ export async function queryPublicCourseRelations(
           .bind(
             ...args,
             ...(sort === "name" || sort === "rating" ? [] : searchRankArgs),
-            realLimit,
+            realLimit + 1,
             realOffset,
           )
-          .all();
+          .all(),
+    relationCount(),
+  ]);
 
-  const rows = results as Array<RelationRow & WindowedRow>;
-  const listed = rows.map((row) => withPublicRelationNames(stripWindowTotal(row)));
+  const rows = ((pageResult.results || []) as RelationRow[]).slice(0, realLimit);
+  const listed = rows.map((row) => withPublicRelationNames(row));
   const extras = mergeName
     ? pageExtras
     : virtualItems.filter(
@@ -725,16 +799,12 @@ export async function queryPublicCourseRelations(
           ),
       );
   const extrasTotal = mergeName ? extrasAll.length : extras.length;
-  const realTotal = rows.length
-    ? Number(rows[0].window_total) || 0
-    : page > 1 || mergeName
-      ? await relationCount()
-      : 0;
+  const realTotal = Number(countResult) || 0;
   const totalCount = realTotal + extrasTotal;
   const pages = Math.max(1, Math.ceil(totalCount / size) || 1);
   let items: RelationRow[];
   if (mergeName) {
-    items = [...listed, ...pageExtras].sort(byNameCodeTeacher);
+    items = [...listed, ...pageExtras].sort(byNameCodeTeacher).slice(0, size);
   } else if (extras.length) {
     items =
       start >= realTotal
@@ -748,7 +818,7 @@ export async function queryPublicCourseRelations(
   }
 
   return {
-    items: await attachRelationProjection(db, items, viewerUserId),
+    items: await attachRelationProjection(db, items.slice(0, size), viewerUserId),
     page,
     pageSize: size,
     total: totalCount,

@@ -70,6 +70,25 @@ describe("public catalog cache headers", () => {
     isScopedPublicCache(response, PUBLIC_DETAIL_CACHE_CONTROL, PUBLIC_DETAIL_CACHE_TAG);
   });
 
+  it("caches a plain course list even with the guest voter marker", async () => {
+    const response = await SELF.fetch(`${origin}/api/courses?pageSize=1`, {
+      headers: { Cookie: "jufexk_voter=abc" },
+    });
+    expect(response.status).toBe(200);
+    isPublicCatalogCache(response);
+    const body = await response.json<Record<string, unknown>>();
+    expect(JSON.stringify(body)).not.toContain("viewer_");
+    expect(JSON.stringify(body)).not.toContain("admin");
+  });
+
+  it("keeps relation lists BYPASS with the guest voter marker", async () => {
+    const response = await SELF.fetch(`${origin}/api/courses?view=relations&pageSize=1`, {
+      headers: { Cookie: "jufexk_voter=abc" },
+    });
+    expect(response.status).toBe(200);
+    isNotPublicCatalogCache(response);
+  });
+
   it.each([
     "jufexk_voter=abc",
     "jufexk_user_session=abc",

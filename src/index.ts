@@ -40,10 +40,12 @@ app.use("/api/*", async (c, next) => {
   if (!c.res.headers.get("Cache-Control")) {
     c.header("Cache-Control", DEFAULT_API_CACHE_CONTROL);
   }
-  c.header(
-    "Server-Timing",
-    `app;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`,
+  const stages = c.get("serverTiming") || {};
+  const stageHeaders = Object.entries(stages).map(
+    ([name, duration]) => `${name};dur=${Math.max(0, duration).toFixed(1)}`,
   );
+  stageHeaders.push(`app;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`);
+  c.header("Server-Timing", stageHeaders.join(", "));
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "same-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");

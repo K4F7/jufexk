@@ -61,11 +61,12 @@ const ordinaryUserRoutes = new Hono<AppEnv>();
 
 const withPublicCacheInvalidation = (
   handler: (c: AppContext) => Response | Promise<Response>,
+  scopes: ReadonlyArray<"list" | "detail" | "config"> = ["list", "detail"],
 ) =>
   async (c: AppContext) => {
     const response = await handler(c);
     if (response.status < 400)
-      markPublicCatalogCacheChanged(c, ["list", "detail"]);
+      markPublicCatalogCacheChanged(c, scopes);
     return response;
   };
 ordinaryUserRoutes.put("/api/u/:code/follow", handleFollowPublicUser);
@@ -81,35 +82,35 @@ ordinaryUserRoutes.post(
 );
 ordinaryUserRoutes.put(
   "/api/reviews/:id/endorsement",
-  withPublicCacheInvalidation(handleCreateEndorsement),
+  withPublicCacheInvalidation(handleCreateEndorsement, ["detail"]),
 );
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/endorsement",
-  withPublicCacheInvalidation(handleWithdrawEndorsement),
+  withPublicCacheInvalidation(handleWithdrawEndorsement, ["detail"]),
 );
 ordinaryUserRoutes.put(
   "/api/reviews/:id/challenge",
-  withPublicCacheInvalidation(handleCreateChallenge),
+  withPublicCacheInvalidation(handleCreateChallenge, ["detail"]),
 );
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/challenge",
-  withPublicCacheInvalidation(handleWithdrawChallenge),
+  withPublicCacheInvalidation(handleWithdrawChallenge, ["detail"]),
 );
 ordinaryUserRoutes.post(
   "/api/reviews/:id/comments",
-  withPublicCacheInvalidation(handleCreateReviewComment),
+  withPublicCacheInvalidation(handleCreateReviewComment, ["detail"]),
 );
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/comments/:commentId",
-  withPublicCacheInvalidation(handleDeleteReviewComment),
+  withPublicCacheInvalidation(handleDeleteReviewComment, ["detail"]),
 );
 ordinaryUserRoutes.put(
   "/api/reviews/:id/comments/:commentId/endorsement",
-  withPublicCacheInvalidation(handleCreateCommentEndorsement),
+  withPublicCacheInvalidation(handleCreateCommentEndorsement, ["detail"]),
 );
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/comments/:commentId/endorsement",
-  withPublicCacheInvalidation(handleWithdrawCommentEndorsement),
+  withPublicCacheInvalidation(handleWithdrawCommentEndorsement, ["detail"]),
 );
 ordinaryUserRoutes.put(
   "/api/courses/:id/teachers/:teacherId/follow",

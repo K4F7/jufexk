@@ -87,19 +87,46 @@ export async function purgePublicCatalogCache(
  * Cache keys ignore cookies in Workers Cache. Only requests without any
  * credential that can alter public payload fields may use shared responses.
  */
-export function isPublicCatalogCacheableRequest(c: {
-  req: {
-    header: (name: string) => string | undefined;
-  };
-}) {
+function isPublicRequestCacheable(
+  c: {
+    req: {
+      header: (name: string) => string | undefined;
+    };
+  },
+  allowVoterCookie: boolean,
+) {
+  const blockedCookies = allowVoterCookie
+    ? PUBLIC_CACHE_CREDENTIAL_COOKIES.filter((name) => name !== "jufexk_voter")
+    : PUBLIC_CACHE_CREDENTIAL_COOKIES;
   const cookieHeader = c.req.header("Cookie") || "";
   const hasCookie = (name: string) =>
     cookieHeader.split(";").some((part) => part.trim().startsWith(`${name}=`));
-  if (PUBLIC_CACHE_CREDENTIAL_COOKIES.some(hasCookie)) return false;
+  if (blockedCookies.some(hasCookie)) return false;
   if (c.req.header(ORDINARY_USER_ID_HEADER)) return false;
   if (c.req.header(ORDINARY_USER_MAC_HEADER)) return false;
   if (c.req.header("Authorization")) return false;
   if (c.req.header("X-Test-Auth") || c.req.header("X-Test-Authentication"))
     return false;
   return true;
+}
+
+export function isPublicCatalogCacheableRequest(c: {
+  req: {
+    header: (name: string) => string | undefined;
+  };
+}) {
+  return isPublicRequestCacheable(c, false);
+}
+
+/**
+ * Plain course lists never serialize viewer signals, so the anonymous voter
+ * marker is safe to ignore for shared caching. Relation lists deliberately use
+ * the stricter helper above because their payload contains viewer fields.
+ */
+export function isPublicCourseListCacheableRequest(c: {
+  req: {
+    header: (name: string) => string | undefined;
+  };
+}) {
+  return isPublicRequestCacheable(c, true);
 }

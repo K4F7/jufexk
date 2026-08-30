@@ -96,6 +96,11 @@ test("course detail displays the course administrator notice", async ({ page }) 
 test("course detail hides the empty administrator notice from guests", async ({
   page,
 }) => {
+  let adminSessionCalls = 0;
+  await page.route("**/api/admin/session", (route) => {
+    adminSessionCalls += 1;
+    return route.fulfill({ status: 401, json: { error: "unauthorized" } });
+  });
   await page.route("**/api/courses/8", (route) =>
     route.fulfill({
       json: {
@@ -116,11 +121,22 @@ test("course detail hides the empty administrator notice from guests", async ({
   ).toHaveCount(0);
   await expect(page.getByText("暂无公告", { exact: true })).toHaveCount(0);
   await expect(page.locator("div.mt-4.rounded-md.border.border-dashed")).toHaveCount(0);
+  expect(adminSessionCalls).toBe(0);
 });
 
 test("course detail shows an empty administrator notice box to admins", async ({
   page,
 }) => {
+  await page.route("**/api/user/session", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        csrfToken: "csrf-user",
+        loginPath: "/login",
+        logoutPath: "/logout",
+      },
+    }),
+  );
   await page.route("**/api/admin/session", (route) =>
     route.fulfill({
       json: { ok: true, kind: "admin", source: "student", csrfToken: "csrf-admin" },

@@ -37,7 +37,7 @@ const UNAVAILABLE_NOTICE_KEY = "unavailable";
  */
 export function AccountNavControl() {
   const { viewer, ready } = useViewer();
-  const { authed: adminAuthed, ready: adminReady } = useAdminSession();
+  const { authed: adminAuthed, ready: adminReady, ensure: ensureAdmin } = useAdminSession();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -148,7 +148,11 @@ export function AccountNavControl() {
           </Badge>
         ) : null}
       </Badge.Anchor>
-      <Dropdown>
+      <Dropdown
+        onOpenChange={(open) => {
+          if (open && viewer.authenticated && !previewAccount) void ensureAdmin();
+        }}
+      >
         <Button aria-label="账号" size="sm" variant="ghost">
           {viewer.handle || previewAccount ? (
             <span className="max-w-28 truncate">

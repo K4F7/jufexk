@@ -36,6 +36,7 @@ export type Vars = {
   adminSource?: "student";
   publicCatalogCacheChanged?: boolean;
   publicCatalogCacheScopes?: Array<"list" | "detail" | "config">;
+  serverTiming?: Record<string, number>;
 };
 
 export type AppEnv = { Bindings: Bindings; Variables: Vars };

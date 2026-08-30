@@ -1,6 +1,7 @@
 import { Button, Card, Label, TextArea, TextField } from "@heroui/react";
 import { useEffect, useState } from "react";
 import { useAdminSession } from "../hooks/useAdminSession";
+import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 
 /**
@@ -21,12 +22,19 @@ export function CourseAdminNotice({
   /** 保存成功后触发课程详情重拉。 */
   onSaved: () => void;
 }) {
-  const { authed: adminAuthed } = useAdminSession();
+  const { authed: adminAuthed, ensure: ensureAdmin } = useAdminSession();
+  const { viewer } = useViewer();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(notice);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
+
+  // Anonymous detail pages must not pay for an admin 401 probe; an authenticated
+  // viewer still gets the existing notice editing capability on demand.
+  useEffect(() => {
+    if (viewer.authenticated) void ensureAdmin();
+  }, [ensureAdmin, viewer.authenticated]);
 
   // 课程详情重拉后同步最新公告，避免旧草稿覆盖。
   useEffect(() => {
