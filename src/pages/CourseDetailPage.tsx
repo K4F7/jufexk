@@ -206,7 +206,7 @@ export function CourseDetailPage() {
   const [error, setError] = useState("");
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
-  const [reviewSort, setReviewSort] = useState<CourseReviewSort>("recognized");
+  const [reviewSort, setReviewSort] = useState<CourseReviewSort>("latest");
   const [reviewRating, setReviewRating] = useState<number[]>([]);
   const [filteredReviewTotal, setFilteredReviewTotal] = useState(0);
   const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
