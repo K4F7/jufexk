@@ -2,6 +2,7 @@
 
 对照：
 
+- 三轮总结：[`load-speed-2026-08-30-summary.md`](./load-speed-2026-08-30-summary.md)
 - 基线（#720 前）：[`load-speed-2026-08-30.md`](./load-speed-2026-08-30.md)
 - 第一轮后（#720）：[`load-speed-2026-08-30-after-opt.md`](./load-speed-2026-08-30-after-opt.md)
 

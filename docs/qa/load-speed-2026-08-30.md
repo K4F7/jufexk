@@ -1,6 +1,7 @@
 # 公开面加载速度 — 2026-08-30
 
 > 这是 **#705 / #720 优化前** 的基线。
+> 三轮总结见 [load-speed-2026-08-30-summary.md](./load-speed-2026-08-30-summary.md)。
 > 第一轮后见 [load-speed-2026-08-30-after-opt.md](./load-speed-2026-08-30-after-opt.md)。
 > 第二轮后见 [load-speed-2026-08-30-after-round2.md](./load-speed-2026-08-30-after-round2.md)。
 
