@@ -89,4 +89,4 @@ export function isReviewFolded(input: {
 }
 
 export const REVIEW_FOLD_LABEL = "该评价因不受欢迎被折叠";
-export const REVIEW_PUBLIC_FOLD_EXPAND_LABEL = "看看";
+export const REVIEW_PUBLIC_FOLD_EXPAND_LABEL = "让我看看";
