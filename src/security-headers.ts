@@ -14,9 +14,13 @@ export const CLOUDFLARE_WEB_ANALYTICS_CONNECT_ORIGIN =
 export const HEROUI_AVATAR_ASSETS_ORIGIN =
   "https://heroui-assets.nyc3.cdn.digitaloceanspaces.com";
 
+/** SHA-256 allowlist for the tiny /latest request bootstrap in index.html. */
+export const LATEST_REQUEST_BOOTSTRAP_CSP_HASH =
+  "'sha256-A4c7FVNHBYos9oj9KG/SDmaZx4WCR75jv3CdgHGA07I='";
+
 export const ASSET_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  `script-src 'self' ${TURNSTILE_ORIGIN} ${CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN}`,
+  `script-src 'self' ${LATEST_REQUEST_BOOTSTRAP_CSP_HASH} ${TURNSTILE_ORIGIN} ${CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN}`,
   `frame-src ${TURNSTILE_ORIGIN} ${STATUS_PAGE_URL}`,
   `connect-src 'self' ${TURNSTILE_ORIGIN} ${CLOUDFLARE_WEB_ANALYTICS_CONNECT_ORIGIN}`,
   "style-src 'self' 'unsafe-inline'",
