@@ -1,6 +1,6 @@
 /**
  * 课程页点评区（Issue #402，对齐 icourse）：标题「点评」+ 计数 + 蓝色「写点评」；
- * 排序、评分用 secondary Select 单行「标签：当前值」，由服务端排序/筛选；条目为官方占位
+ * 排序三项、评分整星多选（4 星含 4.5）用 secondary Select，由服务端排序/筛选；条目为官方占位
  * 头像 + 匿名用户 + 星级 + 四维档位 + 正文 + 认可（Issue #431）。
  *
  * 四维档位标签由 #373 公开流投影按条目下发（dimensionLabels），有则渲染
@@ -37,6 +37,11 @@ import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import { parseHandlePublicCode } from "../public-handle";
+import {
+  formatReviewRatingFilterLabel,
+  nextReviewRatingFilter,
+  OVERALL_STAR_FILTERS,
+} from "../lib/review-overall";
 import type { PublicReview, ReviewComment } from "../lib/types";
 import { FourDimLine } from "./FourDimLine";
 import { ReviewActionBar } from "./ReviewActionBar";
@@ -55,24 +60,17 @@ import { ReviewAdminDock } from "./ReviewAdminDock";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { StarsWithCaption } from "./Stars";
 
-export type CourseReviewSort =
-  | "recognized"
-  | "latest"
-  | "oldest"
-  | "rating_desc"
-  | "rating_asc";
+export type CourseReviewSort = "recognized" | "latest" | "oldest";
 
 const SORT_ITEMS: Array<{ id: CourseReviewSort; label: string }> = [
   { id: "recognized", label: "认可最多" },
-  { id: "latest", label: "最新发布" },
-  { id: "oldest", label: "最早发布" },
-  { id: "rating_desc", label: "评分最高" },
-  { id: "rating_asc", label: "评分最低" },
+  { id: "latest", label: "从新到旧" },
+  { id: "oldest", label: "从旧到新" },
 ];
 
 const RATING_ITEMS: Array<{ id: string; label: string }> = [
   { id: "all", label: "全部" },
-  ...[5, 4, 3, 2, 1].map((score) => ({
+  ...OVERALL_STAR_FILTERS.map((score) => ({
     id: String(score),
     label: `${score} 星`,
   })),
@@ -112,6 +110,46 @@ function FilterSelect({
       <Select.Popover>
         <ListBox>
           {items.map((item) => (
+            <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
+              {item.label}
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+    </Select>
+  );
+}
+
+function RatingFilterSelect({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (value: number[]) => void;
+}) {
+  const selectedKeys = value.length ? value.map(String) : ["all"];
+  return (
+    <Select
+      className="w-auto"
+      variant="secondary"
+      selectionMode="multiple"
+      value={selectedKeys}
+      onChange={(next) => {
+        const keys = Array.isArray(next) ? next.map(String) : [];
+        onChange(nextReviewRatingFilter(value, keys));
+      }}
+    >
+      <Label className="sr-only">评分</Label>
+      <Select.Trigger>
+        <Select.Value>
+          {() => <>评分：{formatReviewRatingFilterLabel(value)}</>}
+        </Select.Value>
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox selectionMode="multiple">
+          {RATING_ITEMS.map((item) => (
             <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
               {item.label}
               <ListBox.ItemIndicator />
@@ -266,9 +304,10 @@ export function CourseReviewSection({
   /** 当前选中的任课教师；为空（课程无教师）时隐藏写点评入口。 */
   teacherId: number | null;
   sort: CourseReviewSort;
-  rating: string;
+  /** 已选整星；空数组为全部。 */
+  rating: number[];
   onSortChange: (value: CourseReviewSort) => void;
-  onRatingChange: (value: string) => void;
+  onRatingChange: (value: number[]) => void;
   reviews: PublicReview[];
   /** 该关系的公开文字评价总数。 */
   total: number;
@@ -331,12 +370,7 @@ export function CourseReviewSection({
           onChange={(value) => onSortChange(value as CourseReviewSort)}
           items={SORT_ITEMS}
         />
-        <FilterSelect
-          label="评分"
-          value={rating}
-          onChange={onRatingChange}
-          items={RATING_ITEMS}
-        />
+        <RatingFilterSelect value={rating} onChange={onRatingChange} />
       </div>
 
       {error && reviews.length === 0 ? (
@@ -352,7 +386,7 @@ export function CourseReviewSection({
           <Card.Header>
             <Card.Title>暂无评价</Card.Title>
             <Card.Description>
-              {teacherId && rating !== "all"
+              {teacherId && rating.length > 0
                 ? "没有符合当前筛选条件的点评。"
                 : teacherId
                   ? "成为第一位评价这位老师这门课的同学。"

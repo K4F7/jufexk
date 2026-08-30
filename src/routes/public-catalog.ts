@@ -51,6 +51,10 @@ import {
   publicHeadline,
   publicOverall,
 } from "../lib/public-review-fields";
+import {
+  expandOverallStarFilter,
+  parseReviewRatingFilter,
+} from "../lib/review-overall";
 import { relationDimensionKey } from "../lib/relation-four-dims";
 import { loadRelationDimensionLabels } from "../lib/relation-projections";
 import {
@@ -224,15 +228,11 @@ type PublicReviewCursor =
       query: string;
       total: number;
     };
-type PublicReviewSort =
-  | "recognized"
-  | "latest"
-  | "oldest"
-  | "rating_desc"
-  | "rating_asc";
+type PublicReviewSort = "recognized" | "latest" | "oldest";
 type PublicReviewQuery = {
   sort: PublicReviewSort;
-  rating: number | null;
+  /** 整星 1–5；空或缺省为全部（含无评分）。 */
+  rating: number[] | null;
 };
 const publicReviewPageSize = (c: AppContext) =>
   Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
@@ -292,9 +292,12 @@ const getPublicReviewPage = async (
   const teacherBinds = teacherId ? [teacherId] : [];
   const filterParts: string[] = [];
   const filterBinds: unknown[] = [];
-  if (query?.rating != null) {
-    filterParts.push("overall=?");
-    filterBinds.push(query.rating);
+  if (query?.rating?.length) {
+    const ratingValues = expandOverallStarFilter(query.rating);
+    filterParts.push(
+      `overall IN (${ratingValues.map(() => "?").join(",")})`,
+    );
+    filterBinds.push(...ratingValues);
   }
   const orderConfig: Record<
     PublicReviewSort,
@@ -309,8 +312,6 @@ const getPublicReviewPage = async (
       expression: "COALESCE(created_at,'9999-12-31 23:59:59')",
       direction: "ASC",
     },
-    rating_desc: { expression: "COALESCE(overall,-1)", direction: "DESC" },
-    rating_asc: { expression: "COALESCE(overall,99)", direction: "ASC" },
   };
   const order = query ? orderConfig[query.sort] : null;
   const queryKey = query
@@ -474,11 +475,7 @@ const getPublicReviewPage = async (
                       ? Number(last.endorsement_count)
                       : query.sort === "latest"
                         ? String(last.created_at ?? "")
-                        : query.sort === "oldest"
-                          ? String(last.created_at ?? "9999-12-31 23:59:59")
-                          : query.sort === "rating_desc"
-                            ? Number(last.overall ?? -1)
-                            : Number(last.overall ?? 99),
+                        : String(last.created_at ?? "9999-12-31 23:59:59"),
                   query: queryKey,
                   total: orderedCursor?.total ?? Number(page[0]?.filtered_total ?? 0),
                 }
@@ -1135,15 +1132,12 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
     "recognized",
     "latest",
     "oldest",
-    "rating_desc",
-    "rating_asc",
   ]);
   if (rawSort && !allowedSorts.has(rawSort as PublicReviewSort))
     return fail(c, "评价排序参数无效", 400);
-  const rawRating = clean(c.req.query("rating"), 2);
-  const rating = rawRating ? integer(rawRating) : null;
-  if (rawRating && (rating == null || rating < 1 || rating > 5))
-    return fail(c, "评价评分参数无效", 400);
+  const rawRating = clean(c.req.query("rating"), 20);
+  const rating = rawRating ? parseReviewRatingFilter(rawRating) : null;
+  if (rawRating && rating == null) return fail(c, "评价评分参数无效", 400);
   const hasReviewQuery = Boolean(rawSort || c.req.query("rating"));
   const reviewQuery: PublicReviewQuery | null = hasReviewQuery
     ? {

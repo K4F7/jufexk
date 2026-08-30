@@ -207,7 +207,7 @@ export function CourseDetailPage() {
   const [reviewsError, setReviewsError] = useState("");
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewSort, setReviewSort] = useState<CourseReviewSort>("recognized");
-  const [reviewRating, setReviewRating] = useState("all");
+  const [reviewRating, setReviewRating] = useState<number[]>([]);
   const [filteredReviewTotal, setFilteredReviewTotal] = useState(0);
   const [teacherCourses, setTeacherCourses] = useState<Course[] | null>(null);
   /** 管理动作（屏蔽/删除）后 bump：清空评价会话缓存并重拉第一页。 */
@@ -237,7 +237,7 @@ export function CourseDetailPage() {
       teacherId: String(effectiveTeacherId),
       sort: reviewSort,
     });
-    if (reviewRating !== "all") query.set("rating", reviewRating);
+    if (reviewRating.length) query.set("rating", reviewRating.join(","));
     teacherQuery = query.toString();
   }
 
