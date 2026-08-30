@@ -1,4 +1,4 @@
-import { buttonVariants, Link, SearchField } from "@heroui/react";
+import { buttonVariants, Link, SearchField, Tabs } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -13,6 +13,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { SiteConfig } from "../lib/types";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
 import { AccountNavControl } from "./AccountNavControl";
@@ -22,9 +23,10 @@ import { SiteBanner } from "./SiteBanner";
 
 /**
  * Production shell — USTC 评课社区对齐（Issue #402）：
- * 左簇品牌 + 课评/课程/导师导航（排课模拟只在 DEV 与预览站出现）·
- * 居中课程搜索（提交到 /courses?q=）· 右侧登录 + 主题切换。
- * 顶栏与页面同底色、无硬分割线；写评价只从课程页「写点评」进入。
+ * 桌面 xl+：左簇品牌 + Button 课评/课程/导师 · 居中搜索 · 右账号。
+ * 窄屏：品牌+账号 / 整行搜索 / 等宽 Tabs（课评/课程；导师外链未适配移动端，不挂）。
+ * /profile /account /submit 窄屏不挂浏览 Tabs（个人面，不是逛目录）；品牌仍回 /latest。
+ * 排课模拟只在 API `showScheduleNav` 为真时出现。写评价只从课程页「写点评」进入。
  */
 
 const PI_REVIEW_URL = "https://pi-review.com/universities/661";
@@ -94,6 +96,152 @@ function navSelectedKey(pathname: string): string {
   return "courses";
 }
 
+/** Logged-in “me” surfaces: hide 课评/课程 Tabs in the narrow header only. */
+function isMeAccountSurface(pathname: string): boolean {
+  return (
+    pathname === "/profile" ||
+    pathname === "/account" ||
+    pathname === "/submit"
+  );
+}
+
+type ShellNavLink = { id: string; to: string; label: string };
+
+function brandClassName(extra = "") {
+  return `${buttonVariants({
+    size: "sm",
+    variant: "ghost",
+  })} min-w-0 truncate no-underline ${extra}`.trim();
+}
+
+function ShellBrand({ to, siteName, className = "" }: { to: string; siteName: string; className?: string }) {
+  return (
+    <Link
+      className={brandClassName(className)}
+      href={to}
+      render={(domProps) => (
+        <NavLink
+          {...(domProps as object)}
+          className={
+            typeof domProps.className === "string"
+              ? domProps.className
+              : undefined
+          }
+          to={to}
+        />
+      )}
+    >
+      <span className="min-w-0 truncate">{siteName}</span>
+    </Link>
+  );
+}
+
+function DesktopNavLinks({
+  links,
+  selectedKey,
+  params,
+}: {
+  links: ShellNavLink[];
+  selectedKey: string;
+  params: URLSearchParams;
+}) {
+  return (
+    <>
+      {links.map((link) => {
+        const active = selectedKey === link.id;
+        const to = import.meta.env.DEV
+          ? withGlobalSearchParams(link.to, params)
+          : link.to;
+        return (
+          <Link
+            key={link.id}
+            className={`${buttonVariants({
+              size: "sm",
+              variant: active ? "secondary" : "ghost",
+            })} no-underline`}
+            href={to}
+            render={(domProps) => (
+              <NavLink
+                {...(domProps as object)}
+                className={
+                  typeof domProps.className === "string"
+                    ? domProps.className
+                    : undefined
+                }
+                to={to}
+              />
+            )}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+      <a
+        aria-label="导师（新窗口打开）"
+        className={buttonVariants({ size: "sm", variant: "ghost" })}
+        href={PI_REVIEW_URL}
+        target="_blank"
+        rel="noreferrer"
+      >
+        导师
+      </a>
+    </>
+  );
+}
+
+/** Narrow-screen primary nav: official equal-width Tabs, not desktop ghost buttons.
+ * 导师外链未适配移动端，只在桌面 `DesktopNavLinks` 保留。 */
+function MobileTabsNav({
+  links,
+  selectedKey,
+  params,
+}: {
+  links: ShellNavLink[];
+  selectedKey: string;
+  params: URLSearchParams;
+}) {
+  return (
+    <Tabs
+      aria-label="主导航"
+      className="shell-mobile-nav-tabs w-full min-w-0"
+      selectedKey={selectedKey}
+      variant="secondary"
+    >
+      <Tabs.ListContainer className="w-full min-w-0">
+        <Tabs.List aria-label="主导航" className="max-w-full">
+          {links.map((link) => {
+            const to = import.meta.env.DEV
+              ? withGlobalSearchParams(link.to, params)
+              : link.to;
+            return (
+              <Tabs.Tab
+                key={link.id}
+                className="min-w-0 flex-1 justify-center"
+                href={to}
+                id={link.id}
+                render={(domProps) => (
+                  <NavLink
+                    {...(domProps as object)}
+                    className={
+                      typeof domProps.className === "string"
+                        ? `${domProps.className} min-w-0 flex-1 justify-center`
+                        : "min-w-0 flex-1 justify-center"
+                    }
+                    to={to}
+                  />
+                )}
+              >
+                {link.label}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            );
+          })}
+        </Tabs.List>
+      </Tabs.ListContainer>
+    </Tabs>
+  );
+}
+
 /** Center course search: submit jumps to /courses?q=... (Issue #402). */
 function ShellCourseSearch() {
   const [params] = useSearchParams();
@@ -137,7 +285,9 @@ function DefaultShell({
 }) {
   const location = useLocation();
   const [params] = useSearchParams();
+  const isXl = useMediaQuery("(min-width: 80rem)");
   const selectedKey = navSelectedKey(location.pathname);
+  const showMobileBrowseTabs = !isMeAccountSurface(location.pathname);
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
   const siteName = config?.siteName || "非官方课评@JUFE";
   const universityName = config?.universityName || "江西财经大学";
@@ -147,7 +297,7 @@ function DefaultShell({
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);
 
-  const showScheduleNav = import.meta.env.DEV || config?.showScheduleNav === true;
+  const showScheduleNav = config?.showScheduleNav === true;
   const links = [
     { id: "latest", to: "/latest", label: "课评" },
     { id: "courses", to: "/courses", label: "课程" },
@@ -157,107 +307,90 @@ function DefaultShell({
   ];
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen min-w-0 flex-col overflow-x-clip">
       <SkipToMain />
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
-        {/* 堆叠到 xl；左列 min-content，避免 1280px 生产站名+导航把主导航折行撑高顶栏。 */}
-        <div className="mx-auto grid max-w-[1520px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-5 xl:grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] xl:px-4">
-          {/* contents 让品牌与导航在窄屏直接成为 grid 项;xl+ 还原为左簇 flex 容器。 */}
-          <div className="contents xl:flex xl:items-center xl:gap-2">
-            <Link
-              className={`${buttonVariants({
-                size: "sm",
-                variant: "ghost",
-              })} col-start-1 row-start-1 min-w-0 truncate no-underline`}
-              href={brandTo}
-              render={(domProps) => (
-                <NavLink
-                  {...(domProps as object)}
-                  className={
-                    typeof domProps.className === "string"
-                      ? domProps.className
-                      : undefined
-                  }
-                  to={brandTo}
-                />
+        <div className="mx-auto max-w-[1520px] px-3 py-2 sm:px-5 xl:px-4 xl:py-2.5">
+          {/* 只挂一套顶栏，避免窄屏/桌面各一份账号与搜索进无障碍树。 */}
+          {!isXl ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <ShellBrand
+                className="max-w-[min(11rem,calc(100%-7rem))]"
+                siteName={siteName}
+                to={brandTo}
+              />
+              <div className="flex shrink-0 items-center gap-1">
+                <AccountNavControl />
+                <ThemeToggle />
+              </div>
+            </div>
+            <div className="min-w-0">
+              {showGlobalSearch &&
+              globalSearchVariant &&
+              GlobalSearchPrototypeLazy ? (
+                <Suspense fallback={null}>
+                  <GlobalSearchPrototypeLazy
+                    slot="shell"
+                    variant={globalSearchVariant}
+                  />
+                </Suspense>
+              ) : (
+                <ShellCourseSearch />
               )}
-            >
-              <span className="min-w-0 truncate">{siteName}</span>
-            </Link>
-
-            <nav
-              aria-label="主导航"
-              className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1 xl:col-span-1 xl:row-start-auto xl:min-w-min xl:flex-nowrap"
-            >
-              {links.map((link) => {
-                const active = selectedKey === link.id;
-                const to = import.meta.env.DEV
-                  ? withGlobalSearchParams(link.to, params)
-                  : link.to;
-                return (
-                  <Link
-                    key={link.id}
-                    className={`${buttonVariants({
-                      size: "sm",
-                      variant: active ? "secondary" : "ghost",
-                    })} no-underline`}
-                    href={to}
-                    render={(domProps) => (
-                      <NavLink
-                        {...(domProps as object)}
-                        className={
-                          typeof domProps.className === "string"
-                            ? domProps.className
-                            : undefined
-                        }
-                        to={to}
-                      />
-                    )}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-              {/* 外链用原生 <a>：HeroUI Link 会走 RouterProvider 的 useHref，
-                  把绝对 URL 错当成站内路径。 */}
-              <a
-                aria-label="导师（新窗口打开）"
-                className={buttonVariants({ size: "sm", variant: "ghost" })}
-                href={PI_REVIEW_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                导师
-              </a>
-            </nav>
-          </div>
-
-          <div className="col-span-2 row-start-3 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1">
-            {showGlobalSearch &&
-            globalSearchVariant &&
-            GlobalSearchPrototypeLazy ? (
-              <Suspense fallback={null}>
-                <GlobalSearchPrototypeLazy
-                  slot="shell"
-                  variant={globalSearchVariant}
+            </div>
+            {showMobileBrowseTabs ? (
+              <nav aria-label="主导航" className="w-full min-w-0">
+                <MobileTabsNav
+                  links={links}
+                  params={params}
+                  selectedKey={selectedKey}
                 />
-              </Suspense>
-            ) : (
-              <ShellCourseSearch />
-            )}
+              </nav>
+            ) : null}
           </div>
-
-          <div className="col-start-2 row-start-1 flex items-center justify-end gap-2 xl:col-start-3">
-            <AccountNavControl />
-            <ThemeToggle />
+          ) : (
+          <div className="grid grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] items-center gap-x-4">
+            <div className="flex items-center gap-2">
+              <ShellBrand siteName={siteName} to={brandTo} />
+              <nav
+                aria-label="主导航"
+                className="flex min-w-min flex-nowrap items-center gap-1"
+              >
+                <DesktopNavLinks
+                  links={links}
+                  params={params}
+                  selectedKey={selectedKey}
+                />
+              </nav>
+            </div>
+            <div className="min-w-0">
+              {showGlobalSearch &&
+              globalSearchVariant &&
+              GlobalSearchPrototypeLazy ? (
+                <Suspense fallback={null}>
+                  <GlobalSearchPrototypeLazy
+                    slot="shell"
+                    variant={globalSearchVariant}
+                  />
+                </Suspense>
+              ) : (
+                <ShellCourseSearch />
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <AccountNavControl />
+              <ThemeToggle />
+            </div>
           </div>
+          )}
         </div>
       </header>
 
       <SiteBanner banner={banner} />
 
       <main
-        className="mx-auto flex w-full max-w-[1520px] flex-1 flex-col px-4 pb-16 pt-8 sm:px-5 xl:px-4"
+        className="mx-auto flex w-full max-w-[1520px] flex-1 flex-col px-4 pb-4 pt-8 sm:px-5 sm:pb-16 xl:px-4"
         id="main-content"
         tabIndex={-1}
       >

@@ -4,6 +4,7 @@ import {
   noticeHrefToLocation,
 } from "../src/hooks/useUnreadNotifications";
 import {
+  DEV_AS_PARAM,
   DEV_ATLAS_PARAM,
   DEV_PREVIEW_PARAM,
   PREVIEW_NOTICES_BADGE,
@@ -13,12 +14,17 @@ import {
   PREVIEW_REVIEW_COMMENTS,
   previewFilledCourseDetail,
   previewFilledCourseReviews,
+  previewFilledSubmitCourse,
+  previewFilledSubmitDraft,
   previewFilledNotices,
   previewNotificationInbox,
   previewReviewComments,
   previewUnreadNotificationCount,
+  previewDevViewerSession,
   resolveDevAtlasSession,
+  resolveDevIdentity,
   resolveDevPreview,
+  resolveDevPreviewOrFilled,
 } from "../src/lib/dev-preview";
 import { formatRelativeTime } from "../src/lib/review-date";
 import { reviewSharePath } from "../src/lib/review-dimensions";
@@ -33,6 +39,50 @@ describe("DEV preview guards", () => {
     expect(resolveDevAtlasSession(false, search)).toBe(false);
   });
 
+  it("fills DEV catalog pages only when preview or atlas is present", () => {
+    expect(resolveDevPreviewOrFilled(false, new URLSearchParams())).toBeNull();
+    expect(
+      resolveDevPreviewOrFilled(
+        false,
+        new URLSearchParams(`${DEV_PREVIEW_PARAM}=filled`),
+      ),
+    ).toBeNull();
+    expect(resolveDevPreviewOrFilled(true, new URLSearchParams())).toBeNull();
+    expect(
+      resolveDevPreviewOrFilled(true, new URLSearchParams(`${DEV_ATLAS_PARAM}=1`)),
+    ).toBe("filled");
+    expect(
+      resolveDevPreviewOrFilled(
+        true,
+        new URLSearchParams(`${DEV_PREVIEW_PARAM}=filled`),
+      ),
+    ).toBe("filled");
+    expect(
+      resolveDevPreviewOrFilled(
+        true,
+        new URLSearchParams(`${DEV_PREVIEW_PARAM}=notices-badge`),
+      ),
+    ).toBe("filled");
+    expect(
+      resolveDevPreviewOrFilled(
+        true,
+        new URLSearchParams(`${DEV_PREVIEW_PARAM}=error`),
+      ),
+    ).toBe("error");
+    expect(
+      resolveDevPreviewOrFilled(
+        true,
+        new URLSearchParams(`${DEV_PREVIEW_PARAM}=empty`),
+      ),
+    ).toBe("empty");
+    expect(
+      resolveDevPreviewOrFilled(
+        true,
+        new URLSearchParams(`${DEV_PREVIEW_PARAM}=empty-catalog`),
+      ),
+    ).toBe("empty-catalog");
+  });
+
   it("reads preview and atlas only when DEV", () => {
     expect(
       resolveDevPreview(true, new URLSearchParams(`${DEV_PREVIEW_PARAM}=empty`)),
@@ -44,6 +94,36 @@ describe("DEV preview guards", () => {
       resolveDevAtlasSession(true, new URLSearchParams(`${DEV_PREVIEW_PARAM}=error`)),
     ).toBe(true);
     expect(resolveDevAtlasSession(true, new URLSearchParams())).toBe(false);
+  });
+
+  it("reads DEV identity from ?as= and ignores it in production-like builds", () => {
+    expect(
+      resolveDevIdentity(false, new URLSearchParams(`${DEV_AS_PARAM}=admin`), "admin"),
+    ).toBeNull();
+    expect(
+      resolveDevIdentity(true, new URLSearchParams(`${DEV_AS_PARAM}=guest`)),
+    ).toBe("guest");
+    expect(
+      resolveDevIdentity(true, new URLSearchParams(`${DEV_AS_PARAM}=user`)),
+    ).toBe("user");
+    expect(
+      resolveDevIdentity(true, new URLSearchParams(`${DEV_AS_PARAM}=admin`)),
+    ).toBe("admin");
+    expect(
+      resolveDevIdentity(true, new URLSearchParams(`${DEV_AS_PARAM}=nope`)),
+    ).toBeNull();
+    expect(
+      resolveDevIdentity(true, new URLSearchParams(), "admin"),
+    ).toBe("admin");
+    expect(
+      resolveDevIdentity(
+        true,
+        new URLSearchParams(`${DEV_AS_PARAM}=guest`),
+        "admin",
+      ),
+    ).toBe("guest");
+    expect(previewDevViewerSession().handle).toBe("匿名用户#000001");
+    expect(previewDevViewerSession().authenticated).toBe(true);
   });
 
   it("reuses filled/empty notice mocks for the header unread badge", () => {
@@ -117,6 +197,14 @@ describe("DEV preview guards", () => {
     expect(seeded?.[1]?.viewerOwned).toBe(true);
     expect(seeded?.[1]?.endorsementCount).toBe(2);
     expect(previewReviewComments(null, true, "review:1")?.length).toBe(2);
+    const submitCourse = previewFilledSubmitCourse();
+    expect(submitCourse.name).toBe("中级财务会计");
+    expect(submitCourse.teachers.map((teacher) => teacher.id)).toEqual([2]);
+    expect(submitCourse.applicableQuestions.map((question) => question.id)).toEqual(
+      ["difficulty", "homework", "grading", "gain"],
+    );
+    expect(previewFilledSubmitDraft().teacherId).toBe("2");
+    expect(previewFilledSubmitDraft().note.length).toBeGreaterThan(10);
     expect(previewFilledCourseDetail().course.name).toBe("中级财务会计");
     expect(previewFilledCourseReviews().map((item) => item.id)).toEqual([
       "review:101",

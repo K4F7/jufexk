@@ -41,7 +41,7 @@ export function TeacherCourseTable({
   }
 
   return (
-    <div aria-label="任课课程" className={className} role="list">
+    <div aria-label="任课课程" className={`min-w-0 ${className ?? ""}`.trim()} role="list">
       {items.map((course, index) => {
         const rating = course.rating ?? null;
         const reviewCount = course.review_count ?? 0;
@@ -49,23 +49,23 @@ export function TeacherCourseTable({
           <div key={course.id} role="listitem">
             {index > 0 ? <Separator /> : null}
             <RouterAriaLink
-              className="block! w-full! rounded-none! py-3 no-underline hover:bg-transparent hover:no-underline!"
+              className="block! w-full! min-w-0 rounded-none! py-2.5 no-underline hover:bg-transparent hover:no-underline! sm:py-3"
               to={courseHref(course.id, teacherId, search)}
             >
-              <span className="block text-[1rem] font-medium text-accent">
+              <span className="block min-w-0 break-words [overflow-wrap:anywhere] text-[1rem] font-medium text-accent">
                 {course.name}
               </span>
-              <span className="mt-1 block text-[calc(13/15*1rem)] text-muted">
+              <span className="mt-1 block min-w-0 break-all text-[calc(13/15*1rem)] text-muted">
                 课程号：{course.code || "未标注"}
               </span>
-              <span className="mt-1 flex flex-wrap items-center gap-x-2">
-                <Stars rating={rating} className="text-[1rem]" />
+              <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <Stars rating={rating} className="shrink-0 text-[1rem]" />
                 {rating != null ? (
                   <span className="tabular text-[1rem] font-semibold leading-none text-accent">
                     {rating.toFixed(1)}
                   </span>
                 ) : null}
-                <span className="text-[calc(12/15*1rem)] leading-none text-muted">
+                <span className="min-w-0 break-words text-[calc(12/15*1rem)] leading-none text-muted">
                   {reviewCount > 0
                     ? rating != null
                       ? `（${reviewCount} 人评价）`

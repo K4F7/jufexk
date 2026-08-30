@@ -25,8 +25,9 @@ export function StatusPageBadge() {
 
   return (
     <iframe
-      className="border-0 [color-scheme:normal]"
+      className="block border-0 [color-scheme:normal]"
       height={30}
+      scrolling="no"
       src={statusBadgeUrl(scheme)}
       title="系统运行状态"
       width={250}

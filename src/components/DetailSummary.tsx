@@ -31,11 +31,11 @@ export function DetailSummary({
       <Button variant="ghost" size="sm" className="mb-1 px-0" onPress={onBack}>
         ← {backLabel}
       </Button>
-      <div className="mt-1 flex flex-wrap items-start justify-between gap-x-6 gap-y-4 border-b border-border pb-5">
-        <div className="min-w-0 flex-1 basis-72">{children}</div>
+      <div className="mt-1 flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-border pb-4 sm:gap-y-4 sm:pb-5">
+        <div className="min-w-0 flex-1 basis-full sm:basis-72">{children}</div>
         <Surface
           variant="secondary"
-          className="flex w-full shrink-0 flex-col items-center justify-center rounded-xl px-8 py-5 text-center sm:w-auto"
+          className="flex w-full shrink-0 flex-col items-center justify-center rounded-xl px-6 py-4 text-center sm:w-auto sm:px-8 sm:py-5"
           aria-label="评价数概览"
         >
           {reviewCount > 0 ? (

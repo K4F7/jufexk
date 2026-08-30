@@ -189,17 +189,27 @@ test("profile page renders own reviews, follows and stats", async ({
 }) => {
   await mockApi(page, state());
   await page.goto("/profile");
+  const mobile = (page.viewportSize()?.width ?? 1280) < 768;
 
   const account = page.getByRole("button", { name: "账号" });
   await expect(account).toContainText("匿名用户#000001");
   await expect(account.locator("img")).toHaveCount(0);
 
-  await expect(
-    page.getByRole("heading", { name: "点评（2 门）" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "关注（1 门）" }),
-  ).toBeVisible();
+  if (mobile) {
+    await expect(
+      page.getByRole("tab", { name: "点评（2 门）" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "关注（1 门）" }),
+    ).toBeVisible();
+  } else {
+    await expect(
+      page.getByRole("heading", { name: "点评（2 门）" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "关注（1 门）" }),
+    ).toBeVisible();
+  }
 
   const approved = page.getByRole("link", {
     name: "中国传统文化导论（测试教师）",
@@ -215,14 +225,16 @@ test("profile page renders own reviews, follows and stats", async ({
   await expect(page.getByText("待审核", { exact: true })).toBeVisible();
   await expect(page.getByText("等待审核的点评摘要。")).toBeVisible();
 
-  // 侧栏官方头像在上、公开编号在下；不出现邮箱、学号等标识，也不再导向账号删除。
+  // 侧栏官方头像 + 公开编号；不出现邮箱、学号等标识，也不再导向账号删除。
   await expect(
     page.getByRole("heading", { name: "匿名用户#000001" }),
   ).toBeVisible();
   const profileCard = page.getByRole("article", { name: "匿名用户#000001" });
   const avatar = profileCard.getByRole("button", { name: "更换官方头像" });
   const handle = profileCard.getByRole("heading", { name: "匿名用户#000001" });
-  const firstStat = profileCard.getByText("关注了", { exact: true }).first();
+  const firstStat = mobile
+    ? profileCard.locator("dt", { hasText: /^关注$/ })
+    : profileCard.getByText("关注了", { exact: true }).first();
   const [avatarBox, handleBox, firstStatBox] = await Promise.all([
     avatar.boundingBox(),
     handle.boundingBox(),
@@ -231,8 +243,17 @@ test("profile page renders own reviews, follows and stats", async ({
   expect(avatarBox).toBeTruthy();
   expect(handleBox).toBeTruthy();
   expect(firstStatBox).toBeTruthy();
-  expect(avatarBox!.y + avatarBox!.height).toBeLessThanOrEqual(handleBox!.y);
-  expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
+  if (mobile) {
+    expect(Math.abs(avatarBox!.y - handleBox!.y)).toBeLessThan(16);
+    expect(avatarBox!.x).toBeLessThan(handleBox!.x);
+    expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
+    await expect(profileCard.getByText("点评", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("2", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("关注课", { exact: true })).toBeVisible();
+  } else {
+    expect(avatarBox!.y + avatarBox!.height).toBeLessThanOrEqual(handleBox!.y);
+    expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
+  }
   await expect(
     page.getByRole("radio", { name: "选择官方头像 1" }),
   ).toHaveCount(0);
@@ -249,12 +270,19 @@ test("profile page renders own reviews, follows and stats", async ({
   ).toHaveCount(0);
   await expect(account).toContainText("匿名用户#000001");
   await expect(account.locator("img")).toHaveCount(0);
-  await expect(profileCard.getByText("关注了", { exact: true }).first()).toBeVisible();
-  await expect(profileCard.getByText("1 人", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("被关注", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("3 人", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("1 门课程", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("2 门课程", { exact: true })).toBeVisible();
+  if (mobile) {
+    await expect(profileCard.getByText("关注", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("1", { exact: true }).first()).toBeVisible();
+    await expect(profileCard.getByText("被关注", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("3", { exact: true })).toBeVisible();
+  } else {
+    await expect(profileCard.getByText("关注了", { exact: true }).first()).toBeVisible();
+    await expect(profileCard.getByText("1 人", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("被关注", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("3 人", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("1 门课程", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("2 门课程", { exact: true })).toBeVisible();
+  }
   await expect(profileCard.getByRole("button", { name: "关注" })).toHaveCount(0);
   await expect(
     page.getByText("公开编号只用于识别作者，不是学号或内部身份。"),
@@ -276,9 +304,13 @@ test("profile page degrades gracefully when the API is missing", async ({
   await expect(
     page.getByRole("heading", { name: "我的主页" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("article", { name: "我的主页" }).getByText("— 人", { exact: true }).first(),
-  ).toBeVisible();
+  const identity = page.getByRole("article", { name: "我的主页" });
+  const mobile = (page.viewportSize()?.width ?? 1280) < 768;
+  if (mobile) {
+    await expect(identity.locator("dd").first()).toHaveText("—");
+  } else {
+    await expect(identity.getByText("— 人", { exact: true }).first()).toBeVisible();
+  }
 });
 
 test("avatar save failure shows a retryable alert", async ({

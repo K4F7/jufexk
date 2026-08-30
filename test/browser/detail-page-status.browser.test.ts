@@ -74,7 +74,7 @@ test("course review feed error uses official Alert", async ({ page }) => {
       route.fulfill({ status: 500, json: { error: "评价接口失败" } }),
   );
   await page.goto("/courses/8?teacher=9");
-  await expect(page.getByRole("heading", { name: "中国传统文化导论" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("评价加载失败");
   await expect(page.getByRole("alert")).toContainText("评价接口失败");
 });
@@ -114,7 +114,7 @@ test("course detail hides the empty administrator notice from guests", async ({
     (route) => route.fulfill({ json: { items: [], nextCursor: null } }),
   );
   await page.goto("/courses/8?teacher=9");
-  await expect(page.getByRole("heading", { name: "中国传统文化导论" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ })).toBeVisible();
   await expect(page.getByText("管理员公告", { exact: true })).toHaveCount(0);
   await expect(
     page.getByText("管理员公告（仅管理员可编辑，公开展示）"),

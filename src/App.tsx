@@ -74,7 +74,7 @@ const TermsPage = lazy(() =>
   import("./pages/SiteInfoPages").then((m) => ({ default: m.TermsPage })),
 );
 
-/** Dev-only: lazy so production builds do not ship Gallery / switcher / token CSS. */
+/** Dev-only: lazy so production builds do not ship Gallery / identity switcher. */
 const PrototypeGalleryPage = import.meta.env.DEV
   ? lazy(() =>
       import("./prototype/PrototypeGalleryPage").then((m) => ({
@@ -155,7 +155,6 @@ export function App() {
         setConfig({
           siteName: "非官方课评@JUFE",
           universityName: "江西财经大学",
-          showScheduleNav: import.meta.env.DEV,
         });
       });
   }, []);

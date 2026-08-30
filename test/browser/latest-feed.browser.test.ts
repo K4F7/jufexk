@@ -159,7 +159,7 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   await article.getByRole("link", { name: "查看全文" }).click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9/);
   await expect(
-    page.getByRole("heading", { name: /中国传统文化导论/ }),
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
   ).toBeVisible();
 });
 

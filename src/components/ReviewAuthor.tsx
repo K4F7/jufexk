@@ -30,21 +30,23 @@ export function ReviewAuthor({
       aria-label={handle}
       className={
         layout === "responsive"
-          ? "inline-flex flex-col items-start gap-1.5 leading-none text-accent no-underline sm:flex-row sm:items-center sm:gap-2"
-          : "inline-flex items-center gap-2 leading-none text-accent no-underline"
+          ? "inline-flex min-w-0 max-w-full flex-col items-start gap-1.5 leading-none text-accent no-underline max-sm:min-h-[44px] sm:flex-row sm:items-center sm:gap-2"
+          : "inline-flex min-w-0 max-w-full items-center gap-2 leading-none text-accent no-underline"
       }
     >
       {layout === "responsive" ? (
         <>
           <span className="order-2 sm:order-1">{avatar}</span>
-          <span className="order-1 text-[calc(13/15*1rem)] font-medium leading-none sm:order-2 sm:text-[calc(15/15*1rem)] sm:font-normal">
+          <span className="order-1 min-w-0 break-words [overflow-wrap:anywhere] text-[calc(13/15*1rem)] font-medium leading-none sm:order-2 sm:text-[calc(15/15*1rem)] sm:font-normal">
             {handle}
           </span>
         </>
       ) : (
         <>
           {avatar}
-          <span className="leading-none">{handle}</span>
+          <span className="min-w-0 break-words [overflow-wrap:anywhere] leading-none">
+            {handle}
+          </span>
         </>
       )}
     </RouterAriaLink>

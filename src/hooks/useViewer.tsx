@@ -8,8 +8,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, setCsrfToken } from "../lib/api";
 import { clearCatalogDataCache } from "../lib/catalog-data-cache";
+import {
+  previewDevViewerSession,
+  readDevIdentity,
+} from "../lib/dev-preview";
 
 /**
  * Shared ordinary-user viewer state (issue #139 / ADR-0016).
@@ -44,6 +49,8 @@ type ViewerContextValue = {
 const ViewerContext = createContext<ViewerContextValue | null>(null);
 
 export function ViewerProvider({ children }: { children: ReactNode }) {
+  const [searchParams] = useSearchParams();
+  const identity = readDevIdentity(searchParams);
   const [viewer, setViewer] = useState<ViewerSession>(GUEST);
   const [ready, setReady] = useState(false);
   const previousAuth = useRef<boolean | null>(null);
@@ -81,8 +88,18 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
   }, [apply]);
 
   useEffect(() => {
+    if (identity === "guest") {
+      apply(GUEST);
+      setReady(true);
+      return;
+    }
+    if (identity === "user" || identity === "admin") {
+      apply(previewDevViewerSession());
+      setReady(true);
+      return;
+    }
     void refresh();
-  }, [refresh]);
+  }, [apply, identity, refresh]);
 
   const value = useMemo<ViewerContextValue>(
     () => ({ viewer, ready, refresh, applySession: apply, clear }),

@@ -2,7 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function mockShellApi(
   page: Page,
-  options: { siteName?: string } = {},
+  options: {
+    siteName?: string;
+    showScheduleNav?: boolean;
+    authenticated?: boolean;
+  } = {},
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -12,15 +16,40 @@ async function mockShellApi(
           siteName: options.siteName ?? "非官方课评@JUFE",
           universityName: "江西财经大学",
           admin: false,
+          showScheduleNav: options.showScheduleNav === true,
         },
       });
     }
     if (url.pathname === "/api/user/session") {
       return route.fulfill({
+        json: options.authenticated
+          ? {
+              authenticated: true,
+              csrfToken: "csrf-user",
+              loginPath: "/login",
+              logoutPath: "/logout",
+              handle: "匿名用户#000001",
+              avatar_key: 0,
+            }
+          : {
+              authenticated: false,
+              loginPath: "/login",
+              logoutPath: "/logout",
+            },
+      });
+    }
+    if (url.pathname === "/api/user/profile") {
+      return route.fulfill({
         json: {
-          authenticated: false,
-          loginPath: "/login",
-          logoutPath: "/logout",
+          public_code: 1,
+          handle: "匿名用户#000001",
+          avatar_key: 0,
+          reviews: [],
+          follows: [],
+          review_count: 0,
+          follow_count: 0,
+          following_user_count: 0,
+          follower_count: 0,
         },
       });
     }
@@ -41,7 +70,34 @@ async function mockShellApi(
   });
 }
 
-test("main nav is 课评/课程/排课模拟/导师 with a center course search @mobile-smoke", async ({
+function isDesktopNav(page: Page) {
+  return (page.viewportSize()?.width ?? 0) >= 1280;
+}
+
+function browseNav(page: Page) {
+  return page.getByRole("navigation", { name: "主导航" });
+}
+
+/** Desktop production shell uses Links; narrow chrome uses official Tabs (role=tab). */
+function browseNavItem(page: Page, name: string) {
+  const nav = browseNav(page);
+  return isDesktopNav(page)
+    ? nav.getByRole("link", { name, exact: true })
+    : nav.getByRole("tab", { name, exact: true });
+}
+
+async function expectBrowseItemCurrent(page: Page, name: string, current: boolean) {
+  const item = browseNavItem(page, name);
+  if (isDesktopNav(page)) {
+    if (current) await expect(item).toHaveAttribute("aria-current", "page");
+    else await expect(item).not.toHaveAttribute("aria-current", "page");
+    return;
+  }
+  if (current) await expect(item).toHaveAttribute("aria-selected", "true");
+  else await expect(item).not.toHaveAttribute("aria-selected", "true");
+}
+
+test("main nav is 课评/课程 on mobile, plus 导师 on desktop, with a center course search @mobile-smoke", async ({
   page,
 }) => {
   const renderWarnings: string[] = [];
@@ -54,38 +110,45 @@ test("main nav is 课评/课程/排课模拟/导师 with a center course search 
   await mockShellApi(page);
   await page.goto("/courses");
 
-  const nav = page.getByRole("navigation", { name: "主导航" });
-  const courseLink = nav.getByRole("link", { name: "课程" });
-  const latestLink = nav.getByRole("link", { name: "课评" });
-  const scheduleLink = nav.getByRole("link", { name: "排课模拟" });
+  const nav = browseNav(page);
+  const courseItem = browseNavItem(page, "课程");
+  const latestItem = browseNavItem(page, "课评");
   const mentorLink = nav.getByRole("link", { name: "导师" });
+  const isXl = isDesktopNav(page);
 
-  await expect(courseLink).toBeVisible();
-  await expect(latestLink).toBeVisible();
-  await expect(scheduleLink).toBeVisible();
-  await expect(mentorLink).toBeVisible();
+  await expect(courseItem).toBeVisible();
+  await expect(latestItem).toBeVisible();
+  // DEV 与生产一样：没有 API showScheduleNav 就不挂排课入口。
+  await expect(browseNavItem(page, "排课模拟")).toHaveCount(0);
   // 教师 / 写评价 导航项已下线：写评价只从课程页「写点评」进入。
-  await expect(nav.getByRole("link", { name: "教师" })).toHaveCount(0);
-  await expect(nav.getByRole("link", { name: "写评价", exact: true })).toHaveCount(0);
-  const navLinks = nav.getByRole("link");
-  await expect(navLinks).toHaveCount(4);
-  await expect(navLinks.nth(0)).toHaveText("课评");
-  await expect(navLinks.nth(1)).toHaveText("课程");
-  await expect(navLinks.nth(2)).toHaveText("排课模拟");
-  await expect(navLinks.nth(3)).toHaveText("导师");
+  await expect(browseNavItem(page, "教师")).toHaveCount(0);
+  await expect(browseNavItem(page, "写评价")).toHaveCount(0);
+  if (isXl) {
+    const navLinks = nav.getByRole("link");
+    await expect(mentorLink).toBeVisible();
+    await expect(navLinks).toHaveCount(3);
+    await expect(navLinks.nth(0)).toHaveText("课评");
+    await expect(navLinks.nth(1)).toHaveText("课程");
+    await expect(navLinks.nth(2)).toHaveText("导师");
+    await expect(mentorLink).toHaveAttribute(
+      "href",
+      "https://pi-review.com/universities/661",
+    );
+    await expect(mentorLink).toHaveAttribute("target", "_blank");
+    await expect(mentorLink).toHaveAttribute("rel", /noreferrer/);
+  } else {
+    // 浏览页窄屏 Tabs 只挂课评 / 课程。个人面（/profile /account /submit）另测。
+    const navTabs = nav.getByRole("tab");
+    await expect(mentorLink).toHaveCount(0);
+    await expect(navTabs).toHaveCount(2);
+    await expect(navTabs.nth(0)).toHaveText("课评");
+    await expect(navTabs.nth(1)).toHaveText("课程");
+  }
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
 
-  // 导师外链新标签打开，带 noreferrer。
-  await expect(mentorLink).toHaveAttribute(
-    "href",
-    "https://pi-review.com/universities/661",
-  );
-  await expect(mentorLink).toHaveAttribute("target", "_blank");
-  await expect(mentorLink).toHaveAttribute("rel", /noreferrer/);
-
-  await expect(courseLink).toHaveAttribute("aria-current", "page");
-  await expect(latestLink).not.toHaveAttribute("aria-current", "page");
+  await expectBrowseItemCurrent(page, "课程", true);
+  await expectBrowseItemCurrent(page, "课评", false);
 
   // 居中搜索提交到 /courses?q=...。
   const search = page.getByRole("searchbox", { name: "搜索课程" });
@@ -96,24 +159,40 @@ test("main nav is 课评/课程/排课模拟/导师 with a center course search 
   await expect(search).toHaveValue("高等数学");
 
   // 课评 → /latest；进入后课评高亮、课程不再高亮。
-  await latestLink.click();
+  await latestItem.click();
   await expect(page).toHaveURL(/\/latest$/);
   await expect(
     page.getByRole("heading", { name: "最新课评" }),
   ).toBeVisible();
-  await expect(latestLink).toHaveAttribute("aria-current", "page");
-  await expect(courseLink).not.toHaveAttribute("aria-current", "page");
+  await expectBrowseItemCurrent(page, "课评", true);
+  await expectBrowseItemCurrent(page, "课程", false);
+  expect(renderWarnings).toEqual([]);
+});
 
-  await scheduleLink.click();
+test("schedule nav appears only when config.showScheduleNav is true", async ({
+  page,
+}) => {
+  await mockShellApi(page, { showScheduleNav: true });
+  await page.goto("/courses");
+
+  const nav = browseNav(page);
+  const scheduleItem = browseNavItem(page, "排课模拟");
+  const isXl = isDesktopNav(page);
+  await expect(scheduleItem).toBeVisible();
+  // 窄屏不挂导师外链：课评 / 课程 / 排课模拟。桌面再加导师。
+  if (isXl) {
+    await expect(nav.getByRole("link")).toHaveCount(4);
+  } else {
+    await expect(nav.getByRole("tab")).toHaveCount(3);
+  }
+  await scheduleItem.click();
   await expect(page).toHaveURL(/\/schedule$/);
   const desktopNotice = page.getByRole("alertdialog", { name: "本功能只支持电脑端" });
   if (await desktopNotice.isVisible()) {
     await desktopNotice.getByRole("button", { name: "知道了" }).click();
   }
   await expect(page.getByRole("heading", { name: "排课模拟" })).toBeVisible();
-  await expect(scheduleLink).toHaveAttribute("aria-current", "page");
-  await expect(latestLink).not.toHaveAttribute("aria-current", "page");
-  expect(renderWarnings).toEqual([]);
+  await expectBrowseItemCurrent(page, "排课模拟", true);
 });
 
 test("desktop header stays one row for the production site name", async ({
@@ -134,15 +213,21 @@ test("desktop header stays one row for the production site name", async ({
   expect(stacked[0]).toBeTruthy();
   expect(stacked[1]).toBeTruthy();
   expect(stacked[2]).toBeTruthy();
-  expect(stacked[1]!.y).toBeGreaterThan(stacked[0]!.y + stacked[0]!.height - 1);
-  expect(stacked[2]!.y).toBeGreaterThan(stacked[1]!.y + stacked[1]!.height - 1);
+  const sameRow = (
+    a: NonNullable<(typeof stacked)[number]>,
+    b: NonNullable<(typeof stacked)[number]>,
+  ) => a.y < b.y + b.height && b.y < a.y + a.height;
+  // Below xl: brand · full-width search · equal-width tabs (not a squeezed desktop row).
+  expect(sameRow(stacked[0]!, stacked[2]!)).toBe(false);
+  expect(stacked[2]!.y).toBeGreaterThan(stacked[0]!.y + stacked[0]!.height - 1);
+  expect(stacked[1]!.y).toBeGreaterThan(stacked[2]!.y + stacked[2]!.height - 1);
 
   await page.setViewportSize({ width: 1280, height: 800 });
   const desktop = await Promise.all([
     brand.boundingBox(),
     nav.boundingBox(),
     search.boundingBox(),
-    ...["课评", "课程", "排课模拟", "导师"].map((name) =>
+    ...["课评", "课程", "导师"].map((name) =>
       nav.getByRole("link", { name }).boundingBox(),
     ),
   ]);
@@ -150,16 +235,56 @@ test("desktop header stays one row for the production site name", async ({
   const [brandBox, navBox, searchBox, ...linkBoxes] = desktop as NonNullable<
     (typeof desktop)[number]
   >[];
-  const sameRow = (
-    a: NonNullable<(typeof desktop)[number]>,
-    b: NonNullable<(typeof desktop)[number]>,
-  ) => a.y < b.y + b.height && b.y < a.y + a.height;
   expect(sameRow(brandBox, navBox)).toBe(true);
   expect(sameRow(searchBox, navBox)).toBe(true);
   const linkTop = linkBoxes[0].y;
   for (const box of linkBoxes) {
     expect(Math.abs(box.y - linkTop)).toBeLessThan(2);
   }
+});
+
+test("mobile header hides 课评/课程 tabs on personal account surfaces", async ({
+  page,
+}) => {
+  const isXl = isDesktopNav(page);
+
+  await mockShellApi(page, { authenticated: true });
+  await page.goto("/profile");
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(
+    page.getByRole("banner").getByRole("link", { name: "非官方课评@JUFE" }),
+  ).toHaveAttribute("href", "/latest");
+  await expect(page.getByRole("searchbox", { name: "搜索课程" })).toBeVisible();
+
+  if (isXl) {
+    await expect(browseNavItem(page, "课评")).toBeVisible();
+    await expect(browseNavItem(page, "课程")).toBeVisible();
+    await expect(browseNav(page).getByRole("link", { name: "导师" })).toBeVisible();
+    return;
+  }
+
+  await expect(browseNav(page)).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "课评" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "课程" })).toHaveCount(0);
+
+  await page.goto("/account");
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(browseNav(page)).toHaveCount(0);
+
+  await page.goto("/submit");
+  await expect(page).toHaveURL(/\/submit$/);
+  await expect(browseNav(page)).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "课评" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "课程" })).toHaveCount(0);
+
+  await mockShellApi(page, { authenticated: false });
+  await page.goto("/account");
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(browseNav(page)).toHaveCount(0);
+
+  await page.goto("/latest");
+  await expect(browseNavItem(page, "课评")).toBeVisible();
+  await expect(browseNavItem(page, "课程")).toBeVisible();
 });
 
 test("brand link uses the site name and goes to /latest", async ({ page }) => {
@@ -182,9 +307,7 @@ test("root path opens the latest feed", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/latest$/);
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "课评" }),
-  ).toHaveAttribute("aria-current", "page");
+  await expectBrowseItemCurrent(page, "课评", true);
 });
 
 test("guests get a real login link outside the nav", async ({ page }) => {

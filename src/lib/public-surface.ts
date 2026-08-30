@@ -1,4 +1,4 @@
-/** Runtime public surface for nav. Vite DEV is a separate compile-time gate. */
+/** Runtime public surface for nav. The SPA only reads `showScheduleNav` from /api/config. */
 export function shouldShowScheduleNav(input: {
   publicSurface?: string | null;
   loopback: boolean;

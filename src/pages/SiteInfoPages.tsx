@@ -19,7 +19,7 @@ function SiteInfoPage({
         {title}
       </Typography>
       {children ? (
-        <Typography.Prose className="mt-4 flex flex-col gap-3">
+        <Typography.Prose className="mt-3 flex flex-col gap-3 text-pretty break-words [overflow-wrap:anywhere] sm:mt-4">
           {children}
         </Typography.Prose>
       ) : null}
@@ -40,6 +40,7 @@ function ExternalLink({
 }) {
   return (
     <Link
+      className="break-all [overflow-wrap:anywhere] max-sm:max-w-full"
       href={href}
       rel="noreferrer"
       render={(domProps) => (

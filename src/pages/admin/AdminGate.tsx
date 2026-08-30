@@ -5,7 +5,11 @@ import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { RouterAriaLink } from "../../components/RouterAriaLink";
 import { useAdminSession } from "../../hooks/useAdminSession";
 import { useViewer } from "../../hooks/useViewer";
-import { isDevAtlasSession, readDevPreview } from "../../lib/dev-preview";
+import {
+  isDevAtlasSession,
+  readDevIdentity,
+  readDevPreview,
+} from "../../lib/dev-preview";
 
 const ADMIN_TABS = [
   { id: "hub", href: "/admin", label: "概览" },
@@ -43,7 +47,10 @@ export function AdminGate({ children }: { children: ReactNode }) {
   const { viewer, ready: viewerReady } = useViewer();
   const [searchParams] = useSearchParams();
   const preview = readDevPreview(searchParams);
-  const skipGate = isDevAtlasSession(searchParams) && preview !== "forbidden";
+  const identity = readDevIdentity(searchParams);
+  const skipGate =
+    preview !== "forbidden" &&
+    (identity === "admin" || isDevAtlasSession(searchParams));
 
   useEffect(() => {
     if (viewerReady) void ensure();

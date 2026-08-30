@@ -153,7 +153,7 @@ export function ReviewActionBar({
   };
 
   return (
-    <div className="mt-3">
+    <div className="mt-2 sm:mt-3">
       <div className="flex flex-wrap items-center gap-2">
         <Toolbar aria-label="评价动作">
           {endorsable ? (

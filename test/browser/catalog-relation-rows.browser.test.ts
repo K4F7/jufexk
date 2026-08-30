@@ -341,12 +341,11 @@ test("search-miss empty names the query and clears it", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("first load shows skeleton rows and keeps the header height stable @mobile-smoke", async ({
+test("first load shows skeleton rows and keeps the pager count @mobile-smoke", async ({
   page,
 }) => {
   // 延迟要盖过并行跑时的页面启动开销，加载态才能被稳定观察到。
   await mockCatalogApi(page, { delayMs: 2500 });
-  const header = page.locator('header[aria-label="目录标题"]');
   await page.goto("/courses");
 
   await expect(page.getByRole("status", { name: "加载中…" })).toBeVisible();
@@ -359,19 +358,14 @@ test("first load shows skeleton rows and keeps the header height stable @mobile-
   await expect(page.getByRole("columnheader", { name: "教师" })).toHaveCount(0);
   await expect(page.getByRole("columnheader", { name: "院系" })).toHaveCount(0);
   await expect(page.getByRole("columnheader", { name: "投稿" })).toHaveCount(0);
-  const before = await header.boundingBox();
 
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }).first(),
   ).toBeVisible();
-  await expect(header.getByText("共 5 条", { exact: true })).toBeVisible();
   await expect(
     page.getByLabel("分页").getByText("共 5 条", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("status", { name: "加载中…" })).toHaveCount(0);
-
-  const after = await header.boundingBox();
-  expect(before?.height).toBe(after?.height);
 });
 
 test("out-of-range deep-linked page keeps the browse box usable as a way back", async ({

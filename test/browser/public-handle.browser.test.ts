@@ -64,9 +64,12 @@ test("reserved handle page shows 学长学姐 copy and follow plus course count"
     page.getByRole("heading", { level: 1, name: "匿名用户#000000" }),
   ).toBeVisible();
   const profileCard = page.locator('[aria-label="公开编号"]');
-  const avatar = profileCard.locator("img").first();
+  const avatar = profileCard.locator("img").locator("visible=true");
   const handle = profileCard.getByRole("heading", { name: "匿名用户#000000" });
-  const firstStat = profileCard.getByText("关注了", { exact: true }).first();
+  const mobile = (page.viewportSize()?.width ?? 1280) < 768;
+  const firstStat = mobile
+    ? profileCard.locator("dt", { hasText: /^关注$/ })
+    : profileCard.getByText("关注了", { exact: true });
   const [avatarBox, handleBox, firstStatBox] = await Promise.all([
     avatar.boundingBox(),
     handle.boundingBox(),
@@ -75,14 +78,22 @@ test("reserved handle page shows 学长学姐 copy and follow plus course count"
   expect(avatarBox).toBeTruthy();
   expect(handleBox).toBeTruthy();
   expect(firstStatBox).toBeTruthy();
-  expect(avatarBox!.y + avatarBox!.height).toBeLessThanOrEqual(handleBox!.y);
-  expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
+  if (mobile) {
+    expect(Math.abs(avatarBox!.y - handleBox!.y)).toBeLessThan(16);
+    expect(avatarBox!.x).toBeLessThan(handleBox!.x);
+    expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
+    await expect(profileCard.getByText("点评", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("3", { exact: true })).toBeVisible();
+  } else {
+    expect(avatarBox!.y + avatarBox!.height).toBeLessThanOrEqual(handleBox!.y);
+    expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
+    await expect(profileCard.getByText("点评了", { exact: true })).toBeVisible();
+    await expect(profileCard.getByText("3 门课程")).toBeVisible();
+  }
   await expect(page.getByText("来自以前的学长学姐的评价").first()).toBeVisible();
   await expect(
     profileCard.getByText("来自以前的学长学姐的评价"),
   ).toHaveCount(0);
-  await expect(profileCard.getByText("点评了", { exact: true })).toBeVisible();
-  await expect(profileCard.getByText("3 门课程")).toBeVisible();
   await expect(profileCard.getByText("50 门课程")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
   await expect(

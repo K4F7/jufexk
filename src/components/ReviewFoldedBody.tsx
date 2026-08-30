@@ -1,4 +1,4 @@
-import { Button } from "@heroui/react";
+import { Button, Typography } from "@heroui/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   REVIEW_FOLD_LABEL,
@@ -8,7 +8,7 @@ import {
 } from "../lib/recognition";
 
 const HEADER_ROW_CLASS =
-  "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
+  "flex flex-wrap items-start justify-between gap-x-3 gap-y-1 sm:items-center";
 
 export type ReviewPublicFold = {
   kind: ReviewFoldKind;
@@ -59,19 +59,20 @@ export function reviewCardClassName({
     return `${base} py-2 [contain-intrinsic-size:auto_3rem]`;
   }
   return variant === "course"
-    ? `${base} py-5 [contain-intrinsic-size:auto_9rem]`
+    ? `${base} py-3 sm:py-5 [contain-intrinsic-size:auto_9rem]`
     : `${base} py-4 [contain-intrinsic-size:auto_6rem]`;
 }
 
 function ReviewPostedDate({ date }: { date?: string }) {
   if (!date) return null;
   return (
-    <time
-      className="shrink-0 text-[calc(12/15*1rem)] text-muted"
-      dateTime={date}
+    <Typography
+      className="m-0 shrink-0 sm:text-[calc(12/15*1rem)]"
+      color="muted"
+      type="body-xs"
     >
-      {date}
-    </time>
+      <time dateTime={date}>{date}</time>
+    </Typography>
   );
 }
 

@@ -68,7 +68,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "公告" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "管理" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "系统状态" })).toHaveCount(0);
-  const badge = footerNav.getByTitle("系统运行状态");
+  const badge = footer.locator('iframe[title="系统运行状态"]:visible');
   await expect(badge).toBeVisible();
   await expect(badge).toHaveAttribute("src", /\/badge\?theme=(light|dark)$/);
   expect([statusBadgeUrl("light"), statusBadgeUrl("dark")]).toContain(
@@ -80,9 +80,27 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
     await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
   }
 
-  const badgePair = badge.locator("..");
-  await expect(badgePair.locator('[data-slot="separator"]')).toHaveCount(1);
-  await expect(badgePair).toHaveCSS("white-space", "nowrap");
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
+  if (isMobile) {
+    const brand = footer.getByText("非官方课评@JUFE · 江西财经大学");
+    const brandBox = await brand.boundingBox();
+    const badgeBox = await badge.boundingBox();
+    const navBox = await footerNav.boundingBox();
+    expect(brandBox).toBeTruthy();
+    expect(badgeBox).toBeTruthy();
+    expect(navBox).toBeTruthy();
+    expect(brandBox!.height).toBeLessThan(32);
+    expect(
+      Math.abs(brandBox!.y + brandBox!.height / 2 - (badgeBox!.y + badgeBox!.height / 2)),
+    ).toBeLessThan(16);
+    expect(badgeBox!.y + badgeBox!.height / 2).toBeLessThan(navBox!.y);
+    expect(brandBox!.x).toBeLessThan(badgeBox!.x);
+    expect(badgeBox!.width).toBeGreaterThan(180);
+  } else {
+    const badgePair = badge.locator("..");
+    await expect(badgePair.locator('[data-slot="separator"]')).toHaveCount(1);
+    await expect(badgePair).toHaveCSS("white-space", "nowrap");
+  }
 
   for (const link of await footerNav.getByRole("link").all()) {
     if ((await link.getAttribute("aria-label")) === "GitHub 仓库") continue;

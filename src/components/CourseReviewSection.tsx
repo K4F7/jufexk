@@ -30,6 +30,7 @@ import {
   isDevAtlasSession,
   previewReviewComments,
   readDevPreview,
+  readDevPreviewOrFilled,
 } from "../lib/dev-preview";
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { resolveReviewAdminDockVisible } from "../lib/review-admin-chrome";
@@ -89,15 +90,15 @@ function FilterSelect({
 }) {
   return (
     <Select
-      className="w-auto"
-      variant="secondary"
+      fullWidth
+      className="min-w-0 sm:w-auto [&_.select__value]:max-sm:text-sm"
       value={value}
       onChange={(next) => {
         if (typeof next === "string") onChange(next);
       }}
     >
       <Label className="sr-only">{label}</Label>
-      <Select.Trigger>
+      <Select.Trigger className="max-sm:min-h-8 max-sm:py-1.5">
         <Select.Value>
           {({ defaultChildren }) => (
             <>
@@ -131,8 +132,8 @@ function RatingFilterSelect({
   const selectedKeys = value.length ? value.map(String) : ["all"];
   return (
     <Select
-      className="w-auto"
-      variant="secondary"
+      fullWidth
+      className="min-w-0 sm:w-auto [&_.select__value]:max-sm:text-sm"
       selectionMode="multiple"
       value={selectedKeys}
       onChange={(next) => {
@@ -141,7 +142,7 @@ function RatingFilterSelect({
       }}
     >
       <Label className="sr-only">评分</Label>
-      <Select.Trigger>
+      <Select.Trigger className="max-sm:min-h-8 max-sm:py-1.5">
         <Select.Value>
           {() => <>评分：{formatReviewRatingFilterLabel(value)}</>}
         </Select.Value>
@@ -209,23 +210,29 @@ const CourseReviewItem = memo(function CourseReviewItem({
         fold={fold}
         date={date}
         header={
-          <span className="flex flex-wrap items-center gap-x-2 leading-none text-[calc(13/15*1rem)] font-medium text-foreground">
+          <Typography
+            className="m-0 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[calc(13/15*1rem)]"
+            type="body-sm"
+            weight="medium"
+          >
             <ReviewAuthor
               publicCode={review.author_public_code}
               avatarKey={review.author_avatar_key}
             />
-            {review.overall != null ? (
-              <StarsWithCaption
-                rating={review.overall}
-                className="text-[calc(13/15*1rem)]"
-              />
-            ) : null}
-            {review.blocked ? (
-              <Chip color="danger" size="sm" variant="soft">
-                <Chip.Label>已屏蔽</Chip.Label>
-              </Chip>
-            ) : null}
-          </span>
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              {review.overall != null ? (
+                <StarsWithCaption
+                  rating={review.overall}
+                  className="text-[calc(13/15*1rem)]"
+                />
+              ) : null}
+              {review.blocked ? (
+                <Chip color="danger" size="sm" variant="soft">
+                  <Chip.Label>已屏蔽</Chip.Label>
+                </Chip>
+              ) : null}
+            </span>
+          </Typography>
         }
         footer={
           <>
@@ -255,11 +262,11 @@ const CourseReviewItem = memo(function CourseReviewItem({
       >
         {review.dimensionLabels?.length ? (
           <FourDimLine
-            className="mt-1.5"
+            className="mt-1 sm:mt-1.5"
             labels={fourDimLineLabels(review.dimensionLabels)}
           />
         ) : typeof review.dimensionAverage === "number" ? (
-          <div className="mt-1.5">
+          <div className="mt-1 sm:mt-1.5">
             <Chip size="sm" variant="soft">
               <Chip.Label>
                 维度均分 {review.dimensionAverage.toFixed(1)}
@@ -267,16 +274,20 @@ const CourseReviewItem = memo(function CourseReviewItem({
             </Chip>
           </div>
         ) : null}
-        <div className="mt-2">
+        <div className="mt-1.5 sm:mt-2">
           <ReviewNoteContent
             comment={review.comment}
             commentFormat={review.comment_format}
           />
         </div>
         {review.grade ? (
-          <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
+          <Typography
+            className="mb-0 mt-1.5 text-[calc(13/15*1rem)]"
+            color="muted"
+            type="body-sm"
+          >
             成绩：{review.grade}
-          </p>
+          </Typography>
         ) : null}
       </ReviewFoldedBody>
     </article>
@@ -325,13 +336,14 @@ export function CourseReviewSection({
   const { viewer, ready, clear } = useViewer();
   const { authed: adminAuthed } = useAdminSession();
   const searchParams = new URLSearchParams(location.search);
-  const preview = readDevPreview(searchParams);
+  const preview = readDevPreviewOrFilled(searchParams);
+  const rawPreview = readDevPreview(searchParams);
   const atlas = isDevAtlasSession(searchParams);
   const previewComposer = preview != null || atlas;
   const viewerPublicCode = parseHandlePublicCode(viewer.handle);
   const showAdminDock = resolveReviewAdminDockVisible({
     adminAuthed,
-    preview,
+    preview: rawPreview,
   });
   const { visible: adminChromeVisible, setVisible: setAdminChromeVisible } =
     useReviewAdminChrome();
@@ -340,8 +352,8 @@ export function CourseReviewSection({
   const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;
 
   return (
-    <section className="mt-10" aria-labelledby="course-reviews-heading">
-      <div className="flex items-center justify-between gap-3">
+    <section className="mt-6 min-w-0 sm:mt-10" aria-labelledby="course-reviews-heading">
+      <div className="flex items-center justify-between gap-3 max-sm:pr-1">
         <div className="flex min-w-0 items-baseline gap-2">
           <Typography
             className="m-0 text-[calc(20/15*1rem)] font-bold leading-snug text-accent"
@@ -353,16 +365,31 @@ export function CourseReviewSection({
           <span className="text-[calc(13/15*1rem)] text-muted">{total} 条点评</span>
         </div>
         {teacherId ? (
-          <Button variant="primary" size="md" onPress={() => navigate(writeHref)}>
-            写点评
-          </Button>
+          <>
+            <Button
+              className="shrink-0 sm:hidden"
+              size="sm"
+              variant="primary"
+              onPress={() => navigate(writeHref)}
+            >
+              写点评
+            </Button>
+            <Button
+              className="hidden shrink-0 sm:inline-flex"
+              size="md"
+              variant="primary"
+              onPress={() => navigate(writeHref)}
+            >
+              写点评
+            </Button>
+          </>
         ) : null}
       </div>
 
       <div
         role="group"
         aria-label="点评筛选"
-        className="mt-3 flex flex-wrap items-center gap-2"
+        className="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-row sm:flex-wrap sm:items-center"
       >
         <FilterSelect
           label="排序"
@@ -419,8 +446,10 @@ export function CourseReviewSection({
             ))}
           </div>
           {hasMore ? (
-            <div className="flex justify-center pt-4">
+            <div className="flex justify-center pt-3 sm:pt-4">
               <Button
+                fullWidth
+                className="sm:w-auto"
                 variant="secondary"
                 isPending={isLoadingMore}
                 onPress={onLoadMore}

@@ -6,7 +6,7 @@ _2026-08-26：生产自定义域不挂排课入口；Cloudflare `preview` 环境
 
 预览站是 Wrangler named env `preview`：Worker `jufexk-preview`，只走 `workers.dev`，独立 D1 `jufexk-preview`。导航展示「排课模拟」。会话 Cookie 按 Host 隔离。预览写入不回生产库。
 
-`GET /api/config` 下发 `showScheduleNav`：`PUBLIC_SURFACE=preview` 或 loopback 为真。本机 Vite DEV 另外用 `import.meta.env.DEV` 显示入口。
+`GET /api/config` 下发 `showScheduleNav`：`PUBLIC_SURFACE=preview` 或 loopback 为真。Vite HMR / 本机前端只跟这个字段，不再因 `import.meta.env.DEV` 强行展示入口。
 
 ## Consequences
 
