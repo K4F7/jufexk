@@ -84,6 +84,16 @@ test("shell icon controls and login form expose accessible names", async ({
   await expect(page.getByLabel("校园密码")).toBeVisible();
 });
 
+test("non-latest routes load deferred HeroUI styles", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  await page.goto("/courses");
+  await expect(page.getByRole("searchbox", { name: "搜索课程" })).toBeVisible();
+  await expect
+    .poll(() => requests.some((url) => url.includes("heroui-deferred")))
+    .toBe(true);
+});
+
 /**
  * WCAG 2.4.7 Focus Visible — prove with computed styles that every kind of
  * shell control shows an indicator after keyboard Tab.
