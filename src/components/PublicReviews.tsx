@@ -166,19 +166,22 @@ function PublicReviewItem({
             </RouterAriaLink>
           </p>
         ) : null}
-        <div
-          className={`flex items-start gap-2 ${
-            counterpart === "course" ? "mt-1.5" : ""
-          }`}
-        >
-          <span
-            aria-hidden
-            className="shrink-0 select-none font-serif text-4xl leading-[0.6] text-accent/35"
-          >
-            “
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="mb-1 flex flex-wrap items-center gap-x-2 leading-none text-[calc(12/15*1rem)] text-muted">
+        <ReviewFoldedBody
+          endorsementCount={recognition.state.count}
+          challengeCount={recognition.challenge.count}
+          viewerChallenged={recognition.challenge.challenged}
+          date={formatReviewDate(review.created_at)}
+          chromeClassName={counterpart === "course" ? "mt-1.5" : undefined}
+          leading={
+            <span
+              aria-hidden
+              className="shrink-0 select-none font-serif text-4xl leading-[0.6] text-accent/35"
+            >
+              “
+            </span>
+          }
+          header={
+            <p className="mb-0 flex flex-wrap items-center gap-x-2 leading-none text-[calc(12/15*1rem)] text-muted">
               <ReviewAuthor
                 publicCode={review.author_public_code}
                 avatarKey={review.author_avatar_key}
@@ -190,51 +193,45 @@ function PublicReviewItem({
                 />
               ) : null}
             </p>
-            <ReviewFoldedBody
-              endorsementCount={recognition.state.count}
-              challengeCount={recognition.challenge.count}
-              viewerChallenged={recognition.challenge.challenged}
-            >
-              <ReviewNoteContent
-                comment={review.comment}
-                commentFormat={review.comment_format}
-              />
-              {review.grade ? (
-                <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
-                  成绩：{review.grade}
-                </p>
-              ) : null}
-              {review.dimensionLabels?.length ? (
-                <FourDimLine
-                  className="mt-2"
-                  labels={fourDimLineLabels(review.dimensionLabels)}
-                />
-              ) : null}
-              {typeof review.dimensionAverage === "number" ? (
-                <div className="mt-2">
-                  <Chip size="sm" variant="soft">
-                    <Chip.Label>
-                      维度均分 {review.dimensionAverage.toFixed(1)}
-                    </Chip.Label>
-                  </Chip>
-                </div>
-              ) : null}
-            </ReviewFoldedBody>
-            <ReviewActionBar
-              review={review}
-              date={formatReviewDate(review.created_at)}
-              recognition={recognition}
-              ready={ready}
-              authenticated={authenticated}
-              loginPath={loginPath}
-              onUnauthenticated={onUnauthenticated}
-              endorsable={isEndorsableReview(review)}
-              seedComments={seedComments}
-              viewerPublicCode={viewerPublicCode}
-              previewComposer={previewComposer}
+          }
+        >
+          <ReviewNoteContent
+            comment={review.comment}
+            commentFormat={review.comment_format}
+          />
+          {review.grade ? (
+            <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
+              成绩：{review.grade}
+            </p>
+          ) : null}
+          {review.dimensionLabels?.length ? (
+            <FourDimLine
+              className="mt-2"
+              labels={fourDimLineLabels(review.dimensionLabels)}
             />
-          </div>
-        </div>
+          ) : null}
+          {typeof review.dimensionAverage === "number" ? (
+            <div className="mt-2">
+              <Chip size="sm" variant="soft">
+                <Chip.Label>
+                  维度均分 {review.dimensionAverage.toFixed(1)}
+                </Chip.Label>
+              </Chip>
+            </div>
+          ) : null}
+        </ReviewFoldedBody>
+        <ReviewActionBar
+          review={review}
+          recognition={recognition}
+          ready={ready}
+          authenticated={authenticated}
+          loginPath={loginPath}
+          onUnauthenticated={onUnauthenticated}
+          endorsable={isEndorsableReview(review)}
+          seedComments={seedComments}
+          viewerPublicCode={viewerPublicCode}
+          previewComposer={previewComposer}
+        />
       </article>
     </div>
   );

@@ -158,34 +158,30 @@ const CourseReviewItem = memo(function CourseReviewItem({
       id={reviewAnchorId(review.id)}
       className="scroll-mt-20 border-b border-separator py-5 last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_9rem]"
     >
-      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className="flex flex-wrap items-center gap-x-2 leading-none text-[calc(13/15*1rem)] font-medium text-foreground">
-          <ReviewAuthor
-            publicCode={review.author_public_code}
-            avatarKey={review.author_avatar_key}
-          />
-          {review.overall != null ? (
-            <StarsWithCaption
-              rating={review.overall}
-              className="text-[calc(13/15*1rem)]"
-            />
-          ) : null}
-          {review.blocked ? (
-            <Chip color="danger" size="sm" variant="soft">
-              <Chip.Label>已屏蔽</Chip.Label>
-            </Chip>
-          ) : null}
-        </span>
-      </header>
-      {review.blocked && adminAuthed ? (
-        <p className="mb-0 mt-1 text-[12px] text-danger">
-          此评价已被屏蔽，公开列表不再展示，仅管理员可见。
-        </p>
-      ) : null}
       <ReviewFoldedBody
         endorsementCount={recognition.state.count}
         challengeCount={recognition.challenge.count}
         viewerChallenged={recognition.challenge.challenged}
+        date={date}
+        header={
+          <span className="flex flex-wrap items-center gap-x-2 leading-none text-[calc(13/15*1rem)] font-medium text-foreground">
+            <ReviewAuthor
+              publicCode={review.author_public_code}
+              avatarKey={review.author_avatar_key}
+            />
+            {review.overall != null ? (
+              <StarsWithCaption
+                rating={review.overall}
+                className="text-[calc(13/15*1rem)]"
+              />
+            ) : null}
+            {review.blocked ? (
+              <Chip color="danger" size="sm" variant="soft">
+                <Chip.Label>已屏蔽</Chip.Label>
+              </Chip>
+            ) : null}
+          </span>
+        }
       >
         {review.dimensionLabels?.length ? (
           <FourDimLine
@@ -213,9 +209,13 @@ const CourseReviewItem = memo(function CourseReviewItem({
           </p>
         ) : null}
       </ReviewFoldedBody>
+      {review.blocked && adminAuthed ? (
+        <p className="mb-0 mt-1 text-[12px] text-danger">
+          此评价已被屏蔽，公开列表不再展示，仅管理员可见。
+        </p>
+      ) : null}
       <ReviewActionBar
         review={review}
-        date={date}
         recognition={recognition}
         ready={ready}
         authenticated={authenticated}
