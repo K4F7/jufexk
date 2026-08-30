@@ -1,9 +1,7 @@
 import { Typography } from "@heroui/react";
-import DOMPurify from "dompurify";
-import {
-  REVIEW_NOTE_ALLOWED_ATTRS,
-  REVIEW_NOTE_ALLOWED_TAGS,
-} from "../lib/review-note-html";
+import { lazy, Suspense } from "react";
+
+const HtmlReviewNoteContent = lazy(() => import("./HtmlReviewNoteContent"));
 
 /**
  * 补充说明的统一展示（issue #400）：comment_format='html' 的行按白名单
@@ -18,23 +16,16 @@ export function ReviewNoteContent({
   commentFormat?: string | null;
 }) {
   if (commentFormat === "html") {
-    const html = DOMPurify.sanitize(comment, {
-      ALLOWED_TAGS: [...REVIEW_NOTE_ALLOWED_TAGS],
-      ALLOWED_ATTR: [...REVIEW_NOTE_ALLOWED_ATTRS, "target", "rel"],
-    });
     return (
-      <Typography
-        className="review-note-html m-0 break-words leading-relaxed"
-        render={(props) => (
-          <div
-            {...props}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )}
-        type="body-sm"
-      />
+      <Suspense fallback={<PlainReviewNoteContent comment={comment} />}>
+        <HtmlReviewNoteContent comment={comment} />
+      </Suspense>
     );
   }
+  return <PlainReviewNoteContent comment={comment} />;
+}
+
+function PlainReviewNoteContent({ comment }: { comment: string }) {
   return (
     <Typography className="m-0 break-words leading-relaxed" type="body-sm">
       {comment}
