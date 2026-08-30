@@ -39,7 +39,11 @@ import { parseHandlePublicCode } from "../public-handle";
 import type { PublicReview, ReviewComment } from "../lib/types";
 import { FourDimLine } from "./FourDimLine";
 import { ReviewActionBar } from "./ReviewActionBar";
-import { ReviewFoldedBody } from "./ReviewFoldedBody";
+import {
+  ReviewFoldedBody,
+  reviewCardClassName,
+  useReviewPublicFold,
+} from "./ReviewFoldedBody";
 import {
   useReviewRecognition,
 } from "./ReviewRecognitionControl";
@@ -153,14 +157,17 @@ const CourseReviewItem = memo(function CourseReviewItem({
     loginPath,
     onUnauthenticated,
   });
+  const fold = useReviewPublicFold(
+    recognition.state.count,
+    recognition.challenge.count,
+  );
   return (
     <article
       id={reviewAnchorId(review.id)}
-      className="scroll-mt-20 border-b border-separator py-5 last:border-b-0 [content-visibility:auto] [contain-intrinsic-size:auto_9rem]"
+      className={reviewCardClassName({ compact: fold.compact, variant: "course" })}
     >
       <ReviewFoldedBody
-        endorsementCount={recognition.state.count}
-        challengeCount={recognition.challenge.count}
+        fold={fold}
         date={date}
         header={
           <span className="flex flex-wrap items-center gap-x-2 leading-none text-[calc(13/15*1rem)] font-medium text-foreground">
@@ -180,6 +187,31 @@ const CourseReviewItem = memo(function CourseReviewItem({
               </Chip>
             ) : null}
           </span>
+        }
+        footer={
+          <>
+            {review.blocked && adminAuthed ? (
+              <p className="mb-0 mt-1 text-[12px] text-danger">
+                此评价已被屏蔽，公开列表不再展示，仅管理员可见。
+              </p>
+            ) : null}
+            <ReviewActionBar
+              review={review}
+              recognition={recognition}
+              ready={ready}
+              authenticated={authenticated}
+              loginPath={loginPath}
+              onUnauthenticated={onUnauthenticated}
+              endorsable={isEndorsableReview(review)}
+              seedComments={seedComments}
+              viewerPublicCode={viewerPublicCode}
+              previewComposer={previewComposer}
+              showAdminControls={showAdminControls}
+            />
+            {showAdminControls && onReviewChanged ? (
+              <ReviewAdminControls review={review} onChanged={onReviewChanged} />
+            ) : null}
+          </>
         }
       >
         {review.dimensionLabels?.length ? (
@@ -208,27 +240,6 @@ const CourseReviewItem = memo(function CourseReviewItem({
           </p>
         ) : null}
       </ReviewFoldedBody>
-      {review.blocked && adminAuthed ? (
-        <p className="mb-0 mt-1 text-[12px] text-danger">
-          此评价已被屏蔽，公开列表不再展示，仅管理员可见。
-        </p>
-      ) : null}
-      <ReviewActionBar
-        review={review}
-        recognition={recognition}
-        ready={ready}
-        authenticated={authenticated}
-        loginPath={loginPath}
-        onUnauthenticated={onUnauthenticated}
-        endorsable={isEndorsableReview(review)}
-        seedComments={seedComments}
-        viewerPublicCode={viewerPublicCode}
-        previewComposer={previewComposer}
-        showAdminControls={showAdminControls}
-      />
-      {showAdminControls && onReviewChanged ? (
-        <ReviewAdminControls review={review} onChanged={onReviewChanged} />
-      ) : null}
     </article>
   );
 });

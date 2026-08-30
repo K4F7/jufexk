@@ -58,7 +58,7 @@ export function challengeButtonLabel(input: {
     : `质疑这条评价，还没有人质疑`;
 }
 
-/** 质疑至少 3 票且多于认可时，对所有人收起正文。 */
+/** 质疑至少 3 票且多于认可时，对所有人收起整张卡片。 */
 export const REVIEW_FOLD_CHALLENGE_MIN = 3;
 
 export type ReviewFoldKind = "none" | "public";

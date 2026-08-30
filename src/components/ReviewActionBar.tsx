@@ -34,6 +34,7 @@ import { AnonymousAvatar } from "./AnonymousAvatar";
 import { DetailLoadingStatus } from "./DetailFeedback";
 import { RouterAriaLink } from "./RouterAriaLink";
 import {
+  ReviewActionCount,
   ReviewChallengeButton,
   ReviewRecognitionAlerts,
   ReviewRecognitionButton,
@@ -186,9 +187,7 @@ export function ReviewActionBar({
               onPress={toggleComments}
             >
               {open ? <CommentFill aria-hidden /> : <Comment aria-hidden />}
-              {comments.count > 0 ? (
-                <span className="tabular">{comments.count}</span>
-              ) : null}
+              <ReviewActionCount count={comments.count} />
             </Button>
           ) : null}
           <Button

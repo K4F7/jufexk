@@ -94,6 +94,13 @@ function liveReviews(store: Store) {
       viewer_challenged: store.challenged["review:307"],
       created_at: "2026-08-20 12:00:00",
     }),
+    review("review:308", "再一票就会过线的正文。", {
+      endorsement_count: store.counts["review:308"],
+      challenge_count: store.challengeCounts["review:308"],
+      viewer_endorsed: store.endorsed["review:308"],
+      viewer_challenged: store.challenged["review:308"],
+      created_at: "2026-08-19 09:00:00",
+    }),
     review("historical:hist-1", "历史评价可以认可。", {
       endorsable: true,
       challenge_count: store.challengeCounts["historical:hist-1"],
@@ -234,6 +241,7 @@ function guestStore(): Store {
       "review:305": 2,
       "review:306": 1,
       "review:307": 1,
+      "review:308": 0,
     },
     endorsed: {
       "review:301": false,
@@ -242,6 +250,7 @@ function guestStore(): Store {
       "review:305": false,
       "review:306": false,
       "review:307": false,
+      "review:308": false,
       "historical:hist-1": false,
     },
     challengeCounts: {
@@ -251,6 +260,7 @@ function guestStore(): Store {
       "review:305": 0,
       "review:306": 0,
       "review:307": 3,
+      "review:308": 2,
       "historical:hist-1": 0,
     },
     challenged: {
@@ -260,6 +270,7 @@ function guestStore(): Store {
       "review:305": false,
       "review:306": false,
       "review:307": false,
+      "review:308": false,
       "historical:hist-1": false,
     },
   };
@@ -342,31 +353,61 @@ test("guest can vote without a login prompt and still needs login to comment", a
   ).toHaveAttribute("href", "/login?from=%2Fcourses%2F8%3Fteacher%3D9");
 });
 
-test("public fold hides the body and keeps vote chrome", async ({ page }) => {
+test("public fold hides the entire card chrome", async ({ page }) => {
   await mockApi(page, guestStore());
   await page.goto("/courses/8?teacher=9");
   const folded = page.locator("article").filter({
-    has: page.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
+    has: page.getByText("该评价因不受欢迎被折叠"),
   });
   await expect(folded.getByText("该评价因不受欢迎被折叠")).toBeVisible();
   await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
   await expect(folded.getByRole("link", { name: /匿名用户/ })).toHaveCount(0);
-  await expect(folded.locator("header time")).toHaveText("2026-08-20");
-  await expect(folded.getByRole("toolbar").locator("time")).toHaveCount(0);
+  await expect(folded.locator("time")).toHaveCount(0);
+  await expect(folded.getByRole("toolbar", { name: "评价动作" })).toHaveCount(0);
   await expect(
     folded.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(folded.getByRole("button", { name: "展开" })).toHaveCount(0);
   await expect(folded.getByRole("button", { name: "看看" })).toBeVisible();
 
   await folded.getByRole("button", { name: "看看" }).click();
   await expect(folded.getByText("质疑较多应收起的正文。")).toBeVisible();
   await expect(folded.getByRole("link", { name: /匿名用户/ })).toBeVisible();
+  await expect(folded.locator("header time")).toHaveText("2026-08-20");
+  await expect(folded.getByRole("toolbar", { name: "评价动作" })).toBeVisible();
+  await expect(
+    folded.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
+  ).toBeVisible();
   await expect(folded.getByRole("button", { name: "收起" })).toBeVisible();
 
   await folded.getByRole("button", { name: "收起" }).click();
   await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
+  await expect(folded.getByRole("toolbar", { name: "评价动作" })).toHaveCount(0);
+  await expect(folded.locator("time")).toHaveCount(0);
   await expect(folded.getByRole("button", { name: "看看" })).toBeVisible();
+});
+
+test("crossing the public fold threshold keeps the open card until 收起", async ({
+  page,
+}) => {
+  await mockApi(page, guestStore());
+  await page.goto("/courses/8?teacher=9");
+  const card = page.locator("#review-308");
+  await expect(card.getByText("再一票就会过线的正文。")).toBeVisible();
+  await card
+    .getByRole("button", { name: "质疑这条评价，当前 2 人质疑" })
+    .click();
+  await expect(card.getByText("再一票就会过线的正文。")).toBeVisible();
+  await expect(card.getByText("该评价因不受欢迎被折叠")).toBeVisible();
+  await expect(card.getByRole("button", { name: "收起" })).toBeVisible();
+  await expect(card.getByRole("toolbar", { name: "评价动作" })).toBeVisible();
+  await expect(card.locator("header time")).toHaveText("2026-08-19");
+
+  await card.getByRole("button", { name: "收起" }).click();
+  await expect(card.getByText("再一票就会过线的正文。")).toHaveCount(0);
+  await expect(card.getByRole("toolbar", { name: "评价动作" })).toHaveCount(0);
+  await expect(card.locator("time")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "看看" })).toBeVisible();
 });
 
 test("self challenge keeps avatar username and body visible", async ({
