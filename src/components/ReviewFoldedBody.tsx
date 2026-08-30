@@ -2,7 +2,6 @@ import { Button } from "@heroui/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   REVIEW_FOLD_LABEL,
-  REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL,
   REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
   reviewFoldKind,
   type ReviewFoldKind,
@@ -150,22 +149,25 @@ export function ReviewFoldedBody({
 
   if (fold.kind === "none") return expanded;
 
+  const notice = fold.publicOpen ? (
+    <p className="mb-0 text-[calc(12/15*1rem)] text-muted">{REVIEW_FOLD_LABEL}</p>
+  ) : (
+    <Button
+      size="sm"
+      variant="ghost"
+      onPress={() => fold.setPublicOpen(true)}
+    >
+      <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
+      {REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
+    </Button>
+  );
+
   return (
     <>
       <header
         className={[HEADER_ROW_CLASS, chromeClassName].filter(Boolean).join(" ")}
       >
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-expanded={fold.publicOpen}
-          onPress={() => fold.setPublicOpen((open) => !open)}
-        >
-          <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
-          {fold.publicOpen
-            ? REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL
-            : REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
-        </Button>
+        {notice}
       </header>
       {fold.publicOpen ? expanded : null}
     </>
