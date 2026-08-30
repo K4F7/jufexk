@@ -247,16 +247,6 @@ a[href]:focus-visible:not([data-focus-visible]),
 }
 
 /*
- * Mobile header 课评/课程 Tabs: HeroUI ListContainer always mounts
- * overflow chevrons and shows them when the list is even 1px wider
- * than the scroller. Scope hide to this instance only.
- */
-.shell-mobile-nav-tabs .tabs__list-container > .tabs__list-container__scroll-prev,
-.shell-mobile-nav-tabs .tabs__list-container > .tabs__list-container__scroll-next {
-  display: none !important;
-}
-
-/*
  * Header notices: official Dropdown placement under the envelope.
  * On phones, wrap long copy instead of overflowing; width hugs content
  * (see AccountNavControl max-sm:w-max / max-w-xs), not the viewport.
