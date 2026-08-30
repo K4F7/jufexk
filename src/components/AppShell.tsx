@@ -1,4 +1,4 @@
-import { buttonVariants, Link, SearchField, Tabs } from "@heroui/react";
+import { buttonVariants, Link, SearchField } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -194,9 +194,9 @@ function DesktopNavLinks({
   );
 }
 
-/** Narrow-screen primary nav: official equal-width Tabs, not desktop ghost buttons.
+/** Narrow-screen primary nav: official equal-width Links.
  * 导师外链未适配移动端，只在桌面 `DesktopNavLinks` 保留。 */
-function MobileTabsNav({
+function MobilePrimaryNav({
   links,
   selectedKey,
   params,
@@ -206,44 +206,38 @@ function MobileTabsNav({
   params: URLSearchParams;
 }) {
   return (
-    <Tabs
-      aria-label="主导航"
-      className="shell-mobile-nav-tabs w-full min-w-0"
-      selectedKey={selectedKey}
-      variant="secondary"
-    >
-      <Tabs.ListContainer className="w-full min-w-0">
-        <Tabs.List aria-label="主导航" className="max-w-full">
-          {links.map((link) => {
-            const to = import.meta.env.DEV
-              ? withGlobalSearchParams(link.to, params)
-              : link.to;
-            return (
-              <Tabs.Tab
-                key={link.id}
-                className="min-w-0 flex-1 justify-center"
-                href={to}
-                id={link.id}
-                render={(domProps) => (
-                  <NavLink
-                    {...(domProps as object)}
-                    className={
-                      typeof domProps.className === "string"
-                        ? `${domProps.className} min-w-0 flex-1 justify-center`
-                        : "min-w-0 flex-1 justify-center"
-                    }
-                    to={to}
-                  />
-                )}
-              >
-                {link.label}
-                <Tabs.Indicator />
-              </Tabs.Tab>
-            );
-          })}
-        </Tabs.List>
-      </Tabs.ListContainer>
-    </Tabs>
+    <nav aria-label="主导航" className="shell-mobile-nav flex w-full min-w-0">
+      {links.map((link) => {
+        const active = selectedKey === link.id;
+        const to = import.meta.env.DEV
+          ? withGlobalSearchParams(link.to, params)
+          : link.to;
+        return (
+          <Link
+            key={link.id}
+            aria-current={active ? "page" : undefined}
+            className={`${buttonVariants({
+              size: "sm",
+              variant: active ? "secondary" : "ghost",
+            })} min-w-0 flex-1 justify-center no-underline`}
+            href={to}
+            render={(domProps) => (
+              <NavLink
+                {...(domProps as object)}
+                className={
+                  typeof domProps.className === "string"
+                    ? `${domProps.className} min-w-0 flex-1 justify-center`
+                    : "min-w-0 flex-1 justify-center"
+                }
+                to={to}
+              />
+            )}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -383,13 +377,11 @@ function DefaultShell({
               )}
             </div>
             {showMobileBrowseTabs ? (
-              <nav aria-label="主导航" className="w-full min-w-0">
-                <MobileTabsNav
-                  links={links}
-                  params={params}
-                  selectedKey={selectedKey}
-                />
-              </nav>
+              <MobilePrimaryNav
+                links={links}
+                params={params}
+                selectedKey={selectedKey}
+              />
             ) : null}
           </div>
           ) : (
