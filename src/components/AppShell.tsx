@@ -26,6 +26,18 @@ const ThemeToggleLazy = lazy(() =>
   import("./ThemeToggle").then((m) => ({ default: m.ThemeToggle })),
 );
 
+function loadDeferredHeroUiStyles(pathname: string) {
+  if (pathname === "/" || pathname === "/latest") return;
+  void import("../styles/heroui-deferred.css");
+}
+
+// Direct visits to non-latest routes should begin loading their component
+// styles before React commits the first frame; route transitions use the same
+// loader from DefaultShell below.
+if (typeof window !== "undefined") {
+  loadDeferredHeroUiStyles(window.location.pathname);
+}
+
 /**
  * Production shell — USTC 评课社区对齐（Issue #402）：
  * 桌面 xl+：左簇品牌 + Button 课评/课程/导师 · 居中搜索 · 右账号。
@@ -322,6 +334,11 @@ function DefaultShell({
 }) {
   const location = useLocation();
   const [params] = useSearchParams();
+
+  useEffect(() => {
+    loadDeferredHeroUiStyles(location.pathname);
+  }, [location.pathname]);
+
   const isXl = useMediaQuery("(min-width: 80rem)");
   const selectedKey = navSelectedKey(location.pathname);
   const showMobileBrowseTabs = !isMeAccountSurface(location.pathname);
