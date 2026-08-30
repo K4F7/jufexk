@@ -234,7 +234,7 @@ test("latest reserves review space while the first page is loading", async ({ pa
       return route.fulfill({ json: { desktopHtml: "", mobileHtml: "", updatedAt: null } });
     }
     if (url.pathname === "/api/reviews/latest") {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       return route.fulfill({ json: { items: [LATEST[0]], nextCursor: null } });
     }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });

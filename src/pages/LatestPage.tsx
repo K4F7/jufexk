@@ -19,9 +19,16 @@ import type { LatestReview, PublicReviewPage } from "../lib/types";
 // Keep the loading shell aligned with the API's default first-page size.
 const LATEST_PAGE_SIZE = 20;
 
-let initialLatestPageRequest: Promise<PublicReviewPage<LatestReview>> | null = null;
+declare global {
+  interface Window {
+    __jufexkLatestPageRequest?: Promise<PublicReviewPage<LatestReview>>;
+  }
+}
+
+let initialLatestPageRequest = window.__jufexkLatestPageRequest ?? null;
 
 if (
+  !initialLatestPageRequest &&
   window.location.pathname === "/latest" &&
   !new URLSearchParams(window.location.search).has("preview")
 ) {
