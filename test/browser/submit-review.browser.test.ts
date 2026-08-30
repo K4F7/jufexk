@@ -5,7 +5,7 @@ import { TIER3_QUESTIONS } from "../review-score-fixtures";
  * 写评价（Issue #402 + #400 + #447）：入口只从课程页「写点评」；表单对齐 icourse ——
  * 课×师已知时用「点评 · 课名（教师）」卡片头；四道三档、
  * 1–5 半星推荐度（默认必填）、纯文本详细评价、选填数字成绩、可保存草稿；
- * 「只写点评不评分」问卷仍显示，评分与推荐度改为可选；勾选后推荐度星星不位移。
+ * 「只写点评不评分」问卷仍显示；勾选后清空并禁用评分，推荐度星星不位移。
  * 带 courseId 进入时等当前 scheme，不先画旧题。详细评价下有官方 Description 说明。
  * 从课程页带入的课/老师不再重选；投稿一律匿名。
  * 线下课与 mooc 同一套四道题；发布成功回到该 课程×教师 的详情页。一句话总结字段已下线。
@@ -243,7 +243,11 @@ async function expectTier3Questions(page: Page) {
   await expect(gain.getByRole("row", { name: "很多", exact: true })).toBeVisible();
   await expect(gain.getByRole("row", { name: "没有", exact: true })).toBeVisible();
 
-  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeVisible();
+  const overall = page.getByRole("radiogroup", { name: "推荐度" });
+  await expect(overall).toBeVisible();
+  await expect(
+    overall.getByRole("radio", { name: "0.5 星", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "点名频率" })).toHaveCount(0);
   await expect(page.getByText("简单 / 中等 / 困难")).toHaveCount(0);
   await expect(page.getByText("不多 / 中等 / 超多")).toHaveCount(0);
@@ -459,6 +463,49 @@ test("skip-rating checkbox does not shift the overall stars", async ({
   expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(1);
 });
 
+test("skip-rating clears filled scores and disables the rating controls", async ({
+  page,
+}) => {
+  await mockSubmitApi(page);
+  await page.goto("/submit?courseId=8&teacherId=9");
+  await answerTier3AndOverall(page, "0.5");
+  await expect(page.getByText("快跑")).toBeVisible();
+  await expect(
+    page.getByRole("grid", { name: "课程难度" }).getByRole("row", {
+      name: "中等",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  await clickLabeledCheckbox(page, "只写点评不评分");
+  for (const label of ["课程难度", "作业多少", "给分好坏", "收获多少"]) {
+    const group = page.getByRole("grid", { name: label });
+    await expect(group.getByRole("row").first()).toBeDisabled();
+    await expect(group.getByRole("row", { selected: true })).toHaveCount(0);
+  }
+  const stars = page.getByRole("radiogroup", { name: "推荐度" });
+  await expect(stars).toBeDisabled();
+  await expect(stars.getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(page.getByText("快跑")).toHaveCount(0);
+  await expect(page.getByText("很推荐")).toHaveCount(0);
+  await expect(page.getByText("必选")).toHaveCount(0);
+
+  await clickLabeledCheckbox(page, "只写点评不评分");
+  await expect(
+    page.getByRole("checkbox", { name: "只写点评不评分" }),
+  ).not.toBeChecked();
+  const difficulty = page.getByRole("grid", { name: "课程难度" });
+  await expect(difficulty.getByRole("row").first()).toBeEnabled();
+  await expect(difficulty.getByRole("row", { selected: true })).toHaveCount(0);
+  await expect(stars).toBeEnabled();
+  await expect(stars.getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(page.getByText("快跑")).toHaveCount(0);
+  await pickScore(page, "课程难度", "简单");
+  await expect(
+    difficulty.getByRole("row", { name: "简单", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+});
+
 test("save keeps a draft for the same course and teacher", async ({ page }) => {
   await mockSubmitApi(page);
   await page.goto("/submit?courseId=8&teacherId=9");
@@ -472,7 +519,7 @@ test("save keeps a draft for the same course and teacher", async ({ page }) => {
   await expect(
     page.getByRole("checkbox", { name: "只写点评不评分" }),
   ).toBeChecked();
-  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeDisabled();
 });
 
 test("three-tier options show Chinese labels and submit the full payload @mobile-smoke", async ({
@@ -666,8 +713,10 @@ test("review-only submit keeps the questionnaire optional", async ({
   await expect(skipRatings).not.toBeChecked();
   await clickLabeledCheckbox(page, "只写点评不评分");
   await expect(skipRatings).toBeChecked();
-  await expect(page.getByRole("grid", { name: "课程难度" })).toBeVisible();
-  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeVisible();
+  await expect(
+    page.getByRole("grid", { name: "课程难度" }).getByRole("row").first(),
+  ).toBeDisabled();
+  await expect(page.getByRole("radiogroup", { name: "推荐度" })).toBeDisabled();
   await expect(
     page.getByText("建议尽量评分，方便同学比较选课"),
   ).toHaveCount(0);

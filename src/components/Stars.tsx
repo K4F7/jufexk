@@ -1,5 +1,5 @@
 /**
- * 1–5 推荐度星级，支持半星。rating 为 null 时整排灰星。
+ * 0.5–5 推荐度星级，支持半星。rating 为 null 时整排灰星。
  * 默认 aria-hidden：旁侧总有数字分或「暂无评价」文字；单独使用时传 label。
  * Icons: HeroUI-recommended @gravity-ui/icons (Star / StarFill). HeroUI has no Rating.
  */

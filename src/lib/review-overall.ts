@@ -1,6 +1,7 @@
-/** 本次推荐度：1–5，半星步进。文案随星数变化。 */
+/** 本次推荐度：0.5–5，半星步进。文案随星数变化。 */
 
 export const OVERALL_STEPS = [
+  "0.5",
   "1",
   "1.5",
   "2",
@@ -13,6 +14,7 @@ export const OVERALL_STEPS = [
 ] as const;
 
 export const OVERALL_CAPTIONS: Record<(typeof OVERALL_STEPS)[number], string> = {
+  "0.5": "快跑",
   "1": "较差",
   "1.5": "一般",
   "2": "还行",
@@ -32,7 +34,7 @@ export function parseOverallRating(value: unknown): number | null {
       : typeof value === "string"
         ? Number(value.trim())
         : NaN;
-  if (!Number.isFinite(n) || n < 1 || n > 5) return null;
+  if (!Number.isFinite(n) || n < 0.5 || n > 5) return null;
   const halves = Math.round(n * 2) / 2;
   return Math.abs(halves - n) < 1e-9 ? halves : null;
 }
