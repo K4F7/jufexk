@@ -422,7 +422,7 @@ describe("USTC backend APIs (issue #410)", () => {
   it("keeps public-fold reviews in the latest stream and on the course list", async () => {
     const stamp = String(Date.now());
     const visible = await insertCourseTeacher(`${stamp}-latest-fold-ok`);
-    const folded = await insertCourseTeacher(`${stamp}-latest-fold-hide`);
+    const folded = await insertCourseTeacher(`${stamp}-latest-fold-threshold`);
     const tied = await insertCourseTeacher(`${stamp}-latest-fold-tie`);
     const minority = await insertCourseTeacher(`${stamp}-latest-fold-min`);
     await insertReview({
