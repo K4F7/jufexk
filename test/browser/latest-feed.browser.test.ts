@@ -242,7 +242,7 @@ test("latest reserves review space while the first page is loading", async ({ pa
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
   const loading = page.getByRole("status", { name: "正在加载最新课评" });
   await expect(loading).toBeVisible();
-  await expect(loading.locator("article")).toHaveCount(3);
+  await expect(loading.locator("article")).toHaveCount(20);
   const firstSkeleton = await loading.locator("article").first().boundingBox();
   expect(firstSkeleton?.height).toBeGreaterThanOrEqual(190);
   const footerBefore = await page.getByRole("contentinfo").boundingBox();
