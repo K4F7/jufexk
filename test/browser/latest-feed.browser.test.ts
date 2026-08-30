@@ -177,6 +177,7 @@ test("latest author and date share a header row on desktop and mobile", async ({
   await page.setViewportSize({ width: 375, height: 720 });
   await expectStackedAuthorLayout(article);
   await expect(article.getByRole("link", { name: "查看全文" })).toBeVisible();
+  await expect(article).toHaveCSS("content-visibility", "auto");
   await expect(page.getByRole("link", { name: "更多" })).toHaveCount(0);
 });
 
