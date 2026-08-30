@@ -1,6 +1,6 @@
 /**
  * 最新课评 /latest：全站公开文字评价，按发表时间倒序。
- * 数据走 GET /api/reviews/latest（游标分页）；公开折叠评价不下发。
+ * 数据走 GET /api/reviews/latest（游标分页）。折叠只出现在课程×教师评价页。
  */
 import { Button, Card, Spinner, Typography } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
