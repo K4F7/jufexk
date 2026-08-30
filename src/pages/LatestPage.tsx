@@ -19,6 +19,19 @@ import type { LatestReview, PublicReviewPage } from "../lib/types";
 // Keep the loading shell aligned with the API's default first-page size.
 const LATEST_PAGE_SIZE = 20;
 
+let initialLatestPageRequest: Promise<PublicReviewPage<LatestReview>> | null = null;
+
+if (
+  window.location.pathname === "/latest" &&
+  !new URLSearchParams(window.location.search).has("preview")
+) {
+  const request = api<PublicReviewPage<LatestReview>>("/api/reviews/latest");
+  initialLatestPageRequest = request.catch((reason) => {
+    initialLatestPageRequest = null;
+    throw reason;
+  });
+}
+
 export function LatestPage() {
   const [searchParams] = useSearchParams();
   const preview = readDevPreviewOrFilled(searchParams);
@@ -60,9 +73,10 @@ export function LatestPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    api<PublicReviewPage<LatestReview>>("/api/reviews/latest", {
-      signal: controller.signal,
-    })
+    (initialLatestPageRequest ??
+      api<PublicReviewPage<LatestReview>>("/api/reviews/latest", {
+        signal: controller.signal,
+      }))
       .then((page) => {
         if (cancelled) return;
         setItems(page.items);
