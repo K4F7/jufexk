@@ -19,6 +19,10 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // Let the browser discover entry dependencies after the stylesheet. The
+    // generated modulepreload list eagerly fetched route/shared chunks before
+    // the render-blocking CSS on mobile connections.
+    modulePreload: false,
   },
   // UI Prototype / client HMR: open this origin, proxy /api to wrangler.
   // `pnpm dev` (wrangler) serves production dist — use `pnpm prototype` for Gallery.
