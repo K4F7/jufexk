@@ -61,7 +61,7 @@ export function challengeButtonLabel(input: {
 /** 质疑至少 3 票且多于认可时，对所有人收起正文。 */
 export const REVIEW_FOLD_CHALLENGE_MIN = 3;
 
-export type ReviewFoldKind = "none" | "self" | "public";
+export type ReviewFoldKind = "none" | "public";
 
 function meetsPublicFoldThreshold(input: {
   endorsementCount: number;
@@ -73,26 +73,21 @@ function meetsPublicFoldThreshold(input: {
   );
 }
 
-/** 公开阈值优先于自己点踩。 */
+/** 只按公开阈值折叠；浏览者自己质疑不单独收起。 */
 export function reviewFoldKind(input: {
   endorsementCount: number;
   challengeCount: number;
-  viewerChallenged?: boolean;
 }): ReviewFoldKind {
-  if (meetsPublicFoldThreshold(input)) return "public";
-  if (input.viewerChallenged) return "self";
-  return "none";
+  return meetsPublicFoldThreshold(input) ? "public" : "none";
 }
 
 export function isReviewFolded(input: {
   endorsementCount: number;
   challengeCount: number;
-  viewerChallenged?: boolean;
 }) {
   return reviewFoldKind(input) !== "none";
 }
 
-export const REVIEW_SELF_FOLD_LABEL = "已折叠";
 export const REVIEW_FOLD_LABEL = "该评价因不受欢迎被折叠";
 export const REVIEW_PUBLIC_FOLD_EXPAND_LABEL = "看看";
 export const REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL = "收起";

@@ -4,7 +4,6 @@ import {
   REVIEW_FOLD_LABEL,
   REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL,
   REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
-  REVIEW_SELF_FOLD_LABEL,
   reviewFoldKind,
 } from "../lib/recognition";
 
@@ -61,7 +60,6 @@ function ReviewVisibleChrome({
 export function ReviewFoldedBody({
   endorsementCount,
   challengeCount,
-  viewerChallenged,
   date,
   header,
   leading,
@@ -70,7 +68,6 @@ export function ReviewFoldedBody({
 }: {
   endorsementCount: number;
   challengeCount: number;
-  viewerChallenged: boolean;
   date?: string;
   header: ReactNode;
   leading?: ReactNode;
@@ -80,7 +77,6 @@ export function ReviewFoldedBody({
   const kind = reviewFoldKind({
     endorsementCount,
     challengeCount,
-    viewerChallenged,
   });
   const [publicOpen, setPublicOpen] = useState(false);
 
@@ -89,7 +85,7 @@ export function ReviewFoldedBody({
   }, [kind]);
 
   const dateNode = <ReviewPostedDate date={date} />;
-  const showChrome = kind === "none" || (kind === "public" && publicOpen);
+  const showChrome = kind === "none" || publicOpen;
   const chrome = showChrome ? (
     <ReviewVisibleChrome
       leading={leading}
@@ -108,21 +104,17 @@ export function ReviewFoldedBody({
       <header
         className={[HEADER_ROW_CLASS, chromeClassName].filter(Boolean).join(" ")}
       >
-        {kind === "self" ? (
-          <p className="mb-0 text-xs text-muted">{REVIEW_SELF_FOLD_LABEL}</p>
-        ) : (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-expanded={publicOpen}
-            onPress={() => setPublicOpen((open) => !open)}
-          >
-            <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
-            {publicOpen
-              ? REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL
-              : REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-expanded={publicOpen}
+          onPress={() => setPublicOpen((open) => !open)}
+        >
+          <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
+          {publicOpen
+            ? REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL
+            : REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
+        </Button>
         {dateNode}
       </header>
       {chrome}

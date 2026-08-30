@@ -161,7 +161,6 @@ const CourseReviewItem = memo(function CourseReviewItem({
       <ReviewFoldedBody
         endorsementCount={recognition.state.count}
         challengeCount={recognition.challenge.count}
-        viewerChallenged={recognition.challenge.challenged}
         date={date}
         header={
           <span className="flex flex-wrap items-center gap-x-2 leading-none text-[calc(13/15*1rem)] font-medium text-foreground">
