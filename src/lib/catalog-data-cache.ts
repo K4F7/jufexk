@@ -83,7 +83,7 @@ export function shouldPrefetchCatalog(): boolean {
   return !["slow-2g", "2g"].includes(connection?.effectiveType || "");
 }
 
-/** Prefetch the exact detail and default recognized review keys used by the course page. */
+/** Prefetch the exact detail and default latest review keys used by the course page. */
 export function prefetchCourseDetail(courseId: number, teacherId?: number | null): void {
   if (!shouldPrefetchCatalog()) return;
   const detailUrl = `/api/courses/${courseId}`;
@@ -91,7 +91,7 @@ export function prefetchCourseDetail(courseId: number, teacherId?: number | null
   if (teacherId == null) return;
   const params = new URLSearchParams({
     teacherId: String(teacherId),
-    sort: "recognized",
+    sort: "latest",
   });
   const reviewsUrl = `/api/courses/${courseId}/reviews?${params}`;
   prefetchCatalogData(reviewsUrl, () => api(reviewsUrl));

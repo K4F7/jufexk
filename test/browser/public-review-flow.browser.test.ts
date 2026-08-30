@@ -282,7 +282,7 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(
     page.getByRole("button", { name: "写点评" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /排序/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /排序：从新到旧/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /学期/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /评分/ })).toBeVisible();
   await expect(page.getByText("21 条点评")).toBeVisible();
@@ -626,7 +626,7 @@ test("review controls reload the complete server-side sort and filters", async (
   await page.goto("/courses/8?teacher=9");
   await expect(reviewItems(page)).toHaveCount(3);
   await expect(reviewItems(page).first()).toContainText("高分新点评");
-  expect(queries.at(-1)).toContain("sort=recognized");
+  expect(queries.at(-1)).toContain("sort=latest");
 
   await page.getByRole("button", { name: /排序/ }).click();
   await page.getByRole("option", { name: "从旧到新" }).click();

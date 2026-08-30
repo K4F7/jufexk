@@ -1117,7 +1117,7 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
   const hasReviewQuery = Boolean(rawSort || c.req.query("rating"));
   const reviewQuery: PublicReviewQuery | null = hasReviewQuery
     ? {
-        sort: (rawSort as PublicReviewSort) || "recognized",
+        sort: (rawSort as PublicReviewSort) || "latest",
         rating,
       }
     : null;
