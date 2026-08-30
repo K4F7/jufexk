@@ -75,6 +75,7 @@ function ScaleRadios({
   label,
   options,
   required = true,
+  disabled = false,
   value,
   onChange,
 }: {
@@ -82,6 +83,7 @@ function ScaleRadios({
   label: string;
   options: ReadonlyArray<{ value: string; label: string }>;
   required?: boolean;
+  disabled?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -93,17 +95,24 @@ function ScaleRadios({
         selectedKeys={value ? new Set([value]) : new Set()}
         selectionMode="single"
         onSelectionChange={(keys) => {
-          if (keys === "all") return;
+          if (disabled || keys === "all") return;
           const next = firstSelectedKey(keys);
           if (next == null) return;
           setInvalid(false);
           onChange(next);
         }}
       >
-        <Label isRequired={required}>{label}</Label>
+        <Label isDisabled={disabled} isRequired={required}>
+          {label}
+        </Label>
         <TagGroup.List>
           {options.map((option) => (
-            <Tag key={option.value} id={option.value} textValue={option.label}>
+            <Tag
+              key={option.value}
+              id={option.value}
+              isDisabled={disabled}
+              textValue={option.label}
+            >
               {option.label}
             </Tag>
           ))}
@@ -135,20 +144,23 @@ function ScaleRadios({
 
 function OverallStarRating({
   required = true,
+  disabled = false,
   value,
   onChange,
 }: {
   required?: boolean;
+  disabled?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
-  const shown = preview ?? value;
+  const shown = disabled ? value : (preview ?? value);
   const selected = Number(shown) || 0;
   const caption = overallCaption(shown);
   return (
     <div className="flex flex-wrap items-center gap-3">
       <RadioGroup
+        isDisabled={disabled}
         isRequired={required}
         className="flex-col gap-1"
         name="overall"
@@ -158,6 +170,7 @@ function OverallStarRating({
       >
         <div className="flex items-center gap-3">
           <Label
+            isDisabled={disabled}
             isRequired={required}
             className={
               required
@@ -169,10 +182,12 @@ function OverallStarRating({
           </Label>
           <div
             className="inline-flex h-6 items-center"
-            onPointerLeave={() => setPreview(null)}
+            onPointerLeave={() => {
+              if (!disabled) setPreview(null);
+            }}
           >
           {[1, 2, 3, 4, 5].map((star) => {
-            const leftValue = star === 1 ? "" : String(star - 0.5);
+            const leftValue = String(star - 0.5);
             const rightValue = String(star);
             return (
               <span key={star} className="relative inline-flex size-6 items-center justify-center text-accent">
@@ -180,30 +195,28 @@ function OverallStarRating({
                   className="pointer-events-none !size-6"
                   fill={starFill(selected || null, star)}
                 />
-                {leftValue ? (
-                  <Radio
-                    className="absolute inset-y-0 left-0 w-1/2"
-                    value={leftValue}
-                  >
-                    <Radio.Content
-                      className="size-full"
-                      onPointerEnter={() => setPreview(leftValue)}
-                    >
-                      <span className="sr-only">{leftValue} 星</span>
-                    </Radio.Content>
-                  </Radio>
-                ) : null}
                 <Radio
-                  className={
-                    leftValue
-                      ? "absolute inset-y-0 right-0 w-1/2"
-                      : "absolute inset-0"
-                  }
+                  className="absolute inset-y-0 left-0 w-1/2"
+                  value={leftValue}
+                >
+                  <Radio.Content
+                    className="size-full"
+                    onPointerEnter={() => {
+                      if (!disabled) setPreview(leftValue);
+                    }}
+                  >
+                    <span className="sr-only">{leftValue} 星</span>
+                  </Radio.Content>
+                </Radio>
+                <Radio
+                  className="absolute inset-y-0 right-0 w-1/2"
                   value={rightValue}
                 >
                   <Radio.Content
                     className="size-full"
-                    onPointerEnter={() => setPreview(rightValue)}
+                    onPointerEnter={() => {
+                      if (!disabled) setPreview(rightValue);
+                    }}
                   >
                     <span className="sr-only">{rightValue} 星</span>
                   </Radio.Content>
@@ -416,14 +429,22 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
     const draft = loadReviewDraft(selectedCourse.id, teacherId);
     restoredDraftKey.current = key;
     if (!draft) return;
-    setScores(
-      keepCurrentSchemaScores(draft.scores, selectedCourse.applicableQuestions),
-    );
-    setOverall(draft.overall);
     setNote(draft.note);
     setGrade(draft.grade);
     setLoginOnly(draft.loginOnly);
     setReviewOnly(draft.reviewOnly);
+    if (draft.reviewOnly) {
+      setScores({});
+      setOverall("");
+    } else {
+      setScores(
+        keepCurrentSchemaScores(
+          draft.scores,
+          selectedCourse.applicableQuestions,
+        ),
+      );
+      setOverall(draft.overall);
+    }
   }, [selectedCourse, teacherId]);
 
   const loadCourse = useCallback(async (id: number) => {
@@ -723,6 +744,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
                       label: option.label,
                     }))}
                     required={!reviewOnly}
+                    disabled={reviewOnly}
                     value={scores[question.id] || ""}
                     onChange={(value) =>
                       setScores((current) => ({
@@ -737,6 +759,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
               <OverallStarRating
                 required={!reviewOnly}
+                disabled={reviewOnly}
                 value={overall}
                 onChange={setOverall}
               />
@@ -745,7 +768,12 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
                 isSelected={reviewOnly}
                 name="reviewOnly"
                 variant="secondary"
-                onChange={setReviewOnly}
+                onChange={(selected) => {
+                  setReviewOnly(selected);
+                  if (!selected) return;
+                  setScores({});
+                  setOverall("");
+                }}
               >
                 <Checkbox.Content>
                   <Checkbox.Control>
