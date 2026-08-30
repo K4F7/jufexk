@@ -169,7 +169,6 @@ function PublicReviewItem({
         <ReviewFoldedBody
           endorsementCount={recognition.state.count}
           challengeCount={recognition.challenge.count}
-          viewerChallenged={recognition.challenge.challenged}
           date={formatReviewDate(review.created_at)}
           chromeClassName={counterpart === "course" ? "mt-1.5" : undefined}
           leading={

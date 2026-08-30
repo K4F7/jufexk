@@ -4,7 +4,6 @@ import {
   REVIEW_FOLD_LABEL,
   REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL,
   REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
-  REVIEW_SELF_FOLD_LABEL,
   reviewFoldKind,
 } from "../src/lib/recognition";
 
@@ -33,30 +32,26 @@ describe("review fold threshold", () => {
     );
   });
 
-  it("folds immediately for the viewer who challenged", () => {
+  it("does not fold just because the viewer challenged", () => {
     expect(
       reviewFoldKind({
         endorsementCount: 4,
         challengeCount: 1,
-        viewerChallenged: true,
       }),
-    ).toBe("self");
-    expect(REVIEW_SELF_FOLD_LABEL).toBe("已折叠");
+    ).toBe("none");
     expect(
       isReviewFolded({
         endorsementCount: 4,
         challengeCount: 1,
-        viewerChallenged: false,
       }),
     ).toBe(false);
   });
 
-  it("uses the public fold when the viewer also challenged a threshold review", () => {
+  it("still uses the public fold when the viewer also challenged a threshold review", () => {
     expect(
       reviewFoldKind({
         endorsementCount: 1,
         challengeCount: 3,
-        viewerChallenged: true,
       }),
     ).toBe("public");
   });
