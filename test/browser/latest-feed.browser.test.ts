@@ -275,6 +275,9 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
   expect(requests.some((url) => url.includes("table-"))).toBe(false);
+  expect(
+    requests.filter((url) => new URL(url).pathname === "/api/reviews/latest"),
+  ).toHaveLength(2);
   await expect(page.getByTitle("系统运行状态")).toHaveAttribute("loading", "lazy");
 });
 
