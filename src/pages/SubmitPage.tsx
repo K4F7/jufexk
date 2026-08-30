@@ -18,8 +18,6 @@ import {
   TagGroup,
   TextArea,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   type Key,
 } from "@heroui/react";
 import {
@@ -80,8 +78,7 @@ type SchemeCourse = CourseOption &
   };
 
 /**
- * 三档题：窄屏用 detached `size="sm"` ToggleButton（与目录 全部/通识 同款 chip）；
- * `sm+` 仍用 TagGroup + Tag。选项是题目自带的中文档位文案，不是裸 1/2/3。
+ * 三档题：官方 TagGroup + Tag（role=grid/row）。选项是题目自带的中文档位文案，不是裸 1/2/3。
  */
 function ScaleRadios({
   name,
@@ -114,29 +111,7 @@ function ScaleRadios({
 
   return (
     <>
-      <div className="flex min-w-0 flex-col gap-1.5 sm:hidden">
-        <Label isDisabled={disabled} isRequired={required}>
-          {label}
-        </Label>
-        <ToggleButtonGroup
-          aria-label={label}
-          className="inline-flex max-w-full flex-wrap"
-          isDetached
-          isDisabled={disabled}
-          selectedKeys={selectedKeys}
-          selectionMode="single"
-          size="sm"
-          onSelectionChange={handleSelection}
-        >
-          {options.map((option) => (
-            <ToggleButton key={option.value} id={option.value}>
-              {option.label}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      </div>
       <TagGroup
-        className="max-sm:hidden"
         selectedKeys={selectedKeys}
         selectionMode="single"
         onSelectionChange={handleSelection}
@@ -841,7 +816,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             {waitingForCourseScheme ? (
               <QuestionnaireSkeleton />
             ) : (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:gap-y-5">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 sm:gap-y-5">
                 {questions.map((question) => (
                   <ScaleRadios
                     key={question.id}

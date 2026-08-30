@@ -307,7 +307,7 @@ function DefaultShell({
   ];
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen min-w-0 flex-col overflow-x-clip">
       <SkipToMain />
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
         <div className="mx-auto max-w-[1520px] px-3 py-2 sm:px-5 xl:px-4 xl:py-2.5">
