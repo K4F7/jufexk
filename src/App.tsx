@@ -171,7 +171,7 @@ export function App() {
           <AdminSessionProvider>
             <AppShell banner={banner} config={config}>
               <Routes>
-              <Route path="/" element={<Navigate to="/courses" replace />} />
+              <Route path="/" element={<Navigate to="/latest" replace />} />
               <Route path="/courses" element={<CoursesPage />} />
               <Route path="/courses/:id" element={<CourseDetailPage />} />
               <Route path="/latest" element={<LatestPage />} />

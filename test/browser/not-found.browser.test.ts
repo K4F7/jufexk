@@ -33,5 +33,6 @@ test("unknown paths stay on a 404 page instead of redirecting to the catalog", a
   await expect(page.getByRole("heading", { name: "课程目录" })).toHaveCount(0);
 
   await page.getByRole("link", { name: "返回首页" }).click();
-  await expect(page).toHaveURL(/\/courses$/);
+  await expect(page).toHaveURL(/\/latest$/);
+  await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
 });

@@ -13,7 +13,7 @@ export function NotFoundPage() {
           <Card.Description>这个地址没有对应页面，可能是链接失效或输入有误。</Card.Description>
         </Card.Header>
         <Card.Footer>
-          <RouterAriaLink to="/courses">返回首页</RouterAriaLink>
+          <RouterAriaLink to="/latest">返回首页</RouterAriaLink>
         </Card.Footer>
       </Card>
     </section>

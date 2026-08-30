@@ -38,6 +38,9 @@ async function mockPublicShell(page: Page) {
         json: { desktopHtml: "", mobileHtml: "", updatedAt: null },
       });
     }
+    if (url.pathname === "/api/reviews/latest") {
+      return route.fulfill({ json: { items: [], nextCursor: null } });
+    }
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers") {
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
@@ -157,10 +160,10 @@ test("keyboard tab draws a visible focus indicator on shell controls", async ({
   await expect(skip).toBeFocused();
   await expectOutlineFallback(skip);
 
-  // HeroUI Link (主导航 课程) — official ring, no outline.
-  await tabUntilFocused('nav[aria-label="主导航"] a[href="/courses"]');
+  // HeroUI Link (主导航 课评) — official ring, no outline.
+  await tabUntilFocused('nav[aria-label="主导航"] a[href="/latest"]');
   await expectHeroUIRing(
-    page.locator('nav[aria-label="主导航"] a[href="/courses"]').first(),
+    page.locator('nav[aria-label="主导航"] a[href="/latest"]').first(),
   );
 
   // 导师 external link — buttonVariants on a plain <a>, so no React Aria

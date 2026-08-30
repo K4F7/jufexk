@@ -29,6 +29,9 @@ async function mockShellApi(
         json: { desktopHtml: "", mobileHtml: "", updatedAt: null },
       });
     }
+    if (url.pathname === "/api/reviews/latest") {
+      return route.fulfill({ json: { items: [], nextCursor: null } });
+    }
     if (url.pathname === "/api/courses" || url.pathname === "/api/teachers") {
       return route.fulfill({
         json: { items: [], page: 1, pageSize: 20, total: 0, pages: 1 },
@@ -38,7 +41,7 @@ async function mockShellApi(
   });
 }
 
-test("main nav is 课程/课评/排课模拟/导师 with a center course search @mobile-smoke", async ({
+test("main nav is 课评/课程/排课模拟/导师 with a center course search @mobile-smoke", async ({
   page,
 }) => {
   const renderWarnings: string[] = [];
@@ -66,8 +69,8 @@ test("main nav is 课程/课评/排课模拟/导师 with a center course search 
   await expect(nav.getByRole("link", { name: "写评价", exact: true })).toHaveCount(0);
   const navLinks = nav.getByRole("link");
   await expect(navLinks).toHaveCount(4);
-  await expect(navLinks.nth(0)).toHaveText("课程");
-  await expect(navLinks.nth(1)).toHaveText("课评");
+  await expect(navLinks.nth(0)).toHaveText("课评");
+  await expect(navLinks.nth(1)).toHaveText("课程");
   await expect(navLinks.nth(2)).toHaveText("排课模拟");
   await expect(navLinks.nth(3)).toHaveText("导师");
   await expect(nav.getByRole("button")).toHaveCount(0);
@@ -139,7 +142,7 @@ test("desktop header stays one row for the production site name", async ({
     brand.boundingBox(),
     nav.boundingBox(),
     search.boundingBox(),
-    ...["课程", "课评", "排课模拟", "导师"].map((name) =>
+    ...["课评", "课程", "排课模拟", "导师"].map((name) =>
       nav.getByRole("link", { name }).boundingBox(),
     ),
   ]);
@@ -159,21 +162,29 @@ test("desktop header stays one row for the production site name", async ({
   }
 });
 
-test("brand link uses the site name and goes to /courses", async ({ page }) => {
+test("brand link uses the site name and goes to /latest", async ({ page }) => {
   await mockShellApi(page);
-  await page.goto("/latest");
+  await page.goto("/courses");
 
   const brand = page.getByRole("banner").getByRole("link", { name: "非官方课评@JUFE" });
   await expect(brand).toBeVisible();
-  await expect(brand).toHaveAttribute("href", "/courses");
+  await expect(brand).toHaveAttribute("href", "/latest");
   const brandLabel = brand.locator("span");
   await expect(brandLabel).toHaveCSS("min-width", "0px");
   await expect(brandLabel).toHaveCSS("text-overflow", "ellipsis");
   await brand.click();
-  await expect(page).toHaveURL(/\/courses$/);
+  await expect(page).toHaveURL(/\/latest$/);
+  await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
+});
+
+test("root path opens the latest feed", async ({ page }) => {
+  await mockShellApi(page);
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/latest$/);
+  await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
   await expect(
-    page.getByRole("searchbox", { name: "搜索课程" }),
-  ).toBeVisible();
+    page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "课评" }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("guests get a real login link outside the nav", async ({ page }) => {
