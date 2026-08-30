@@ -133,15 +133,12 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    if ("requestIdleCallback" in window) {
-      const idleId = window.requestIdleCallback(load, { timeout: 1500 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback(idleId);
-      };
-    }
-
-    const timeoutId = globalThis.setTimeout(load, 1000);
+    // /latest is anonymous; keep the session probe out of its initial render
+    // even when the browser reports an idle window during startup.
+    const timeoutId = globalThis.setTimeout(
+      load,
+      pathname === "/" || pathname === "/latest" ? 3000 : 1000,
+    );
     return () => {
       cancelled = true;
       globalThis.clearTimeout(timeoutId);

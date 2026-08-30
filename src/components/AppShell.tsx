@@ -280,13 +280,15 @@ function ShellCourseSearch() {
 }
 
 function useLoadShellControls() {
+  const { pathname } = useLocation();
   const [load, setLoad] = useState(import.meta.env.DEV);
 
   useEffect(() => {
     if (load) return;
-    const timer = window.setTimeout(() => setLoad(true), 1200);
+    const delay = pathname === "/" || pathname === "/latest" ? 3000 : 1200;
+    const timer = window.setTimeout(() => setLoad(true), delay);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, pathname]);
 
   return load;
 }
