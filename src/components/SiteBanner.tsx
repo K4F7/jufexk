@@ -1,18 +1,41 @@
-import { Alert } from "@heroui/react";
+import { Alert, CloseButton } from "@heroui/react";
 import DOMPurify from "dompurify";
+import { useState } from "react";
 import {
   REVIEW_NOTE_ALLOWED_ATTRS,
   REVIEW_NOTE_ALLOWED_TAGS,
 } from "../lib/review-note-html";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
 
-function BannerAlert({ html, className }: { html: string; className: string }) {
+const SITE_BANNER_DISMISS_KEY = "jufexk-site-banner-dismissed";
+
+function bannerDismissToken(banner: SiteBannerValue) {
+  return banner.updatedAt || `${banner.desktopHtml}\n${banner.mobileHtml}`;
+}
+
+function writeDismissed(token: string) {
+  try {
+    window.localStorage.setItem(SITE_BANNER_DISMISS_KEY, token);
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function BannerAlert({
+  html,
+  className,
+  onDismiss,
+}: {
+  html: string;
+  className: string;
+  onDismiss: () => void;
+}) {
   const sanitizedHtml = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [...REVIEW_NOTE_ALLOWED_TAGS],
     ALLOWED_ATTR: [...REVIEW_NOTE_ALLOWED_ATTRS, "target", "rel"],
   });
   return (
-    <Alert className={className} status="accent">
+    <Alert className={`${className} items-center py-2`} status="accent">
       <Alert.Indicator />
       <Alert.Content>
         <Alert.Description>
@@ -22,23 +45,50 @@ function BannerAlert({ html, className }: { html: string; className: string }) {
           />
         </Alert.Description>
       </Alert.Content>
+      <CloseButton aria-label="关闭公告" onPress={onDismiss} />
     </Alert>
   );
 }
 
 export function SiteBanner({ banner }: { banner: SiteBannerValue | null }) {
-  if (!banner || (!banner.desktopHtml && !banner.mobileHtml)) return null;
+  const token = banner ? bannerDismissToken(banner) : "";
+  const [dismissedToken, setDismissedToken] = useState(() => {
+    try {
+      return window.localStorage.getItem(SITE_BANNER_DISMISS_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const dismissed = Boolean(token) && dismissedToken === token;
+
+  if (!banner || (!banner.desktopHtml && !banner.mobileHtml) || dismissed) {
+    return null;
+  }
+
+  const dismiss = () => {
+    writeDismissed(token);
+    setDismissedToken(token);
+  };
+
   return (
     <section
       aria-label="全站公告"
-      className="mx-auto w-full max-w-[1520px] px-4 sm:px-5 xl:px-4"
+      className="mx-auto w-full max-w-[1520px] px-4 pt-2 sm:px-5 xl:px-4"
       data-site-banner
     >
       {banner.mobileHtml ? (
-        <BannerAlert className="sm:hidden" html={banner.mobileHtml} />
+        <BannerAlert
+          className="sm:hidden"
+          html={banner.mobileHtml}
+          onDismiss={dismiss}
+        />
       ) : null}
       {banner.desktopHtml ? (
-        <BannerAlert className="hidden sm:flex" html={banner.desktopHtml} />
+        <BannerAlert
+          className="hidden sm:flex"
+          html={banner.desktopHtml}
+          onDismiss={dismiss}
+        />
       ) : null}
     </section>
   );
