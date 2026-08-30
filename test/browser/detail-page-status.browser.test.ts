@@ -222,7 +222,10 @@ test("course teacher card hides a missing official homepage", async ({
   );
   await page.goto("/courses/8?teacher=9");
   const aside = page.locator("aside");
-  await expect(aside.getByText("测试教师", { exact: true })).toBeVisible();
+  const teacherName = aside.getByRole("link", { name: "测试教师" });
+  await expect(teacherName).toBeVisible();
+  await expect(teacherName).toHaveAttribute("href", "/teachers/9");
+  await expect(teacherName).not.toHaveAttribute("target", "_blank");
   await expect(aside.getByText("教师主页：")).toHaveCount(0);
   await expect(
     aside.getByRole("link", { name: /教师主页/ }),

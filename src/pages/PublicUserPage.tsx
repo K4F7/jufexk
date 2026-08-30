@@ -2,8 +2,9 @@
  * 公开作者页 /u/:code（#493）：公开编号、官方头像与已过审点评。
  * #000000 是学长学姐匿名评价；关注与统计与普通用户同一路径。
  */
-import { Button, Card, Spinner, Typography } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { PersonPlus } from "@gravity-ui/icons";
+import { Button, Card, Separator, Spinner, Typography } from "@heroui/react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import { DetailErrorAlert } from "../components/DetailFeedback";
@@ -16,6 +17,20 @@ import { formatReviewDate } from "../lib/review-date";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { LatestReview, PublicUserProfile } from "../lib/types";
 import { formatPublicCode, formatPublicHandle } from "../public-handle";
+import {
+  PROTOTYPE_ENABLED,
+  PROTOTYPE_MODULE_PARAM,
+  PROTOTYPE_VARIANT_PARAM,
+} from "../prototype/enabled";
+import { isPublicUserFollowVariantKey } from "../prototype/PublicUserFollowVariants";
+
+const PublicUserFollowPrototypeLazy = PROTOTYPE_ENABLED
+  ? lazy(() =>
+      import("../prototype/PublicUserFollowVariants").then((m) => ({
+        default: m.PublicUserFollowPrototype,
+      })),
+    )
+  : null;
 
 export function PublicUserPage() {
   const { code } = useParams();
@@ -128,6 +143,14 @@ export function PublicUserPage() {
   if (!profile) return null;
 
   const handle = profile.handle || formatPublicHandle(profile.public_code);
+  const prototypeModule = searchParams.get(PROTOTYPE_MODULE_PARAM);
+  const prototypeVariant = searchParams.get(PROTOTYPE_VARIANT_PARAM);
+  const followVariantKey = prototypeVariant?.toUpperCase() ?? "";
+  const showFollowPrototype =
+    PROTOTYPE_ENABLED &&
+    prototypeModule === "public-user-follow" &&
+    isPublicUserFollowVariantKey(followVariantKey) &&
+    PublicUserFollowPrototypeLazy != null;
 
   return (
     <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_16rem]">
@@ -156,45 +179,59 @@ export function PublicUserPage() {
         )}
       </div>
       <aside className="min-w-0">
-        <Card className="gap-6" aria-label="公开编号">
-          <Card.Header className="items-center text-center">
-            <AnonymousAvatar avatarKey={profile.avatar_key} size="lg" />
-            <Card.Title>{handle}</Card.Title>
-            {profile.reserved ? (
-              <Card.Description>来自以前的学长学姐的评价</Card.Description>
-            ) : null}
-          </Card.Header>
-          <Card.Content>
-            <dl className="m-0 grid gap-3 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">关注了</dt>
-                <dd className="m-0 tabular">{profile.following_count ?? 0} 人</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">被关注</dt>
-                <dd className="m-0 tabular">{profile.follower_count ?? 0} 人</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">点评了</dt>
-                <dd className="m-0 tabular">{profile.review_count ?? 0} 门课程</dd>
-              </div>
-            </dl>
-          </Card.Content>
-          {profile.viewer_is_self ? null : (
-            <Card.Footer className="flex flex-col items-center gap-2">
-              <Button
-                variant={profile.viewer_followed ? "secondary" : "primary"}
-                isPending={followPending}
-                onPress={() => void toggleFollow()}
-              >
-                {profile.viewer_followed ? "取消关注" : "关注"}
-              </Button>
-              {followError ? (
-                <DetailErrorAlert title="关注失败" message={followError} />
-              ) : null}
-            </Card.Footer>
-          )}
-        </Card>
+        {showFollowPrototype ? (
+          <Suspense
+            fallback={
+              <Card className="gap-6" aria-label="公开编号">
+                <Card.Header className="items-center text-center">
+                  <AnonymousAvatar avatarKey={profile.avatar_key} size="lg" />
+                  <Card.Title>{handle}</Card.Title>
+                </Card.Header>
+              </Card>
+            }
+          >
+            <PublicUserFollowPrototypeLazy variant={followVariantKey} />
+          </Suspense>
+        ) : (
+          <Card className="gap-3" aria-label="公开编号">
+            <Card.Header className="items-center gap-2 text-center">
+              <AnonymousAvatar avatarKey={profile.avatar_key} size="lg" />
+              <Card.Title>{handle}</Card.Title>
+              {profile.viewer_is_self ? null : (
+                <>
+                  <Button
+                    variant={profile.viewer_followed ? "secondary" : "ghost"}
+                    isPending={followPending}
+                    onPress={() => void toggleFollow()}
+                  >
+                    {profile.viewer_followed ? null : <PersonPlus aria-hidden />}
+                    {profile.viewer_followed ? "取消关注" : "关注"}
+                  </Button>
+                  {followError ? (
+                    <DetailErrorAlert title="关注失败" message={followError} />
+                  ) : null}
+                </>
+              )}
+            </Card.Header>
+            <Separator />
+            <Card.Content>
+              <dl className="m-0 grid gap-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">关注了</dt>
+                  <dd className="m-0 tabular">{profile.following_count ?? 0} 人</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">被关注</dt>
+                  <dd className="m-0 tabular">{profile.follower_count ?? 0} 人</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">点评了</dt>
+                  <dd className="m-0 tabular">{profile.review_count ?? 0} 门课程</dd>
+                </div>
+              </dl>
+            </Card.Content>
+          </Card>
+        )}
       </aside>
     </div>
   );
