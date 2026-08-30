@@ -31,6 +31,8 @@
     "cta-sync:webp": "tsx scripts/cta-sync/to-webp.ts",
     "cta-sync:apply-local": "python3 scripts/cta-sync/apply-local.py",
     "cta-sync:apply-remote": "tsx scripts/cta-sync/apply-remote.ts --remote --apply",
+    "teacher-dept-backfill": "tsx scripts/teacher-department-backfill/run.ts",
+    "teacher-dept-backfill:apply-remote": "tsx scripts/teacher-department-backfill/apply-remote.ts --remote --apply",
     "jwxt-collect": "tsx scripts/jwxt-collector/run.ts",
     "jwxt-cookie-capture": "tsx scripts/jwxt-cookie-capture.ts",
     "deploy": "pnpm run build && wrangler deploy",
