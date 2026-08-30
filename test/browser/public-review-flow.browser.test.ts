@@ -640,12 +640,17 @@ test("review controls reload the complete server-side sort and filters", async (
   await expect(page.getByText("1 条点评")).toBeVisible();
   expect(queries.at(-1)).toContain("rating=4");
 
-  await page.getByRole("button", { name: /评分/ }).click();
-  await page.getByRole("option", { name: "5 星" }).click();
+  const fiveStar = page.getByRole("option", { name: "5 星" });
+  if (await fiveStar.isVisible()) {
+    await fiveStar.click();
+  } else {
+    await page.getByRole("button", { name: /评分/ }).click();
+    await fiveStar.click();
+  }
   await expect(reviewItems(page)).toHaveCount(2);
   await expect(page.getByText("2 条点评")).toBeVisible();
   expect(queries.at(-1)).not.toContain("term=");
-  expect(queries.at(-1)).toMatch(/rating=(?:4,5|5,4)/);
+  expect(decodeURIComponent(queries.at(-1) ?? "")).toMatch(/rating=(?:4,5|5,4)/);
 });
 
 test("rich-text notes render sanitized markup, plain notes stay plain", async ({

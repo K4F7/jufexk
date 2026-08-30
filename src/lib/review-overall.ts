@@ -77,7 +77,7 @@ export function parseReviewRatingFilter(value: string): number[] | null {
 export function formatReviewRatingFilterLabel(stars: readonly number[]): string {
   if (!stars.length) return "全部";
   return [...stars]
-    .sort((a, b) => b - a)
+    .sort((a, b) => a - b)
     .map((star) => `${star} 星`)
     .join("、");
 }

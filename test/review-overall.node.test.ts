@@ -56,7 +56,7 @@ describe("overall star filter buckets", () => {
 
   it("formats the trigger label and treats 全部 as exclusive", () => {
     expect(formatReviewRatingFilterLabel([])).toBe("全部");
-    expect(formatReviewRatingFilterLabel([4, 5])).toBe("5 星、4 星");
+    expect(formatReviewRatingFilterLabel([4, 5])).toBe("4 星、5 星");
     expect(nextReviewRatingFilter([], ["all", "4"])).toEqual([4]);
     expect(nextReviewRatingFilter([4], ["4", "all"])).toEqual([]);
     expect(nextReviewRatingFilter([4], [])).toEqual([]);
