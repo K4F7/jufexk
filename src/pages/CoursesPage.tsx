@@ -19,40 +19,32 @@ import {
   Typography,
   type Key,
 } from "@heroui/react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogResultsStates,
   type CatalogResultsCopy,
 } from "../components/CatalogResultsStates";
-import {
-  CatalogSearchHeader,
-  type CatalogSearchSuggestion,
-} from "../components/CatalogSearchHeader";
 import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { emptyCatalogPage, readDevPreview } from "../lib/dev-preview";
-import { CATALOG_SUGGEST_PAGE_SIZE } from "../lib/catalog-search-suggest";
 import {
   GENERAL_EDUCATION_FILTER,
   isGeneralEducationFilter,
   isPublicCatalogCategory,
   PUBLIC_CATEGORY_OPTIONS,
 } from "../lib/public-categories";
-import { useCatalogSuggestions } from "../lib/use-catalog-suggestions";
-import {
-  isCatalogFuzzyQueryEligible,
-  rankCatalogFuzzyCandidates,
-} from "../lib/catalog-fuzzy-search";
-import type { CourseSearchCandidate } from "../lib/catalog-search-candidates";
 import { expandCourseRelations } from "../lib/course-relations";
 import type { Course, CourseRelation, Paginated } from "../lib/types";
+
+const GlobalSearchVariantAHeader = import.meta.env.DEV
+  ? lazy(() =>
+      import("./CoursesPageGlobalSearch").then((m) => ({
+        default: m.GlobalSearchVariantAHeader,
+      })),
+    )
+  : null;
 
 function asRelationRows(
   items: Array<CourseRelation | Course>,
@@ -301,10 +293,12 @@ export function CoursesPage() {
   );
 
   // DEV-only #303 variant A: 页内搜索头（含建议）替代生产标题行。
-  if (globalSearchVariant === "A") {
+  if (globalSearchVariant === "A" && GlobalSearchVariantAHeader) {
     return (
       <section>
-        <GlobalSearchVariantAHeader q={q} update={update} />
+        <Suspense fallback={null}>
+          <GlobalSearchVariantAHeader q={q} update={update} />
+        </Suspense>
         {browseBox}
         {results}
       </section>
@@ -335,65 +329,5 @@ export function CoursesPage() {
       {browseBox}
       {results}
     </section>
-  );
-}
-
-/** DEV-only #303 variant A 页内搜索头：建议选择即写入 ?q=。 */
-function GlobalSearchVariantAHeader({
-  q,
-  update,
-}: {
-  q: string;
-  update: (next: Record<string, string>, replace?: boolean) => void;
-}) {
-  const [queryDraft, setQueryDraft] = useState(q);
-  useEffect(() => setQueryDraft(q), [q]);
-  const loadCourseSuggestions = useCallback(
-    (query: string, signal: AbortSignal) => {
-      const suggest = new URLSearchParams({
-        q: query,
-        page: "1",
-        pageSize: String(CATALOG_SUGGEST_PAGE_SIZE),
-      });
-      return api<Paginated<Course>>(`/api/courses?${suggest}`, { signal }).then(async (result) => {
-        if (result.items.length > 0) {
-          return result.items.slice(0, CATALOG_SUGGEST_PAGE_SIZE).map(
-            (course): CatalogSearchSuggestion => ({
-              id: String(course.id), title: course.name, detail: course.code, kind: "strict",
-            }),
-          );
-        }
-        if (!isCatalogFuzzyQueryEligible(query)) return [];
-        const candidates = await api<{ items: CourseSearchCandidate[] }>(
-          `/api/search/candidates?kind=course&q=${encodeURIComponent(query)}&limit=200`,
-          { signal },
-        );
-        return rankCatalogFuzzyCandidates("course", query, candidates.items)
-          .slice(0, CATALOG_SUGGEST_PAGE_SIZE)
-          .map(({ item }): CatalogSearchSuggestion => ({
-            id: String(item.id), title: item.name, detail: item.code, kind: "fuzzy",
-          }));
-      });
-    },
-    [],
-  );
-  const courseSuggestions = useCatalogSuggestions(
-    queryDraft,
-    loadCourseSuggestions,
-  );
-  return (
-    <CatalogSearchHeader
-      title="课程列表"
-      value={queryDraft}
-      onChange={setQueryDraft}
-      placeholder="搜索课程、课号或教师"
-      searchLabel="搜索课程"
-      clearAriaLabel="清空课程搜索"
-      name="course-search"
-      suggestions={courseSuggestions.items}
-      suggestionsReady={courseSuggestions.ready}
-      suggestionsFailed={courseSuggestions.failed}
-      onSelectSuggestion={(next) => update({ q: next, page: "1" }, true)}
-    />
   );
 }
