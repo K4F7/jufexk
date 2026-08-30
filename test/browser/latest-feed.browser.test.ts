@@ -2,6 +2,7 @@
  * Browser coverage for /latest：全站最新公开课评流。
  */
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { REVIEW_FOLD_LABEL } from "../../src/lib/recognition";
 
 const LATEST = [
   {
@@ -163,6 +164,17 @@ test("latest author and date share a header row on desktop and mobile", async ({
   await expectStackedAuthorLayout(article);
   await expect(article.getByRole("link", { name: "查看全文" })).toBeVisible();
   await expect(page.getByRole("link", { name: "更多" })).toHaveCount(0);
+});
+
+test("latest feed does not show public-fold reviews or fold chrome", async ({
+  page,
+}) => {
+  await mockShellApi(page);
+  await page.goto("/latest");
+  await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
+  await expect(page.getByText(REVIEW_FOLD_LABEL)).toHaveCount(0);
+  await expect(page.getByText("折叠演示：不受欢迎")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "看看" })).toHaveCount(0);
 });
 
 test("latest empty state keeps the official Card composition", async ({ page }) => {

@@ -88,6 +88,14 @@ export function isReviewFolded(input: {
   return reviewFoldKind(input) !== "none";
 }
 
+/** SQLite：公开折叠阈值。表达式须为整数票数，与 `isReviewFolded` 同一规则。 */
+export function reviewPublicFoldSql(
+  endorsementExpr = "endorsement_count",
+  challengeExpr = "challenge_count",
+) {
+  return `(${challengeExpr}>=${REVIEW_FOLD_CHALLENGE_MIN} AND ${challengeExpr}>${endorsementExpr})`;
+}
+
 export const REVIEW_FOLD_LABEL = "该评价因不受欢迎被折叠";
 export const REVIEW_PUBLIC_FOLD_EXPAND_LABEL = "看看";
 export const REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL = "收起";

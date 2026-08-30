@@ -1,6 +1,6 @@
 /**
  * 最新课评 /latest：全站公开文字评价，按发表时间倒序。
- * 数据走 GET /api/reviews/latest（游标分页）。
+ * 数据走 GET /api/reviews/latest（游标分页）；公开折叠评价不下发。
  */
 import { Button, Card, Spinner, Typography } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
