@@ -149,26 +149,21 @@ export function ReviewFoldedBody({
 
   if (fold.kind === "none") return expanded;
 
+  const notice = fold.publicOpen ? (
+    <p className="mb-0 text-[calc(12/15*1rem)] text-muted">{REVIEW_FOLD_LABEL}</p>
+  ) : (
+    <Button size="sm" variant="ghost" onPress={fold.openPublic}>
+      <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
+      {REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
+    </Button>
+  );
+
   return (
     <>
       <header
         className={[HEADER_ROW_CLASS, chromeClassName].filter(Boolean).join(" ")}
       >
-        {fold.publicOpen ? (
-          <p className="mb-0 text-[calc(12/15*1rem)] text-muted">
-            {REVIEW_FOLD_LABEL}
-          </p>
-        ) : (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-expanded={false}
-            onPress={fold.openPublic}
-          >
-            <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
-            {REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
-          </Button>
-        )}
+        {notice}
       </header>
       {fold.publicOpen ? expanded : null}
     </>

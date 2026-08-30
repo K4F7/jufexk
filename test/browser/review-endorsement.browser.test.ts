@@ -388,9 +388,11 @@ test("public fold hides the entire card chrome", async ({ page }) => {
   });
   await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
   await expect(foldedAgain.getByRole("button", { name: "让我看看" })).toBeVisible();
+  await foldedAgain.getByRole("button", { name: "让我看看" }).click();
+  await expect(foldedAgain.getByText("质疑较多应收起的正文。")).toBeVisible();
 });
 
-test("crossing the public fold threshold keeps the open card without 收起", async ({
+test("crossing the public fold threshold keeps the open card", async ({
   page,
 }) => {
   await mockApi(page, guestStore());
