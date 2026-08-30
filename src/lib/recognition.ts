@@ -73,12 +73,4 @@ export function isReviewFolded(input: {
   );
 }
 
-export function reviewFoldLabel(input: {
-  endorsementCount: number;
-  challengeCount: number;
-}) {
-  return input.challengeCount >= REVIEW_FOLD_CHALLENGE_MIN &&
-    input.challengeCount > input.endorsementCount
-    ? "质疑较多，已收起"
-    : "已收起";
-}
+export const REVIEW_FOLD_LABEL = "该评价因不受欢迎被折叠";

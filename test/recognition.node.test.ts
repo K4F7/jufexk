@@ -1,17 +1,12 @@
 import { describe, expect, it } from "vitest";
-import {
-  isReviewFolded,
-  reviewFoldLabel,
-} from "../src/lib/recognition";
+import { isReviewFolded, REVIEW_FOLD_LABEL } from "../src/lib/recognition";
 
 describe("review fold threshold", () => {
   it("folds for everyone when challenge is at least 3 and ahead of endorsement", () => {
     expect(
       isReviewFolded({ endorsementCount: 2, challengeCount: 3 }),
     ).toBe(true);
-    expect(
-      reviewFoldLabel({ endorsementCount: 2, challengeCount: 3 }),
-    ).toBe("质疑较多，已收起");
+    expect(REVIEW_FOLD_LABEL).toBe("该评价因不受欢迎被折叠");
   });
 
   it("does not fold a tied or minority challenge below the public threshold", () => {
@@ -23,7 +18,7 @@ describe("review fold threshold", () => {
     ).toBe(false);
   });
 
-  it("folds immediately for the viewer who challenged, with the self-only label", () => {
+  it("folds immediately for the viewer who challenged", () => {
     expect(
       isReviewFolded({
         endorsementCount: 4,
@@ -32,7 +27,11 @@ describe("review fold threshold", () => {
       }),
     ).toBe(true);
     expect(
-      reviewFoldLabel({ endorsementCount: 4, challengeCount: 1 }),
-    ).toBe("已收起");
+      isReviewFolded({
+        endorsementCount: 4,
+        challengeCount: 1,
+        viewerChallenged: false,
+      }),
+    ).toBe(false);
   });
 });
