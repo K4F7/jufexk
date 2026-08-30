@@ -13,6 +13,7 @@ import {
   Radio,
   RadioGroup,
   Select,
+  Skeleton,
   Tag,
   TagGroup,
   TextArea,
@@ -38,8 +39,11 @@ import {
   REVIEW_NOTE_MAX_LENGTH,
   REVIEW_NOTE_MIN_LENGTH,
 } from "../lib/review-schemes";
+import {
+  keepCurrentSchemaScores,
+  questionsForSubmitForm,
+} from "../lib/submit-questionnaire";
 import type {
-  ApplicableQuestion,
   CourseOption,
   CourseReviewScheme,
   Paginated,
@@ -48,6 +52,9 @@ import type {
 } from "../lib/types";
 
 const SEARCH_DELAY = 320;
+
+/** Official Label required mark: `after:ms-0.5 after:content-['*']`. */
+const REQUIRED_MARK_RESERVE = "after:ms-0.5 after:content-['*']";
 
 function firstSelectedKey(keys: Iterable<Key>): string | undefined {
   const [key] = keys;
@@ -150,7 +157,14 @@ function OverallStarRating({
         onChange={onChange}
       >
         <div className="flex items-center gap-3">
-          <Label isRequired={required} className="m-0 leading-6">
+          <Label
+            isRequired={required}
+            className={
+              required
+                ? "m-0 leading-6"
+                : `m-0 leading-6 ${REQUIRED_MARK_RESERVE} after:invisible`
+            }
+          >
             推荐度
           </Label>
           <div
@@ -215,14 +229,25 @@ function headlineFromNote(text: string) {
   return text.trim().replace(/\s+/g, " ").slice(0, 80);
 }
 
-/** Keep scores for questions that still apply; drop the rest (issue #361). */
-function keepApplicable(
-  scores: Record<string, string>,
-  questions: readonly ApplicableQuestion[],
-) {
-  const applicable = new Set(questions.map((question) => question.id));
-  return Object.fromEntries(
-    Object.entries(scores).filter(([id]) => applicable.has(id)),
+function QuestionnaireSkeleton() {
+  return (
+    <div
+      className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2"
+      aria-busy="true"
+      aria-label="问卷加载中"
+      role="status"
+    >
+      {Array.from({ length: 4 }, (_, index) => (
+        <div key={index} className="space-y-3">
+          <Skeleton className="h-4 w-24 rounded" />
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-14 rounded-full" />
+            <Skeleton className="h-8 w-14 rounded-full" />
+            <Skeleton className="h-8 w-14 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -285,6 +310,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
   const [noteError, setNoteError] = useState("");
   const [msg, setMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [presetFailed, setPresetFailed] = useState(false);
   const restoredDraftKey = useRef("");
 
   /** 字数门槛按纯文本计算，与服务端 validateReviewNote 去标签后的口径一致。 */
@@ -304,10 +330,16 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
     [validateNote],
   );
 
-  const questions: ApplicableQuestion[] =
-    selectedCourse?.applicableQuestions ?? COMMON_CORE_QUESTIONS;
-  const teachers = selectedCourse?.teachers ?? [];
   const presetCourseId = Number(searchParams.get("courseId"));
+  const hasCoursePreset =
+    Number.isSafeInteger(presetCourseId) && presetCourseId >= 1;
+  const waitingForCourseScheme =
+    hasCoursePreset && !selectedCourse && !presetFailed;
+  const questions = questionsForSubmitForm(
+    selectedCourse,
+    waitingForCourseScheme,
+  );
+  const teachers = selectedCourse?.teachers ?? [];
   const presetTeacherId = searchParams.get("teacherId") ?? "";
   const courseLocked =
     Number.isSafeInteger(presetCourseId) &&
@@ -384,7 +416,9 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
     const draft = loadReviewDraft(selectedCourse.id, teacherId);
     restoredDraftKey.current = key;
     if (!draft) return;
-    setScores(draft.scores);
+    setScores(
+      keepCurrentSchemaScores(draft.scores, selectedCourse.applicableQuestions),
+    );
     setOverall(draft.overall);
     setNote(draft.note);
     setGrade(draft.grade);
@@ -401,8 +435,12 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
 
   useEffect(() => {
     const preset = Number(searchParams.get("courseId"));
-    if (!Number.isSafeInteger(preset) || preset < 1) return;
+    if (!Number.isSafeInteger(preset) || preset < 1) {
+      setPresetFailed(false);
+      return;
+    }
     let cancelled = false;
+    setPresetFailed(false);
     loadCourse(preset)
       .then((course) => {
         if (cancelled) return;
@@ -415,7 +453,9 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
         }
       })
       .catch((error) => {
-        if (!cancelled) setMsg((error as Error).message);
+        if (cancelled) return;
+        setMsg((error as Error).message);
+        setPresetFailed(true);
       });
     return () => {
       cancelled = true;
@@ -427,14 +467,16 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
     if (key == null) {
       setSelectedCourse(null);
       setTeacherId("");
-      setScores((current) => keepApplicable(current, COMMON_CORE_QUESTIONS));
+      setScores((current) =>
+        keepCurrentSchemaScores(current, COMMON_CORE_QUESTIONS),
+      );
       return;
     }
     try {
       const course = await loadCourse(Number(key));
       setTeacherId("");
       setScores((current) =>
-        keepApplicable(current, course.applicableQuestions),
+        keepCurrentSchemaScores(current, course.applicableQuestions),
       );
       setMsg("");
     } catch (error) {
@@ -541,7 +583,15 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
           role="region"
           aria-labelledby="submit-review-heading"
         >
-          {subjectKnown && selectedCourse && selectedTeacher ? (
+          {waitingForCourseScheme ? (
+            <Card.Header className="gap-1">
+              <span className="sr-only" id="submit-review-heading">
+                写评价
+              </span>
+              <Skeleton className="h-7 w-64 max-w-full rounded" />
+              <Skeleton className="h-4 w-28 rounded" />
+            </Card.Header>
+          ) : subjectKnown && selectedCourse && selectedTeacher ? (
             <ReviewSubjectHeader
               headingId="submit-review-heading"
               courseName={selectedCourse.name}
@@ -563,7 +613,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
           )}
 
           <Card.Content className="gap-8">
-            {teacherLocked ? null : (
+            {teacherLocked || waitingForCourseScheme ? null : (
               <>
                 {courseLocked && selectedCourse ? null : (
                   <ComboBox
@@ -659,27 +709,31 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
               </p>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-              {questions.map((question) => (
-                <ScaleRadios
-                  key={question.id}
-                  name={`score-${question.id}`}
-                  label={question.prompt}
-                  options={question.options.map((option) => ({
-                    value: String(option.value),
-                    label: option.label,
-                  }))}
-                  required={!reviewOnly}
-                  value={scores[question.id] || ""}
-                  onChange={(value) =>
-                    setScores((current) => ({
-                      ...current,
-                      [question.id]: value,
-                    }))
-                  }
-                />
-              ))}
-            </div>
+            {waitingForCourseScheme ? (
+              <QuestionnaireSkeleton />
+            ) : (
+              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+                {questions.map((question) => (
+                  <ScaleRadios
+                    key={question.id}
+                    name={`score-${question.id}`}
+                    label={question.prompt}
+                    options={question.options.map((option) => ({
+                      value: String(option.value),
+                      label: option.label,
+                    }))}
+                    required={!reviewOnly}
+                    value={scores[question.id] || ""}
+                    onChange={(value) =>
+                      setScores((current) => ({
+                        ...current,
+                        [question.id]: value,
+                      }))
+                    }
+                  />
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
               <OverallStarRating
                 required={!reviewOnly}
@@ -711,6 +765,11 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             >
               <Label>详细评价</Label>
               <TextArea className="w-full" rows={10} variant="secondary" />
+              <Description>
+                请畅所欲言, 从讲课方式到作业考试都谈谈.
+                <br />
+                测评内容理想上应当富有事实且描述全面. 比如一门课讲得好但考试很难, 二者都说出来更有利于同学们做出全面的选择和判断. 学弟学妹(和挣扎的学长学姐)感谢你们.
+              </Description>
               {noteError ? <FieldError>{noteError}</FieldError> : null}
             </TextField>
             <TextField
@@ -728,7 +787,9 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
                 placeholder="选填"
                 variant="secondary"
               />
-              <Description>选填。分享成绩，方便同学们综合判断。</Description>
+              <Description>
+                可选. 分享你的成绩有助于同学们进行更全面的判断.
+              </Description>
             </TextField>
 
             <Checkbox
