@@ -1,7 +1,8 @@
 # 公开面加载速度 — 2026-08-30 优化后复测
 
 对照基线 [`load-speed-2026-08-30.md`](./load-speed-2026-08-30.md)。
-生产站已部署 [#720](https://github.com/K4F7/jxufe-course-review/pull/720)
+第二轮（#734）复测见 [`load-speed-2026-08-30-after-round2.md`](./load-speed-2026-08-30-after-round2.md)。
+生产站当时已部署 [#720](https://github.com/K4F7/jxufe-course-review/pull/720)
 （`perf: optimize public catalog loading and caching`，跟 [#705](https://github.com/K4F7/jufexk/issues/705)）。
 
 未登录实测 **https://courses.sein.moe**。
