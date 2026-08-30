@@ -165,6 +165,12 @@ describe("ordinary-user blocking", () => {
         undefined,
         "当前账号无法认可评价",
       ],
+      [
+        "/api/reviews/1/challenge",
+        "PUT",
+        undefined,
+        "当前账号无法质疑评价",
+      ],
     ] as const) {
       const response = await SELF.fetch(`${origin}${path}`, {
         method,

@@ -7,6 +7,7 @@ import {
   ordinaryUserTestHeaders,
 } from "../src/ordinary-user-authentication";
 import { ORDINARY_USER_CSRF_COOKIE } from "../src/ordinary-user-write-authorization";
+import { VOTER_COOKIE } from "../src/review-vote-actor";
 import { adminAuth } from "./admin-session";
 
 const origin = "https://example.com";
@@ -17,12 +18,26 @@ type EndorsementState = {
   viewerEndorsed: boolean;
 };
 
+type ReviewStanceState = {
+  endorsementCount: number;
+  challengeCount: number;
+  viewerEndorsed: boolean;
+  viewerChallenged: boolean;
+};
+
+const emptyChallenge = {
+  challengeCount: 0,
+  viewerChallenged: false,
+} as const;
+
 type PublicReview = {
   id: string;
   comment: string;
   endorsement_count: number;
+  challenge_count: number;
   endorsable: boolean;
   viewer_endorsed?: boolean;
+  viewer_challenged?: boolean;
 };
 
 async function userHeaders(userId: string) {
@@ -53,13 +68,45 @@ async function viewerSession(userId: string) {
   };
 }
 
+function cookieHeader(response: Response) {
+  return (
+    response.headers as Headers & { getSetCookie(): string[] }
+  )
+    .getSetCookie()
+    .map((value) => value.split(";")[0])
+    .join("; ");
+}
+
+async function guestVoteSession() {
+  const response = await SELF.fetch(`${origin}/api/user/session`);
+  expect(response.status).toBe(200);
+  const body = await response.json<{ csrfToken?: string }>();
+  expect(body.csrfToken).toBeTruthy();
+  const cookie = cookieHeader(response);
+  expect(cookie).toMatch(new RegExp(`${VOTER_COOKIE}=`));
+  expect(cookie).toMatch(new RegExp(`${ORDINARY_USER_CSRF_COOKIE}=`));
+  return {
+    userId: "",
+    auth: {} as Awaited<ReturnType<typeof userHeaders>>,
+    authenticated: false,
+    csrf: body.csrfToken || "",
+    cookie,
+    loginPath: "/login",
+    logoutPath: "/logout",
+  };
+}
+
 function writeHeaders(
   session: Awaited<ReturnType<typeof viewerSession>>,
   idempotencyKey: string,
 ) {
   return {
-    [ORDINARY_USER_ID_HEADER]: session.auth[ORDINARY_USER_ID_HEADER],
-    [ORDINARY_USER_MAC_HEADER]: session.auth[ORDINARY_USER_MAC_HEADER],
+    ...(session.auth[ORDINARY_USER_ID_HEADER]
+      ? {
+          [ORDINARY_USER_ID_HEADER]: session.auth[ORDINARY_USER_ID_HEADER],
+          [ORDINARY_USER_MAC_HEADER]: session.auth[ORDINARY_USER_MAC_HEADER],
+        }
+      : {}),
     Cookie: session.cookie,
     Origin: origin,
     "X-CSRF-Token": session.csrf,
@@ -143,6 +190,28 @@ async function putEndorsement(
   });
 }
 
+async function putChallenge(
+  reviewId: number | string,
+  session: Awaited<ReturnType<typeof viewerSession>>,
+  key = crypto.randomUUID(),
+) {
+  return SELF.fetch(`${origin}/api/reviews/${reviewId}/challenge`, {
+    method: "PUT",
+    headers: writeHeaders(session, key),
+  });
+}
+
+async function deleteChallenge(
+  reviewId: number | string,
+  session: Awaited<ReturnType<typeof viewerSession>>,
+  key = crypto.randomUUID(),
+) {
+  return SELF.fetch(`${origin}/api/reviews/${reviewId}/challenge`, {
+    method: "DELETE",
+    headers: writeHeaders(session, key),
+  });
+}
+
 async function deleteEndorsement(
   reviewId: number | string,
   session: Awaited<ReturnType<typeof viewerSession>>,
@@ -155,7 +224,7 @@ async function deleteEndorsement(
 }
 
 describe("review endorsement API", () => {
-  it("rejects unauthenticated create and does not accept admin sessions", async () => {
+  it("lets guests vote with CSRF, rejects missing CSRF, and ignores admin CSRF", async () => {
     const reviewId = await insertReview({ comment: "可认可的补充说明" });
     const anonymous = await SELF.fetch(
       `${origin}/api/reviews/${reviewId}/endorsement`,
@@ -167,23 +236,71 @@ describe("review endorsement API", () => {
         },
       },
     );
-    expect(anonymous.status).toBe(401);
+    expect(anonymous.status).toBe(403);
+    await expect(anonymous.json()).resolves.toEqual({
+      error: "安全校验失败，请刷新后重试",
+    });
 
     const admin = await adminAuth();
-    const adminCookie = admin.cookie;
     const adminWrite = await SELF.fetch(
       `${origin}/api/reviews/${reviewId}/endorsement`,
       {
         method: "PUT",
         headers: {
-          Cookie: adminCookie,
+          Cookie: admin.cookie,
           Origin: origin,
           "X-CSRF-Token": admin.csrf,
           "Idempotency-Key": crypto.randomUUID(),
         },
       },
     );
-    expect(adminWrite.status).toBe(401);
+    expect(adminWrite.status).toBe(403);
+
+    const guest = await guestVoteSession();
+    const created = await putEndorsement(reviewId, guest);
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toEqual({
+      endorsementCount: 1,
+      viewerEndorsed: true,
+      ...emptyChallenge,
+    });
+
+    const stored = await env.DB.prepare(
+      "SELECT user_id FROM review_endorsements WHERE review_id=?",
+    )
+      .bind(reviewId)
+      .first<{ user_id: string }>();
+    expect(stored?.user_id).toMatch(/^guest:[0-9a-f]{32}$/);
+
+    const listed = await SELF.fetch(
+      `${origin}/api/courses/1/reviews?teacherId=1`,
+      { headers: { Cookie: guest.cookie } },
+    );
+    expect(listed.status).toBe(200);
+    const listedBody = await listed.json<{ items: PublicReview[] }>();
+    expect(
+      listedBody.items.find((review) => review.id === `review:${reviewId}`),
+    ).toMatchObject({
+      endorsement_count: 1,
+      viewer_endorsed: true,
+      viewer_challenged: false,
+    });
+
+    const comment = await SELF.fetch(
+      `${origin}/api/reviews/${reviewId}/comments`,
+      {
+        method: "POST",
+        headers: {
+          ...writeHeaders(guest, crypto.randomUUID()),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ body: "访客不能写评论" }),
+      },
+    );
+    expect(comment.status).toBe(401);
+    await expect(comment.json()).resolves.toMatchObject({
+      error: "请先登录后再回复",
+    });
   });
 
   it("rejects endorsement writes with 403 when the account is pending_deletion or deleted", async () => {
@@ -238,13 +355,15 @@ describe("review endorsement API", () => {
     await expect(first.json()).resolves.toEqual({
       endorsementCount: 1,
       viewerEndorsed: true,
-    } satisfies EndorsementState);
+      ...emptyChallenge,
+    } satisfies ReviewStanceState);
 
     const repeat = await putEndorsement(reviewId, session);
     expect(repeat.status).toBe(200);
     await expect(repeat.json()).resolves.toEqual({
       endorsementCount: 1,
       viewerEndorsed: true,
+      ...emptyChallenge,
     });
 
     const withdrawn = await deleteEndorsement(reviewId, session);
@@ -252,6 +371,7 @@ describe("review endorsement API", () => {
     await expect(withdrawn.json()).resolves.toEqual({
       endorsementCount: 0,
       viewerEndorsed: false,
+      ...emptyChallenge,
     });
 
     const repeatWithdraw = await deleteEndorsement(reviewId, session);
@@ -259,6 +379,7 @@ describe("review endorsement API", () => {
     await expect(repeatWithdraw.json()).resolves.toEqual({
       endorsementCount: 0,
       viewerEndorsed: false,
+      ...emptyChallenge,
     });
   });
 
@@ -293,7 +414,7 @@ describe("review endorsement API", () => {
     );
     expect(responses.every((response) => response.status === 200)).toBe(true);
     const bodies = await Promise.all(
-      responses.map((response) => response.json<EndorsementState>()),
+      responses.map((response) => response.json<ReviewStanceState>()),
     );
     expect(bodies.every((body) => body.endorsementCount === 1)).toBe(true);
     expect(bodies.every((body) => body.viewerEndorsed)).toBe(true);
@@ -333,17 +454,19 @@ describe("review endorsement API", () => {
       await expect(created.json()).resolves.toEqual({
         endorsementCount: 1,
         viewerEndorsed: true,
+        ...emptyChallenge,
       });
       const withdrawn = await deleteEndorsement(target, session);
       expect(withdrawn.status, target).toBe(200);
       await expect(withdrawn.json()).resolves.toEqual({
         endorsementCount: 0,
         viewerEndorsed: false,
+        ...emptyChallenge,
       });
     }
   });
 
-  it("exposes public counts without identity and viewer state only when authenticated", async () => {
+  it("exposes public counts without identity and viewer state only for a vote actor", async () => {
     const reviewId = await insertReview({ comment: "公开计数补充说明" });
     const historicalId = await insertHistorical("公开历史评价正文");
     const first = await viewerSession("user-endorse-public-a");
@@ -366,11 +489,14 @@ describe("review endorsement API", () => {
     );
     expect(anonymousReview).toMatchObject({
       endorsement_count: 2,
+      challenge_count: 0,
       endorsable: true,
     });
     expect(anonymousReview).not.toHaveProperty("viewer_endorsed");
+    expect(anonymousReview).not.toHaveProperty("viewer_challenged");
     expect(anonymousHistorical).toMatchObject({
       endorsement_count: 0,
+      challenge_count: 0,
       endorsable: true,
     });
     const publicJson = JSON.stringify(anonymousBody);
@@ -392,8 +518,10 @@ describe("review endorsement API", () => {
       authenticatedBody.items.find((review) => review.id === `review:${reviewId}`),
     ).toMatchObject({
       endorsement_count: 2,
+      challenge_count: 0,
       endorsable: true,
       viewer_endorsed: true,
+      viewer_challenged: false,
     });
     expect(
       authenticatedBody.items.find(
@@ -402,6 +530,7 @@ describe("review endorsement API", () => {
     ).toMatchObject({
       endorsable: true,
       viewer_endorsed: false,
+      viewer_challenged: false,
     });
   });
 
@@ -542,5 +671,123 @@ describe("review endorsement API", () => {
       },
     );
     expect(badCsrf.status).toBe(403);
+  });
+
+  it("creates, withdraws and switches challenge against recognition", async () => {
+    const reviewId = await insertReview({ comment: "可质疑的补充说明" });
+    const session = await viewerSession("user-challenge-switch");
+    const created = await putChallenge(reviewId, session);
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toEqual({
+      endorsementCount: 0,
+      challengeCount: 1,
+      viewerEndorsed: false,
+      viewerChallenged: true,
+    } satisfies ReviewStanceState);
+
+    const endorsed = await putEndorsement(reviewId, session);
+    expect(endorsed.status).toBe(200);
+    await expect(endorsed.json()).resolves.toEqual({
+      endorsementCount: 1,
+      challengeCount: 0,
+      viewerEndorsed: true,
+      viewerChallenged: false,
+    });
+
+    const challenged = await putChallenge(reviewId, session);
+    expect(challenged.status).toBe(200);
+    await expect(challenged.json()).resolves.toEqual({
+      endorsementCount: 0,
+      challengeCount: 1,
+      viewerEndorsed: false,
+      viewerChallenged: true,
+    });
+
+    const withdrawn = await deleteChallenge(reviewId, session);
+    expect(withdrawn.status).toBe(200);
+    await expect(withdrawn.json()).resolves.toEqual({
+      endorsementCount: 0,
+      challengeCount: 0,
+      viewerEndorsed: false,
+      viewerChallenged: false,
+    });
+  });
+
+  it("creates and withdraws challenges on historical and legacy text reviews", async () => {
+    const session = await viewerSession("user-challenge-historical");
+    const historicalId = await insertHistorical("历史评价可以质疑");
+    const legacyId = await insertLegacy("资料评价可以质疑");
+    for (const target of [`historical:${historicalId}`, `legacy:${legacyId}`]) {
+      const created = await putChallenge(target, session);
+      expect(created.status, target).toBe(200);
+      await expect(created.json()).resolves.toEqual({
+        endorsementCount: 0,
+        challengeCount: 1,
+        viewerEndorsed: false,
+        viewerChallenged: true,
+      });
+      const withdrawn = await deleteChallenge(target, session);
+      expect(withdrawn.status, target).toBe(200);
+      await expect(withdrawn.json()).resolves.toEqual({
+        endorsementCount: 0,
+        challengeCount: 0,
+        viewerEndorsed: false,
+        viewerChallenged: false,
+      });
+    }
+  });
+
+  it("lets guests challenge with CSRF and keeps a forged voter cookie from stealing the vote", async () => {
+    const reviewId = await insertReview({ comment: "访客可质疑" });
+    const missingCsrf = await SELF.fetch(
+      `${origin}/api/reviews/${reviewId}/challenge`,
+      {
+        method: "PUT",
+        headers: {
+          Origin: origin,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+      },
+    );
+    expect(missingCsrf.status).toBe(403);
+
+    const guest = await guestVoteSession();
+    const created = await putChallenge(reviewId, guest);
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toEqual({
+      endorsementCount: 0,
+      challengeCount: 1,
+      viewerEndorsed: false,
+      viewerChallenged: true,
+    });
+
+    const forged = await SELF.fetch(
+      `${origin}/api/reviews/${reviewId}/challenge`,
+      {
+        method: "PUT",
+        headers: {
+          Cookie: `${VOTER_COOKIE}=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.${"b".repeat(64)}; ${ORDINARY_USER_CSRF_COOKIE}=${guest.csrf}`,
+          Origin: origin,
+          "X-CSRF-Token": guest.csrf,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+      },
+    );
+    expect(forged.status).toBe(200);
+    await expect(forged.json()).resolves.toEqual({
+      endorsementCount: 0,
+      challengeCount: 2,
+      viewerEndorsed: false,
+      viewerChallenged: true,
+    });
+    const rows = await env.DB.prepare(
+      "SELECT user_id FROM review_challenges WHERE review_id=? ORDER BY user_id",
+    )
+      .bind(reviewId)
+      .all<{ user_id: string }>();
+    expect(rows.results.every((row) => /^guest:[0-9a-f]{32}$/.test(row.user_id))).toBe(
+      true,
+    );
+    expect(new Set(rows.results.map((row) => row.user_id)).size).toBe(2);
   });
 });

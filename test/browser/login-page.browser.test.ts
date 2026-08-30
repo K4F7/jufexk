@@ -10,6 +10,7 @@ const ENDORSABLE_REVIEW = {
   comment: "这是一条可认可的任课评价补充说明，内容足够长，用于验证认可入口。",
   endorsement_count: 0,
   endorsable: true,
+  comment_count: 0,
 };
 
 async function mockApi(page: Page) {
@@ -23,6 +24,7 @@ async function mockApi(page: Page) {
       return route.fulfill({
         json: {
           authenticated: false,
+          csrfToken: "csrf-guest",
           loginPath: "/login",
           logoutPath: "/logout",
         },
@@ -100,6 +102,20 @@ async function mockApi(page: Page) {
     if (url.pathname === "/api/courses/8/reviews")
       return route.fulfill({
         json: { items: [ENDORSABLE_REVIEW], nextCursor: null },
+      });
+    if (
+      url.pathname === "/api/reviews/review:101/comments" &&
+      route.request().method() === "GET"
+    )
+      return route.fulfill({ json: { items: [] } });
+    if (url.pathname === "/api/reviews/review:101/endorsement")
+      return route.fulfill({
+        json: {
+          endorsementCount: 1,
+          viewerEndorsed: true,
+          challengeCount: 0,
+          viewerChallenged: false,
+        },
       });
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
@@ -502,15 +518,15 @@ test("external or looping from values fall back to the catalog", async ({
   await expect(page).toHaveURL(/\/courses$/);
 });
 
-test("guest recognition prompt reaches login and returns to the source page", async ({
+test("guest comment login prompt reaches login and returns to the source page", async ({
   page,
 }) => {
   await page.goto("/courses/8?teacher=9");
-  await page
-    .getByRole("button", { name: "认可这条评价，还没有人认可" })
-    .click();
-
-  const loginLink = page.getByRole("link", { name: "使用普通用户登录" });
+  await page.getByRole("button", { name: "评论，还没有回复" }).click();
+  const loginLink = page
+    .locator("p")
+    .filter({ hasText: "说说你的看法" })
+    .getByRole("link", { name: "登录" });
   await expect(loginLink).toBeVisible();
   await loginLink.click();
   await expect(page).toHaveURL(/\/login\?from=%2Fcourses%2F8%3Fteacher%3D9$/);

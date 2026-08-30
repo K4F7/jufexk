@@ -38,3 +38,47 @@ export function recognitionButtonLabel(input: {
     ? `认可这条${noun}，当前 ${input.count} 人认可`
     : `认可这条${noun}，还没有人认可`;
 }
+
+export function challengeButtonLabel(input: {
+  pending: "create" | "withdraw" | null;
+  challenged: boolean;
+  count: number;
+}) {
+  if (input.pending === "create") {
+    return `正在建立质疑，当前 ${input.count} 人质疑`;
+  }
+  if (input.pending === "withdraw") {
+    return `正在撤回质疑，当前 ${input.count} 人质疑`;
+  }
+  if (input.challenged) {
+    return `已质疑，按下可撤回我的质疑，当前 ${input.count} 人质疑`;
+  }
+  return input.count > 0
+    ? `质疑这条评价，当前 ${input.count} 人质疑`
+    : `质疑这条评价，还没有人质疑`;
+}
+
+/** 质疑至少 3 票且多于认可时，对所有人收起正文。 */
+export const REVIEW_FOLD_CHALLENGE_MIN = 3;
+
+export function isReviewFolded(input: {
+  endorsementCount: number;
+  challengeCount: number;
+  viewerChallenged?: boolean;
+}) {
+  if (input.viewerChallenged) return true;
+  return (
+    input.challengeCount >= REVIEW_FOLD_CHALLENGE_MIN &&
+    input.challengeCount > input.endorsementCount
+  );
+}
+
+export function reviewFoldLabel(input: {
+  endorsementCount: number;
+  challengeCount: number;
+}) {
+  return input.challengeCount >= REVIEW_FOLD_CHALLENGE_MIN &&
+    input.challengeCount > input.endorsementCount
+    ? "质疑较多，已收起"
+    : "已收起";
+}

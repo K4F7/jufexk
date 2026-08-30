@@ -21,12 +21,23 @@ describe("ordinary user session boundary", () => {
     const session = await SELF.fetch(`${origin}/api/user/session`);
     expect(session.status).toBe(200);
     const body = await session.json();
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       authenticated: false,
       loginPath: "/login",
       logoutPath: "/logout",
     });
+    expect(body).toEqual(
+      expect.objectContaining({ csrfToken: expect.any(String) }),
+    );
+    expect(JSON.stringify(body)).not.toMatch(/guest:|jufexk_voter/);
     assertNoIdentityLeak(body);
+    const cookies = (
+      session.headers as Headers & { getSetCookie(): string[] }
+    ).getSetCookie();
+    expect(cookies.some((value) => value.startsWith("jufexk_voter="))).toBe(true);
+    expect(cookies.some((value) => value.startsWith("jufexk_user_csrf="))).toBe(
+      true,
+    );
   });
 
   it("does not treat banned accounts or admin cookies as writable ordinary users", async () => {

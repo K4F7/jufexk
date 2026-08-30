@@ -9,11 +9,13 @@ import {
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { formatReviewDate } from "../lib/review-date";
 import { isEndorsableReview } from "../lib/recognition";
-import type { PublicReview } from "../lib/types";
+import type { PublicReview, ReviewComment } from "../lib/types";
 import { parseHandlePublicCode } from "../public-handle";
 import { FourDimLine } from "./FourDimLine";
 import { StarsWithCaption } from "./Stars";
 import { ReviewActionBar } from "./ReviewActionBar";
+import { ReviewFoldedBody } from "./ReviewFoldedBody";
+import { useReviewRecognition } from "./ReviewRecognitionControl";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewAuthor } from "./ReviewAuthor";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -66,86 +68,21 @@ export function PublicReviews({
         <div>
           <div role="list" aria-label="评价列表" aria-busy={isLoadingMore}>
             {rows.map((review, index) => (
-              <div key={review.id} role="listitem">
-                {index > 0 ? <Separator /> : null}
-                <article className="py-4 [content-visibility:auto] [contain-intrinsic-size:auto_6rem]">
-                  {counterpart === "course" ? (
-                    <p className="m-0 min-w-0 text-sm font-semibold">
-                      <RouterAriaLink
-                        className="break-words"
-                        to={`/courses/${review.course_id}`}
-                      >
-                        {review.course_name || "课程未标注"}
-                        {review.course_code ? `（${review.course_code}）` : null}
-                      </RouterAriaLink>
-                    </p>
-                  ) : null}
-                  <div
-                    className={`flex items-start gap-2 ${
-                      counterpart === "course" ? "mt-1.5" : ""
-                    }`}
-                  >
-                    <span
-                      aria-hidden
-                      className="shrink-0 select-none font-serif text-4xl leading-[0.6] text-accent/35"
-                    >
-                      “
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="mb-1 flex flex-wrap items-center gap-x-2 leading-none text-[calc(12/15*1rem)] text-muted">
-                        <ReviewAuthor
-                          publicCode={review.author_public_code}
-                          avatarKey={review.author_avatar_key}
-                        />
-                        {review.overall != null ? (
-                          <StarsWithCaption
-                            rating={review.overall}
-                            className="text-[calc(13/15*1rem)]"
-                          />
-                        ) : null}
-                      </p>
-                      <ReviewNoteContent
-                        comment={review.comment}
-                        commentFormat={review.comment_format}
-                      />
-                      {review.grade ? (
-                        <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
-                          成绩：{review.grade}
-                        </p>
-                      ) : null}
-                      {review.dimensionLabels?.length ? (
-                        <FourDimLine
-                          className="mt-2"
-                          labels={fourDimLineLabels(review.dimensionLabels)}
-                        />
-                      ) : null}
-                      {typeof review.dimensionAverage === "number" ? (
-                        <div className="mt-2">
-                          <Chip size="sm" variant="soft">
-                            <Chip.Label>
-                              维度均分 {review.dimensionAverage.toFixed(1)}
-                            </Chip.Label>
-                          </Chip>
-                        </div>
-                      ) : null}
-                      <ReviewActionBar
-                        review={review}
-                        date={formatReviewDate(review.created_at)}
-                        ready={ready}
-                        authenticated={viewer.authenticated}
-                        loginPath={viewer.loginPath}
-                        onUnauthenticated={clear}
-                        endorsable={isEndorsableReview(review)}
-                        seedComments={
-                          previewReviewComments(preview, atlas, review.id) ?? []
-                        }
-                        viewerPublicCode={viewerPublicCode}
-                        previewComposer={previewComposer}
-                      />
-                    </div>
-                  </div>
-                </article>
-              </div>
+              <PublicReviewItem
+                key={review.id}
+                review={review}
+                index={index}
+                counterpart={counterpart}
+                ready={ready}
+                authenticated={viewer.authenticated}
+                loginPath={viewer.loginPath}
+                onUnauthenticated={clear}
+                seedComments={
+                  previewReviewComments(preview, atlas, review.id) ?? []
+                }
+                viewerPublicCode={viewerPublicCode}
+                previewComposer={previewComposer}
+              />
             ))}
           </div>
           {hasMore ? (
@@ -181,5 +118,124 @@ export function PublicReviews({
         </Card>
       )}
     </section>
+  );
+}
+
+function PublicReviewItem({
+  review,
+  index,
+  counterpart,
+  ready,
+  authenticated,
+  loginPath,
+  onUnauthenticated,
+  seedComments,
+  viewerPublicCode,
+  previewComposer,
+}: {
+  review: PublicReview;
+  index: number;
+  counterpart?: "course";
+  ready: boolean;
+  authenticated: boolean;
+  loginPath: string;
+  onUnauthenticated: () => void;
+  seedComments: ReviewComment[];
+  viewerPublicCode: number | null;
+  previewComposer: boolean;
+}) {
+  const recognition = useReviewRecognition({
+    review,
+    ready,
+    authenticated,
+    loginPath,
+    onUnauthenticated,
+  });
+  return (
+    <div role="listitem">
+      {index > 0 ? <Separator /> : null}
+      <article className="py-4 [content-visibility:auto] [contain-intrinsic-size:auto_6rem]">
+        {counterpart === "course" ? (
+          <p className="m-0 min-w-0 text-sm font-semibold">
+            <RouterAriaLink
+              className="break-words"
+              to={`/courses/${review.course_id}`}
+            >
+              {review.course_name || "课程未标注"}
+              {review.course_code ? `（${review.course_code}）` : null}
+            </RouterAriaLink>
+          </p>
+        ) : null}
+        <div
+          className={`flex items-start gap-2 ${
+            counterpart === "course" ? "mt-1.5" : ""
+          }`}
+        >
+          <span
+            aria-hidden
+            className="shrink-0 select-none font-serif text-4xl leading-[0.6] text-accent/35"
+          >
+            “
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 flex flex-wrap items-center gap-x-2 leading-none text-[calc(12/15*1rem)] text-muted">
+              <ReviewAuthor
+                publicCode={review.author_public_code}
+                avatarKey={review.author_avatar_key}
+              />
+              {review.overall != null ? (
+                <StarsWithCaption
+                  rating={review.overall}
+                  className="text-[calc(13/15*1rem)]"
+                />
+              ) : null}
+            </p>
+            <ReviewFoldedBody
+              endorsementCount={recognition.state.count}
+              challengeCount={recognition.challenge.count}
+              viewerChallenged={recognition.challenge.challenged}
+            >
+              <ReviewNoteContent
+                comment={review.comment}
+                commentFormat={review.comment_format}
+              />
+              {review.grade ? (
+                <p className="mb-0 mt-1.5 text-[calc(13/15*1rem)] text-muted">
+                  成绩：{review.grade}
+                </p>
+              ) : null}
+              {review.dimensionLabels?.length ? (
+                <FourDimLine
+                  className="mt-2"
+                  labels={fourDimLineLabels(review.dimensionLabels)}
+                />
+              ) : null}
+              {typeof review.dimensionAverage === "number" ? (
+                <div className="mt-2">
+                  <Chip size="sm" variant="soft">
+                    <Chip.Label>
+                      维度均分 {review.dimensionAverage.toFixed(1)}
+                    </Chip.Label>
+                  </Chip>
+                </div>
+              ) : null}
+            </ReviewFoldedBody>
+            <ReviewActionBar
+              review={review}
+              date={formatReviewDate(review.created_at)}
+              recognition={recognition}
+              ready={ready}
+              authenticated={authenticated}
+              loginPath={loginPath}
+              onUnauthenticated={onUnauthenticated}
+              endorsable={isEndorsableReview(review)}
+              seedComments={seedComments}
+              viewerPublicCode={viewerPublicCode}
+              previewComposer={previewComposer}
+            />
+          </div>
+        </div>
+      </article>
+    </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   defaultAvatarKey,
   formatPublicHandle,
 } from "./public-handle";
+import { issueGuestVoterCookie, readVoteActorId } from "./review-vote-actor";
 
 export { ORDINARY_USER_SESSION_TTL_SECONDS };
 export const EHALL_SESSION_COOKIE = "jufexk_ehall_session";
@@ -40,8 +41,9 @@ export type OrdinaryUserSession = {
 
 const ACCOUNT_DELETION_RECOVERY_DAYS = 30;
 
-const guestSession = (): OrdinaryUserSession => ({
+const guestSession = (c: Context): OrdinaryUserSession => ({
   authenticated: false,
+  csrfToken: issueOrdinaryUserCsrf(c, randomToken()),
   loginPath: LOGIN_PATH,
   logoutPath: LOGOUT_PATH,
 });
@@ -101,7 +103,7 @@ export function sessionPayloadForUser(
   if (user?.status === "pending_deletion") {
     return pendingDeletionSession(c, user.pending_deletion_at);
   }
-  if (!user || !isOrdinaryUserAuthenticated(user)) return guestSession();
+  if (!user || !isOrdinaryUserAuthenticated(user)) return guestSession(c);
   const publicCode = user.public_code;
   const publicIdentity =
     publicCode != null && publicCode >= FIRST_USER_PUBLIC_CODE
@@ -126,7 +128,11 @@ export async function ordinaryUserSessionPayload(
 }
 
 export async function handleOrdinaryUserSession(c: Context) {
-  return c.json(await ordinaryUserSessionPayload(c));
+  const payload = await ordinaryUserSessionPayload(c);
+  if (!payload.authenticated && !(await readVoteActorId(c))) {
+    await issueGuestVoterCookie(c);
+  }
+  return c.json(payload);
 }
 
 export async function handleOrdinaryUserLogout(c: Context) {
@@ -135,5 +141,5 @@ export async function handleOrdinaryUserLogout(c: Context) {
     return c.json({ error: "安全校验失败，请刷新后重试" }, 403);
   }
   clearOrdinaryUserCookies(c);
-  return c.json({ ok: true, ...guestSession() });
+  return c.json({ ok: true, ...guestSession(c) });
 }

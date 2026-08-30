@@ -44,6 +44,8 @@ describe("public list refresh coordination", () => {
     ["POST", "/api/admin/sessions/revoke-others"],
     ["PUT", "/api/reviews/42/endorsement"],
     ["DELETE", "/api/reviews/42/endorsement"],
+    ["PUT", "/api/reviews/42/challenge"],
+    ["DELETE", "/api/reviews/42/challenge"],
     ["POST", "/api/catalog-requests"],
     ["POST", "/api/admin/catalog-relation-additions/preview"],
     ["POST", "/api/reviews"],

@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app-env";
 import { requireOrdinaryWriteUser } from "../ordinary-user-write-authorization";
 import {
+  handleCreateChallenge,
   handleCreateCommentEndorsement,
   handleCreateEndorsement,
+  handleWithdrawChallenge,
   handleWithdrawCommentEndorsement,
   handleWithdrawEndorsement,
 } from "../review-endorsements";
@@ -71,6 +73,11 @@ ordinaryUserRoutes.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/endorsement",
   handleWithdrawEndorsement,
+);
+ordinaryUserRoutes.put("/api/reviews/:id/challenge", handleCreateChallenge);
+ordinaryUserRoutes.delete(
+  "/api/reviews/:id/challenge",
+  handleWithdrawChallenge,
 );
 ordinaryUserRoutes.post("/api/reviews/:id/comments", handleCreateReviewComment);
 ordinaryUserRoutes.delete(

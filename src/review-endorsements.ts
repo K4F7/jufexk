@@ -5,7 +5,8 @@ import {
   parsePublicReviewTarget,
   type PublicReviewTarget,
 } from "./lib/public-review-id";
-import { requireOrdinaryWriteUser } from "./ordinary-user-write-authorization";
+import { requireVoteActor } from "./review-vote-actor";
+import { takeRateLimit } from "./routes/support";
 
 export { isEndorsablePublicId, parseCurrentReviewId };
 
@@ -26,6 +27,8 @@ const digest = async (value: string) =>
 
 export const CREATE_OPERATION = "endorsement.create";
 export const WITHDRAW_OPERATION = "endorsement.withdraw";
+export const CHALLENGE_CREATE_OPERATION = "challenge.create";
+export const CHALLENGE_WITHDRAW_OPERATION = "challenge.withdraw";
 
 async function loadEligibleTarget(db: D1Database, target: PublicReviewTarget) {
   if (target.kind === "review") {
@@ -204,6 +207,147 @@ function endorsementState(count: number, endorsed: boolean) {
   return { endorsementCount: count, viewerEndorsed: endorsed };
 }
 
+function reviewStanceState(
+  endorsementCount: number,
+  challengeCount: number,
+  endorsed: boolean,
+  challenged: boolean,
+) {
+  return {
+    endorsementCount,
+    challengeCount,
+    viewerEndorsed: endorsed,
+    viewerChallenged: challenged,
+  };
+}
+
+async function challengeCount(db: D1Database, target: PublicReviewTarget) {
+  const row =
+    target.kind === "review"
+      ? await db
+          .prepare(
+            "SELECT COUNT(*) count FROM review_challenges WHERE review_id=?",
+          )
+          .bind(target.id)
+          .first<{ count: number }>()
+      : target.kind === "historical"
+        ? await db
+            .prepare(
+              "SELECT COUNT(*) count FROM historical_review_challenges WHERE historical_review_id=?",
+            )
+            .bind(target.id)
+            .first<{ count: number }>()
+        : await db
+            .prepare(
+              "SELECT COUNT(*) count FROM legacy_review_challenges WHERE legacy_review_id=?",
+            )
+            .bind(target.id)
+            .first<{ count: number }>();
+  return row?.count || 0;
+}
+
+async function viewerChallenged(
+  db: D1Database,
+  userId: string,
+  target: PublicReviewTarget,
+) {
+  const row =
+    target.kind === "review"
+      ? await db
+          .prepare(
+            "SELECT 1 ok FROM review_challenges WHERE user_id=? AND review_id=?",
+          )
+          .bind(userId, target.id)
+          .first()
+      : target.kind === "historical"
+        ? await db
+            .prepare(
+              "SELECT 1 ok FROM historical_review_challenges WHERE user_id=? AND historical_review_id=?",
+            )
+            .bind(userId, target.id)
+            .first()
+        : await db
+            .prepare(
+              "SELECT 1 ok FROM legacy_review_challenges WHERE user_id=? AND legacy_review_id=?",
+            )
+            .bind(userId, target.id)
+            .first();
+  return !!row;
+}
+
+async function insertChallenge(
+  db: D1Database,
+  userId: string,
+  target: PublicReviewTarget,
+) {
+  if (target.kind === "review") {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO review_challenges(user_id,review_id) VALUES(?,?)",
+      )
+      .bind(userId, target.id)
+      .run();
+    return;
+  }
+  if (target.kind === "historical") {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO historical_review_challenges(user_id,historical_review_id) VALUES(?,?)",
+      )
+      .bind(userId, target.id)
+      .run();
+    return;
+  }
+  await db
+    .prepare(
+      "INSERT OR IGNORE INTO legacy_review_challenges(user_id,legacy_review_id) VALUES(?,?)",
+    )
+    .bind(userId, target.id)
+    .run();
+}
+
+async function deleteChallenge(
+  db: D1Database,
+  userId: string,
+  target: PublicReviewTarget,
+) {
+  if (target.kind === "review") {
+    await db
+      .prepare("DELETE FROM review_challenges WHERE user_id=? AND review_id=?")
+      .bind(userId, target.id)
+      .run();
+    return;
+  }
+  if (target.kind === "historical") {
+    await db
+      .prepare(
+        "DELETE FROM historical_review_challenges WHERE user_id=? AND historical_review_id=?",
+      )
+      .bind(userId, target.id)
+      .run();
+    return;
+  }
+  await db
+    .prepare(
+      "DELETE FROM legacy_review_challenges WHERE user_id=? AND legacy_review_id=?",
+    )
+    .bind(userId, target.id)
+    .run();
+}
+
+async function loadReviewStance(
+  db: D1Database,
+  userId: string,
+  target: PublicReviewTarget,
+) {
+  return reviewStanceState(
+    await endorsementCount(db, target),
+    await challengeCount(db, target),
+    await viewerEndorsed(db, userId, target),
+    await viewerChallenged(db, userId, target),
+  );
+}
+
 export async function readIdempotency(
   db: D1Database,
   userId: string,
@@ -245,8 +389,20 @@ export function parseIdempotencyKey(raw: string | undefined) {
   return key.length >= 8 && key.length <= 128 ? key : null;
 }
 
-async function requireWriteUser(c: Context) {
-  return requireOrdinaryWriteUser(c, "请先登录后再认可", "当前账号无法认可评价");
+async function requireVoteWrite(
+  c: Context,
+  action: "认可" | "质疑" = "认可",
+) {
+  const actor = await requireVoteActor(c, `当前账号无法${action}评价`);
+  if ("error" in actor) return actor;
+  const limited = await takeRateLimit(
+    c.env.DB,
+    `review-stance:${actor.id}`,
+    600,
+    40,
+  );
+  if (!limited) return { error: c.json({ error: "操作过于频繁，请稍后再试" }, 429) };
+  return actor;
 }
 
 async function commentCountsByPublicId(db: D1Database, publicIds: string[]) {
@@ -322,14 +478,71 @@ async function loadViewerEndorsedIds(
   return endorsed;
 }
 
+async function loadViewerChallengedIds(
+  db: D1Database,
+  userId: string,
+  items: Array<Record<string, unknown>>,
+) {
+  const challenged = new Set<string>();
+  const reviewIds: number[] = [];
+  const historicalIds: string[] = [];
+  const legacyIds: number[] = [];
+  for (const item of items) {
+    const target = parsePublicReviewTarget(String(item.id ?? ""));
+    if (!target) continue;
+    if (target.kind === "review") reviewIds.push(target.id);
+    else if (target.kind === "historical") historicalIds.push(target.id);
+    else legacyIds.push(target.id);
+  }
+  if (reviewIds.length) {
+    const placeholders = reviewIds.map(() => "?").join(",");
+    const { results } = await db
+      .prepare(
+        `SELECT review_id FROM review_challenges
+         WHERE user_id=? AND review_id IN (${placeholders})`,
+      )
+      .bind(userId, ...reviewIds)
+      .all<{ review_id: number }>();
+    for (const row of results) challenged.add(`review:${row.review_id}`);
+  }
+  if (historicalIds.length) {
+    const placeholders = historicalIds.map(() => "?").join(",");
+    const { results } = await db
+      .prepare(
+        `SELECT historical_review_id FROM historical_review_challenges
+         WHERE user_id=? AND historical_review_id IN (${placeholders})`,
+      )
+      .bind(userId, ...historicalIds)
+      .all<{ historical_review_id: string }>();
+    for (const row of results)
+      challenged.add(`historical:${row.historical_review_id}`);
+  }
+  if (legacyIds.length) {
+    const placeholders = legacyIds.map(() => "?").join(",");
+    const { results } = await db
+      .prepare(
+        `SELECT legacy_review_id FROM legacy_review_challenges
+         WHERE user_id=? AND legacy_review_id IN (${placeholders})`,
+      )
+      .bind(userId, ...legacyIds)
+      .all<{ legacy_review_id: number }>();
+    for (const row of results)
+      challenged.add(`legacy:${row.legacy_review_id}`);
+  }
+  return challenged;
+}
+
 export async function decoratePublicReviews(
   db: D1Database,
   items: Array<Record<string, unknown>>,
   viewerUserId: string | null,
 ) {
-  const endorsed = viewerUserId
-    ? await loadViewerEndorsedIds(db, viewerUserId, items)
-    : new Set<string>();
+  const [endorsed, challenged] = viewerUserId
+    ? await Promise.all([
+        loadViewerEndorsedIds(db, viewerUserId, items),
+        loadViewerChallengedIds(db, viewerUserId, items),
+      ])
+    : [new Set<string>(), new Set<string>()];
   const publicIds = items
     .map((item) => parsePublicReviewTarget(String(item.id ?? ""))?.publicId)
     .filter((id): id is string => !!id);
@@ -340,11 +553,15 @@ export async function decoratePublicReviews(
     const decorated: Record<string, unknown> = {
       ...item,
       endorsement_count: Number(item.endorsement_count) || 0,
+      challenge_count: Number(item.challenge_count) || 0,
       endorsable,
     };
     if (target) decorated.comment_count = comments.get(target.publicId) ?? 0;
     if (viewerUserId) {
       decorated.viewer_endorsed = !!(target && endorsed.has(target.publicId));
+      decorated.viewer_challenged = !!(
+        target && challenged.has(target.publicId)
+      );
     }
     return decorated;
   });
@@ -354,7 +571,7 @@ async function mutateEndorsement(
   c: Context,
   operation: typeof CREATE_OPERATION | typeof WITHDRAW_OPERATION,
 ) {
-  const auth = await requireWriteUser(c);
+  const auth = await requireVoteWrite(c);
   if ("error" in auth) return auth.error;
   const target = parsePublicReviewTarget(c.req.param("id"));
   if (!target) return fail(c, "评价不存在或不可认可", 404);
@@ -365,7 +582,7 @@ async function mutateEndorsement(
   );
   const replay = await readIdempotency(
     c.env.DB,
-    auth.user.id,
+    auth.id,
     operation,
     idempotencyKey,
   );
@@ -377,19 +594,66 @@ async function mutateEndorsement(
   if (operation === CREATE_OPERATION) {
     const eligible = await loadEligibleTarget(c.env.DB, target);
     if (!eligible) return fail(c, "评价不存在或不可认可", 404);
-    await insertEndorsement(c.env.DB, auth.user.id, target);
+    await insertEndorsement(c.env.DB, auth.id, target);
   } else {
     const exists = await targetExists(c.env.DB, target);
     if (!exists) return fail(c, "评价不存在或不可认可", 404);
-    await deleteEndorsement(c.env.DB, auth.user.id, target);
+    await deleteEndorsement(c.env.DB, auth.id, target);
   }
-  const body = endorsementState(
-    await endorsementCount(c.env.DB, target),
-    await viewerEndorsed(c.env.DB, auth.user.id, target),
-  );
+  const body = await loadReviewStance(c.env.DB, auth.id, target);
   const stored = await saveIdempotency(
     c.env.DB,
-    auth.user.id,
+    auth.id,
+    operation,
+    idempotencyKey,
+    requestDigest,
+    200,
+    body,
+  );
+  if (stored && stored.request_digest !== requestDigest)
+    return fail(c, "幂等键与请求不匹配", 409);
+  return c.json(stored ? JSON.parse(stored.response_json) : body);
+}
+
+async function mutateChallenge(
+  c: Context,
+  operation:
+    | typeof CHALLENGE_CREATE_OPERATION
+    | typeof CHALLENGE_WITHDRAW_OPERATION,
+) {
+  const auth = await requireVoteWrite(c, "质疑");
+  if ("error" in auth) return auth.error;
+  const target = parsePublicReviewTarget(c.req.param("id"));
+  if (!target) return fail(c, "评价不存在或不可质疑", 404);
+  const idempotencyKey = parseIdempotencyKey(c.req.header("Idempotency-Key"));
+  if (!idempotencyKey) return fail(c, "缺少有效的幂等键", 400);
+  const requestDigest = await digest(
+    JSON.stringify({ operation, publicId: target.publicId }),
+  );
+  const replay = await readIdempotency(
+    c.env.DB,
+    auth.id,
+    operation,
+    idempotencyKey,
+  );
+  if (replay) {
+    if (replay.request_digest !== requestDigest)
+      return fail(c, "幂等键与请求不匹配", 409);
+    return c.json(JSON.parse(replay.response_json));
+  }
+  if (operation === CHALLENGE_CREATE_OPERATION) {
+    const eligible = await loadEligibleTarget(c.env.DB, target);
+    if (!eligible) return fail(c, "评价不存在或不可质疑", 404);
+    await insertChallenge(c.env.DB, auth.id, target);
+  } else {
+    const exists = await targetExists(c.env.DB, target);
+    if (!exists) return fail(c, "评价不存在或不可质疑", 404);
+    await deleteChallenge(c.env.DB, auth.id, target);
+  }
+  const body = await loadReviewStance(c.env.DB, auth.id, target);
+  const stored = await saveIdempotency(
+    c.env.DB,
+    auth.id,
     operation,
     idempotencyKey,
     requestDigest,
@@ -406,6 +670,12 @@ export const handleCreateEndorsement = (c: Context) =>
 
 export const handleWithdrawEndorsement = (c: Context) =>
   mutateEndorsement(c, WITHDRAW_OPERATION);
+
+export const handleCreateChallenge = (c: Context) =>
+  mutateChallenge(c, CHALLENGE_CREATE_OPERATION);
+
+export const handleWithdrawChallenge = (c: Context) =>
+  mutateChallenge(c, CHALLENGE_WITHDRAW_OPERATION);
 
 export const COMMENT_CREATE_ENDORSEMENT = "comment-endorsement.create";
 export const COMMENT_WITHDRAW_ENDORSEMENT = "comment-endorsement.withdraw";
@@ -460,7 +730,7 @@ async function mutateCommentEndorsement(
     | typeof COMMENT_CREATE_ENDORSEMENT
     | typeof COMMENT_WITHDRAW_ENDORSEMENT,
 ) {
-  const auth = await requireWriteUser(c);
+  const auth = await requireVoteWrite(c);
   if ("error" in auth) return auth.error;
   const target = parsePublicReviewTarget(c.req.param("id"));
   const commentId = parsePositiveInt(c.req.param("commentId"));
@@ -476,7 +746,7 @@ async function mutateCommentEndorsement(
   );
   const replay = await readIdempotency(
     c.env.DB,
-    auth.user.id,
+    auth.id,
     operation,
     idempotencyKey,
   );
@@ -495,7 +765,7 @@ async function mutateCommentEndorsement(
     await c.env.DB.prepare(
       "INSERT OR IGNORE INTO review_comment_endorsements(user_id,comment_id) VALUES(?,?)",
     )
-      .bind(auth.user.id, commentId)
+      .bind(auth.id, commentId)
       .run();
   } else {
     const exists = await c.env.DB.prepare(
@@ -507,16 +777,16 @@ async function mutateCommentEndorsement(
     await c.env.DB.prepare(
       "DELETE FROM review_comment_endorsements WHERE user_id=? AND comment_id=?",
     )
-      .bind(auth.user.id, commentId)
+      .bind(auth.id, commentId)
       .run();
   }
   const body = endorsementState(
     await commentEndorsementCount(c.env.DB, commentId),
-    await viewerEndorsedComment(c.env.DB, auth.user.id, commentId),
+    await viewerEndorsedComment(c.env.DB, auth.id, commentId),
   );
   const stored = await saveIdempotency(
     c.env.DB,
-    auth.user.id,
+    auth.id,
     operation,
     idempotencyKey,
     requestDigest,
