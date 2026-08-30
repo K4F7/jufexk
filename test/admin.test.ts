@@ -69,6 +69,16 @@ describe("admin sessions and catalog", () => {
       },
     );
     expect(invalid.status).toBe(400);
+    const halfStar = await SELF.fetch(
+      `${origin}/api/admin/reviews/${id}/content`,
+      {
+        method: "PATCH",
+        headers: adminHeaders(auth),
+        body: JSON.stringify({ clarity: 0.5, note: "half" }),
+      },
+    );
+    expect(halfStar.status).toBe(400);
+    expect(await halfStar.json()).toEqual({ error: "评分必须在 1 到 5 之间" });
     const saved = await SELF.fetch(
       `${origin}/api/admin/reviews/${id}/content`,
       {

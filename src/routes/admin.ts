@@ -58,7 +58,6 @@ import {
   parseAdminTags,
   parseStashedReview,
   parseTagCsv,
-  rating,
   token,
 } from "./support";
 import {
@@ -801,9 +800,11 @@ adminRoutes.patch("/api/admin/reviews/:id/content", async (c) => {
     ["fairness", "fairness"],
   ] as const;
   const rawScores = scoreFields.map(([field]) => b[field]);
-  const scores = rawScores.map((value) =>
-    value === undefined ? null : rating(value),
-  );
+  const scores = rawScores.map((value) => {
+    if (value === undefined) return null;
+    const n = integer(value);
+    return n != null && n >= 1 && n <= 5 ? n : null;
+  });
   if (
     rawScores.some(
       (value, index) =>
