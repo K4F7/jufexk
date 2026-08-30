@@ -1,5 +1,5 @@
 import { Tabs, Typography, buttonVariants } from "@heroui/react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { RouterAriaLink } from "../../components/RouterAriaLink";
@@ -39,11 +39,15 @@ function AdminForbidden({ authenticated }: { authenticated: boolean }) {
 }
 
 export function AdminGate({ children }: { children: ReactNode }) {
-  const { authed, ready } = useAdminSession();
+  const { authed, ready, ensure } = useAdminSession();
   const { viewer, ready: viewerReady } = useViewer();
   const [searchParams] = useSearchParams();
   const preview = readDevPreview(searchParams);
   const skipGate = isDevAtlasSession(searchParams) && preview !== "forbidden";
+
+  useEffect(() => {
+    if (viewerReady) void ensure();
+  }, [ensure, viewerReady]);
 
   if (preview === "forbidden") {
     return <AdminForbidden authenticated={viewer.authenticated} />;

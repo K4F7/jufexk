@@ -23,6 +23,8 @@ type AdminSessionContextValue = {
   /** 首次会话探测完成。 */
   ready: boolean;
   logout: () => Promise<void>;
+  /** Probe the admin session only when a surface needs admin capabilities. */
+  ensure: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -35,25 +37,67 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
   const lastViewerAuth = useRef<boolean | null>(null);
+  const inFlight = useRef<Promise<void> | null>(null);
+  const generation = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const probe = useCallback(async (requestGeneration: number) => {
     try {
       const d = await api<{ csrfToken: string }>("/api/admin/session");
+      if (generation.current !== requestGeneration) return;
       setAdminCsrfToken(d.csrfToken);
       setAuthed((previous) => {
         if (!previous) clearCatalogDataCache();
         return true;
       });
     } catch {
+      if (generation.current !== requestGeneration) return;
       setAdminCsrfToken("");
       setAuthed((previous) => {
         if (previous) clearCatalogDataCache();
         return false;
       });
     } finally {
-      setReady(true);
+      if (generation.current === requestGeneration) setReady(true);
     }
   }, []);
+
+  const ensure = useCallback(async () => {
+    if (!viewerReady) return;
+    if (!viewer.authenticated) {
+      setReady(true);
+      return;
+    }
+    if (ready && !inFlight.current) return;
+    if (inFlight.current) return inFlight.current;
+    const requestGeneration = generation.current;
+    const request = probe(requestGeneration);
+    inFlight.current = request;
+    try {
+      await request;
+    } finally {
+      if (inFlight.current === request) inFlight.current = null;
+    }
+  }, [probe, ready, viewer.authenticated, viewerReady]);
+
+  const refresh = useCallback(async () => {
+    setReady(false);
+    generation.current += 1;
+    inFlight.current = null;
+    if (!viewerReady || !viewer.authenticated) {
+      setAdminCsrfToken("");
+      setAuthed(false);
+      setReady(true);
+      return;
+    }
+    const requestGeneration = generation.current;
+    const request = probe(requestGeneration);
+    inFlight.current = request;
+    try {
+      await request;
+    } finally {
+      if (inFlight.current === request) inFlight.current = null;
+    }
+  }, [probe, viewer.authenticated, viewerReady]);
 
   const logout = useCallback(async () => {
     try {
@@ -69,14 +113,25 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!viewerReady) return;
-    if (lastViewerAuth.current === viewer.authenticated && ready) return;
+    if (lastViewerAuth.current === viewer.authenticated) return;
+    // On the first ready render, a child surface may call ensure() from its
+    // effect before this provider effect runs. Do not invalidate that initial
+    // probe; only rotate the generation when an already-initialized viewer
+    // changes authentication state.
+    const hadViewerState = lastViewerAuth.current !== null;
     lastViewerAuth.current = viewer.authenticated;
-    void refresh();
-  }, [ready, refresh, viewer.authenticated, viewerReady]);
+    if (hadViewerState) {
+      generation.current += 1;
+      inFlight.current = null;
+    }
+    setAdminCsrfToken("");
+    setAuthed(false);
+    setReady(!viewer.authenticated);
+  }, [viewer.authenticated, viewerReady]);
 
   const value = useMemo<AdminSessionContextValue>(
-    () => ({ authed, ready, logout, refresh }),
-    [authed, ready, logout, refresh],
+    () => ({ authed, ready, logout, ensure, refresh }),
+    [authed, ready, logout, ensure, refresh],
   );
 
   return (

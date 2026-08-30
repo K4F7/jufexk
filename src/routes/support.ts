@@ -27,6 +27,17 @@ export const markPublicCatalogCacheChanged = (
     [...new Set([...current, ...scopes])],
   );
 };
+export const markServerTiming = (
+  c: AppContext,
+  name: string,
+  durationMs: number,
+) => {
+  const current = c.get("serverTiming") || {};
+  c.set("serverTiming", {
+    ...current,
+    [name]: Math.max(0, Number(durationMs) || 0),
+  });
+};
 export const nullableClean = (v: unknown, n = 500) => clean(v, n) || null;
 export const integer = (v: unknown) => {
   if (typeof v === "number") return Number.isSafeInteger(v) ? v : null;

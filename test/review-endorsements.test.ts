@@ -325,6 +325,14 @@ describe("review endorsement API", () => {
       viewerEndorsed: true,
       ...emptyChallenge,
     } satisfies ReviewStanceState);
+    await expect(
+      env.DB
+        .prepare(
+          "SELECT endorsement_count,challenge_count FROM public_review_signal_counts WHERE source_kind='review' AND source_id=?",
+        )
+        .bind(String(reviewId))
+        .first(),
+    ).resolves.toEqual({ endorsement_count: 1, challenge_count: 0 });
 
     const repeat = await putEndorsement(reviewId, session);
     expect(repeat.status).toBe(200);
@@ -341,6 +349,14 @@ describe("review endorsement API", () => {
       viewerEndorsed: false,
       ...emptyChallenge,
     });
+    await expect(
+      env.DB
+        .prepare(
+          "SELECT endorsement_count,challenge_count FROM public_review_signal_counts WHERE source_kind='review' AND source_id=?",
+        )
+        .bind(String(reviewId))
+        .first(),
+    ).resolves.toEqual({ endorsement_count: 0, challenge_count: 0 });
 
     const repeatWithdraw = await deleteEndorsement(reviewId, session);
     expect(repeatWithdraw.status).toBe(200);

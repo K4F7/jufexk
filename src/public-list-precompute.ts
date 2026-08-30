@@ -217,6 +217,7 @@ export type PublicPrecomputeReadMode = "blocking" | "stale";
 export type PublicPrecomputeReadOptions = {
   mode?: PublicPrecomputeReadMode;
   waitUntil?: (promise: Promise<void>) => void;
+  recordTiming?: (name: string, durationMs: number) => void;
 };
 
 function schedulePublicPrecomputeRefresh(
@@ -242,28 +243,33 @@ export async function ensurePublicListPrecomputes(
   db: D1Database,
   options: PublicPrecomputeReadOptions = {},
 ) {
-  const state = await db
-    .prepare("SELECT dirty FROM public_precompute_state WHERE id=1")
-    .first<{ dirty: number }>();
-  if (!state) return refreshPublicListPrecomputes(db);
-  if (!state.dirty) return;
-  if (options.mode === "stale") {
-    const published = await db
-      .prepare(
-        `SELECT published_generation,published_at
-         FROM public_precompute_state WHERE id=1`,
-      )
-      .first<{ published_generation: number; published_at: number }>();
-    const age = Math.floor(Date.now() / 1000) - Number(published?.published_at || 0);
-    if (
-      Number(published?.published_generation) >= 0 &&
-      age >= 0 &&
-      age <= PUBLIC_PROJECTION_MAX_STALE_SECONDS
-    ) {
-      const scheduled = schedulePublicPrecomputeRefresh(db, options.waitUntil);
-      if (scheduled) await scheduled;
-      return;
+  const started = performance.now();
+  try {
+    const state = await db
+      .prepare("SELECT dirty FROM public_precompute_state WHERE id=1")
+      .first<{ dirty: number }>();
+    if (!state) return refreshPublicListPrecomputes(db);
+    if (!state.dirty) return;
+    if (options.mode === "stale") {
+      const published = await db
+        .prepare(
+          `SELECT published_generation,published_at
+           FROM public_precompute_state WHERE id=1`,
+        )
+        .first<{ published_generation: number; published_at: number }>();
+      const age = Math.floor(Date.now() / 1000) - Number(published?.published_at || 0);
+      if (
+        Number(published?.published_generation) >= 0 &&
+        age >= 0 &&
+        age <= PUBLIC_PROJECTION_MAX_STALE_SECONDS
+      ) {
+        const scheduled = schedulePublicPrecomputeRefresh(db, options.waitUntil);
+        if (scheduled) await scheduled;
+        return;
+      }
     }
+    await refreshPublicListPrecomputes(db);
+  } finally {
+    options.recordTiming?.("precompute", performance.now() - started);
   }
-  await refreshPublicListPrecomputes(db);
 }
