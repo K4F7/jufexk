@@ -22,7 +22,7 @@ import { SiteBanner } from "./SiteBanner";
 
 /**
  * Production shell — USTC 评课社区对齐（Issue #402）：
- * 左簇品牌 + 课程/课评/导师导航（排课模拟只在 DEV 与预览站出现）·
+ * 左簇品牌 + 课评/课程/导师导航（排课模拟只在 DEV 与预览站出现）·
  * 居中课程搜索（提交到 /courses?q=）· 右侧登录 + 主题切换。
  * 顶栏与页面同底色、无硬分割线；写评价只从课程页「写点评」进入。
  */
@@ -142,15 +142,15 @@ function DefaultShell({
   const siteName = config?.siteName || "非官方课评@JUFE";
   const universityName = config?.universityName || "江西财经大学";
   const brandTo = import.meta.env.DEV
-    ? withGlobalSearchParams("/courses", params)
-    : "/courses";
+    ? withGlobalSearchParams("/latest", params)
+    : "/latest";
   const showGlobalSearch =
     Boolean(globalSearchVariant) && Boolean(GlobalSearchPrototypeLazy);
 
   const showScheduleNav = import.meta.env.DEV || config?.showScheduleNav === true;
   const links = [
-    { id: "courses", to: "/courses", label: "课程" },
     { id: "latest", to: "/latest", label: "课评" },
+    { id: "courses", to: "/courses", label: "课程" },
     ...(showScheduleNav
       ? [{ id: "schedule", to: "/schedule", label: "排课模拟" }]
       : []),
