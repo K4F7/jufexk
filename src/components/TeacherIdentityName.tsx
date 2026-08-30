@@ -11,7 +11,7 @@ export function TeacherIdentityName({
 }) {
   return (
     <Typography
-      className="m-0 text-[calc(18/15*1rem)] font-bold leading-tight"
+      className="m-0 min-w-0 break-words text-[calc(18/15*1rem)] font-bold leading-tight"
       render={
         as === "span"
           ? ({ children: node, ...domProps }) => (

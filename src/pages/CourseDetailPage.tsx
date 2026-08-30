@@ -1,12 +1,22 @@
 /**
  * 课程详情 /courses/:id?teacher= — USTC 评课社区对齐（Issue #402）。
  * 页面始终按 课程×教师 关系展示：未带 teacher 参数时落到点评数最多的关系。
- * 左栏：面包屑 / 课程头（课名（老师）· 课程号 · 星级推荐度 · 四维 ·
- * 元信息网格 · 关注/推荐/不推荐）/ AI 总结 / 点评区。
+ * 左栏：面包屑 / 课程头（课名（可点老师）· 课程号 · 关注 · 星级推荐度 ·
+ * 四维 · 元信息网格 · 推荐/不推荐）/ AI 总结 / 点评区。
+ * 窄屏：其他老师用官方 Accordion surface 放在点评前；面包屑只在 lg+ 出现；
+ * 右侧栏只在 lg+ 出现。
  *
  * DEV-only: ?module=review-recognition 替换点评区为 #74 原型。
  */
-import { Alert, Breadcrumbs, Card, Typography, buttonVariants } from "@heroui/react";
+import {
+  Accordion,
+  Alert,
+  Breadcrumbs,
+  Card,
+  Separator,
+  Typography,
+  buttonVariants,
+} from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -36,7 +46,11 @@ import {
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
 import { FourDimLine } from "../components/FourDimLine";
-import { RelationSignalControls } from "../components/RelationSignalControls";
+import {
+  RelationFollowButton,
+  RelationSignalControls,
+  useRelationSignals,
+} from "../components/RelationSignalControls";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
@@ -49,7 +63,8 @@ import {
   PREVIEW_REVIEW_COMMENTS,
   previewFilledCourseDetail,
   previewFilledCourseReviews,
-  readDevPreview,
+  previewFilledTeacherDetail,
+  readDevPreviewOrFilled,
 } from "../lib/dev-preview";
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { categoryLabel, formatCredits } from "../lib/labels";
@@ -183,7 +198,7 @@ function SideRelationRow({
           {label}
         </RouterAriaLink>
         {stats ? (
-          <span className="whitespace-nowrap tabular text-xs text-muted">
+          <span className="tabular text-xs text-muted">
             {stats}
           </span>
         ) : null}
@@ -194,6 +209,50 @@ function SideRelationRow({
         </span>
       ) : null}
     </li>
+  );
+}
+
+/** 窄屏「其他老师」：官方 Accordion，默认折叠；空态不占位。 */
+function RelatedAccordion({
+  otherTeachers,
+  relationHref,
+}: {
+  otherTeachers: Teacher[];
+  relationHref: (id: number) => string;
+}) {
+  if (otherTeachers.length === 0) {
+    return null;
+  }
+  return (
+    <Accordion
+      allowsMultipleExpanded
+      className="mt-6 lg:hidden"
+      variant="surface"
+    >
+      <Accordion.Item id="other-teachers">
+        <Accordion.Heading>
+          <Accordion.Trigger>
+            其他老师的这门课
+            <Accordion.Indicator />
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel>
+          <Accordion.Body>
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+              {otherTeachers.map((teacher) => (
+                <SideRelationRow
+                  key={teacher.id}
+                  href={relationHref(teacher.id)}
+                  label={teacher.name}
+                  rating={teacher.rating}
+                  count={teacher.review_count}
+                />
+              ))}
+            </ul>
+          </Accordion.Body>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
   );
 }
 
@@ -231,6 +290,10 @@ export function CourseDetailPage() {
     null;
   /** 课程到达后只用校验过的任课教师；加载中可先按 URL 教师并行拉评价。 */
   const effectiveTeacherId = course ? selectedTeacher?.id : urlTeacherId;
+  const relationSignals = useRelationSignals(
+    course?.id ?? 0,
+    selectedTeacher,
+  );
   let teacherQuery = "";
   if (effectiveTeacherId) {
     const query = new URLSearchParams({
@@ -256,7 +319,7 @@ export function CourseDetailPage() {
     (location.state as { submitted?: boolean } | null)?.submitted,
   );
 
-  const preview = readDevPreview(new URLSearchParams(location.search));
+  const preview = readDevPreviewOrFilled(new URLSearchParams(location.search));
 
   useEffect(() => {
     if (preview === "error") {
@@ -264,7 +327,13 @@ export function CourseDetailPage() {
       setError("课程加载失败");
       return;
     }
-    if (preview === PREVIEW_REVIEW_COMMENTS) {
+    if (preview === "empty" || preview === "empty-catalog") {
+      const { course } = previewFilledCourseDetail(Number(id) || 8);
+      setError("");
+      setData({ course, reviewCount: 0 });
+      return;
+    }
+    if (preview === PREVIEW_REVIEW_COMMENTS || preview === "filled") {
       setError("");
       setData(previewFilledCourseDetail(Number(id) || 8));
       return;
@@ -332,7 +401,14 @@ export function CourseDetailPage() {
   useEffect(() => {
     let cancelled = false;
     setReviewsError("");
-    if (preview === PREVIEW_REVIEW_COMMENTS) {
+    if (preview === "empty" || preview === "empty-catalog") {
+      reviewFeed.reset([], null);
+      setFilteredReviewTotal(0);
+      setReviewsLoading(false);
+      setReviewsError("");
+      return;
+    }
+    if (preview === PREVIEW_REVIEW_COMMENTS || preview === "filled") {
       const items = previewFilledCourseReviews(Number(id) || 8);
       reviewFeed.reset(items, null);
       setFilteredReviewTotal(items.length);
@@ -409,6 +485,10 @@ export function CourseDetailPage() {
       setTeacherCourses(null);
       return;
     }
+    if (preview === PREVIEW_REVIEW_COMMENTS || preview === "filled") {
+      setTeacherCourses(previewFilledTeacherDetail(effectiveTeacherId).courses);
+      return;
+    }
     const cacheKey = String(effectiveTeacherId);
     const cached = teacherCoursesCacheRef.current.get(cacheKey);
     if (cached) {
@@ -435,7 +515,7 @@ export function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveTeacherId]);
+  }, [effectiveTeacherId, preview]);
 
   // /latest 的「查看全文」深链：评价到达后滚动到对应条目。
   const scrolledHashRef = useRef("");
@@ -555,10 +635,10 @@ export function CourseDetailPage() {
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
   return (
-    <div className="mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="mx-auto grid w-full min-w-0 max-w-[1360px] grid-cols-1 gap-5 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
-        <nav aria-label="面包屑">
-          <Breadcrumbs>
+        <nav aria-label="面包屑" className="max-lg:hidden">
+          <Breadcrumbs className="min-w-0">
             <Breadcrumbs.Item href={catalogHref}>课程目录</Breadcrumbs.Item>
             <Breadcrumbs.Item>{course.name}</Breadcrumbs.Item>
           </Breadcrumbs>
@@ -573,25 +653,35 @@ export function CourseDetailPage() {
           </Alert>
         ) : null}
 
-        <header className="mt-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <Typography
-              className="m-0 min-w-0 text-[calc(22/15*1rem)] font-bold leading-tight text-accent"
-              type="h1"
-            >
-              {course.name}
-              {selectedTeacher ? (
-                <span className="font-semibold">
-                  （{selectedTeacher.name}）
-                </span>
-              ) : null}
-            </Typography>
-            <p className="m-0 shrink-0 text-right text-[calc(12/15*1rem)] text-muted">
-              课程号：{course.code || "—"}
-            </p>
+        <header className="mt-3 min-w-0">
+          <div className="flex min-w-0 items-start justify-between gap-3 max-sm:pr-1">
+            <div className="flex min-w-0 flex-col gap-y-1">
+              <Typography
+                aria-label={
+                  selectedTeacher
+                    ? `${course.name}（${selectedTeacher.name}）`
+                    : course.name
+                }
+                className="m-0 min-w-0 break-words text-[calc(22/15*1rem)] font-bold leading-tight text-accent"
+                type="h1"
+              >
+                {course.name}
+                {selectedTeacher ? (
+                  <span className="font-semibold">
+                    （<RouterAriaLink className="text-accent underline" to={`/teachers/${selectedTeacher.id}`}>{selectedTeacher.name}</RouterAriaLink>）
+                  </span>
+                ) : null}
+              </Typography>
+              <p className="m-0 text-[calc(12/15*1rem)] text-muted">
+                课程号：{course.code || "—"}
+              </p>
+            </div>
+            {selectedTeacher ? (
+              <RelationFollowButton signals={relationSignals} />
+            ) : null}
           </div>
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-2">
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <Stars rating={rating} className="text-[calc(16/15*1rem)]" />
             {rating != null ? (
               <span className="tabular text-[calc(20/15*1rem)] font-semibold leading-none text-accent">
@@ -613,20 +703,18 @@ export function CourseDetailPage() {
             className="mt-2 text-[calc(13/15*1rem)]"
             labels={fourDimLineLabels(selectedTeacher?.dimensionLabels)}
           />
-          <dl className="mb-0 mt-3 grid grid-cols-1 gap-x-8 gap-y-1 text-[calc(13/15*1rem)] sm:grid-cols-2">
+          <Separator className="my-3 lg:hidden" />
+          <dl className="mb-0 mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[calc(13/15*1rem)] max-lg:mt-0 sm:gap-x-8">
             {metaRows.map(([label, value]) => (
-              <div key={label} className="flex gap-2">
+              <div key={label} className="flex min-w-0 gap-2">
                 <dt className="shrink-0 text-muted">{label}：</dt>
-                <dd className="m-0 text-foreground">{value}</dd>
+                <dd className="m-0 min-w-0 break-words text-foreground">{value}</dd>
               </div>
             ))}
           </dl>
 
           {selectedTeacher ? (
-            <RelationSignalControls
-              courseId={course.id}
-              teacher={selectedTeacher}
-            />
+            <RelationSignalControls signals={relationSignals} />
           ) : null}
 
           {/* 课程管理员公告：公开卡片 + 管理员编辑面板。 */}
@@ -639,12 +727,12 @@ export function CourseDetailPage() {
         </header>
 
         {relationSummary?.html ? (
-          <div className="mt-10">
+          <div className="mt-6 sm:mt-10">
             <CourseAiSummary summary={relationSummary} />
           </div>
         ) : (
-          <section className="mt-10" aria-labelledby="course-ai-summary-heading">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <section className="mt-6 min-w-0 sm:mt-10" aria-labelledby="course-ai-summary-heading">
+            <div className="flex min-w-0 flex-col gap-y-1 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-4">
               <Typography
                 className="m-0 text-[calc(20/15*1rem)] font-bold leading-snug text-accent"
                 id="course-ai-summary-heading"
@@ -667,6 +755,11 @@ export function CourseDetailPage() {
             </Card>
           </section>
         )}
+
+        <RelatedAccordion
+          otherTeachers={otherTeachers}
+          relationHref={relationHref}
+        />
 
         {comparingRecognition &&
         recognitionVariant &&
@@ -705,7 +798,7 @@ export function CourseDetailPage() {
         )}
       </div>
 
-      <aside className="space-y-3 self-start">
+      <aside className="hidden min-w-0 space-y-3 self-start lg:block">
         {selectedTeacher ? (
           <Card aria-label="任课教师">
             <Card.Header className="items-center gap-1 text-center">
@@ -713,11 +806,11 @@ export function CourseDetailPage() {
                 seed={selectedTeacher.id}
                 photoSrc={selectedTeacher.avatar_url}
                 size="lg"
-                className="size-[96px] rounded-full"
+                className="size-[64px] rounded-full sm:size-[96px]"
                 fallback={selectedTeacher.name.slice(0, 1)}
               />
               <Typography
-                className="m-0 min-w-0 text-[calc(22/15*1rem)] font-bold leading-tight"
+                className="m-0 min-w-0 break-words text-[calc(22/15*1rem)] font-bold leading-tight"
                 render={({ children, ...domProps }) => (
                   <span {...domProps}>{children}</span>
                 )}

@@ -79,14 +79,14 @@ function CourseRelationSkeletonRows({ rowCount }: { rowCount: number }) {
           key={index}
           id={`catalog-skeleton-${index}`}
           data-catalog-skeleton-row=""
-          className="block border-b border-separator py-3 last:border-b-0"
+          className="block border-b border-separator py-3 last:border-b-0 max-sm:py-2.5"
         >
           <Skeleton className="h-4 w-56 max-w-[70%] rounded" />
           <div className="mt-1 flex flex-wrap items-center gap-x-2">
             <Skeleton className="h-4 w-24 rounded" />
             <Skeleton className="h-3 w-16 rounded" />
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-x-6 gap-y-0.5">
+          <div className="mt-1.5 flex flex-wrap gap-x-6 gap-y-0.5 max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3">
             {REVIEW_DIMENSIONS.map((dim) => (
               <Skeleton key={dim.key} className="h-3 w-20 rounded" />
             ))}
@@ -194,6 +194,23 @@ function catalogPageNumbers(current: number, totalPages: number) {
   return pages;
 }
 
+/** Phone: first / current / last + ellipsis so the cluster stays compact. */
+function catalogPageNumbersCompact(current: number, totalPages: number) {
+  const pages: Array<number | "ellipsis"> = [];
+  if (totalPages <= 5) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+    return pages;
+  }
+  const start = Math.max(2, current - (current === totalPages ? 1 : 0));
+  const end = Math.min(totalPages - 1, current + (current === 1 ? 1 : 0));
+  pages.push(1);
+  if (start > 2) pages.push("ellipsis");
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (end < totalPages - 1) pages.push("ellipsis");
+  pages.push(totalPages);
+  return pages;
+}
+
 function PaginationFooter({
   currentPage,
   totalPages,
@@ -212,11 +229,52 @@ function PaginationFooter({
   const pages = Math.max(totalPages, 1);
   const selectedPage = Math.min(Math.max(currentPage, 1), pages);
   return (
-    <Pagination aria-label="分页" className="mt-3 w-full" size="sm">
-      <Pagination.Summary>
+    <Pagination
+      aria-label="分页"
+      className="mt-3 w-full max-sm:flex-row! max-sm:flex-nowrap max-sm:items-center max-sm:justify-between"
+      size="sm"
+    >
+      <Pagination.Summary className="max-sm:w-auto max-sm:shrink-0">
         共 {total} {totalUnit}
       </Pagination.Summary>
-      <Pagination.Content>
+      <Pagination.Content className="max-sm:w-auto max-sm:shrink-0 sm:hidden">
+        <Pagination.Item>
+          <Pagination.Previous
+            isDisabled={disabled || selectedPage <= 1}
+            onPress={() => onPageChange(Math.max(1, selectedPage - 1))}
+          >
+            <Pagination.PreviousIcon />
+            <span className="sr-only">上一页</span>
+          </Pagination.Previous>
+        </Pagination.Item>
+        {catalogPageNumbersCompact(selectedPage, pages).map((page, index) =>
+          page === "ellipsis" ? (
+            <Pagination.Item key={`ellipsis-${index}`}>
+              <Pagination.Ellipsis />
+            </Pagination.Item>
+          ) : (
+            <Pagination.Item key={page}>
+              <Pagination.Link
+                isActive={page === selectedPage}
+                isDisabled={disabled}
+                onPress={() => onPageChange(page)}
+              >
+                {page}
+              </Pagination.Link>
+            </Pagination.Item>
+          ),
+        )}
+        <Pagination.Item>
+          <Pagination.Next
+            isDisabled={disabled || selectedPage >= pages}
+            onPress={() => onPageChange(Math.min(pages, selectedPage + 1))}
+          >
+            <span className="sr-only">下一页</span>
+            <Pagination.NextIcon />
+          </Pagination.Next>
+        </Pagination.Item>
+      </Pagination.Content>
+      <Pagination.Content className="max-sm:hidden">
         <Pagination.Item>
           <Pagination.Previous
             isDisabled={disabled || selectedPage <= 1}

@@ -8,8 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, setAdminCsrfToken } from "../lib/api";
 import { clearCatalogDataCache } from "../lib/catalog-data-cache";
+import { readDevIdentity } from "../lib/dev-preview";
 import { useViewer } from "./useViewer";
 
 /**
@@ -34,6 +36,8 @@ const AdminSessionContext = createContext<AdminSessionContextValue | null>(
 
 export function AdminSessionProvider({ children }: { children: ReactNode }) {
   const { viewer, ready: viewerReady } = useViewer();
+  const [searchParams] = useSearchParams();
+  const identity = readDevIdentity(searchParams);
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
   const lastViewerAuth = useRef<boolean | null>(null);
@@ -112,6 +116,24 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (identity === "admin") {
+      setAdminCsrfToken("");
+      setAuthed((previous) => {
+        if (!previous) clearCatalogDataCache();
+        return true;
+      });
+      setReady(true);
+      return;
+    }
+    if (identity === "guest" || identity === "user") {
+      setAdminCsrfToken("");
+      setAuthed((previous) => {
+        if (previous) clearCatalogDataCache();
+        return false;
+      });
+      setReady(true);
+      return;
+    }
     if (!viewerReady) return;
     if (lastViewerAuth.current === viewer.authenticated) return;
     // On the first ready render, a child surface may call ensure() from its
@@ -127,7 +149,7 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
     setAdminCsrfToken("");
     setAuthed(false);
     setReady(!viewer.authenticated);
-  }, [viewer.authenticated, viewerReady]);
+  }, [identity, viewer.authenticated, viewerReady]);
 
   const value = useMemo<AdminSessionContextValue>(
     () => ({ authed, ready, logout, ensure, refresh }),

@@ -166,12 +166,13 @@ test("keyboard tab draws a visible focus indicator on shell controls", async ({
     page.locator('nav[aria-label="主导航"] a[href="/latest"]').first(),
   );
 
-  // 导师 external link — buttonVariants on a plain <a>, so no React Aria
-  // attribute; the scoped outline fallback is the only indicator.
-  await tabUntilFocused('nav a[href^="https://pi-review"]');
-  const mentor = page.getByRole("link", { name: "导师（新窗口打开）" });
-  await expect(mentor).not.toHaveAttribute("data-focus-visible");
-  await expectOutlineFallback(mentor);
+  // 导师外链只在桌面壳。窄屏 Tabs 不挂，外链也未适配移动端。
+  if ((page.viewportSize()?.width ?? 0) >= 1280) {
+    await tabUntilFocused('nav a[href^="https://pi-review"]');
+    const mentor = page.getByRole("link", { name: "导师（新窗口打开）" });
+    await expect(mentor).not.toHaveAttribute("data-focus-visible");
+    await expectOutlineFallback(mentor);
+  }
 
   // HeroUI SearchField — official ring on the group via :focus-within.
   await tabUntilFocused("header input");

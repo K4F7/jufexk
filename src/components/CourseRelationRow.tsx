@@ -40,12 +40,14 @@ export function CourseRelationRow({
     <RouterAriaLink
       to={href}
       onIntent={() => prefetchCourseDetail(relation.course_id, relation.teacher_id)}
-      className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-transparent hover:no-underline! [content-visibility:auto] [contain-intrinsic-size:auto_5.5rem]"
+      className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-transparent hover:no-underline! [content-visibility:auto] [contain-intrinsic-size:auto_5.5rem] max-sm:py-2.5 max-sm:[contain-intrinsic-size:auto_6.5rem]"
     >
-      <span className="block text-[1rem] font-medium text-accent">
-        {relation.name}
+      <span className="block min-w-0 text-[1rem] font-medium text-accent max-sm:leading-snug">
+        <span className="break-words">{relation.name}</span>
         {relation.teacher_name ? (
-          <span className="font-normal">（{relation.teacher_name}）</span>
+          <span className="whitespace-nowrap font-normal">
+            （{relation.teacher_name}）
+          </span>
         ) : (
           <span className="text-[calc(12/15*1rem)] font-normal text-muted">
             {" "}

@@ -11,8 +11,8 @@
  */
 import {
   Label,
+  ScrollShadow,
   Separator,
-  Skeleton,
   Surface,
   ToggleButton,
   ToggleButtonGroup,
@@ -27,8 +27,11 @@ import {
 } from "../components/CatalogResultsStates";
 import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
-import { useMediaQuery } from "../hooks/useMediaQuery";
-import { emptyCatalogPage, readDevPreview } from "../lib/dev-preview";
+import {
+  emptyCatalogPage,
+  previewFilledCourseRelations,
+  readDevPreviewOrFilled,
+} from "../lib/dev-preview";
 import {
   GENERAL_EDUCATION_FILTER,
   isGeneralEducationFilter,
@@ -63,7 +66,6 @@ const SORT_OPTIONS = [
 
 const ALL_CATEGORY_KEY = "all";
 const DEFAULT_SORT_KEY = "reviews";
-const MOBILE_FILTER_QUERY = "(max-width: 639px)";
 
 function firstSelectedKey(keys: Iterable<Key>): string | undefined {
   const [key] = keys;
@@ -99,11 +101,10 @@ function useGlobalSearchPrototypeVariant(): "A" | "B" | "C" | null {
 }
 
 export function CoursesPage() {
-  const isMobileFilterLayout = useMediaQuery(MOBILE_FILTER_QUERY);
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
-  const preview = readDevPreview(params);
+  const preview = readDevPreviewOrFilled(params);
   const q = params.get("q") || "";
   const rawCategory = params.get("category") || "";
   const category = isPublicCatalogCategory(rawCategory) ? rawCategory : "";
@@ -146,6 +147,12 @@ export function CoursesPage() {
     }
     if (preview === "empty-catalog" || preview === "empty") {
       setData(emptyCatalogPage());
+      setError("");
+      setLoading(false);
+      return;
+    }
+    if (preview === "filled") {
+      setData(previewFilledCourseRelations(page));
       setError("");
       setLoading(false);
       return;
@@ -227,69 +234,129 @@ export function CoursesPage() {
     </CatalogResultsStates>
   );
 
-  const browseBox = (
-    <Surface
-      aria-label="课程类别与排序"
-      className="mb-3 flex flex-col gap-2 p-3"
-      role="region"
-      variant="secondary"
+  function onCategoryChange(keys: Iterable<Key>) {
+    const key = firstSelectedKey(keys);
+    if (key == null) return;
+    update({ category: key === ALL_CATEGORY_KEY ? "" : key }, true);
+  }
+
+  function onSortChange(keys: Iterable<Key>) {
+    const key = firstSelectedKey(keys);
+    if (key == null) return;
+    update({ sort: key === DEFAULT_SORT_KEY ? "" : key }, true);
+  }
+
+  const categoryButtons = PUBLIC_CATEGORY_OPTIONS.map((opt) => (
+    <ToggleButton
+      key={opt.id || ALL_CATEGORY_KEY}
+      className="shrink-0"
+      id={opt.id || ALL_CATEGORY_KEY}
     >
-      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
-        <Label className="shrink-0">课程类别：</Label>
-        {/* 窄屏 3+3 整齐双排(整行宽 grid);sm+ 恢复内联单行。 */}
-        <ToggleButtonGroup
-          aria-label="课程类别"
-          className="grid w-full grid-cols-3 sm:inline-flex sm:w-auto"
-          isDetached
-          selectedKeys={[categoryToggleKey(category)]}
-          selectionMode="single"
-          size="sm"
-          onSelectionChange={(keys) => {
-            const key = firstSelectedKey(keys);
-            if (key == null) return;
-            update({ category: key === ALL_CATEGORY_KEY ? "" : key }, true);
-          }}
+      {opt.label}
+    </ToggleButton>
+  ));
+
+  const sortButtons = SORT_OPTIONS.map((opt) => (
+    <ToggleButton
+      key={opt.id || DEFAULT_SORT_KEY}
+      className="shrink-0"
+      id={opt.id || DEFAULT_SORT_KEY}
+    >
+      {opt.id === "" && q ? "相关度" : opt.label}
+    </ToggleButton>
+  ));
+
+  const browseBox = (
+    <>
+      {/* 窄屏：类别横滑 + 右侧 detached 排序，同一行不换行。 */}
+      <div
+        aria-label="课程类别与排序"
+        className="mb-3 flex flex-nowrap items-center gap-2 sm:hidden"
+        role="region"
+      >
+        <ScrollShadow
+          hideScrollBar
+          className="min-w-0 flex-1"
+          orientation="horizontal"
+          size={24}
         >
-          {PUBLIC_CATEGORY_OPTIONS.map((opt) => (
-            <ToggleButton
-              key={opt.id || ALL_CATEGORY_KEY}
-              id={opt.id || ALL_CATEGORY_KEY}
-            >
-              {opt.label}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      </div>
-      <Separator />
-      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
-        <Label className="shrink-0">排序方式：</Label>
-        {/* 窄屏两个选项纵向双排;sm+ 恢复内联单行。 */}
+          <ToggleButtonGroup
+            aria-label="课程类别"
+            className="inline-flex w-max flex-nowrap"
+            isDetached
+            selectedKeys={[categoryToggleKey(category)]}
+            selectionMode="single"
+            size="sm"
+            onSelectionChange={onCategoryChange}
+          >
+            {categoryButtons}
+          </ToggleButtonGroup>
+        </ScrollShadow>
         <ToggleButtonGroup
           aria-label="排序方式"
-          className="flex flex-col items-start sm:inline-flex sm:flex-row sm:items-center"
+          className="ml-auto inline-flex shrink-0"
           disallowEmptySelection
           isDetached
-          orientation={isMobileFilterLayout ? "vertical" : "horizontal"}
           selectedKeys={[sort || DEFAULT_SORT_KEY]}
           selectionMode="single"
           size="sm"
-          onSelectionChange={(keys) => {
-            const key = firstSelectedKey(keys);
-            if (key == null) return;
-            update({ sort: key === DEFAULT_SORT_KEY ? "" : key }, true);
-          }}
+          onSelectionChange={onSortChange}
         >
-          {SORT_OPTIONS.map((opt) => (
-            <ToggleButton
-              key={opt.id || DEFAULT_SORT_KEY}
-              id={opt.id || DEFAULT_SORT_KEY}
-            >
-              {opt.id === "" && q ? "相关度" : opt.label}
-            </ToggleButton>
-          ))}
+          {sortButtons}
         </ToggleButtonGroup>
       </div>
-    </Surface>
+      <Surface
+        aria-label="课程类别与排序"
+        className="mb-3 hidden flex-col gap-1.5 p-2.5 sm:flex sm:gap-2 sm:p-3"
+        role="region"
+        variant="secondary"
+      >
+        <div className="flex flex-wrap items-center gap-x-3">
+          <Label className="shrink-0">课程类别：</Label>
+          <ToggleButtonGroup
+            aria-label="课程类别"
+            className="inline-flex w-auto"
+            isDetached
+            selectedKeys={[categoryToggleKey(category)]}
+            selectionMode="single"
+            size="sm"
+            onSelectionChange={onCategoryChange}
+          >
+            {PUBLIC_CATEGORY_OPTIONS.map((opt) => (
+              <ToggleButton
+                key={opt.id || ALL_CATEGORY_KEY}
+                id={opt.id || ALL_CATEGORY_KEY}
+              >
+                {opt.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </div>
+        <Separator />
+        <div className="flex flex-wrap items-center gap-x-3">
+          <Label className="shrink-0">排序方式：</Label>
+          <ToggleButtonGroup
+            aria-label="排序方式"
+            className="min-w-0"
+            disallowEmptySelection
+            isDetached
+            selectedKeys={[sort || DEFAULT_SORT_KEY]}
+            selectionMode="single"
+            size="sm"
+            onSelectionChange={onSortChange}
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <ToggleButton
+                key={opt.id || DEFAULT_SORT_KEY}
+                id={opt.id || DEFAULT_SORT_KEY}
+              >
+                {opt.id === "" && q ? "相关度" : opt.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </div>
+      </Surface>
+    </>
   );
 
   // DEV-only #303 variant A: 页内搜索头（含建议）替代生产标题行。
@@ -306,25 +373,15 @@ export function CoursesPage() {
   }
 
   return (
-    <section>
-      <header aria-label="目录标题" className="mb-3">
+    <section aria-labelledby="courses-heading">
+      <header className="mb-3 max-sm:mb-0">
         <Typography
-          className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
+          className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground max-sm:sr-only"
+          id="courses-heading"
           type="h1"
         >
           课程列表
         </Typography>
-        {/* 计数行恒占一行高度：加载时骨架、到达后文字，避免布局跳动。 */}
-        <div
-          className="mt-0.5 flex min-h-4 items-center text-xs text-muted"
-          aria-live="polite"
-        >
-          {loading && !data ? (
-            <Skeleton className="h-3 w-20 rounded" aria-label="数量加载中" />
-          ) : data ? (
-            `共 ${data.total} 条`
-          ) : null}
-        </div>
       </header>
       {browseBox}
       {results}

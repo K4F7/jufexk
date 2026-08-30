@@ -4,7 +4,7 @@ import { useViewer } from "../hooks/useViewer";
 import {
   isDevAtlasSession,
   previewReviewComments,
-  readDevPreview,
+  readDevPreviewOrFilled,
 } from "../lib/dev-preview";
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { formatReviewDate } from "../lib/review-date";
@@ -50,7 +50,7 @@ export function PublicReviews({
   const { viewer, ready, clear } = useViewer();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const preview = readDevPreview(searchParams);
+  const preview = readDevPreviewOrFilled(searchParams);
   const atlas = isDevAtlasSession(searchParams);
   const previewComposer = preview != null || atlas;
   const viewerPublicCode = parseHandlePublicCode(viewer.handle);

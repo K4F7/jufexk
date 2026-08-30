@@ -21,20 +21,30 @@ function newIdempotencyKey() {
   return crypto.randomUUID();
 }
 
-export function RelationSignalControls({
-  courseId,
-  teacher,
-}: {
-  courseId: number;
-  teacher: Teacher;
-}) {
+export type RelationSignals = {
+  follow: boolean;
+  recommend: "none" | "up" | "down";
+  pending: Pending;
+  error: string;
+  loginPrompted: boolean;
+  loginTarget: string;
+  mutate: (
+    kind: Exclude<Pending, null>,
+    method: "PUT" | "DELETE",
+  ) => Promise<void>;
+};
+
+export function useRelationSignals(
+  courseId: number,
+  teacher: Teacher | null,
+): RelationSignals {
   const { viewer, ready, clear } = useViewer();
   const location = useLocation();
-  const [follow, setFollow] = useState(!!teacher.viewer_followed);
+  const [follow, setFollow] = useState(!!teacher?.viewer_followed);
   const [recommend, setRecommend] = useState<"none" | "up" | "down">(
-    teacher.viewer_recommended
+    teacher?.viewer_recommended
       ? "up"
-      : teacher.viewer_not_recommended
+      : teacher?.viewer_not_recommended
         ? "down"
         : "none",
   );
@@ -46,28 +56,28 @@ export function RelationSignalControls({
   )}`;
 
   useEffect(() => {
-    setFollow(!!teacher.viewer_followed);
+    setFollow(!!teacher?.viewer_followed);
     setRecommend(
-      teacher.viewer_recommended
+      teacher?.viewer_recommended
         ? "up"
-        : teacher.viewer_not_recommended
+        : teacher?.viewer_not_recommended
           ? "down"
           : "none",
     );
     setError("");
     setLoginPrompted(false);
   }, [
-    teacher.id,
-    teacher.viewer_followed,
-    teacher.viewer_recommended,
-    teacher.viewer_not_recommended,
+    teacher?.id,
+    teacher?.viewer_followed,
+    teacher?.viewer_recommended,
+    teacher?.viewer_not_recommended,
   ]);
 
   const mutate = async (
     kind: Exclude<Pending, null>,
     method: "PUT" | "DELETE",
   ) => {
-    if (pending || !ready) return;
+    if (pending || !ready || !teacher) return;
     if (!viewer.authenticated) {
       setLoginPrompted(true);
       return;
@@ -117,63 +127,102 @@ export function RelationSignalControls({
     }
   };
 
+  return {
+    follow,
+    recommend,
+    pending,
+    error,
+    loginPrompted,
+    loginTarget,
+    mutate,
+  };
+}
+
+/** Compact follow for the course title row: sm outline, never full-width. */
+export function RelationFollowButton({
+  signals,
+}: {
+  signals: RelationSignals;
+}) {
+  return (
+    <Button
+      className="shrink-0"
+      size="sm"
+      variant={signals.follow ? "secondary" : "outline"}
+      aria-pressed={signals.follow}
+      isPending={signals.pending === "follow"}
+      onPress={() =>
+        void signals.mutate("follow", signals.follow ? "DELETE" : "PUT")
+      }
+    >
+      {signals.follow ? <HeartFill aria-hidden /> : <Heart aria-hidden />}
+      {signals.follow ? "已关注" : "关注"}
+    </Button>
+  );
+}
+
+export function RelationSignalControls({
+  signals,
+}: {
+  signals: RelationSignals;
+}) {
   return (
     <div className="mt-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
         <Button
+          fullWidth
+          className="max-sm:min-h-11 sm:w-auto"
           size="sm"
-          variant={follow ? "secondary" : "outline"}
-          aria-pressed={follow}
-          isPending={pending === "follow"}
-          onPress={() => mutate("follow", follow ? "DELETE" : "PUT")}
-        >
-          {follow ? <HeartFill aria-hidden /> : <Heart aria-hidden />}
-          {follow ? "已关注" : "关注"}
-        </Button>
-        <Button
-          size="sm"
-          variant={recommend === "up" ? "secondary" : "outline"}
-          aria-pressed={recommend === "up"}
-          isPending={pending === "recommend"}
+          variant={signals.recommend === "up" ? "secondary" : "outline"}
+          aria-pressed={signals.recommend === "up"}
+          isPending={signals.pending === "recommend"}
           onPress={() =>
-            mutate("recommend", recommend === "up" ? "DELETE" : "PUT")
+            void signals.mutate(
+              "recommend",
+              signals.recommend === "up" ? "DELETE" : "PUT",
+            )
           }
         >
-          {recommend === "up" ? (
+          {signals.recommend === "up" ? (
             <ThumbsUpFill aria-hidden />
           ) : (
             <ThumbsUp aria-hidden />
           )}
-          {recommend === "up" ? "已推荐" : "推荐"}
+          {signals.recommend === "up" ? "已推荐" : "推荐"}
         </Button>
         <Button
+          fullWidth
+          className="max-sm:min-h-11 sm:w-auto"
           size="sm"
-          variant={recommend === "down" ? "secondary" : "outline"}
-          aria-pressed={recommend === "down"}
-          isPending={pending === "not_recommend"}
+          variant={signals.recommend === "down" ? "secondary" : "outline"}
+          aria-pressed={signals.recommend === "down"}
+          isPending={signals.pending === "not_recommend"}
           onPress={() =>
-            mutate("not_recommend", recommend === "down" ? "DELETE" : "PUT")
+            void signals.mutate(
+              "not_recommend",
+              signals.recommend === "down" ? "DELETE" : "PUT",
+            )
           }
         >
-          {recommend === "down" ? (
+          {signals.recommend === "down" ? (
             <ThumbsDownFill aria-hidden />
           ) : (
             <ThumbsDown aria-hidden />
           )}
-          {recommend === "down" ? "取消不推荐" : "不推荐"}
+          {signals.recommend === "down" ? "取消不推荐" : "不推荐"}
         </Button>
       </div>
-      {loginPrompted ? (
+      {signals.loginPrompted ? (
         <p className="mb-0 mt-2 text-[calc(12/15*1rem)] text-muted">
           登录后才能关注或推荐。
-          <RouterAriaLink to={loginTarget} className="ml-1 text-accent">
+          <RouterAriaLink to={signals.loginTarget} className="ml-1 text-accent">
             去登录
           </RouterAriaLink>
         </p>
       ) : null}
-      {error ? (
+      {signals.error ? (
         <p className="mb-0 mt-2 text-[calc(12/15*1rem)] text-danger" role="alert">
-          {error}
+          {signals.error}
         </p>
       ) : null}
     </div>

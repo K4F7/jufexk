@@ -17,7 +17,7 @@ export function ReviewAdminDock({
   return (
     <>
       <div
-        className="fixed right-4 top-1/2 z-50 -translate-y-1/2"
+        className="fixed right-4 top-1/2 z-50 hidden -translate-y-1/2 lg:block"
         data-review-admin-dock=""
       >
         <Button

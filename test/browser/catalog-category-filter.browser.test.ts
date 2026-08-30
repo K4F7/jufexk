@@ -158,13 +158,13 @@ async function mockCatalogApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockCatalogApi(page));
 
-test("sort controls expose an orientation matching the responsive layout", async ({
+test("sort controls stay horizontal on narrow and wide viewports", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 720 });
   await page.goto("/courses");
   const sortGroup = page.getByRole("radiogroup", { name: "排序方式" });
-  await expect(sortGroup).toHaveAttribute("aria-orientation", "vertical");
+  await expect(sortGroup).toHaveAttribute("aria-orientation", "horizontal");
 
   await page.setViewportSize({ width: 800, height: 720 });
   await expect(sortGroup).toHaveAttribute("aria-orientation", "horizontal");

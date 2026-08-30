@@ -14,6 +14,7 @@ import {
 import {
   previewNotificationInbox,
   previewUnreadNotificationCount,
+  readDevIdentity,
   readDevPreview,
 } from "../lib/dev-preview";
 import type { UserNotification } from "../lib/types";
@@ -27,8 +28,9 @@ const UNAVAILABLE_NOTICE_KEY = "unavailable";
 /**
  * Low-emphasis login / account entry in the shell nav (issue #139 / #325 / #595 / #609).
  * The session payload carries no email, sub or users.id. After login the
- * trigger shows only the public handle; guests still see 「登录」. The
- * accessible name stays 「账号」 so existing tests keep working.
+ * trigger shows only the public handle (mobile and desktop); guests still
+ * see 「登录」. The accessible name stays 「账号」 so existing tests keep
+ * working.
  * Guests always get a real login link through the production CAS password proxy.
  *
  * 登录后顶栏为「消息」图标下拉 + 昵称下拉（#459 / #460 / #607）；昵称下拉含「主页」，
@@ -45,9 +47,11 @@ export function AccountNavControl() {
   const unread = useUnreadNotificationCount(viewer.authenticated);
   const notices = useRecentNotifications(viewer.authenticated);
   const preview = readDevPreview(searchParams);
+  const identity = readDevIdentity(searchParams);
   const previewAccount =
-    previewUnreadNotificationCount(preview) != null ||
-    previewNotificationInbox(preview) != null;
+    identity !== "guest" &&
+    (previewUnreadNotificationCount(preview) != null ||
+      previewNotificationInbox(preview) != null);
 
   if (!ready && !previewAccount) return null;
 
@@ -64,6 +68,7 @@ export function AccountNavControl() {
   }
 
   const unreadLabel = unread && unread > 0 ? (unread > 99 ? "99+" : unread) : null;
+  const accountLabel = viewer.handle || (previewAccount ? "匿名用户#000001" : "账号");
   const { followReviews, others } = groupRecentNotifications(notices.items);
   const statusKey = notices.loading
     ? LOADING_NOTICE_KEY
@@ -91,7 +96,11 @@ export function AccountNavControl() {
           >
             <Envelope aria-hidden />
           </Button>
-          <Dropdown.Popover className="min-w-[256px]" placement="bottom end">
+          <Dropdown.Popover
+            className="notice-popover min-w-[256px] max-sm:min-w-0 max-sm:w-max max-sm:max-w-xs"
+            containerPadding={8}
+            placement="bottom end"
+          >
             <Dropdown.Menu
               aria-label="消息列表"
               disabledKeys={statusKey ? [statusKey] : []}
@@ -104,21 +113,27 @@ export function AccountNavControl() {
             >
               {notices.loading ? (
                 <Dropdown.Item
+                  className="max-sm:min-h-11"
                   id={LOADING_NOTICE_KEY}
                   textValue="正在加载消息…"
                 >
-                  <Label>正在加载消息…</Label>
+                  <Label className="whitespace-normal">正在加载消息…</Label>
                 </Dropdown.Item>
               ) : !notices.available ? (
                 <Dropdown.Item
+                  className="max-sm:min-h-11"
                   id={UNAVAILABLE_NOTICE_KEY}
                   textValue="消息暂时加载不了"
                 >
-                  <Label>消息暂时加载不了</Label>
+                  <Label className="whitespace-normal">消息暂时加载不了</Label>
                 </Dropdown.Item>
               ) : notices.items.length === 0 ? (
-                <Dropdown.Item id={EMPTY_NOTICE_KEY} textValue="还没有消息哦！">
-                  <Label>还没有消息哦！</Label>
+                <Dropdown.Item
+                  className="max-sm:min-h-11"
+                  id={EMPTY_NOTICE_KEY}
+                  textValue="还没有消息哦！"
+                >
+                  <Label className="whitespace-normal">还没有消息哦！</Label>
                 </Dropdown.Item>
               ) : (
                 <>
@@ -154,11 +169,7 @@ export function AccountNavControl() {
         }}
       >
         <Button aria-label="账号" size="sm" variant="ghost">
-          {viewer.handle || previewAccount ? (
-            <span className="max-w-28 truncate">
-              {viewer.handle || "匿名用户#000001"}
-            </span>
-          ) : null}
+          <span className="inline-block max-w-28 truncate">{accountLabel}</span>
         </Button>
         <Dropdown.Popover>
           <Dropdown.Menu
@@ -172,7 +183,11 @@ export function AccountNavControl() {
             <Dropdown.Item id="profile" textValue="主页">
               <Label>主页</Label>
             </Dropdown.Item>
-            {adminReady && adminAuthed ? (
+            {identity === "admin" ||
+            (identity !== "guest" &&
+              identity !== "user" &&
+              adminReady &&
+              adminAuthed) ? (
               <Dropdown.Item id="admin" textValue="管理后台">
                 <Label>管理后台</Label>
               </Dropdown.Item>
@@ -191,11 +206,14 @@ export function AccountNavControl() {
 function NoticeMenuItem({ notice }: { notice: UserNotification }) {
   return (
     <Dropdown.Item
+      className="max-sm:min-h-11"
       href={notice.href ?? undefined}
       id={String(notice.id)}
       textValue={notice.text}
     >
-      <Label>{notice.text}</Label>
+      <Label className="max-w-full whitespace-normal break-words [overflow-wrap:anywhere]">
+        {notice.text}
+      </Label>
     </Dropdown.Item>
   );
 }

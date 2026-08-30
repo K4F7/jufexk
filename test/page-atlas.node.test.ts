@@ -102,6 +102,7 @@ describe("listAtlasPages", () => {
         "/login?preview=password-update",
         "/submit",
         "/submit?courseId=8&teacherId=2",
+        "/submit?preview=filled",
         "/schedule",
         "/profile",
         "/profile?preview=empty",

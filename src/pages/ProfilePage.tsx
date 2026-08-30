@@ -1,6 +1,9 @@
 /**
  * 个人主页 /profile（#459 / #493）：展示当前登录普通用户的公开编号、
  * 官方头像、自己的点评与关注的任课关系。页面不出现邮箱、学号或 users.id。
+ *
+ * 窄屏对齐公开作者页：身份一行（头像 + 编号）+ 四列数字条 + Tabs 切点评/关注。
+ * md+ 冻结现有两栏：左侧两张 Card，右侧居中身份卡 + 定义列表。
  */
 import {
   Alert,
@@ -11,6 +14,7 @@ import {
   Popover,
   Separator,
   Spinner,
+  Tabs,
   ToggleButton,
   ToggleButtonGroup,
   type Key,
@@ -28,10 +32,10 @@ import {
   isDevAtlasSession,
   previewEmptyProfile,
   previewFilledProfile,
-  readDevPreview,
+  readDevPreviewOrFilled,
 } from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
-import type { UserProfile, UserProfileReview } from "../lib/types";
+import type { UserProfile, UserProfileFollow, UserProfileReview } from "../lib/types";
 import { formatPublicHandle } from "../public-handle";
 
 function relationHref(courseId: number, teacherId: number) {
@@ -68,12 +72,15 @@ function ProfileReviewItem({ review }: { review: UserProfileReview }) {
   const date = formatReviewDate(review.created_at);
   const excerpt = (review.headline || review.comment || "").trim();
   return (
-    <article>
-      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="m-0 min-w-0 text-sm leading-6">
+    <article
+      role="listitem"
+      className="min-w-0 border-b border-separator py-3 last:border-b-0 md:border-b-0 sm:py-4"
+    >
+      <header className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 sm:gap-x-3">
+        <p className="m-0 min-w-0 break-words text-[calc(13/15*1rem)] leading-6 [overflow-wrap:anywhere] sm:text-sm">
           <RouterAriaLink
             to={relationHref(review.course_id, review.teacher_id)}
-            className="text-accent"
+            className="inline-block max-w-full break-words [overflow-wrap:anywhere] text-accent max-sm:min-h-[44px] max-sm:py-1.5"
           >
             {review.course_name}
             {review.teacher_name ? `（${review.teacher_name}）` : ""}
@@ -81,23 +88,247 @@ function ProfileReviewItem({ review }: { review: UserProfileReview }) {
           <ReviewStatusChip status={review.status} />
         </p>
         {date ? (
-          <time className="shrink-0 text-xs text-muted" dateTime={date}>
+          <time
+            className="min-w-0 max-w-full whitespace-normal break-words text-[calc(12/15*1rem)] text-muted sm:text-xs"
+            dateTime={date}
+          >
             {date}
           </time>
         ) : null}
       </header>
       {excerpt ? (
-        <p className="m-0 mt-1 line-clamp-2 text-sm">{excerpt}</p>
+        <p className="m-0 mt-1 min-w-0 line-clamp-2 break-words text-[calc(13/15*1rem)] [overflow-wrap:anywhere] sm:text-sm">
+          {excerpt}
+        </p>
       ) : null}
     </article>
+  );
+}
+
+function ProfileFollowItem({ follow }: { follow: UserProfileFollow }) {
+  return (
+    <div className="min-w-0 border-b border-separator py-3 last:border-b-0 sm:py-4">
+      <p className="m-0 min-w-0 break-words text-[calc(13/15*1rem)] [overflow-wrap:anywhere] sm:text-sm">
+        <RouterAriaLink
+          to={relationHref(follow.course_id, follow.teacher_id)}
+          className="inline-block max-w-full break-words [overflow-wrap:anywhere] text-accent max-sm:min-h-[44px] max-sm:py-1.5"
+        >
+          {follow.course_name}
+          {follow.teacher_name ? `（${follow.teacher_name}）` : ""}
+        </RouterAriaLink>
+      </p>
+    </div>
+  );
+}
+
+function ProfileAvatarPicker({
+  avatarKey,
+  isOpen,
+  savingAvatar,
+  onOpenChange,
+  onSelect,
+}: {
+  avatarKey: number;
+  isOpen: boolean;
+  savingAvatar: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (key: number) => void;
+}) {
+  return (
+    <Popover isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Button
+        aria-label="更换官方头像"
+        className="shrink-0"
+        isIconOnly
+        isPending={savingAvatar}
+        variant="ghost"
+      >
+        <AnonymousAvatar
+          avatarKey={avatarKey}
+          className="md:hidden"
+          size="sm"
+        />
+        <AnonymousAvatar
+          avatarKey={avatarKey}
+          className="max-md:hidden"
+          size="lg"
+        />
+      </Button>
+      <Popover.Content className="max-w-[calc(100vw-2rem)]">
+        <Popover.Dialog aria-label="选择官方头像">
+          <ToggleButtonGroup
+            aria-label="选择官方头像"
+            className="flex flex-wrap justify-center"
+            disallowEmptySelection
+            isDetached
+            isDisabled={savingAvatar}
+            selectedKeys={[String(avatarKey)]}
+            selectionMode="single"
+            size="sm"
+            onSelectionChange={(keys) => {
+              const key = firstSelectedKey(keys);
+              if (key == null) return;
+              onSelect(Number(key));
+            }}
+          >
+            {HEROUI_AVATAR_PLACEHOLDERS.map((src, key) => (
+              <ToggleButton
+                key={src}
+                aria-label={`选择官方头像 ${key + 1}`}
+                id={String(key)}
+                isIconOnly
+              >
+                <Avatar size="sm">
+                  <Avatar.Image alt="" src={src} />
+                  <Avatar.Fallback>匿</Avatar.Fallback>
+                </Avatar>
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </Popover.Dialog>
+      </Popover.Content>
+    </Popover>
+  );
+}
+
+function ProfileIdentityCard({
+  avatarError,
+  avatarKey,
+  avatarPickerOpen,
+  followerCount,
+  followingUserCount,
+  followCount,
+  handle,
+  reviewCount,
+  savingAvatar,
+  statValue,
+  onRetryAvatar,
+  onSelectAvatar,
+  onAvatarOpenChange,
+}: {
+  avatarError: string;
+  avatarKey: number;
+  avatarPickerOpen: boolean;
+  followerCount: number;
+  followingUserCount: number;
+  followCount: number;
+  handle: string;
+  reviewCount: number;
+  savingAvatar: boolean;
+  statValue: boolean;
+  onRetryAvatar: () => void;
+  onSelectAvatar: (key: number) => void;
+  onAvatarOpenChange: (open: boolean) => void;
+}) {
+  const heading = handle || "我的主页";
+  const following = statValue ? followingUserCount : "—";
+  const followers = statValue ? followerCount : "—";
+  const courses = statValue ? followCount : "—";
+  const reviews = statValue ? reviewCount : "—";
+
+  return (
+    <Card
+      className="min-w-0 gap-4 max-md:gap-2 sm:gap-6"
+      role="article"
+      aria-labelledby="profile-card-heading"
+    >
+      <Card.Header className="w-full items-center gap-3 text-center max-md:flex-row max-md:text-start md:flex-col">
+        <ProfileAvatarPicker
+          avatarKey={avatarKey}
+          isOpen={avatarPickerOpen}
+          savingAvatar={savingAvatar}
+          onOpenChange={onAvatarOpenChange}
+          onSelect={onSelectAvatar}
+        />
+        <Card.Title
+          className="min-w-0 max-md:flex-1 max-md:break-words"
+          id="profile-card-heading"
+        >
+          {heading}
+        </Card.Title>
+      </Card.Header>
+      <Separator className="md:hidden" />
+      <Card.Content>
+        {avatarError ? (
+          <Alert className="mb-3" status="danger">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>头像未能保存</Alert.Title>
+              <Alert.Description>{avatarError}</Alert.Description>
+            </Alert.Content>
+            <Button size="sm" variant="danger" onPress={onRetryAvatar}>
+              重试
+            </Button>
+          </Alert>
+        ) : null}
+        <dl className="m-0 hidden gap-3 text-sm md:grid">
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">关注了</dt>
+            <dd className="m-0 tabular">{following} 人</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">被关注</dt>
+            <dd className="m-0 tabular">{followers} 人</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">关注了</dt>
+            <dd className="m-0 tabular">{courses} 门课程</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">点评了</dt>
+            <dd className="m-0 tabular">{reviews} 门课程</dd>
+          </div>
+        </dl>
+        <dl className="m-0 grid grid-cols-4 text-center md:hidden">
+          <div className="min-w-0">
+            <dd className="m-0 font-medium tabular">{following}</dd>
+            <dt className="text-[calc(12/15*1rem)] text-muted">关注</dt>
+          </div>
+          <div className="min-w-0">
+            <dd className="m-0 font-medium tabular">{followers}</dd>
+            <dt className="text-[calc(12/15*1rem)] text-muted">被关注</dt>
+          </div>
+          <div className="min-w-0">
+            <dd className="m-0 font-medium tabular">{courses}</dd>
+            <dt className="text-[calc(12/15*1rem)] text-muted">关注课</dt>
+          </div>
+          <div className="min-w-0">
+            <dd className="m-0 font-medium tabular">{reviews}</dd>
+            <dt className="text-[calc(12/15*1rem)] text-muted">点评</dt>
+          </div>
+        </dl>
+      </Card.Content>
+    </Card>
+  );
+}
+
+function ProfileReviewList({ reviews }: { reviews: UserProfileReview[] }) {
+  return (
+    <div role="list" aria-label="我的点评">
+      {reviews.map((review) => (
+        <ProfileReviewItem key={review.id} review={review} />
+      ))}
+    </div>
+  );
+}
+
+function ProfileFollowList({ follows }: { follows: UserProfileFollow[] }) {
+  return (
+    <div role="list" aria-label="我的关注">
+      {follows.map((follow) => (
+        <div key={`${follow.course_id}:${follow.teacher_id}`} role="listitem">
+          <ProfileFollowItem follow={follow} />
+        </div>
+      ))}
+    </div>
   );
 }
 
 export function ProfilePage() {
   const { viewer, ready, applySession } = useViewer();
   const [searchParams] = useSearchParams();
-  const preview = readDevPreview(searchParams);
-  const skipGate = isDevAtlasSession(searchParams);
+  const preview = readDevPreviewOrFilled(searchParams);
+  const skipGate = isDevAtlasSession(searchParams) || preview === "filled";
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
@@ -181,7 +412,7 @@ export function ProfilePage() {
     profile?.handle ||
     (profile?.public_code != null
       ? formatPublicHandle(profile.public_code)
-      : null);
+      : "");
   const avatarKey = profile?.avatar_key ?? 0;
   const statValue = available && !loading;
 
@@ -226,9 +457,31 @@ export function ProfilePage() {
     }
   };
 
+  const identity = (
+    <ProfileIdentityCard
+      avatarError={avatarError}
+      avatarKey={avatarKey}
+      avatarPickerOpen={avatarPickerOpen}
+      followerCount={followerCount}
+      followingUserCount={followingUserCount}
+      followCount={followCount}
+      handle={handle}
+      reviewCount={reviewCount}
+      savingAvatar={savingAvatar}
+      statValue={statValue}
+      onAvatarOpenChange={setAvatarPickerOpen}
+      onSelectAvatar={(key) => void changeAvatar(key)}
+      onRetryAvatar={() => {
+        const key = lastAvatarAttemptRef.current;
+        if (key != null && key !== avatarKey) void changeAvatar(key);
+        else setAvatarPickerOpen(true);
+      }}
+    />
+  );
+
   return (
-    <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_16rem]">
-      <div className="min-w-0 space-y-8">
+    <div className="flex flex-col-reverse gap-3 md:grid md:grid-cols-[minmax(0,1fr)_16rem] md:gap-8">
+      <div className="min-w-0 space-y-6 md:space-y-8">
         {!available ? (
           <Alert status="accent">
             <Alert.Indicator />
@@ -247,8 +500,49 @@ export function ProfilePage() {
           </p>
         ) : (
           <>
-            <section aria-labelledby="profile-reviews-heading">
-              <Card>
+            <div className="md:hidden">
+              <Tabs>
+                <Tabs.ListContainer>
+                  <Tabs.List aria-label="点评与关注">
+                    <Tabs.Tab id="reviews">
+                      点评（{reviewCount} 门）
+                      <Tabs.Indicator />
+                    </Tabs.Tab>
+                    <Tabs.Tab id="follows">
+                      <Tabs.Separator />
+                      关注（{followCount} 门）
+                      <Tabs.Indicator />
+                    </Tabs.Tab>
+                  </Tabs.List>
+                </Tabs.ListContainer>
+                <Tabs.Panel className="pt-3" id="reviews">
+                  {reviews.length === 0 ? (
+                    <p className="m-0 text-[calc(13/15*1rem)] text-muted">
+                      快去写点评吧～先到
+                      <RouterAriaLink to="/courses">课程列表</RouterAriaLink>
+                      找到你上过的课。
+                    </p>
+                  ) : (
+                    <ProfileReviewList reviews={reviews} />
+                  )}
+                </Tabs.Panel>
+                <Tabs.Panel className="pt-3" id="follows">
+                  {follows.length === 0 ? (
+                    <p className="m-0 text-[calc(13/15*1rem)] text-muted">
+                      还没有关注的课程。在课程页点「关注」，有新点评时会收到消息。
+                    </p>
+                  ) : (
+                    <ProfileFollowList follows={follows} />
+                  )}
+                </Tabs.Panel>
+              </Tabs>
+            </div>
+
+            <section
+              aria-labelledby="profile-reviews-heading"
+              className="hidden md:block"
+            >
+              <Card className="min-w-0">
                 <Card.Header className="gap-3">
                   <Card.Title id="profile-reviews-heading">
                     点评（{reviewCount} 门）
@@ -262,22 +556,18 @@ export function ProfilePage() {
                   ) : null}
                 </Card.Header>
                 {reviews.length > 0 ? (
-                  <Card.Content>
-                    <div role="list" aria-label="我的点评">
-                      {reviews.map((review, index) => (
-                        <div key={review.id} role="listitem">
-                          {index > 0 ? <Separator className="my-4" /> : null}
-                          <ProfileReviewItem review={review} />
-                        </div>
-                      ))}
-                    </div>
+                  <Card.Content className="pt-0">
+                    <ProfileReviewList reviews={reviews} />
                   </Card.Content>
                 ) : null}
               </Card>
             </section>
 
-            <section aria-labelledby="profile-follows-heading">
-              <Card>
+            <section
+              aria-labelledby="profile-follows-heading"
+              className="hidden md:block"
+            >
+              <Card className="min-w-0">
                 <Card.Header className="gap-3">
                   <Card.Title id="profile-follows-heading">
                     关注（{followCount} 门）
@@ -289,30 +579,8 @@ export function ProfilePage() {
                   ) : null}
                 </Card.Header>
                 {follows.length > 0 ? (
-                  <Card.Content>
-                    <div role="list" aria-label="我的关注">
-                      {follows.map((follow, index) => (
-                        <div
-                          key={`${follow.course_id}:${follow.teacher_id}`}
-                          role="listitem"
-                        >
-                          {index > 0 ? <Separator className="my-4" /> : null}
-                          <p className="m-0 text-sm">
-                            <RouterAriaLink
-                              to={relationHref(
-                                follow.course_id,
-                                follow.teacher_id,
-                              )}
-                            >
-                              {follow.course_name}
-                              {follow.teacher_name
-                                ? `（${follow.teacher_name}）`
-                                : ""}
-                            </RouterAriaLink>
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                  <Card.Content className="pt-0">
+                    <ProfileFollowList follows={follows} />
                   </Card.Content>
                 ) : null}
               </Card>
@@ -321,106 +589,7 @@ export function ProfilePage() {
         )}
       </div>
 
-      <aside className="min-w-0 self-start">
-        <Card className="gap-6" role="article" aria-labelledby="profile-card-heading">
-          <Card.Header className="items-center gap-3 text-center">
-            <Popover isOpen={avatarPickerOpen} onOpenChange={setAvatarPickerOpen}>
-              <Button
-                aria-label="更换官方头像"
-                isIconOnly
-                isPending={savingAvatar}
-                variant="ghost"
-              >
-                <AnonymousAvatar avatarKey={avatarKey} size="lg" />
-              </Button>
-              <Popover.Content>
-                <Popover.Dialog aria-label="选择官方头像">
-                  <ToggleButtonGroup
-                    aria-label="选择官方头像"
-                    className="flex flex-wrap justify-center"
-                    disallowEmptySelection
-                    isDetached
-                    isDisabled={savingAvatar}
-                    selectedKeys={[String(avatarKey)]}
-                    selectionMode="single"
-                    size="sm"
-                    onSelectionChange={(keys) => {
-                      const key = firstSelectedKey(keys);
-                      if (key == null) return;
-                      void changeAvatar(Number(key));
-                    }}
-                  >
-                    {HEROUI_AVATAR_PLACEHOLDERS.map((src, key) => (
-                      <ToggleButton
-                        key={src}
-                        aria-label={`选择官方头像 ${key + 1}`}
-                        id={String(key)}
-                        isIconOnly
-                      >
-                        <Avatar size="sm">
-                          <Avatar.Image alt="" src={src} />
-                          <Avatar.Fallback>匿</Avatar.Fallback>
-                        </Avatar>
-                      </ToggleButton>
-                    ))}
-                  </ToggleButtonGroup>
-                </Popover.Dialog>
-              </Popover.Content>
-            </Popover>
-            <Card.Title id="profile-card-heading">
-              {handle || "我的主页"}
-            </Card.Title>
-          </Card.Header>
-          <Card.Content>
-            {avatarError ? (
-              <Alert className="mb-3" status="danger">
-                <Alert.Indicator />
-                <Alert.Content>
-                  <Alert.Title>头像未能保存</Alert.Title>
-                  <Alert.Description>{avatarError}</Alert.Description>
-                </Alert.Content>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onPress={() => {
-                    const key = lastAvatarAttemptRef.current;
-                    if (key != null && key !== avatarKey) void changeAvatar(key);
-                    else setAvatarPickerOpen(true);
-                  }}
-                >
-                  重试
-                </Button>
-              </Alert>
-            ) : null}
-            <dl className="m-0 grid gap-3 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">关注了</dt>
-                <dd className="m-0 tabular">
-                  {statValue ? followingUserCount : "—"} 人
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">被关注</dt>
-                <dd className="m-0 tabular">
-                  {statValue ? followerCount : "—"} 人
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">关注了</dt>
-                <dd className="m-0 tabular">
-                  {statValue ? followCount : "—"} 门课程
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">点评了</dt>
-                <dd className="m-0 tabular">
-                  {statValue ? reviewCount : "—"} 门课程
-                </dd>
-              </div>
-            </dl>
-          </Card.Content>
-        </Card>
-      </aside>
+      <aside className="min-w-0 md:self-start">{identity}</aside>
     </div>
   );
 }

@@ -3,12 +3,12 @@ import {
   Alert,
   Button,
   Card,
-  Description,
   Form,
   Input,
   InputOTP,
   Label,
   REGEXP_ONLY_DIGITS,
+  ScrollShadow,
   Skeleton,
   Spinner,
   Tabs,
@@ -89,10 +89,15 @@ function LoginPreviewBar() {
   const current = searchParams.get(LOGIN_PREVIEW_PARAM) || "password";
 
   return (
+    <ScrollShadow
+      hideScrollBar
+      className="mb-4 min-w-0 w-full"
+      orientation="horizontal"
+    >
     <ToggleButtonGroup
       disallowEmptySelection
       aria-label="登录预览状态"
-      className="mb-4"
+      className="inline-flex w-max flex-nowrap"
       selectedKeys={new Set([current])}
       selectionMode="single"
       size="sm"
@@ -142,6 +147,7 @@ function LoginPreviewBar() {
         需改密
       </ToggleButton>
     </ToggleButtonGroup>
+    </ScrollShadow>
   );
 }
 
@@ -462,6 +468,7 @@ export function LoginPage() {
 
   const devLoginButton = import.meta.env.DEV ? (
     <Button
+      className="w-full max-sm:min-h-11 sm:w-auto"
       isPending={busy}
       type="button"
       variant="secondary"
@@ -551,19 +558,27 @@ export function LoginPage() {
   const passwordInvalid = loginTab === "password" && Boolean(error);
   const mfaError =
     error && !RETURN_TO_CREDENTIALS_RE.test(error) ? error : "";
+  const qrBoxClass =
+    "relative mx-auto aspect-square w-full max-w-56 sm:max-w-48";
+  const mobileControlClass = "max-sm:min-h-11";
+  const otpSlotClass = "max-sm:size-11 max-sm:flex-none sm:size-14 sm:text-xl";
 
   return (
     <section
       aria-labelledby="login-heading"
-      className="mx-auto w-full max-w-xl py-8"
+      className="mx-auto w-full min-w-0 max-w-xl overflow-x-clip py-4 sm:py-8"
     >
       {import.meta.env.DEV &&
       (loginPreview || searchParams.get("atlas") === "1") ? (
         <LoginPreviewBar />
       ) : null}
-      <Card role="article" aria-labelledby="login-heading">
+      <Card className="min-w-0" role="article" aria-labelledby="login-heading">
         <Card.Header>
-          <Typography className="m-0 text-lg font-semibold" id="login-heading" type="h1">
+          <Typography
+            className="m-0 text-lg font-semibold max-sm:break-words max-sm:text-base"
+            id="login-heading"
+            type="h1"
+          >
             {campusReauth ? "重新验证校园身份" : "登录"}
           </Typography>
         </Card.Header>
@@ -579,16 +594,18 @@ export function LoginPage() {
             />
           </Card.Content>
         ) : challenge ? (
-          <Card.Content className="flex flex-col items-center">
+          <Card.Content className="flex min-w-0 flex-col items-center">
             <Form
               aria-busy={busy}
               aria-labelledby="login-heading"
-              className="mx-auto flex w-72 flex-col items-center gap-4"
+              className="mx-auto flex w-full min-w-0 max-sm:max-w-none sm:max-w-72 flex-col items-center gap-4"
               onSubmit={submitMfa}
             >
-              <div className="flex w-full flex-col items-center gap-2 text-center">
-                <Label>验证码</Label>
-                <Description>输入发送到企业微信的四位验证码</Description>
+              <div className="flex w-full min-w-0 max-w-72 flex-col items-center gap-2 text-center">
+                <Card.Title>验证码</Card.Title>
+                <Card.Description>
+                  输入发送到企业微信的四位验证码
+                </Card.Description>
                 <InputOTP
                   aria-describedby={mfaError ? "code-error" : undefined}
                   aria-label="验证码"
@@ -601,6 +618,7 @@ export function LoginPage() {
                   maxLength={4}
                   name="code"
                   pattern={REGEXP_ONLY_DIGITS}
+                  textAlign="center"
                   value={mfaCode}
                   variant="secondary"
                   onChange={(value) => {
@@ -613,10 +631,10 @@ export function LoginPage() {
                   }}
                 >
                   <InputOTP.Group>
-                    <InputOTP.Slot className="size-14 text-xl" index={0} />
-                    <InputOTP.Slot className="size-14 text-xl" index={1} />
-                    <InputOTP.Slot className="size-14 text-xl" index={2} />
-                    <InputOTP.Slot className="size-14 text-xl" index={3} />
+                    <InputOTP.Slot className={otpSlotClass} index={0} />
+                    <InputOTP.Slot className={otpSlotClass} index={1} />
+                    <InputOTP.Slot className={otpSlotClass} index={2} />
+                    <InputOTP.Slot className={otpSlotClass} index={3} />
                   </InputOTP.Group>
                 </InputOTP>
                 <span
@@ -628,7 +646,7 @@ export function LoginPage() {
                 </span>
               </div>
               <Button
-                className="w-full"
+                className="w-full max-sm:min-h-11"
                 isDisabled={mfaCode.length !== 4}
                 isPending={busy}
                 type="submit"
@@ -644,28 +662,30 @@ export function LoginPage() {
             </Form>
           </Card.Content>
         ) : (
-          <Card.Content>
+          <Card.Content className="min-w-0">
             <Tabs
+              className="w-full min-w-0"
               selectedKey={loginTab}
               onSelectionChange={selectLoginTab}
             >
               <Tabs.ListContainer>
                 <Tabs.List aria-label="登录方式">
-                  <Tabs.Tab id="password">
+                  <Tabs.Tab className={mobileControlClass} id="password">
                     账号密码
                     <Tabs.Indicator />
                   </Tabs.Tab>
-                  <Tabs.Tab id="qr">
+                  <Tabs.Tab className={mobileControlClass} id="qr">
                     <Tabs.Separator />
                     扫码登录
                     <Tabs.Indicator />
                   </Tabs.Tab>
                 </Tabs.List>
               </Tabs.ListContainer>
-              <Tabs.Panel className="pt-4" id="password">
+              <Tabs.Panel className="max-sm:p-0 sm:pt-4" id="password">
                 <Form
                   aria-busy={busy}
                   aria-labelledby="login-heading"
+                  className="w-full min-w-0"
                   onReset={() => {
                     setUsername("");
                     setPassword("");
@@ -689,6 +709,7 @@ export function LoginPage() {
                       <Label>学号</Label>
                       <Input
                         aria-describedby={passwordInvalid ? "password-error" : undefined}
+                        className={mobileControlClass}
                         placeholder="请输入校园卡号"
                         variant="primary"
                       />
@@ -711,6 +732,7 @@ export function LoginPage() {
                         aria-describedby={
                           passwordInvalid ? "password-error" : undefined
                         }
+                        className={mobileControlClass}
                         placeholder="请输入统一身份认证平台登录密码"
                         variant="primary"
                       />
@@ -723,8 +745,8 @@ export function LoginPage() {
                       {error}
                     </span>
                     <div className="flex flex-col gap-2">
-                      <div className="flex gap-2">
-                        <Button isPending={busy} type="submit">
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button className="w-full max-sm:min-h-11 sm:w-auto" isPending={busy} type="submit">
                           {({ isPending }) => (
                             <>
                               {isPending ? (
@@ -737,6 +759,7 @@ export function LoginPage() {
                           )}
                         </Button>
                         <Button
+                          className="w-full max-sm:min-h-11 sm:w-auto"
                           isDisabled={busy}
                           type="reset"
                           variant="secondary"
@@ -749,15 +772,15 @@ export function LoginPage() {
                   </div>
                 </Form>
               </Tabs.Panel>
-              <Tabs.Panel className="pt-4" id="qr">
+              <Tabs.Panel className="max-sm:p-0 sm:pt-4" id="qr">
                 <div className="flex flex-col gap-4">
                   {qrPhase === "loading" || qrPhase === "idle" ? (
                     <div
                       aria-label="正在获取二维码"
-                      className="relative mx-auto size-48"
+                      className={qrBoxClass}
                       role="status"
                     >
-                      <Skeleton className="h-48 w-48" />
+                      <Skeleton className="size-full" />
                       <div className="absolute inset-0 flex items-center justify-center">
                         <Spinner size="lg" />
                       </div>
@@ -766,7 +789,7 @@ export function LoginPage() {
                   {qrImage && qrPhase === "pending" ? (
                     <img
                       alt="微信或企业微信登录二维码"
-                      className="mx-auto size-48"
+                      className={`${qrBoxClass} block`}
                       src={qrImage}
                       onError={() => {
                         setQrImage("");
@@ -775,48 +798,54 @@ export function LoginPage() {
                     />
                   ) : null}
                   {qrImage && qrPhase === "scanned" ? (
-                    <div className="relative mx-auto size-48">
+                    <div className={qrBoxClass}>
                       <img
                         alt="微信或企业微信登录二维码"
-                        className="size-48 opacity-50"
+                        className="size-full max-w-full opacity-50"
                         src={qrImage}
                       />
                       <div
                         aria-live="polite"
-                        className="absolute inset-0 flex size-48 flex-col items-center justify-center whitespace-normal"
+                        className="absolute inset-0 flex size-full flex-col items-center justify-center px-2 text-center whitespace-normal"
                         role="status"
                       >
-                        <span className="text-sm font-medium">扫码成功，请在手机上确认</span>
+                        <span className="max-w-full text-sm font-medium break-words whitespace-normal">
+                          扫码成功，请在手机上确认
+                        </span>
                       </div>
                     </div>
                   ) : null}
                   {qrPhase === "expired" ||
                   qrPhase === "cancelled" ||
                   qrPhase === "error" ? (
-                    <div className="relative mx-auto size-48">
+                    <div className={qrBoxClass}>
                       {qrImage ? (
                         <img
                           alt="微信或企业微信登录二维码"
-                          className="size-48 opacity-50"
+                          className="size-full max-w-full opacity-50"
                           src={qrImage}
                         />
                       ) : (
-                        <Skeleton animationType="none" className="h-48 w-48" />
+                        <Skeleton animationType="none" className="size-full" />
                       )}
                       <Button
                         aria-label="刷新二维码"
-                        className="group absolute inset-0 size-48 flex-col gap-1"
+                        className="group absolute inset-0 size-full flex-col gap-1 px-2 text-center whitespace-normal"
                         variant="ghost"
                         onPress={() => {
                           void startQr();
                         }}
                       >
                         {qrPhase === "cancelled" ? (
-                          <span className="text-sm font-medium">扫码已取消</span>
+                          <span className="max-w-full text-sm font-medium break-words whitespace-normal">
+                            扫码已取消
+                          </span>
                         ) : qrPhase === "expired" ? (
-                          <span className="text-sm font-medium">二维码已失效</span>
+                          <span className="max-w-full text-sm font-medium break-words whitespace-normal">
+                            二维码已失效
+                          </span>
                         ) : qrPhase === "error" ? (
-                          <span className="text-sm font-medium">
+                          <span className="max-w-full text-sm font-medium break-words whitespace-normal">
                             {error || "登录失败，请稍后重试"}
                           </span>
                         ) : null}

@@ -105,7 +105,7 @@ test("guests never see the admin dock or per-review admin actions", async ({
 }) => {
   await mockCoursePage(page, false);
   await page.goto("/courses/8?teacher=2", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /中级财务会计/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /中级财务会计（林晓雯）/ })).toBeVisible();
   await expect(page.locator("[data-review-admin-dock]")).toHaveCount(0);
   await expect(page.locator("[data-review-admin]")).toHaveCount(0);
   await expect(page.getByText("管理动作（仅管理员可见）")).toHaveCount(0);
@@ -116,7 +116,7 @@ test("admin dock switch hides review actions until turned on", async ({
 }) => {
   await mockCoursePage(page, true);
   await page.goto("/courses/8?teacher=2", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /中级财务会计/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /中级财务会计（林晓雯）/ })).toBeVisible();
   await expect(page.locator("[data-review-admin-dock]")).toBeVisible();
   await expect(page.getByText("管理动作（仅管理员可见）")).toHaveCount(0);
   await expect(page.locator("[data-review-admin]")).toHaveCount(0);
@@ -144,7 +144,7 @@ test("admin dock switch hides comment delete and leaves 公告 alone", async ({
   await page.goto("/courses/8?atlas=1&preview=review-comments&teacher=2", {
     waitUntil: "domcontentloaded",
   });
-  await expect(page.getByRole("heading", { name: /中级财务会计/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /中级财务会计（林晓雯）/ })).toBeVisible();
   await expect(page.locator("[data-review-admin-dock]")).toBeVisible();
   await expect(page.getByRole("button", { name: "设置公告" })).toBeVisible();
 
@@ -177,7 +177,7 @@ test("preview=admin does not force course 公告 editor or review chrome on", as
   await page.goto("/courses/8?preview=admin&teacher=2", {
     waitUntil: "domcontentloaded",
   });
-  await expect(page.getByRole("heading", { name: /中级财务会计/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /中级财务会计（林晓雯）/ })).toBeVisible();
   await expect(page.locator("[data-review-admin-dock]")).toBeVisible();
   await expect(page.getByRole("button", { name: "设置公告" })).toHaveCount(0);
   await expect(page.getByText("管理动作（仅管理员可见）")).toHaveCount(0);

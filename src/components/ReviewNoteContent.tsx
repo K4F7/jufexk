@@ -1,3 +1,4 @@
+import { Typography } from "@heroui/react";
 import DOMPurify from "dompurify";
 import {
   REVIEW_NOTE_ALLOWED_ATTRS,
@@ -22,11 +23,21 @@ export function ReviewNoteContent({
       ALLOWED_ATTR: [...REVIEW_NOTE_ALLOWED_ATTRS, "target", "rel"],
     });
     return (
-      <div
-        className="review-note-html m-0 break-words text-sm leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: html }}
+      <Typography
+        className="review-note-html m-0 break-words leading-relaxed"
+        render={(props) => (
+          <div
+            {...props}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )}
+        type="body-sm"
       />
     );
   }
-  return <p className="m-0 break-words text-sm leading-relaxed">{comment}</p>;
+  return (
+    <Typography className="m-0 break-words leading-relaxed" type="body-sm">
+      {comment}
+    </Typography>
+  );
 }

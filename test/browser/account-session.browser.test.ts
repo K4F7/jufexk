@@ -257,7 +257,7 @@ test("session outage degrades to guest browsing without blocking pages", async (
   await mockApi(page, state({ sessionFails: true }));
   await page.goto("/courses/8?teacher=9");
   await expect(
-    page.getByRole("heading", { name: "中国传统文化导论" }),
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
   await expect(page.getByText("登录未开放")).toHaveCount(0);

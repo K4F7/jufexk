@@ -103,13 +103,21 @@ body {
 }
 
 /*
- * Sticky header + skip target (WCAG 2.4.11). Header is ~3.5–5rem depending
- * on wrap; keep focused content clear of the bar.
+ * Sticky header + skip target (WCAG 2.4.11). Narrow chrome is brand +
+ * search + tabs (~8rem); xl desktop bar is a single row (~5.5rem).
  */
 :focus,
 :target,
 #main-content {
-  scroll-margin-top: 5.5rem;
+  scroll-margin-top: 8.5rem;
+}
+
+@media (min-width: 80rem) {
+  :focus,
+  :target,
+  #main-content {
+    scroll-margin-top: 5.5rem;
+  }
 }
 
 .skip-link {
@@ -236,4 +244,27 @@ a[href]:focus-visible:not([data-focus-visible]),
 
 .review-note-html > :last-child {
   margin-bottom: 0;
+}
+
+/*
+ * Mobile header 课评/课程 Tabs: HeroUI ListContainer always mounts
+ * overflow chevrons and shows them when the list is even 1px wider
+ * than the scroller. Scope hide to this instance only.
+ */
+.shell-mobile-nav-tabs .tabs__list-container > .tabs__list-container__scroll-prev,
+.shell-mobile-nav-tabs .tabs__list-container > .tabs__list-container__scroll-next {
+  display: none !important;
+}
+
+/*
+ * Header notices: official Dropdown placement under the envelope.
+ * On phones, wrap long copy instead of overflowing; width hugs content
+ * (see AccountNavControl max-sm:w-max / max-w-xs), not the viewport.
+ */
+@media (max-width: 39.99rem) {
+  .notice-popover .menu-item {
+    min-height: 2.75rem;
+    white-space: normal;
+    align-items: flex-start;
+  }
 }

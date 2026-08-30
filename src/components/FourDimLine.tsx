@@ -1,3 +1,4 @@
+import { Typography } from "@heroui/react";
 import { REVIEW_DIMENSIONS } from "../lib/review-dimensions";
 
 /**
@@ -13,13 +14,18 @@ export function FourDimLine({
 }) {
   return (
     <div
-      className={`flex flex-wrap gap-x-6 gap-y-0.5 text-[calc(12/15*1rem)] text-muted ${className}`}
+      className={`flex flex-wrap gap-x-6 gap-y-0.5 text-[calc(12/15*1rem)] text-muted max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3 max-sm:gap-y-1.5 ${className}`}
     >
       {REVIEW_DIMENSIONS.map((dim, index) => (
-        <span key={dim.key}>
+        <Typography
+          key={dim.key}
+          className="m-0 min-w-0 text-[length:inherit] max-sm:leading-normal"
+          color="muted"
+          type="body-xs"
+        >
           {dim.label}：
           <span className="text-foreground">{labels?.[index] ?? "—"}</span>
-        </span>
+        </Typography>
       ))}
     </div>
   );

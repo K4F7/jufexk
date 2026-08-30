@@ -254,8 +254,10 @@ test("course detail defaults to the most-reviewed relation", async ({
   await page.goto("/courses/8");
 
   // 未带 teacher 参数：落到点评数最多的 测试教师 关系。
-  const heading = page.getByRole("heading", { name: /中国传统文化导论/ });
-  await expect(heading).toContainText("（测试教师）");
+  const heading = page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ });
+  await expect(heading).toBeVisible();
+  const teacherInTitle = heading.getByRole("link", { name: "测试教师" });
+  await expect(teacherInTitle).toHaveAttribute("href", "/teachers/9");
   await expect(page.getByText("4.6", { exact: true })).toBeVisible();
   await expect(page.getByText("（21 人评价）")).toBeVisible();
   await expect(page.getByText("课程号：GEN0108")).toBeVisible();
@@ -267,7 +269,15 @@ test("course detail defaults to the most-reviewed relation", async ({
   await expect(page.getByText("人文学院").first()).toBeVisible();
   await expect(page.getByText("学分：")).toBeVisible();
   await expect(page.getByText("3.0", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
+  const follow = page.getByRole("button", { name: "关注" });
+  await expect(follow).toBeVisible();
+  await expect(page.getByRole("button", { name: "关注" })).toHaveCount(1);
+  const headingBox = await heading.boundingBox();
+  const followBox = await follow.boundingBox();
+  expect(headingBox).toBeTruthy();
+  expect(followBox).toBeTruthy();
+  expect(followBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width - 8);
+  expect(Math.abs(followBox!.y - headingBox!.y)).toBeLessThan(24);
   await expect(page.getByRole("button", { name: "推荐", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "不推荐" })).toBeVisible();
   // AI 总结占位块与免责声明（该关系未生成总结时）。

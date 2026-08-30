@@ -494,7 +494,7 @@ test("returns to the internal source page given by from", async ({ page }) => {
   await submitCampusLogin(page);
   await expect(page).toHaveURL(/\/courses\/8$/);
   await expect(
-    page.getByRole("heading", { name: "中国传统文化导论" }),
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
   ).toBeVisible();
 });
 
@@ -637,6 +637,6 @@ test("dev-only local login honors a safe from target", async ({ page }) => {
   await page.getByRole("button", { name: "本地测试登录" }).click();
   await expect(page).toHaveURL(/\/courses\/8$/);
   await expect(
-    page.getByRole("heading", { name: "中国传统文化导论" }),
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
   ).toBeVisible();
 });

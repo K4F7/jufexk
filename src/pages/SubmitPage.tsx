@@ -18,15 +18,28 @@ import {
   TagGroup,
   TextArea,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   type Key,
 } from "@heroui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { StarGlyph, starFill } from "../components/Stars";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
-import { isDevAtlasSession } from "../lib/dev-preview";
+import {
+  isDevAtlasSession,
+  previewFilledSubmitCourse,
+  previewFilledSubmitDraft,
+  readDevPreviewOrFilled,
+} from "../lib/dev-preview";
 import {
   clearReviewDraft,
   loadReviewDraft,
@@ -67,8 +80,8 @@ type SchemeCourse = CourseOption &
   };
 
 /**
- * 三档题：HeroUI TagGroup + Tag（selectionMode="single"）。
- * 选项用题目自带的中文档位文案（简单/中等/困难…），不再是裸 1/2/3。
+ * 三档题：窄屏用 detached `size="sm"` ToggleButton（与目录 全部/通识 同款 chip）；
+ * `sm+` 仍用 TagGroup + Tag。选项是题目自带的中文档位文案，不是裸 1/2/3。
  */
 function ScaleRadios({
   name,
@@ -89,23 +102,49 @@ function ScaleRadios({
 }) {
   const [invalid, setInvalid] = useState(false);
   const errorId = `${name}-error`;
+  const selectedKeys = value ? new Set([value]) : new Set<Key>();
+
+  function handleSelection(keys: "all" | Iterable<Key>) {
+    if (disabled || keys === "all") return;
+    const next = firstSelectedKey(keys);
+    if (next == null) return;
+    setInvalid(false);
+    onChange(next);
+  }
+
   return (
     <>
+      <div className="flex min-w-0 flex-col gap-1.5 sm:hidden">
+        <Label isDisabled={disabled} isRequired={required}>
+          {label}
+        </Label>
+        <ToggleButtonGroup
+          aria-label={label}
+          className="inline-flex max-w-full flex-wrap"
+          isDetached
+          isDisabled={disabled}
+          selectedKeys={selectedKeys}
+          selectionMode="single"
+          size="sm"
+          onSelectionChange={handleSelection}
+        >
+          {options.map((option) => (
+            <ToggleButton key={option.value} id={option.value}>
+              {option.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </div>
       <TagGroup
-        selectedKeys={value ? new Set([value]) : new Set()}
+        className="max-sm:hidden"
+        selectedKeys={selectedKeys}
         selectionMode="single"
-        onSelectionChange={(keys) => {
-          if (disabled || keys === "all") return;
-          const next = firstSelectedKey(keys);
-          if (next == null) return;
-          setInvalid(false);
-          onChange(next);
-        }}
+        onSelectionChange={handleSelection}
       >
         <Label isDisabled={disabled} isRequired={required}>
           {label}
         </Label>
-        <TagGroup.List>
+        <TagGroup.List className="flex-wrap">
           {options.map((option) => (
             <Tag
               key={option.value}
@@ -117,10 +156,10 @@ function ScaleRadios({
             </Tag>
           ))}
         </TagGroup.List>
-        {invalid ? (
-          <ErrorMessage id={errorId}>请选择{label}</ErrorMessage>
-        ) : null}
       </TagGroup>
+      {invalid ? (
+        <ErrorMessage id={errorId}>请选择{label}</ErrorMessage>
+      ) : null}
       {required ? (
         <input
           required
@@ -147,28 +186,30 @@ function OverallStarRating({
   disabled = false,
   value,
   onChange,
+  accessory,
 }: {
   required?: boolean;
   disabled?: boolean;
   value: string;
   onChange: (value: string) => void;
+  accessory?: React.ReactNode;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const shown = disabled ? value : (preview ?? value);
   const selected = Number(shown) || 0;
   const caption = overallCaption(shown);
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex min-w-0 w-full flex-wrap items-center gap-3">
       <RadioGroup
         isDisabled={disabled}
         isRequired={required}
-        className="flex-col gap-1"
+        className="w-full flex-col gap-1"
         name="overall"
         orientation="horizontal"
         value={value}
         onChange={onChange}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
           <Label
             isDisabled={disabled}
             isRequired={required}
@@ -180,8 +221,9 @@ function OverallStarRating({
           >
             推荐度
           </Label>
+          <div className="flex w-full max-w-full flex-row flex-wrap items-center gap-1 sm:contents">
           <div
-            className="inline-flex h-6 items-center"
+            className="inline-flex h-6 items-center max-sm:h-11"
             onPointerLeave={() => {
               if (!disabled) setPreview(null);
             }}
@@ -190,7 +232,7 @@ function OverallStarRating({
             const leftValue = String(star - 0.5);
             const rightValue = String(star);
             return (
-              <span key={star} className="relative inline-flex size-6 items-center justify-center text-accent">
+              <span key={star} className="relative inline-flex size-6 items-center justify-center text-accent max-sm:size-11">
                 <StarGlyph
                   className="pointer-events-none !size-6"
                   fill={starFill(selected || null, star)}
@@ -225,14 +267,18 @@ function OverallStarRating({
             );
           })}
         </div>
+            {caption ? (
+              <p className="m-0 whitespace-nowrap text-sm text-muted" aria-live="polite">
+                {caption}
+              </p>
+            ) : (
+              <p className="sr-only" aria-live="polite" />
+            )}
+            {accessory}
+          </div>
         </div>
         <FieldError>请选择推荐度</FieldError>
       </RadioGroup>
-      {caption ? (
-        <p className="m-0 text-sm text-muted" aria-live="polite">
-          {caption}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -245,7 +291,7 @@ function headlineFromNote(text: string) {
 function QuestionnaireSkeleton() {
   return (
     <div
-      className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2"
+      className="grid grid-cols-2 gap-x-6 gap-y-5"
       aria-busy="true"
       aria-label="问卷加载中"
       role="status"
@@ -286,11 +332,17 @@ function ReviewSubjectHeader({
 }) {
   const codeText = code?.trim() ?? "";
   return (
-    <Card.Header className="gap-1">
-      <div className="flex items-baseline justify-between gap-3">
-        <Card.Title className="text-xl font-bold text-accent" id={headingId}>
-          点评 · {courseName}（{teacherName}）
-        </Card.Title>
+    <Card.Header className="min-w-0 gap-1">
+      <div className="flex min-w-0 flex-row items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <Card.Title
+            className="min-w-0 text-lg font-bold break-words text-accent [overflow-wrap:anywhere] sm:text-xl"
+            id={headingId}
+          >
+            点评 · {courseName}
+            <span className="whitespace-nowrap">（{teacherName}）</span>
+          </Card.Title>
+        </div>
         {codeText ? (
           <Card.Description className="m-0 shrink-0">
             课程号：{codeText}
@@ -306,20 +358,36 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const [courseQueryDraft, setCourseQueryDraft] = useState("");
-  const [courseQuery, setCourseQuery] = useState("");
-  const [courseOptions, setCourseOptions] = useState<CourseOption[]>([]);
-  const [courseLoading, setCourseLoading] = useState(true);
-  const [selectedCourse, setSelectedCourse] = useState<SchemeCourse | null>(
-    null,
+  const preview = readDevPreviewOrFilled(searchParams);
+  const filledPreview = preview === "filled";
+  const [courseQueryDraft, setCourseQueryDraft] = useState(() =>
+    filledPreview ? previewFilledSubmitCourse().name : "",
   );
-  const [teacherId, setTeacherId] = useState("");
-  const [scores, setScores] = useState<Record<string, string>>({});
-  const [overall, setOverall] = useState("");
-  const [grade, setGrade] = useState("");
+  const [courseQuery, setCourseQuery] = useState("");
+  const [courseOptions, setCourseOptions] = useState<CourseOption[]>(() =>
+    filledPreview ? [previewFilledSubmitCourse()] : [],
+  );
+  const [courseLoading, setCourseLoading] = useState(!filledPreview);
+  const [selectedCourse, setSelectedCourse] = useState<SchemeCourse | null>(
+    () => (filledPreview ? previewFilledSubmitCourse() : null),
+  );
+  const [teacherId, setTeacherId] = useState(() =>
+    filledPreview ? previewFilledSubmitDraft().teacherId : "",
+  );
+  const [scores, setScores] = useState<Record<string, string>>(() =>
+    filledPreview ? previewFilledSubmitDraft().scores : {},
+  );
+  const [overall, setOverall] = useState(() =>
+    filledPreview ? previewFilledSubmitDraft().overall : "",
+  );
+  const [grade, setGrade] = useState(() =>
+    filledPreview ? previewFilledSubmitDraft().grade : "",
+  );
   const [loginOnly, setLoginOnly] = useState(false);
   const [reviewOnly, setReviewOnly] = useState(false);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(() =>
+    filledPreview ? previewFilledSubmitDraft().note : "",
+  );
   const [noteError, setNoteError] = useState("");
   const [msg, setMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -374,7 +442,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
 
   useEffect(() => {
     if (!viewerReady || viewer.authenticated) return;
-    if (isDevAtlasSession(searchParams)) return;
+    if (isDevAtlasSession(searchParams) || preview === "filled") return;
     const from = backTargetFrom(`${location.pathname}${location.search}`);
     navigate(
       `${viewer.loginPath}?from=${encodeURIComponent(from)}`,
@@ -387,8 +455,25 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
     location.pathname,
     location.search,
     navigate,
+    preview,
     searchParams,
   ]);
+
+  useEffect(() => {
+    if (preview !== "filled") return;
+    const course = previewFilledSubmitCourse();
+    const draft = previewFilledSubmitDraft();
+    setSelectedCourse(course);
+    setCourseQueryDraft(course.name);
+    setTeacherId(draft.teacherId);
+    setScores(draft.scores);
+    setOverall(draft.overall);
+    setNote(draft.note);
+    setGrade(draft.grade);
+    setCourseLoading(false);
+    setPresetFailed(false);
+    setMsg("");
+  }, [preview]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -399,6 +484,11 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
 
   useEffect(() => {
     if (courseLocked) return;
+    if (preview === "filled") {
+      setCourseOptions([previewFilledSubmitCourse()]);
+      setCourseLoading(false);
+      return;
+    }
     const controller = new AbortController();
     let cancelled = false;
     const query = new URLSearchParams({ page: "1", pageSize: "20" });
@@ -420,9 +510,10 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
       cancelled = true;
       controller.abort();
     };
-  }, [courseQuery, courseLocked]);
+  }, [courseQuery, courseLocked, preview]);
 
   useEffect(() => {
+    if (preview === "filled") return;
     if (!selectedCourse || !teacherId) return;
     const key = `${selectedCourse.id}:${teacherId}`;
     if (restoredDraftKey.current === key) return;
@@ -445,7 +536,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
       );
       setOverall(draft.overall);
     }
-  }, [selectedCourse, teacherId]);
+  }, [selectedCourse, teacherId, preview]);
 
   const loadCourse = useCallback(async (id: number) => {
     const detail = await api<{ course: SchemeCourse }>(`/api/courses/${id}`);
@@ -455,6 +546,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
   }, []);
 
   useEffect(() => {
+    if (preview === "filled") return;
     const preset = Number(searchParams.get("courseId"));
     if (!Number.isSafeInteger(preset) || preset < 1) {
       setPresetFailed(false);
@@ -481,7 +573,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
     return () => {
       cancelled = true;
     };
-  }, [loadCourse, searchParams]);
+  }, [loadCourse, searchParams, preview]);
 
   async function onCourseChange(key: Key | null) {
     restoredDraftKey.current = "";
@@ -593,14 +685,14 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
   const subjectKnown = Boolean(selectedCourse && selectedTeacher);
 
   return (
-    <section className="mx-auto my-auto w-full max-w-[800px]">
+    <section className="mx-auto my-auto w-full min-w-0 max-w-[800px] overflow-x-clip">
       <Form
         aria-labelledby="submit-review-heading"
         validationBehavior="native"
         onSubmit={onSubmit}
       >
         <Card
-          className="gap-6"
+          className="min-w-0 gap-4 sm:gap-6"
           role="region"
           aria-labelledby="submit-review-heading"
         >
@@ -622,7 +714,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
           ) : (
             <Card.Header className="gap-1">
               <Card.Title
-                className="text-xl font-bold text-accent"
+                className="text-lg font-bold text-accent sm:text-xl"
                 id="submit-review-heading"
               >
                 写评价
@@ -633,13 +725,14 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             </Card.Header>
           )}
 
-          <Card.Content className="gap-8">
+          <Card.Content className="gap-5 sm:gap-8">
             {teacherLocked || waitingForCourseScheme ? null : (
               <>
                 {courseLocked && selectedCourse ? null : (
                   <ComboBox
                     isRequired
                     allowsEmptyCollection
+                    fullWidth
                     className="w-full"
                     defaultFilter={() => true}
                     variant="secondary"
@@ -655,11 +748,15 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
                     <Description>
                       可以搜索课名、老师或课号，再选出对应的课。
                     </Description>
-                    <ComboBox.InputGroup>
-                      <Input placeholder="搜索课程" variant="secondary" />
+                    <ComboBox.InputGroup className="max-sm:min-h-11">
+                      <Input
+                        className="max-sm:min-h-11"
+                        placeholder="搜索课程"
+                        variant="secondary"
+                      />
                       <ComboBox.Trigger />
                     </ComboBox.InputGroup>
-                    <ComboBox.Popover>
+                    <ComboBox.Popover className="w-[var(--trigger-width)] max-w-[calc(100vw-2rem)]">
                       <ListBox
                         renderEmptyState={() => (
                           <div className="py-4 text-center text-sm text-muted">
@@ -670,6 +767,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
                         {courseOptions.map((course) => (
                           <ListBox.Item
                             key={course.id}
+                            className="max-sm:min-h-11"
                             id={String(course.id)}
                             textValue={`${course.name} ${course.code}`}
                           >
@@ -687,6 +785,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
 
                 <Select
                   isRequired
+                  fullWidth
                   isDisabled={!selectedCourse}
                   className="w-full"
                   name="teacherId"
@@ -699,15 +798,16 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
                 >
                   <Label>任课教师</Label>
                   <Description>选择这门课的任课老师</Description>
-                  <Select.Trigger>
+                  <Select.Trigger className="max-sm:min-h-11">
                     <Select.Value />
                     <Select.Indicator />
                   </Select.Trigger>
-                  <Select.Popover>
+                  <Select.Popover className="w-[var(--trigger-width)] max-w-[calc(100vw-2rem)]">
                     <ListBox>
                       {teachers.map((teacher) => (
                         <ListBox.Item
                           key={teacher.id}
+                          className="max-sm:min-h-11"
                           id={String(teacher.id)}
                           textValue={teacher.name}
                         >
@@ -733,7 +833,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             {waitingForCourseScheme ? (
               <QuestionnaireSkeleton />
             ) : (
-              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:gap-y-5">
                 {questions.map((question) => (
                   <ScaleRadios
                     key={question.id}
@@ -756,34 +856,36 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
                 ))}
               </div>
             )}
-            <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-              <OverallStarRating
-                required={!reviewOnly}
-                disabled={reviewOnly}
-                value={overall}
-                onChange={setOverall}
-              />
-              <Checkbox
-                className="ml-auto"
-                isSelected={reviewOnly}
-                name="reviewOnly"
-                variant="secondary"
-                onChange={(selected) => {
-                  setReviewOnly(selected);
-                  if (!selected) return;
-                  setScores({});
-                  setOverall("");
-                }}
-              >
-                <Checkbox.Content>
-                  <Checkbox.Control>
-                    <Checkbox.Indicator />
-                  </Checkbox.Control>
-                  只写点评不评分
-                </Checkbox.Content>
-              </Checkbox>
-            </div>
+            <OverallStarRating
+              required={!reviewOnly}
+              disabled={reviewOnly}
+              value={overall}
+              onChange={setOverall}
+              accessory={
+                <Checkbox
+                  className="ml-auto shrink-0"
+                  isSelected={reviewOnly}
+                  name="reviewOnly"
+                  variant="secondary"
+                  onChange={(selected) => {
+                    setReviewOnly(selected);
+                    if (!selected) return;
+                    setScores({});
+                    setOverall("");
+                  }}
+                >
+                  <Checkbox.Content className="max-sm:min-h-11">
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    只写点评不评分
+                  </Checkbox.Content>
+                </Checkbox>
+              }
+            />
             <TextField
+              fullWidth
+              className="w-full"
               isInvalid={!!noteError}
               isRequired
               name="comment"
@@ -792,7 +894,11 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
               onChange={onNoteChange}
             >
               <Label>详细评价</Label>
-              <TextArea className="w-full" rows={10} variant="secondary" />
+              <TextArea
+                className="w-full max-sm:h-36 max-sm:min-h-36"
+                rows={10}
+                variant="secondary"
+              />
               <Description>
                 请畅所欲言, 从讲课方式到作业考试都谈谈.
                 <br />
@@ -801,6 +907,8 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
               {noteError ? <FieldError>{noteError}</FieldError> : null}
             </TextField>
             <TextField
+              fullWidth
+              className="w-full"
               name="grade"
               value={grade}
               variant="secondary"
@@ -810,6 +918,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             >
               <Label>你的成绩</Label>
               <Input
+                className="max-sm:min-h-11"
                 inputMode="numeric"
                 maxLength={3}
                 placeholder="选填"
@@ -837,8 +946,9 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             <StatusMessage msg={msg} />
           </Card.Content>
 
-          <Card.Footer className="flex-wrap gap-2">
+          <Card.Footer className="flex-row flex-wrap gap-2 max-sm:items-stretch">
             <Button
+              className="min-w-0 flex-1 sm:w-auto sm:flex-none"
               isDisabled={!selectedCourse || !teacherId}
               type="button"
               variant="secondary"
@@ -846,7 +956,12 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
             >
               保存
             </Button>
-            <Button isPending={submitting} type="submit" variant="primary">
+            <Button
+              className="min-w-0 flex-[1.25] sm:w-auto sm:flex-none"
+              isPending={submitting}
+              type="submit"
+              variant="primary"
+            >
               发布
             </Button>
           </Card.Footer>

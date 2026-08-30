@@ -268,6 +268,13 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           access: "public",
         },
         {
+          id: "latest-filled",
+          title: "最新课评 · 满态",
+          description: "DEV mock：若干公开课评",
+          href: "/latest?preview=filled",
+          access: "public",
+        },
+        {
           id: "latest-empty",
           title: "最新课评 · 空态",
           description: "DEV mock：暂时还没有公开课评",
@@ -286,6 +293,13 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           title: "公开用户页",
           description: `匿名用户#${ATLAS_PUBLIC_CODE} 的过审点评`,
           href: `/u/${ATLAS_PUBLIC_CODE}`,
+          access: "public",
+        },
+        {
+          id: "public-user-filled",
+          title: "公开用户页 · 满态",
+          description: "DEV mock：匿名用户#000001 有过审点评",
+          href: `/u/${ATLAS_PUBLIC_CODE}?preview=filled`,
           access: "public",
         },
         {
@@ -398,6 +412,13 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           title: "写点评 · 预设关系",
           description: "从课程页「写点评」进来的预填状态",
           href: submitPreset,
+          access: "login",
+        },
+        {
+          id: "submit-filled",
+          title: "写点评 · 填满预览",
+          description: "DEV preview=filled：课×师与完整草稿",
+          href: "/submit?preview=filled",
           access: "login",
         },
         {

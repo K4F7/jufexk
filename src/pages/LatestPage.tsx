@@ -11,14 +11,14 @@ import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { useLoadMoreOnVisible } from "../hooks/useLoadMoreOnVisible";
 import { api } from "../lib/api";
-import { readDevPreview } from "../lib/dev-preview";
+import { previewFilledLatestReviews, readDevPreviewOrFilled } from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { LatestReview, PublicReviewPage } from "../lib/types";
 
 export function LatestPage() {
   const [searchParams] = useSearchParams();
-  const preview = readDevPreview(searchParams);
+  const preview = readDevPreviewOrFilled(searchParams);
   const [items, setItems] = useState<LatestReview[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +40,13 @@ export function LatestPage() {
     }
     if (preview === "empty") {
       setItems([]);
+      setNextCursor(null);
+      setError("");
+      setLoading(false);
+      return;
+    }
+    if (preview === "filled") {
+      setItems(previewFilledLatestReviews());
       setNextCursor(null);
       setError("");
       setLoading(false);
@@ -98,8 +105,8 @@ export function LatestPage() {
   });
 
   return (
-    <section>
-      <header aria-label="最新课评标题" className="mb-3">
+    <section aria-label="最新课评">
+      <header aria-label="最新课评标题" className="mb-3 max-sm:sr-only">
         <Typography
           className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
           type="h1"
@@ -117,9 +124,12 @@ export function LatestPage() {
         <Card role="status">
           <Card.Header>
             <Card.Title>暂时还没有公开课评</Card.Title>
-            <Card.Description>
+            <Card.Description className="break-words">
               先到
-              <RouterAriaLink to="/courses" className="text-accent">
+              <RouterAriaLink
+                to="/courses"
+                className="text-accent max-sm:inline-flex max-sm:min-h-[44px] max-sm:items-center"
+              >
                 课程列表
               </RouterAriaLink>
               看看，或通过课程页的「写点评」分享第一门课的体验。
@@ -134,6 +144,7 @@ export function LatestPage() {
           {nextCursor ? (
             <div className="flex flex-col items-center pt-4">
               <Button
+                className="w-full sm:w-auto"
                 variant="secondary"
                 isPending={isLoadingMore}
                 onPress={loadMore}
@@ -167,34 +178,34 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const date = formatReviewDate(review.created_at);
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
-    <article className="border-b border-separator py-5 last:border-b-0">
-      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <span className="flex flex-wrap items-center gap-x-2 text-[calc(13/15*1rem)] font-medium text-foreground">
+    <article className="min-w-0 border-b border-separator py-3 last:border-b-0 sm:py-5">
+      <header className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 sm:flex sm:flex-wrap sm:justify-between sm:gap-x-3 sm:gap-y-0">
+        <span className="col-start-1 row-start-1 inline-flex min-w-0 items-center text-[calc(13/15*1rem)] font-medium text-foreground">
           <ReviewAuthor
             publicCode={review.author_public_code}
             avatarKey={review.author_avatar_key}
           />
         </span>
+        <p className="col-start-2 row-start-1 mb-0 mt-0 min-w-0 text-[calc(13/15*1rem)] leading-6 sm:order-3 sm:mt-2 sm:w-full sm:basis-full">
+          <span className="text-muted">点评了 </span>
+          <RouterAriaLink
+            to={`/courses/${review.course_id}?teacher=${review.teacher_id}`}
+            className="max-sm:!inline break-words [overflow-wrap:anywhere] text-accent sm:inline-block sm:max-w-full"
+          >
+            {review.course_name}
+            {review.teacher_name ? `（${review.teacher_name}）` : ""}
+          </RouterAriaLink>
+        </p>
         {date ? (
           <time
-            className="text-[calc(12/15*1rem)] text-muted"
+            className="col-start-3 row-start-1 min-w-0 max-w-full shrink-0 whitespace-normal break-words text-[calc(12/15*1rem)] text-muted sm:order-2"
             dateTime={date}
           >
             {date}
           </time>
         ) : null}
       </header>
-      <p className="mb-0 mt-2 text-[calc(13/15*1rem)] leading-6">
-        <span className="text-muted">点评了 </span>
-        <RouterAriaLink
-          to={`/courses/${review.course_id}?teacher=${review.teacher_id}`}
-          className="text-accent"
-        >
-          {review.course_name}
-          {review.teacher_name ? `（${review.teacher_name}）` : ""}
-        </RouterAriaLink>
-      </p>
-      <div className="mt-2 line-clamp-3">
+      <div className="mt-1 min-w-0 break-words [overflow-wrap:anywhere] line-clamp-3 sm:mt-2">
         {review.headline ? (
           <p className="m-0 break-words text-sm font-medium leading-relaxed">
             {review.headline}
@@ -208,7 +219,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
       </div>
       <RouterAriaLink
         to={moreHref}
-        className="text-[calc(13/15*1rem)] text-accent"
+        className="mt-0.5 inline text-[calc(13/15*1rem)] leading-6 text-accent sm:mt-1 sm:inline-block"
       >
         查看全文
       </RouterAriaLink>

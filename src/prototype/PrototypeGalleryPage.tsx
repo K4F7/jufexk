@@ -102,7 +102,7 @@ function ModuleCard({
 function PrototypeGalleryContent() {
   const { moduleId, module, variant, setModule } = usePrototypeNavigation();
 
-  // Bare /prototype → sky-tokens A so theme controller + switcher bind immediately.
+  // Bare /prototype → sky-tokens A so Gallery preview still has a default module.
   useEffect(() => {
     if (!moduleId) {
       setModule(DEFAULT_GALLERY_MODULE, DEFAULT_GALLERY_VARIANT);
@@ -153,8 +153,9 @@ function PrototypeGalleryContent() {
           <p className="m-0 font-semibold">{module.title}</p>
           <p className="m-0 mt-1 text-muted">{module.question}</p>
           <p className="m-0 mt-2 text-xs text-muted">
-            该模块在真实页面上下文预览。请从上方变体链接进入对应路由，底部切换条可循环
-            A/B/C。评价流与认可对照挂在 /courses/:id；顶栏搜索对照挂在 /courses。
+            该模块在真实页面上下文预览。请从上方变体链接进入对应路由。评价流与认可对照挂在
+            /courses/:id；顶栏搜索对照挂在 /courses。底部身份条可切换游客 / 登录用户 /
+            管理员。
           </p>
           {module.livePath ? (
             <p className="m-0 mt-2">
