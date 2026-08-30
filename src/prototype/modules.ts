@@ -177,6 +177,53 @@ export const PROTOTYPE_MODULES: PrototypeModuleDef[] = [
     ],
   },
   {
+    id: "public-user-follow",
+    title: "公开主页关注按钮位置与强调",
+    question:
+      "公开主页右侧「公开编号」卡片里，关注按钮放在哪里、用哪个 HeroUI 官方 variant/size 最合适？",
+    status: "exploring",
+    preview: "gallery",
+    notes:
+      "throwaway prototype，不改生产默认。A 为当前生产方案（昵称下 · primary）；F 为原布局（统计下方）。确认后把胜出组合写回 PublicUserPage。",
+    variants: [
+      {
+        key: "A",
+        name: "昵称下 · primary",
+        summary: "当前生产方案：默认尺寸主按钮，放在昵称与统计之间。",
+      },
+      {
+        key: "B",
+        name: "昵称下 · primary sm",
+        summary: "同一位置，按钮小一号。",
+      },
+      {
+        key: "C",
+        name: "昵称下 · secondary",
+        summary: "同一位置，次一级强调。",
+      },
+      {
+        key: "D",
+        name: "昵称下 · outline",
+        summary: "同一位置，描边更轻。",
+      },
+      {
+        key: "E",
+        name: "昵称下 · ghost",
+        summary: "同一位置，最轻。",
+      },
+      {
+        key: "F",
+        name: "统计下方 · primary",
+        summary: "原布局：按钮回到卡片底部。",
+      },
+      {
+        key: "G",
+        name: "标题行右侧 · primary sm",
+        summary: "小主按钮与昵称同一行，靠右。",
+      },
+    ],
+  },
+  {
     id: "global-search",
     title: "页内目录搜索 vs 导航栏全局搜索",
     question:

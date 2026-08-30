@@ -25,7 +25,7 @@ async function mockShell(page: Page, extra: (url: URL) => unknown | null) {
   });
 }
 
-test("reserved handle page shows 学长学姐 copy and follow plus course count", async ({
+test("reserved handle page shows follow above stats plus course count", async ({
   page,
 }) => {
   await mockShell(page, (url) => {
@@ -77,11 +77,16 @@ test("reserved handle page shows 学长学姐 copy and follow plus course count"
   expect(firstStatBox).toBeTruthy();
   expect(avatarBox!.y + avatarBox!.height).toBeLessThanOrEqual(handleBox!.y);
   expect(handleBox!.y + handleBox!.height).toBeLessThan(firstStatBox!.y);
-  await expect(page.getByText("来自以前的学长学姐的评价").first()).toBeVisible();
+  await expect(page.getByText("来自以前的学长学姐的评价")).toHaveCount(0);
+  const followButton = page.getByRole("button", { name: "关注" });
+  await expect(followButton).toBeVisible();
+  const followBox = await followButton.boundingBox();
+  expect(followBox).toBeTruthy();
+  expect(handleBox!.y + handleBox!.height).toBeLessThan(followBox!.y);
+  expect(followBox!.y + followBox!.height).toBeLessThan(firstStatBox!.y);
   await expect(profileCard.getByText("点评了", { exact: true })).toBeVisible();
   await expect(profileCard.getByText("3 门课程")).toBeVisible();
   await expect(profileCard.getByText("50 门课程")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "关注" })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "中国传统文化导论（测试教师）" }).first(),
   ).toBeVisible();

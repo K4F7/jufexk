@@ -139,11 +139,6 @@ export function PublicUserPage() {
           >
             {handle}
           </Typography>
-          {profile.note ? (
-            <p className="mt-2 text-sm text-muted">{profile.note}</p>
-          ) : (
-            <p className="mt-2 text-sm text-muted">公开点评</p>
-          )}
         </header>
         {profile.reviews.length === 0 ? (
           <p className="text-sm text-muted">暂时还没有公开点评。</p>
@@ -160,9 +155,20 @@ export function PublicUserPage() {
           <Card.Header className="items-center text-center">
             <AnonymousAvatar avatarKey={profile.avatar_key} size="lg" />
             <Card.Title>{handle}</Card.Title>
-            {profile.reserved ? (
-              <Card.Description>来自以前的学长学姐的评价</Card.Description>
-            ) : null}
+            {profile.viewer_is_self ? null : (
+              <>
+                <Button
+                  variant={profile.viewer_followed ? "secondary" : "primary"}
+                  isPending={followPending}
+                  onPress={() => void toggleFollow()}
+                >
+                  {profile.viewer_followed ? "取消关注" : "关注"}
+                </Button>
+                {followError ? (
+                  <DetailErrorAlert title="关注失败" message={followError} />
+                ) : null}
+              </>
+            )}
           </Card.Header>
           <Card.Content>
             <dl className="m-0 grid gap-3 text-sm">
@@ -180,20 +186,6 @@ export function PublicUserPage() {
               </div>
             </dl>
           </Card.Content>
-          {profile.viewer_is_self ? null : (
-            <Card.Footer className="flex flex-col items-center gap-2">
-              <Button
-                variant={profile.viewer_followed ? "secondary" : "primary"}
-                isPending={followPending}
-                onPress={() => void toggleFollow()}
-              >
-                {profile.viewer_followed ? "取消关注" : "关注"}
-              </Button>
-              {followError ? (
-                <DetailErrorAlert title="关注失败" message={followError} />
-              ) : null}
-            </Card.Footer>
-          )}
         </Card>
       </aside>
     </div>

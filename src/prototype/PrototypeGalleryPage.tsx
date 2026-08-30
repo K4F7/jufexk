@@ -18,6 +18,10 @@ import {
   type PrototypeModuleDef,
 } from "./modules";
 import { PageAtlas } from "./PageAtlas";
+import {
+  isPublicUserFollowVariantKey,
+  PublicUserFollowPrototype,
+} from "./PublicUserFollowVariants";
 import { SkyTokenPreview } from "./SkyTokenPreview";
 import { usePrototypeNavigation } from "./usePrototypeNavigation";
 
@@ -142,6 +146,17 @@ function PrototypeGalleryContent() {
           className="rounded-xl border border-border bg-background p-4"
         >
           <SkyTokenPreview variant={variant} />
+        </section>
+      ) : null}
+
+      {module?.id === "public-user-follow" &&
+      variant &&
+      isPublicUserFollowVariantKey(variant.key) ? (
+        <section
+          aria-label="公开主页关注按钮预览"
+          className="rounded-xl border border-border bg-background p-4"
+        >
+          <PublicUserFollowPrototype variant={variant.key} />
         </section>
       ) : null}
 
