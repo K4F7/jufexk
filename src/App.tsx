@@ -17,7 +17,15 @@ import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
 import { LatestPage } from "./pages/LatestPage";
 
+declare global {
+  interface Window {
+    __jufexkSiteBannerRequest?: Promise<SiteBanner>;
+  }
+}
+
 const THEME_STORAGE_KEY = "jufexk-theme";
+
+let initialSiteBannerRequest = window.__jufexkSiteBannerRequest ?? null;
 
 const AccountPage = lazy(() =>
   import("./pages/AccountPage").then((m) => ({ default: m.AccountPage })),
@@ -145,7 +153,7 @@ function applyColorScheme(mode: "light" | "dark") {
 
 export function App() {
   const [config, setConfig] = useState<SiteConfig | null>(null);
-  const [banner, setBanner] = useState<SiteBanner | null>(null);
+  const [banner, setBanner] = useState<SiteBanner | null | undefined>(undefined);
 
   useEffect(() => {
     api<SiteConfig>("/api/config")
@@ -162,7 +170,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    api<SiteBanner>("/api/site/banner").then(setBanner).catch(() => setBanner(null));
+    (initialSiteBannerRequest ?? api<SiteBanner>("/api/site/banner"))
+      .then((value) => {
+        initialSiteBannerRequest = null;
+        setBanner(value);
+      })
+      .catch(() => {
+        initialSiteBannerRequest = null;
+        setBanner(null);
+      });
   }, []);
 
   // Initial visit follows system; manual choice is remembered (foundations).
@@ -214,7 +230,11 @@ export function App() {
       <RacClientNavigation>
         <ViewerProvider>
           <AdminSessionProvider>
-            <AppShell banner={banner} config={config}>
+            <AppShell
+              banner={banner ?? null}
+              bannerLoading={banner === undefined}
+              config={config}
+            >
               <Suspense fallback={<RouteFallback />}>
               <Routes>
               <Route path="/" element={<Navigate to="/latest" replace />} />
