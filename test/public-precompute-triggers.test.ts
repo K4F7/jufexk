@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 const sourceTables = [
   "courses",
   "course_name_variants",
+  "course_tags",
   "teachers",
   "course_teachers",
   "reviews",

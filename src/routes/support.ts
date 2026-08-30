@@ -16,8 +16,17 @@ import {
 
 export const clean = (v: unknown, n = 500) =>
   typeof v === "string" ? v.trim().slice(0, n) : "";
-export const markPublicCatalogCacheChanged = (c: AppContext) =>
+export const markPublicCatalogCacheChanged = (
+  c: AppContext,
+  scopes: ReadonlyArray<"list" | "detail" | "config"> = ["list", "detail"],
+) => {
   c.set("publicCatalogCacheChanged", true);
+  const current = c.get("publicCatalogCacheScopes") || [];
+  c.set(
+    "publicCatalogCacheScopes",
+    [...new Set([...current, ...scopes])],
+  );
+};
 export const nullableClean = (v: unknown, n = 500) => clean(v, n) || null;
 export const integer = (v: unknown) => {
   if (typeof v === "number") return Number.isSafeInteger(v) ? v : null;

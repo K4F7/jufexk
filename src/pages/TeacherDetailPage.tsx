@@ -20,6 +20,7 @@ import {
 import { readDevPreview } from "../lib/dev-preview";
 import { TeacherCourseTable } from "../components/TeacherCourseTable";
 import { api } from "../lib/api";
+import { getCatalogData } from "../lib/catalog-data-cache";
 import { formatSidebarScore } from "../lib/labels";
 import type { Course, Teacher } from "../lib/types";
 
@@ -103,7 +104,8 @@ export function TeacherDetailPage() {
     setError("");
     (async () => {
       try {
-        const d = await api<Detail>(`/api/teachers/${id}`);
+        const detailUrl = `/api/teachers/${id}`;
+        const d = await getCatalogData(detailUrl, () => api<Detail>(detailUrl));
         if (!cancelled) setData(d);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);

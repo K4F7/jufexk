@@ -12,12 +12,15 @@ export function RouterAriaLink({
   children,
   "aria-label": ariaLabel,
   "aria-current": ariaCurrent,
+  onIntent,
 }: {
   to: string;
   className?: string;
   children: ReactNode;
   "aria-label"?: string;
   "aria-current"?: "page" | "true" | "false";
+  /** Called once the pointer/focus indicates likely navigation intent. */
+  onIntent?: () => void;
 }) {
   return (
     <Link
@@ -40,6 +43,10 @@ export function RouterAriaLink({
               domProps as { onClick?: (ev: React.MouseEvent) => void }
             ).onClick?.(e);
           }}
+          onPointerEnter={(e: React.PointerEvent) => {
+            if (e.pointerType !== "touch") onIntent?.();
+          }}
+          onFocus={() => onIntent?.()}
         />
       )}
     >

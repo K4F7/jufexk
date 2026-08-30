@@ -169,7 +169,7 @@ describe("public list refresh coordination", () => {
     ).first<{ generation: number }>();
     await env.DB.prepare(`
       CREATE TRIGGER issue355_write_during_pinyin
-      AFTER UPDATE OF pinyin_text ON public_course_canonicals
+      AFTER UPDATE OF pinyin_text ON public_course_canonicals_staging
       WHEN NEW.course_id=1
        AND (SELECT dirty FROM public_precompute_state WHERE id=1)=1
        AND NOT EXISTS(
@@ -332,7 +332,7 @@ describe("public list refresh coordination", () => {
     ).run();
     await env.DB.prepare(`
       CREATE TRIGGER issue355_fail_pinyin_refresh
-      BEFORE UPDATE OF pinyin_text ON public_course_canonicals
+      BEFORE UPDATE OF pinyin_text ON public_course_canonicals_staging
       WHEN NEW.course_id=1
       BEGIN
         SELECT RAISE(ABORT,'issue355 pinyin refresh failure');
@@ -629,4 +629,3 @@ describe("public list refresh coordination", () => {
     }
   });
 });
-

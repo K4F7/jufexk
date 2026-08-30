@@ -27,8 +27,14 @@ import {
   publicDimensionAverage,
   publicDimensionLabels,
 } from "../lib/review-schemes";
-import { setPublicCatalogCacheHeaders } from "../lib/public-catalog-cache";
-import { ensurePublicListPrecomputes } from "../public-list-precompute";
+import {
+  isPublicCatalogCacheableRequest,
+  setPublicCatalogCacheHeaders,
+} from "../lib/public-catalog-cache";
+import {
+  ensurePublicListPrecomputes,
+  type PublicPrecomputeReadOptions,
+} from "../public-list-precompute";
 import {
   publicCourseCanonicalJoin,
   publicCourseOptionJoin,
@@ -99,6 +105,17 @@ import type { AppContext } from "./types";
 
 const publicCatalogRoutes = new Hono<AppEnv>();
 
+function publicPrecomputeReadOptions(c: AppContext): PublicPrecomputeReadOptions {
+  // Miniflare's deterministic test binding expects writes to be visible on the
+  // immediately following read; production has no test auth binding.
+  if (c.env.ORDINARY_USER_TEST_AUTH_SECRET) return {};
+  if (!isPublicCatalogCacheableRequest(c)) return {};
+  return {
+    mode: "stale",
+    waitUntil: (promise) => c.executionCtx.waitUntil(promise),
+  };
+}
+
 const withCourseReviewScheme = <
   T extends {
     scheme_key?: unknown;
@@ -166,18 +183,29 @@ const loadVirtualPeSportItems = async (
   department: string,
 ) => {
   if (department) return [];
+  const matchingSports = VIRTUAL_PE_SPORTS.filter((sport) =>
+    virtualPeSportMatchesQuery(sport, searchTerms),
+  );
+  if (!matchingSports.length) return [];
+  const names = [...new Set(matchingSports.flatMap((sport) => sport.teacherNames))];
+  const placeholders = names.map(() => "?").join(",");
+  const teacherRows = (
+    await db
+      .prepare(`SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`)
+      .bind(...names)
+      .all<{ id: number; name: string }>()
+  ).results;
+  const teachersByName = new Map<string, Array<{ id: number; name: string }>>();
+  for (const teacher of teacherRows) {
+    const rows = teachersByName.get(teacher.name) || [];
+    rows.push(teacher);
+    teachersByName.set(teacher.name, rows);
+  }
   const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
-  for (const sport of VIRTUAL_PE_SPORTS) {
-    if (!virtualPeSportMatchesQuery(sport, searchTerms)) continue;
-    const placeholders = sport.teacherNames.map(() => "?").join(",");
-    const teachers = (
-      await db
-        .prepare(
-          `SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`,
-        )
-        .bind(...sport.teacherNames)
-        .all<{ id: number; name: string }>()
-    ).results;
+  for (const sport of matchingSports) {
+    const teachers = sport.teacherNames.flatMap(
+      (name) => teachersByName.get(name) || [],
+    );
     if (!teachers.length) continue;
     if (teacherId && !teachers.some((teacher) => teacher.id === teacherId))
       continue;
@@ -468,6 +496,7 @@ const getPublicReviewPageFor = async (
   cursor: PublicReviewCursor | null,
   teacherId: number | null = null,
   query: PublicReviewQuery | null = null,
+  cacheable = false,
 ) =>
   getPublicReviewPage(
     c.env.DB,
@@ -475,13 +504,16 @@ const getPublicReviewPageFor = async (
     id,
     size,
     cursor,
-    await publicReviewViewerId(c),
+    cacheable ? null : await publicReviewViewerId(c),
     teacherId,
     query,
-    await hasValidAdminSession(c),
+    cacheable ? false : await hasValidAdminSession(c),
   );
 publicCatalogRoutes.get("/api/config", async (c) => {
   const turnstileSecret = await readSecret(c.env.TURNSTILE_SECRET);
+  if (isPublicCatalogCacheableRequest(c)) {
+    setPublicCatalogCacheHeaders(c, "config");
+  }
   return c.json({
     siteName: c.env.SITE_NAME,
     universityName: c.env.UNIVERSITY_NAME,
@@ -502,7 +534,8 @@ publicCatalogRoutes.get("/api/site/banner", async (c) =>
   c.json(await loadSiteBanner(c.env.DB)),
 );
 publicCatalogRoutes.get("/api/search/candidates", async (c) => {
-  await ensurePublicListPrecomputes(c.env.DB);
+  const cacheable = isPublicCatalogCacheableRequest(c);
+  await ensurePublicListPrecomputes(c.env.DB, publicPrecomputeReadOptions(c));
   const kind = clean(c.req.query("kind"), 20);
   if (kind !== "course" && kind !== "teacher") {
     return fail(c, "kind 只允许 course 或 teacher", 400);
@@ -514,7 +547,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
     : 200;
   const ftsQuery = buildCatalogCandidateFtsQuery(query);
   if (!ftsQuery) {
-    setPublicCatalogCacheHeaders(c);
+    if (cacheable) setPublicCatalogCacheHeaders(c, "list");
     return c.json({ items: [], meta: { rows_read: 0, candidate_count: 0 } });
   }
   if (kind === "course") {
@@ -540,7 +573,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
       .bind(ftsQuery, limit)
       .all();
     const rows = (result.results || []) as Array<Record<string, unknown>>;
-    setPublicCatalogCacheHeaders(c);
+    if (cacheable) setPublicCatalogCacheHeaders(c, "list");
     return c.json({
       items: rows.map((row) => ({
         id: Number(row.id),
@@ -573,7 +606,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
     .bind(ftsQuery, limit)
     .all();
   const rows = (result.results || []) as Array<Record<string, unknown>>;
-  setPublicCatalogCacheHeaders(c);
+  if (cacheable) setPublicCatalogCacheHeaders(c, "list");
   return c.json({
     items: rows.map((row) => ({
       id: Number(row.id),
@@ -588,6 +621,7 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
   });
 });
 publicCatalogRoutes.get("/api/courses", async (c) => {
+  const cacheable = isPublicCatalogCacheableRequest(c);
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const cat = clean(c.req.query("category"), 20);
@@ -604,15 +638,20 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
     teacherId,
   };
   if (clean(c.req.query("view"), 20) === "relations") {
-    const viewerId = await publicReviewViewerId(c);
+    const viewerId = cacheable ? null : await publicReviewViewerId(c);
     const sortRaw = clean(c.req.query("sort"), 20);
     const query: PublicRelationListQuery = {
       ...listQuery,
       sort:
         sortRaw === "name" ? "name" : sortRaw === "rating" ? "rating" : "reviews",
     };
-    const result = await queryPublicCourseRelations(c.env.DB, query, viewerId);
-    if (!viewerId) setPublicCatalogCacheHeaders(c);
+    const result = await queryPublicCourseRelations(
+      c.env.DB,
+      query,
+      viewerId,
+      publicPrecomputeReadOptions(c),
+    );
+    if (cacheable) setPublicCatalogCacheHeaders(c, "list");
     return c.json(result);
   }
   // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
@@ -620,12 +659,17 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
     ...listQuery,
     sort: clean(c.req.query("sort"), 20) === "name" ? "name" : "reviews",
   };
-  const result = await queryPublicCourses(c.env.DB, query);
-  setPublicCatalogCacheHeaders(c);
+  const result = await queryPublicCourses(
+    c.env.DB,
+    query,
+    publicPrecomputeReadOptions(c),
+  );
+  if (cacheable) setPublicCatalogCacheHeaders(c, "list");
   return c.json(result);
 });
 publicCatalogRoutes.get("/api/teachers", async (c) => {
-  await ensurePublicListPrecomputes(c.env.DB);
+  const cacheable = isPublicCatalogCacheableRequest(c);
+  await ensurePublicListPrecomputes(c.env.DB, publicPrecomputeReadOptions(c));
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const searchTerms = parseSearchTerms(search);
@@ -687,7 +731,7 @@ publicCatalogRoutes.get("/api/teachers", async (c) => {
     teacherCount,
   );
   const totalCount = pageRows.total;
-  setPublicCatalogCacheHeaders(c);
+  if (cacheable) setPublicCatalogCacheHeaders(c, "list");
   return c.json({
     items: pageRows.items.map((row: Record<string, unknown>) => {
       const teacher = toPublicTeacher(row);
@@ -707,7 +751,8 @@ publicCatalogRoutes.get("/api/teachers", async (c) => {
   });
 });
 publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
-  await ensurePublicListPrecomputes(c.env.DB);
+  const cacheable = isPublicCatalogCacheableRequest(c);
+  await ensurePublicListPrecomputes(c.env.DB, publicPrecomputeReadOptions(c));
   const id = integer(c.req.param("id"));
   const [teacherResult, coursesResult] = await c.env.DB.batch<
     Record<string, unknown>
@@ -720,14 +765,14 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
            FROM public_review_counts
            WHERE public_review_counts.teacher_id=t.id
          ),0) review_count,
-         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
+         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.teacher_id=t.id AND r.status='approved'${guestReviewBindingSql}) rating
        FROM teachers t
        LEFT JOIN public_teacher_course_counts ON public_teacher_course_counts.teacher_id=t.id
        WHERE t.id=?`,
     ).bind(id),
     c.env.DB.prepare(
       `SELECT c.*,COALESCE(visible_counts.review_count,0) review_count,
-         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${publicReviewBinding}) rating
+         (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.teacher_id=? AND r.status='approved'${guestReviewBindingSql}) rating
        FROM course_teachers ct
        JOIN courses taught ON taught.id=ct.course_id
        JOIN public_course_canonicals pcc ON pcc.course_id=taught.id
@@ -749,6 +794,9 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
     id,
     20,
     null,
+    null,
+    null,
+    cacheable,
   );
   const courses = coursesResult.results;
   const publicCourses = groupEnglishLevelItems(
@@ -777,6 +825,7 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
     teacher.course_count =
       Number(teacher.course_count || 0) + 1;
   }
+  if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
   return c.json({
     teacher,
     courses: publicCourses,
@@ -820,6 +869,7 @@ publicCatalogRoutes.get("/api/teachers/:id/avatar", async (c) => {
   });
 });
 publicCatalogRoutes.get("/api/teachers/:id/reviews", async (c) => {
+  const cacheable = isPublicCatalogCacheableRequest(c);
   const id = integer(c.req.param("id"));
   const teacher = await c.env.DB.prepare("SELECT id FROM teachers WHERE id=?")
     .bind(id)
@@ -834,11 +884,16 @@ publicCatalogRoutes.get("/api/teachers/:id/reviews", async (c) => {
     id,
     publicReviewPageSize(c),
     cursor,
+    null,
+    null,
+    cacheable,
   );
+  if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
   return c.json(page);
 });
 publicCatalogRoutes.get("/api/courses/options", async (c) => {
-  await ensurePublicListPrecomputes(c.env.DB);
+  const cacheable = isPublicCatalogCacheableRequest(c);
+  await ensurePublicListPrecomputes(c.env.DB, publicPrecomputeReadOptions(c));
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const searchTerms = parseSearchTerms(search);
@@ -894,7 +949,7 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
     optionCount,
   );
   const totalCount = pageRows.total;
-  setPublicCatalogCacheHeaders(c);
+  if (cacheable) setPublicCatalogCacheHeaders(c, "list");
   return c.json({
     items: pageRows.items.map((row) => withPublicCourseOption(row)),
     page,
@@ -905,7 +960,8 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
 });
 // 院筛选项：公开可见课程的去重非空院系（trim 去重）；为空时前端隐藏院系筛（Issue #203）。
 publicCatalogRoutes.get("/api/courses/departments", async (c) => {
-  await ensurePublicListPrecomputes(c.env.DB);
+  const cacheable = isPublicCatalogCacheableRequest(c);
+  await ensurePublicListPrecomputes(c.env.DB, publicPrecomputeReadOptions(c));
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT trim(c.department) department
      FROM courses c
@@ -914,11 +970,11 @@ publicCatalogRoutes.get("/api/courses/departments", async (c) => {
        AND trim(COALESCE(c.department,''))<>''
      ORDER BY trim(c.department)`,
   ).all<{ department: string }>();
-  setPublicCatalogCacheHeaders(c);
+  if (cacheable) setPublicCatalogCacheHeaders(c, "list");
   return c.json({ items: results.map((row) => row.department) });
 });
 publicCatalogRoutes.get("/api/courses/:id", async (c) => {
-  await ensurePublicListPrecomputes(c.env.DB);
+  await ensurePublicListPrecomputes(c.env.DB, publicPrecomputeReadOptions(c));
   const id = integer(c.req.param("id"));
   const virtual = id ? virtualPeSportById(id) : null;
   if (virtual) {
@@ -932,7 +988,8 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
         .all()
     ).results;
     if (!teachers.length) return fail(c, "课程不存在", 404);
-    const viewerId = await publicReviewViewerId(c);
+    const cacheable = isPublicCatalogCacheableRequest(c);
+    const viewerId = cacheable ? null : await publicReviewViewerId(c);
     const typedTeachers = teachers as Array<{ id: number; name: string }>;
     const signals = await loadRelationSignalPayloads(
       c.env.DB,
@@ -942,6 +999,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
       })),
       viewerId,
     );
+    if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
     return c.json({
       course: {
         id: virtual.id,
@@ -978,7 +1036,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
   ] = await c.env.DB.batch<Record<string, unknown>>([
     c.env.DB.prepare(
       `SELECT c.*,
-           (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.status='approved'${publicReviewBinding}) rating
+           (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=c.id AND r.status='approved'${guestReviewBindingSql}) rating
          FROM courses c WHERE c.id=?`,
     ).bind(id),
     c.env.DB.prepare(
@@ -987,7 +1045,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
     ).bind(id),
     c.env.DB.prepare(
       `SELECT t.*,COALESCE(visible_counts.review_count,0) review_count,
-           (SELECT ROUND(AVG(r.overall),1) FROM reviews r WHERE r.course_id=? AND r.teacher_id=t.id AND r.status='approved'${publicReviewBinding}) rating
+           ratings.rating
          FROM teachers t
          JOIN course_teachers ct ON ct.teacher_id=t.id
          JOIN courses taught ON taught.id=ct.course_id
@@ -996,11 +1054,13 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
          JOIN public_course_canonicals requested_pcc ON requested_pcc.course_id=requested.id
          LEFT JOIN public_review_counts visible_counts
            ON visible_counts.course_id=requested.id AND visible_counts.teacher_id=t.id
+         LEFT JOIN public_relation_ratings ratings
+           ON ratings.course_id=requested.id AND ratings.teacher_id=t.id
          WHERE ${publicCourseVisibleSql("taught")}
            AND taught_pcc.canonical_course_id=requested_pcc.canonical_course_id
          GROUP BY t.id
          ORDER BY review_count DESC,t.name,t.id`,
-    ).bind(id, id),
+    ).bind(id),
     c.env.DB.prepare(
       "SELECT name,created_at FROM course_name_variants WHERE course_id=? ORDER BY name",
     ).bind(id),
@@ -1017,7 +1077,8 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
   // 任课关系 AI 总结（#401）按教师 ID 索引随载荷下发；空总结不下发。
   if (id == null) return fail(c, "课程不存在", 404);
   const summaries = await getCourseRelationSummaries(c.env.DB, id);
-  const viewerId = await publicReviewViewerId(c);
+  const cacheable = isPublicCatalogCacheableRequest(c);
+  const viewerId = cacheable ? null : await publicReviewViewerId(c);
   const typedTeachers = teachers as Array<{
     id: number;
     name: string;
@@ -1044,6 +1105,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
     tag_csv: tags.join(","),
   });
   const meta = deriveCourseCatalogMeta(course);
+  if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
   return c.json({
     course: {
       ...decoratedCourse,
@@ -1066,6 +1128,7 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
 });
 publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
   const id = integer(c.req.param("id"));
+  const cacheable = isPublicCatalogCacheableRequest(c);
   const teacherId = integer(c.req.query("teacherId"));
   const rawSort = clean(c.req.query("sort"), 20);
   const allowedSorts = new Set<PublicReviewSort>([
@@ -1090,7 +1153,10 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
     : null;
   if (id && isVirtualPeSportId(id)) {
     // 虚拟体育课没有课程级评价行：未选教师时返回空页，选定教师后按其教师流展示。
-    if (!teacherId) return c.json({ items: [], nextCursor: null });
+    if (!teacherId) {
+      if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
+      return c.json({ items: [], nextCursor: null });
+    }
     const virtual = virtualPeSportById(id);
     const teacher = await c.env.DB.prepare(
       "SELECT id,name FROM teachers WHERE id=?",
@@ -1106,8 +1172,7 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
     const rawVirtualCursor = c.req.query("cursor");
     const virtualCursor = decodePublicReviewCursor(rawVirtualCursor);
     if (rawVirtualCursor && !virtualCursor) return fail(c, "评价游标无效", 400);
-    return c.json(
-      await getPublicReviewPageFor(
+    const page = await getPublicReviewPageFor(
         c,
         "teacher_id",
         teacherId,
@@ -1115,8 +1180,10 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
         virtualCursor,
         null,
         reviewQuery,
-      ),
-    );
+        cacheable,
+      );
+    if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
+    return c.json(page);
   }
   const course = await c.env.DB.prepare("SELECT id FROM courses WHERE id=?")
     .bind(id)
@@ -1133,11 +1200,19 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
     cursor,
     teacherId,
     reviewQuery,
+    cacheable,
   );
+  if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
   return c.json(page);
 });
 
-publicCatalogRoutes.get("/api/reviews/latest", handleLatestPublicReviews);
+publicCatalogRoutes.get("/api/reviews/latest", async (c) => {
+  const response = await handleLatestPublicReviews(c);
+  if (isPublicCatalogCacheableRequest(c) && response.status < 400) {
+    setPublicCatalogCacheHeaders(c, "list");
+  }
+  return response;
+});
 
 publicCatalogRoutes.get("/api/reviews/:id/comments", handleListReviewComments);
 

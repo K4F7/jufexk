@@ -4,10 +4,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { api, setCsrfToken } from "../lib/api";
+import { clearCatalogDataCache } from "../lib/catalog-data-cache";
 
 /**
  * Shared ordinary-user viewer state (issue #139 / ADR-0016).
@@ -44,10 +46,15 @@ const ViewerContext = createContext<ViewerContextValue | null>(null);
 export function ViewerProvider({ children }: { children: ReactNode }) {
   const [viewer, setViewer] = useState<ViewerSession>(GUEST);
   const [ready, setReady] = useState(false);
+  const previousAuth = useRef<boolean | null>(null);
 
   const apply = useCallback((next: Partial<ViewerSession>) => {
     setCsrfToken(next.csrfToken || "");
     const authenticated = !!next.authenticated;
+    if (previousAuth.current !== null && previousAuth.current !== authenticated) {
+      clearCatalogDataCache();
+    }
+    previousAuth.current = authenticated;
     setViewer({
       authenticated,
       csrfToken: next.csrfToken,

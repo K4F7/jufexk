@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
 import { ApiError, api } from "../lib/api";
+import { invalidateCatalogData } from "../lib/catalog-data-cache";
 import type { RelationSignalState, Teacher } from "../lib/types";
 import { RouterAriaLink } from "./RouterAriaLink";
 
@@ -101,6 +102,7 @@ export function RelationSignalControls({
             ? "down"
             : "none",
       );
+      invalidateCatalogData(`/api/courses/${courseId}`);
     } catch (cause) {
       setFollow(snapshot.follow);
       setRecommend(snapshot.recommend);

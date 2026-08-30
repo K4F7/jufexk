@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../lib/api";
+import { invalidateCatalogData } from "../lib/catalog-data-cache";
 import { parsePublicReviewTarget } from "../lib/public-review-id";
 import type { PublicReview, ReviewComment } from "../lib/types";
 
@@ -130,6 +131,7 @@ export function useReviewComments({
         const comment = normalizeComment(data.comment);
         setComments((current) => [...current, comment]);
         setLoaded(true);
+        invalidateCatalogData("/api/courses");
         return true;
       } catch (cause) {
         if (cause instanceof ApiError && cause.status === 401) {
@@ -160,6 +162,7 @@ export function useReviewComments({
           method: "DELETE",
         });
         setComments((current) => current.filter((item) => item.id !== id));
+        invalidateCatalogData("/api/courses");
       } catch (cause) {
         if (cause instanceof ApiError && cause.status === 401) {
           onUnauthenticated();

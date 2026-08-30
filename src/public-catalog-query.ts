@@ -30,7 +30,10 @@ import {
 import { relationDimensionKey } from "./lib/relation-four-dims";
 import { loadRelationDimensionLabels } from "./lib/relation-projections";
 import type { PublicDimensionLabel } from "./lib/review-schemes";
-import { ensurePublicListPrecomputes } from "./public-list-precompute";
+import {
+  ensurePublicListPrecomputes,
+  type PublicPrecomputeReadOptions,
+} from "./public-list-precompute";
 import { publicCourseCanonicalJoin } from "./public-list-projection-plan";
 import { publicReviewBindingSql } from "./public-review-visibility";
 import {
@@ -169,19 +172,22 @@ const virtualPeSportItem = (
   review_count: 0,
 });
 
-const loadVirtualPeTeachers = async (
+const loadVirtualPeTeachersByName = async (
   db: D1Database,
-  teacherNames: readonly string[],
+  sports: readonly (typeof VIRTUAL_PE_SPORTS)[number][],
 ) => {
-  const placeholders = teacherNames.map(() => "?").join(",");
-  return (
+  const names = [...new Set(sports.flatMap((sport) => sport.teacherNames))];
+  if (!names.length) return new Map<string, Array<{ id: number; name: string }>>();
+  const placeholders = names.map(() => "?").join(",");
+  const rows = (
     await db
-      .prepare(
-        `SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`,
-      )
-      .bind(...teacherNames)
+      .prepare(`SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`)
+      .bind(...names)
       .all<{ id: number; name: string }>()
   ).results;
+  const byName = new Map<string, Array<{ id: number; name: string }>>();
+  for (const row of rows) byName.set(row.name, [...(byName.get(row.name) || []), row]);
+  return byName;
 };
 
 const loadVirtualPeSportItems = async (
@@ -191,10 +197,15 @@ const loadVirtualPeSportItems = async (
   department: string,
 ) => {
   if (department) return [];
+  const matchingSports = VIRTUAL_PE_SPORTS.filter((sport) =>
+    virtualPeSportMatchesQuery(sport, searchTerms),
+  );
+  const teachersByName = await loadVirtualPeTeachersByName(db, matchingSports);
   const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
-  for (const sport of VIRTUAL_PE_SPORTS) {
-    if (!virtualPeSportMatchesQuery(sport, searchTerms)) continue;
-    const teachers = await loadVirtualPeTeachers(db, sport.teacherNames);
+  for (const sport of matchingSports) {
+    const teachers = sport.teacherNames.flatMap(
+      (name) => teachersByName.get(name) || [],
+    );
     if (!teachers.length) continue;
     if (teacherId && !teachers.some((teacher) => teacher.id === teacherId))
       continue;
@@ -283,10 +294,15 @@ async function loadVirtualPeRelations(
   courseSearchTerms: string[],
 ): Promise<RelationRow[]> {
   if (department) return [];
+  const matchingSports = VIRTUAL_PE_SPORTS.filter((sport) =>
+    virtualPeSportMatchesQuery(sport, searchTerms),
+  );
+  const teachersByName = await loadVirtualPeTeachersByName(db, matchingSports);
   const items: RelationRow[] = [];
-  for (const sport of VIRTUAL_PE_SPORTS) {
-    if (!virtualPeSportMatchesQuery(sport, searchTerms)) continue;
-    const teachers = await loadVirtualPeTeachers(db, sport.teacherNames);
+  for (const sport of matchingSports) {
+    const teachers = sport.teacherNames.flatMap(
+      (name) => teachersByName.get(name) || [],
+    );
     if (!teachers.length) continue;
     const filtered = teacherId
       ? teachers.filter((teacher) => teacher.id === teacherId)
@@ -407,12 +423,13 @@ async function attachRelationProjection(
 export async function queryPublicCourses(
   db: D1Database,
   query: PublicCourseListQuery,
+  precompute: PublicPrecomputeReadOptions = {},
 ): Promise<PublicCatalogPage<PublicCourseListItem>> {
-  await ensurePublicListPrecomputes(db);
+  await ensurePublicListPrecomputes(db, precompute);
   const { page, pageSize: size, department, teacherId, sort } = query;
   const search = query.q;
   const searchTerms = parseSearchTerms(search);
-  const categoryFilter = publicCategoryFilterSql(query.category, "c");
+  const categoryFilter = publicCategoryFilterSql(query.category, "c", "pcc");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
   const indexedSearchGroup = andSearchTermsWithTrigram(
     searchTerms,
@@ -516,12 +533,13 @@ export async function queryPublicCourseRelations(
   db: D1Database,
   query: PublicRelationListQuery,
   viewerUserId: string | null,
+  precompute: PublicPrecomputeReadOptions = {},
 ): Promise<PublicCatalogPage<PublicRelationListItem>> {
-  await ensurePublicListPrecomputes(db);
+  await ensurePublicListPrecomputes(db, precompute);
   const { page, pageSize: size, department, teacherId, sort } = query;
   const search = query.q;
   const searchTerms = parseSearchTerms(search);
-  const categoryFilter = publicCategoryFilterSql(query.category, "c");
+  const categoryFilter = publicCategoryFilterSql(query.category, "c", "pcc");
   const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
   const exactTeachers = await loadExactTeacherHits(db, searchTerms);
   const exactTeacherFilter = !exactTeachers.active
@@ -680,12 +698,8 @@ export async function queryPublicCourseRelations(
       LEFT JOIN teachers t ON t.id=ct.teacher_id
       LEFT JOIN public_review_counts rel_counts
         ON rel_counts.course_id=c.id AND rel_counts.teacher_id=t.id
-      LEFT JOIN (
-        SELECT r.course_id,r.teacher_id,ROUND(AVG(r.overall),1) rating
-        FROM reviews r
-        WHERE r.status='approved'${publicReviewBindingSql}
-        GROUP BY r.course_id,r.teacher_id
-      ) rel_rating ON rel_rating.course_id=c.id AND rel_rating.teacher_id=t.id
+      LEFT JOIN public_relation_ratings rel_rating
+        ON rel_rating.course_id=c.id AND rel_rating.teacher_id=t.id
      WHERE ${where}
      ORDER BY ${queryOrderBy}
      LIMIT ? OFFSET ?`,

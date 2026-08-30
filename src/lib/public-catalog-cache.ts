@@ -1,4 +1,23 @@
 import { cache as workersCache } from "cloudflare:workers";
+import {
+  EMAIL_LOGIN_COOKIE,
+  ORDINARY_USER_ID_HEADER,
+  ORDINARY_USER_MAC_HEADER,
+} from "../ordinary-user-authentication";
+import { EHALL_SESSION_COOKIE } from "../ordinary-user-session";
+
+const PUBLIC_CACHE_CREDENTIAL_COOKIES = [
+  "jufexk_voter",
+  EMAIL_LOGIN_COOKIE,
+  "jufexk_admin",
+  "jufexk_csrf",
+  "jufexk_user_csrf",
+  EHALL_SESSION_COOKIE,
+  "TGC",
+  "SESSION",
+  "CASTGC",
+  "JSESSIONID",
+] as const;
 
 /**
  * Public catalog list GETs use Workers Caching via Cache-Control / Cache-Tag.
@@ -9,7 +28,21 @@ import { cache as workersCache } from "cloudflare:workers";
 export const PUBLIC_CATALOG_CACHE_CONTROL =
   "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
 export const PUBLIC_CATALOG_CACHE_TAG = "public-catalog";
+export const PUBLIC_DETAIL_CACHE_TAG = "public-detail";
+export const PUBLIC_CONFIG_CACHE_TAG = "public-config";
 export const DEFAULT_API_CACHE_CONTROL = "no-store";
+export const PUBLIC_DETAIL_CACHE_CONTROL =
+  "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+export const PUBLIC_CONFIG_CACHE_CONTROL =
+  "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+
+export type PublicCacheScope = "list" | "detail" | "config";
+
+const cacheScopeValues: Record<PublicCacheScope, { control: string; tag: string }> = {
+  list: { control: PUBLIC_CATALOG_CACHE_CONTROL, tag: PUBLIC_CATALOG_CACHE_TAG },
+  detail: { control: PUBLIC_DETAIL_CACHE_CONTROL, tag: PUBLIC_DETAIL_CACHE_TAG },
+  config: { control: PUBLIC_CONFIG_CACHE_CONTROL, tag: PUBLIC_CONFIG_CACHE_TAG },
+};
 
 type HeaderContext = {
   header: (name: string, value: string) => unknown;
@@ -19,12 +52,20 @@ type CachePurgeContext = {
   executionCtx?: unknown;
 };
 
-export function setPublicCatalogCacheHeaders(c: HeaderContext) {
-  c.header("Cache-Control", PUBLIC_CATALOG_CACHE_CONTROL);
-  c.header("Cache-Tag", PUBLIC_CATALOG_CACHE_TAG);
+export function setPublicCatalogCacheHeaders(
+  c: HeaderContext,
+  scope: PublicCacheScope = "list",
+) {
+  const values = cacheScopeValues[scope];
+  c.header("Cache-Control", values.control);
+  c.header("Cache-Tag", values.tag);
 }
 
-export async function purgePublicCatalogCache(c: CachePurgeContext) {
+export async function purgePublicCatalogCache(
+  c: CachePurgeContext,
+  scopes: readonly PublicCacheScope[] = ["list"],
+) {
+  const tags = [...new Set(scopes.map((scope) => cacheScopeValues[scope].tag))];
   try {
     // Hono's ExecutionContext type omits Workers Caching; the runtime ctx has it.
     const runtimeCache = (
@@ -33,11 +74,32 @@ export async function purgePublicCatalogCache(c: CachePurgeContext) {
         | undefined
     )?.cache;
     if (runtimeCache?.purge) {
-      await runtimeCache.purge({ tags: [PUBLIC_CATALOG_CACHE_TAG] });
+      await runtimeCache.purge({ tags });
       return;
     }
-    await workersCache.purge({ tags: [PUBLIC_CATALOG_CACHE_TAG] });
+    await workersCache.purge({ tags });
   } catch {
     // Best-effort: a write must still succeed if purge is missing or fails.
   }
+}
+
+/**
+ * Cache keys ignore cookies in Workers Cache. Only requests without any
+ * credential that can alter public payload fields may use shared responses.
+ */
+export function isPublicCatalogCacheableRequest(c: {
+  req: {
+    header: (name: string) => string | undefined;
+  };
+}) {
+  const cookieHeader = c.req.header("Cookie") || "";
+  const hasCookie = (name: string) =>
+    cookieHeader.split(";").some((part) => part.trim().startsWith(`${name}=`));
+  if (PUBLIC_CACHE_CREDENTIAL_COOKIES.some(hasCookie)) return false;
+  if (c.req.header(ORDINARY_USER_ID_HEADER)) return false;
+  if (c.req.header(ORDINARY_USER_MAC_HEADER)) return false;
+  if (c.req.header("Authorization")) return false;
+  if (c.req.header("X-Test-Auth") || c.req.header("X-Test-Authentication"))
+    return false;
+  return true;
 }
