@@ -2,7 +2,10 @@
  * Browser coverage for /latest：全站最新公开课评流。
  */
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { REVIEW_FOLD_LABEL } from "../../src/lib/recognition";
+import {
+  REVIEW_FOLD_LABEL,
+  REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
+} from "../../src/lib/recognition";
 
 const LATEST = [
   {
@@ -174,7 +177,9 @@ test("latest feed does not show public-fold reviews or fold chrome", async ({
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
   await expect(page.getByText(REVIEW_FOLD_LABEL)).toHaveCount(0);
   await expect(page.getByText("折叠演示：不受欢迎")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "看看" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: REVIEW_PUBLIC_FOLD_EXPAND_LABEL }),
+  ).toHaveCount(0);
 });
 
 test("latest empty state keeps the official Card composition", async ({ page }) => {

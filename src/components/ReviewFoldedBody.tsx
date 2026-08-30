@@ -13,7 +13,7 @@ const HEADER_ROW_CLASS =
 export type ReviewPublicFold = {
   kind: ReviewFoldKind;
   publicOpen: boolean;
-  setPublicOpen: (open: boolean | ((current: boolean) => boolean)) => void;
+  openPublic: () => void;
   compact: boolean;
 };
 
@@ -40,7 +40,7 @@ export function useReviewPublicFold(
   return {
     kind,
     publicOpen,
-    setPublicOpen,
+    openPublic: () => setPublicOpen(true),
     compact: kind === "public" && !publicOpen,
   };
 }
@@ -150,11 +150,7 @@ export function ReviewFoldedBody({
   const notice = fold.publicOpen ? (
     <p className="mb-0 text-[calc(12/15*1rem)] text-muted">{REVIEW_FOLD_LABEL}</p>
   ) : (
-    <Button
-      size="sm"
-      variant="ghost"
-      onPress={() => fold.setPublicOpen(true)}
-    >
+    <Button size="sm" variant="ghost" onPress={fold.openPublic}>
       <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
       {REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
     </Button>
