@@ -124,12 +124,14 @@ function ProfileFollowItem({ follow }: { follow: UserProfileFollow }) {
 
 function ProfileAvatarPicker({
   avatarKey,
+  isMd,
   isOpen,
   savingAvatar,
   onOpenChange,
   onSelect,
 }: {
   avatarKey: number;
+  isMd: boolean;
   isOpen: boolean;
   savingAvatar: boolean;
   onOpenChange: (open: boolean) => void;
@@ -146,13 +148,7 @@ function ProfileAvatarPicker({
       >
         <AnonymousAvatar
           avatarKey={avatarKey}
-          className="md:hidden"
-          size="sm"
-        />
-        <AnonymousAvatar
-          avatarKey={avatarKey}
-          className="max-md:hidden"
-          size="lg"
+          size={isMd ? "lg" : "sm"}
         />
       </Button>
       <Popover.Content className="max-w-[calc(100vw-2rem)]">
@@ -238,6 +234,7 @@ function ProfileIdentityCard({
       <Card.Header className="w-full items-center gap-3 text-center max-md:flex-row max-md:text-start md:flex-col">
         <ProfileAvatarPicker
           avatarKey={avatarKey}
+          isMd={isMd}
           isOpen={avatarPickerOpen}
           savingAvatar={savingAvatar}
           onOpenChange={onAvatarOpenChange}
@@ -476,6 +473,7 @@ export function ProfilePage() {
       reviewCount={reviewCount}
       savingAvatar={savingAvatar}
       statValue={statValue}
+      isMd={isMd}
       onAvatarOpenChange={setAvatarPickerOpen}
       onSelectAvatar={(key) => void changeAvatar(key)}
       onRetryAvatar={() => {

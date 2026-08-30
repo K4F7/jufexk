@@ -10,6 +10,7 @@ import { AnonymousAvatar } from "../components/AnonymousAvatar";
 import { DetailErrorAlert } from "../components/DetailFeedback";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useViewer } from "../hooks/useViewer";
 import { api } from "../lib/api";
 import { previewFilledPublicUser, readDevPreviewOrFilled } from "../lib/dev-preview";
@@ -37,6 +38,7 @@ export function PublicUserPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const preview = readDevPreviewOrFilled(searchParams);
+  const isMd = useMediaQuery("(min-width: 48rem)");
   const { viewer, ready } = useViewer();
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
   const [error, setError] = useState("");
@@ -196,6 +198,7 @@ export function PublicUserPage() {
             followError={followError}
             followPending={followPending}
             handle={handle}
+            isMd={isMd}
             profile={profile}
             onToggleFollow={() => void toggleFollow()}
           />
@@ -251,12 +254,14 @@ function PublicUserIdentityCard({
   followError,
   followPending,
   handle,
+  isMd,
   profile,
   onToggleFollow,
 }: {
   followError: string;
   followPending: boolean;
   handle: string;
+  isMd: boolean;
   profile: PublicUserProfile;
   onToggleFollow: () => void;
 }) {
@@ -266,73 +271,79 @@ function PublicUserIdentityCard({
 
   return (
     <Card aria-label="公开编号" className="gap-3 max-md:gap-2">
-      <Card.Header className="hidden w-full items-center gap-2 text-center md:flex">
-        <AnonymousAvatar
-          avatarKey={profile.avatar_key}
-          className="self-center"
-          size="lg"
-        />
-        <Card.Title className="break-words">{handle}</Card.Title>
-        {profile.viewer_is_self ? null : (
-          <PublicUserFollowControl
-            followed={followed}
-            pending={followPending}
-            variant={followVariant}
-            onToggle={onToggleFollow}
+      {isMd ? (
+        <Card.Header className="w-full items-center gap-2 text-center">
+          <AnonymousAvatar
+            avatarKey={profile.avatar_key}
+            className="self-center"
+            size="lg"
           />
-        )}
-      </Card.Header>
-      <Card.Header className="flex-row items-center gap-3 md:hidden">
-        <AnonymousAvatar
-          avatarKey={profile.avatar_key}
-          className="shrink-0"
-          size="sm"
-        />
-        <Card.Title className="min-w-0 flex-1 truncate">{handle}</Card.Title>
-        {profile.viewer_is_self ? null : (
-          <PublicUserFollowControl
+          <Card.Title className="break-words">{handle}</Card.Title>
+          {profile.viewer_is_self ? null : (
+            <PublicUserFollowControl
+              followed={followed}
+              pending={followPending}
+              variant={followVariant}
+              onToggle={onToggleFollow}
+            />
+          )}
+        </Card.Header>
+      ) : (
+        <Card.Header className="flex-row items-center gap-3">
+          <AnonymousAvatar
+            avatarKey={profile.avatar_key}
             className="shrink-0"
-            followed={followed}
-            pending={followPending}
             size="sm"
-            variant={mobileFollowVariant}
-            onToggle={onToggleFollow}
           />
-        )}
-      </Card.Header>
+          <Card.Title className="min-w-0 flex-1 truncate">{handle}</Card.Title>
+          {profile.viewer_is_self ? null : (
+            <PublicUserFollowControl
+              className="shrink-0"
+              followed={followed}
+              pending={followPending}
+              size="sm"
+              variant={mobileFollowVariant}
+              onToggle={onToggleFollow}
+            />
+          )}
+        </Card.Header>
+      )}
       {followError ? (
         <DetailErrorAlert title="关注失败" message={followError} />
       ) : null}
       <Separator />
       <Card.Content>
-        <dl className="m-0 hidden gap-3 text-sm md:grid">
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">关注了</dt>
-            <dd className="m-0 tabular">{profile.following_count ?? 0} 人</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">被关注</dt>
-            <dd className="m-0 tabular">{profile.follower_count ?? 0} 人</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted">点评了</dt>
-            <dd className="m-0 tabular">{profile.review_count ?? 0} 门课程</dd>
-          </div>
-        </dl>
-        <dl className="m-0 grid grid-cols-3 text-center md:hidden">
-          <div className="min-w-0">
-            <dd className="m-0 font-medium tabular">{profile.following_count ?? 0}</dd>
-            <dt className="text-[calc(12/15*1rem)] text-muted">关注</dt>
-          </div>
-          <div className="min-w-0">
-            <dd className="m-0 font-medium tabular">{profile.follower_count ?? 0}</dd>
-            <dt className="text-[calc(12/15*1rem)] text-muted">被关注</dt>
-          </div>
-          <div className="min-w-0">
-            <dd className="m-0 font-medium tabular">{profile.review_count ?? 0}</dd>
-            <dt className="text-[calc(12/15*1rem)] text-muted">点评</dt>
-          </div>
-        </dl>
+        {isMd ? (
+          <dl className="m-0 grid gap-3 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">关注了</dt>
+              <dd className="m-0 tabular">{profile.following_count ?? 0} 人</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">被关注</dt>
+              <dd className="m-0 tabular">{profile.follower_count ?? 0} 人</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">点评了</dt>
+              <dd className="m-0 tabular">{profile.review_count ?? 0} 门课程</dd>
+            </div>
+          </dl>
+        ) : (
+          <dl className="m-0 grid grid-cols-3 text-center">
+            <div className="min-w-0">
+              <dd className="m-0 font-medium tabular">{profile.following_count ?? 0}</dd>
+              <dt className="text-[calc(12/15*1rem)] text-muted">关注</dt>
+            </div>
+            <div className="min-w-0">
+              <dd className="m-0 font-medium tabular">{profile.follower_count ?? 0}</dd>
+              <dt className="text-[calc(12/15*1rem)] text-muted">被关注</dt>
+            </div>
+            <div className="min-w-0">
+              <dd className="m-0 font-medium tabular">{profile.review_count ?? 0}</dd>
+              <dt className="text-[calc(12/15*1rem)] text-muted">点评</dt>
+            </div>
+          </dl>
+        )}
       </Card.Content>
     </Card>
   );
