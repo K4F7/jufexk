@@ -21,6 +21,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** Production by default. Point at the Cloudflare preview Worker with
+ * `PROD_PUBLIC_ORIGIN=https://jufexk-preview.<account>.workers.dev`
+ * (no GitHub Actions required). Preview D1 must exist — the committed
+ * `wrangler.jsonc` still has the placeholder id, so GHA skips that deploy. */
 const ORIGIN = process.env.PROD_PUBLIC_ORIGIN ?? "https://courses.sein.moe";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "output/playwright/prod-public-timing");
@@ -172,20 +176,61 @@ function forbiddenRequest(request) {
   return isAuthOrReviewWrite ? { method, url: url.href } : null;
 }
 
+function catalogDomReady() {
+  const loading = document.querySelector('[role="status"][aria-label="加载中…"]');
+  const countSkeleton = document.querySelector('[aria-label="数量加载中"]');
+  const busy = document.querySelector('[aria-busy="true"]');
+  const text = document.body.innerText;
+  const hasCount = /共\s*[1-9]\d*\s*条/.test(text);
+  const empty =
+    text.includes("没有找到匹配") || text.includes("目录暂无课程数据");
+  return !loading && !countSkeleton && !busy && (hasCount || empty);
+}
+
 async function waitCatalogIdle(page, timeout = ACTION_TIMEOUT_MS) {
+  await page.waitForFunction(catalogDomReady, null, { timeout });
+}
+
+/** After a catalog mutation, URL must match and a new list request must finish.
+ *  Refresh-with-data keeps the old "共 N 条", so idle-only would return too soon. */
+async function waitCatalogQuery(page, collector, mark, expected, timeout = ACTION_TIMEOUT_MS) {
   await page.waitForFunction(
-    () => {
-      const loading = document.querySelector('[role="status"][aria-label="加载中…"]');
-      const countSkeleton = document.querySelector('[aria-label="数量加载中"]');
-      const busy = document.querySelector('[aria-busy="true"]');
-      const text = document.body.innerText;
-      const hasCount = /共\s*[1-9]\d*\s*条/.test(text);
-      const empty =
-        text.includes("没有找到匹配") || text.includes("目录暂无课程数据");
-      return !loading && !countSkeleton && !busy && (hasCount || empty);
+    (wanted) => {
+      const url = new URL(location.href);
+      if (url.pathname !== "/courses") return false;
+      if (wanted.q != null && (url.searchParams.get("q") || "") !== wanted.q) {
+        return false;
+      }
+      if (
+        wanted.category != null &&
+        (url.searchParams.get("category") || "") !== wanted.category
+      ) {
+        return false;
+      }
+      if (
+        wanted.page != null &&
+        Number(url.searchParams.get("page") || "1") !== wanted.page
+      ) {
+        return false;
+      }
+      return true;
     },
-    null,
+    expected,
     { timeout },
+  );
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const arrived = collector
+      .slice(mark)
+      .some((event) => event.kind === "catalog" && event.status < 400);
+    if (arrived) {
+      await waitCatalogIdle(page, Math.max(1000, deadline - Date.now()));
+      return;
+    }
+    await page.waitForTimeout(25);
+  }
+  throw new Error(
+    `catalog API did not arrive for ${JSON.stringify(expected)} at ${page.url()}`,
   );
 }
 
@@ -459,7 +504,7 @@ async function measure(page, collector, {
   let error = null;
   try {
     await action();
-    await waitReady();
+    await waitReady(mark);
   } catch (reason) {
     error = String(reason?.message || reason);
   }
@@ -586,7 +631,11 @@ async function runWalk(browser) {
         await gotoCatalog(page);
       },
       action: () => submitSearch(page, search.query),
-      waitReady: () => waitCatalogIdle(page),
+      waitReady: (mark) =>
+        waitCatalogQuery(page, collector, mark, {
+          q: search.query,
+          page: 1,
+        }),
       primaryKinds: ["catalog"],
     });
   }
@@ -611,7 +660,8 @@ async function runWalk(browser) {
       await gotoLatest(page);
     },
     action: () => clickNav(page, "课程"),
-    waitReady: () => waitCatalogIdle(page),
+    waitReady: (mark) =>
+      waitCatalogQuery(page, collector, mark, { q: "", category: "", page: 1 }),
     primaryKinds: ["catalog"],
   });
 
@@ -626,7 +676,11 @@ async function runWalk(browser) {
         await waitCatalogIdle(page);
       },
       action: () => clickCategory(page, pill.label),
-      waitReady: () => waitCatalogIdle(page),
+      waitReady: (mark) =>
+        waitCatalogQuery(page, collector, mark, {
+          category: pill.category,
+          page: 1,
+        }),
       primaryKinds: ["catalog"],
     });
   }
@@ -639,7 +693,7 @@ async function runWalk(browser) {
       await gotoCatalog(page, "page=1");
     },
     action: () => clickPager(page, "下一页"),
-    waitReady: () => waitCatalogIdle(page),
+    waitReady: (mark) => waitCatalogQuery(page, collector, mark, { page: 2 }),
     primaryKinds: ["catalog"],
   });
 
@@ -652,15 +706,19 @@ async function runWalk(browser) {
         await gotoCatalog(page, "page=1");
       },
       action: () => clickPager(page, String(lastPage)),
-      waitReady: () => waitCatalogIdle(page),
+      waitReady: (mark) =>
+        waitCatalogQuery(page, collector, mark, { page: lastPage }),
       primaryKinds: ["catalog"],
     });
     await shot(page, "catalog-last-page");
   }
 
   await gotoCatalog(page);
-  await clickCategory(page, "通识");
-  await waitCatalogIdle(page);
+  {
+    const mark = collector.length;
+    await clickCategory(page, "通识");
+    await waitCatalogQuery(page, collector, mark, { category: "general", page: 1 });
+  }
   const generalMeta = await readCatalogMeta(page);
   notes.push({ id: "general-meta", ...generalMeta });
   if (generalMeta.pages > 1) {
@@ -671,14 +729,21 @@ async function runWalk(browser) {
         await gotoCatalog(page, "category=general&page=1");
       },
       action: () => clickPager(page, "下一页"),
-      waitReady: () => waitCatalogIdle(page),
+      waitReady: (mark) =>
+        waitCatalogQuery(page, collector, mark, {
+          category: "general",
+          page: 2,
+        }),
       primaryKinds: ["catalog"],
     });
   }
 
   await gotoCatalog(page);
-  await clickCategory(page, "体育");
-  await waitCatalogIdle(page);
+  {
+    const mark = collector.length;
+    await clickCategory(page, "体育");
+    await waitCatalogQuery(page, collector, mark, { category: "sports", page: 1 });
+  }
   const sportsMeta = await readCatalogMeta(page);
   notes.push({ id: "sports-meta", ...sportsMeta });
   if (sportsMeta.pages > 1) {
@@ -689,7 +754,11 @@ async function runWalk(browser) {
         await gotoCatalog(page, "category=sports&page=1");
       },
       action: () => clickPager(page, "下一页"),
-      waitReady: () => waitCatalogIdle(page),
+      waitReady: (mark) =>
+        waitCatalogQuery(page, collector, mark, {
+          category: "sports",
+          page: 2,
+        }),
       primaryKinds: ["catalog"],
     });
   }
@@ -825,8 +894,11 @@ async function writeReport(report) {
 }
 
 async function main() {
-  console.log("HTTP matrix (does not touch production UI)");
-  const http = await runHttpMatrix();
+  let http = { total: 0, pages: 0, detailId: null, teacherId: null, rows: [] };
+  if (!process.env.SKIP_HTTP) {
+    console.log("HTTP matrix (does not touch production UI)");
+    http = await runHttpMatrix();
+  }
   let ui = { summary: [], measurements: [], collector: [], notes: [] };
   const browser = await chromium.launch({ headless: true });
   try {
