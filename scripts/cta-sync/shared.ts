@@ -24,9 +24,11 @@ export function homepageSql(rows: SyncRow[]): string {
   ];
   for (const row of rows) {
     if (row.match === "unique" && row.homepageUrl && row.ctaUid != null) {
-      const sha = row.avatarSha256 ? sqlString(row.avatarSha256) : "NULL";
+      const avatarShaClause = row.avatarSha256
+        ? `,avatar_sha256=${sqlString(row.avatarSha256)}`
+        : "";
       statements.push(
-        `UPDATE teachers SET cta_fid=${CTA_FID},cta_uid=${row.ctaUid},homepage_url=${sqlString(row.homepageUrl)},homepage_match='unique',avatar_sha256=${sha},cta_synced_at=datetime('now') WHERE id=${row.teacherId} AND IFNULL(homepage_locked,0)=0;`,
+        `UPDATE teachers SET cta_fid=${CTA_FID},cta_uid=${row.ctaUid},homepage_url=${sqlString(row.homepageUrl)},homepage_match='unique'${avatarShaClause},cta_synced_at=datetime('now') WHERE id=${row.teacherId} AND IFNULL(homepage_locked,0)=0;`,
       );
     } else {
       statements.push(
