@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyChangedPaths } from "../scripts/ci/classify-changed-paths.mjs";
 import bindAdminWorkflow from "../.github/workflows/bind-admin-students.yml?raw";
 import ctaSyncWorkflow from "../.github/workflows/cta-sync.yml?raw";
+import ctaSyncApplyWorkflow from "../.github/workflows/cta-sync-apply.yml?raw";
 import teacherDepartmentBackfillWorkflow from "../.github/workflows/teacher-department-backfill.yml?raw";
 import ciWorkflow from "../.github/workflows/ci.yml?raw";
 import playwrightConfig from "../playwright.config.ts?raw";
@@ -131,6 +132,21 @@ describe("classifyChangedPaths", () => {
     expect(ctaSyncWorkflow).toContain("secrets.CLOUDFLARE_API_TOKEN");
     expect(ctaSyncWorkflow).toContain("pnpm cta-sync");
     expect(ctaSyncWorkflow).toContain(
+      "scripts/cta-sync/apply-remote.ts --remote --apply",
+    );
+  });
+
+  it("applies a local CTA artifact from a draft release without fetching photos on GHA", () => {
+    expect(ctaSyncApplyWorkflow).toContain("workflow_dispatch");
+    expect(ctaSyncApplyWorkflow).toContain("release_tag");
+    expect(ctaSyncApplyWorkflow).not.toContain("schedule:");
+    expect(ctaSyncApplyWorkflow).not.toContain("pnpm cta-sync");
+    expect(ctaSyncApplyWorkflow).toContain("production-cta-sync");
+    expect(ctaSyncApplyWorkflow).toContain("environment: production");
+    expect(ctaSyncApplyWorkflow).toContain("secrets.CLOUDFLARE_API_TOKEN");
+    expect(ctaSyncApplyWorkflow).toContain("gh release download");
+    expect(ctaSyncApplyWorkflow).toContain("cta-sync.tar.gz");
+    expect(ctaSyncApplyWorkflow).toContain(
       "scripts/cta-sync/apply-remote.ts --remote --apply",
     );
   });
