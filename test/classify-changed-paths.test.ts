@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyChangedPaths } from "../scripts/ci/classify-changed-paths.mjs";
 import bindAdminWorkflow from "../.github/workflows/bind-admin-students.yml?raw";
 import ctaSyncWorkflow from "../.github/workflows/cta-sync.yml?raw";
+import teacherDepartmentBackfillWorkflow from "../.github/workflows/teacher-department-backfill.yml?raw";
 import ciWorkflow from "../.github/workflows/ci.yml?raw";
 import playwrightConfig from "../playwright.config.ts?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
@@ -131,6 +132,24 @@ describe("classifyChangedPaths", () => {
     expect(ctaSyncWorkflow).toContain("pnpm cta-sync");
     expect(ctaSyncWorkflow).toContain(
       "scripts/cta-sync/apply-remote.ts --remote --apply",
+    );
+  });
+
+  it("backfills teacher departments from production GHA, not from a schedule", () => {
+    expect(teacherDepartmentBackfillWorkflow).toContain("workflow_dispatch");
+    expect(teacherDepartmentBackfillWorkflow).not.toContain("schedule:");
+    expect(teacherDepartmentBackfillWorkflow).toContain(
+      "production-teacher-department-backfill",
+    );
+    expect(teacherDepartmentBackfillWorkflow).toContain("environment: production");
+    expect(teacherDepartmentBackfillWorkflow).toContain(
+      "secrets.CLOUDFLARE_API_TOKEN",
+    );
+    expect(teacherDepartmentBackfillWorkflow).toContain(
+      "pnpm teacher-dept-backfill",
+    );
+    expect(teacherDepartmentBackfillWorkflow).toContain(
+      "scripts/teacher-department-backfill/apply-remote.ts --remote --apply",
     );
   });
 
