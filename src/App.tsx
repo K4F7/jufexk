@@ -15,6 +15,7 @@ import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
+import { CoursesPage } from "./pages/CoursesPage";
 import { LatestPage } from "./pages/LatestPage";
 
 const THEME_STORAGE_KEY = "jufexk-theme";
@@ -38,9 +39,6 @@ const AdminUserBlockPage = lazy(() =>
 );
 const CourseDetailPage = lazy(() =>
   import("./pages/CourseDetailPage").then((m) => ({ default: m.CourseDetailPage })),
-);
-const CoursesPage = lazy(() =>
-  import("./pages/CoursesPage").then((m) => ({ default: m.CoursesPage })),
 );
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })),
