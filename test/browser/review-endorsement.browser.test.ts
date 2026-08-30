@@ -342,20 +342,19 @@ test("public fold hides the body and keeps vote chrome", async ({ page }) => {
   const folded = page.locator("article").filter({
     has: page.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
   });
-  await expect(folded.getByText("质疑较多，已收起")).toBeVisible();
+  await expect(folded.getByText("该评价因不受欢迎被折叠")).toBeVisible();
   await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
   await expect(folded.getByText("2026-08-20")).toBeVisible();
   await expect(
     folded.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
   ).toBeVisible();
-
-  await folded.getByRole("button", { name: "展开" }).click();
-  await expect(folded.getByText("质疑较多应收起的正文。")).toBeVisible();
-  await folded.getByRole("button", { name: "收起" }).click();
-  await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
+  await expect(folded.getByRole("button", { name: "展开" })).toHaveCount(0);
+  await expect(folded.getByRole("button", { name: "收起" })).toHaveCount(0);
 });
 
-test("self challenge folds immediately with the short label", async ({ page }) => {
+test("self challenge folds immediately and unfolds when withdrawn", async ({
+  page,
+}) => {
   await mockApi(page, guestStore());
   await page.goto("/courses/8?teacher=9");
   await actionBar(page, "非零计数当前文字评价。")
@@ -366,9 +365,17 @@ test("self challenge folds immediately with the short label", async ({ page }) =
       name: "已质疑，按下可撤回我的质疑，当前 1 人质疑",
     }),
   });
-  await expect(self.getByText("已收起")).toBeVisible();
-  await expect(self.getByText("质疑较多，已收起")).toHaveCount(0);
+  await expect(self.getByText("该评价因不受欢迎被折叠")).toBeVisible();
   await expect(page.getByText("非零计数当前文字评价。")).toHaveCount(0);
+  await expect(self.getByRole("button", { name: "展开" })).toHaveCount(0);
+
+  await self
+    .getByRole("button", {
+      name: "已质疑，按下可撤回我的质疑，当前 1 人质疑",
+    })
+    .click();
+  await expect(page.getByText("非零计数当前文字评价。")).toBeVisible();
+  await expect(self.getByText("该评价因不受欢迎被折叠")).toHaveCount(0);
 });
 
 test("signed-in user can endorse and withdraw with pending and selected state", async ({
@@ -471,7 +478,7 @@ test("signed-in user can challenge, switch away from recognition, and withdraw",
   await expect(
     demo().getByRole("button", { name: "认可这条评价，当前 3 人认可" }),
   ).toHaveAttribute("aria-pressed", "false");
-  await expect(demoArticle().getByText("已收起")).toBeVisible();
+  await expect(demoArticle().getByText("该评价因不受欢迎被折叠")).toBeVisible();
 
   await demo().getByRole("button", { name: "认可这条评价，当前 3 人认可" }).click();
   await expect(
