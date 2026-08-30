@@ -16,6 +16,9 @@ import { formatReviewDate } from "../lib/review-date";
 import { reviewAnchorId } from "../lib/review-dimensions";
 import type { LatestReview, PublicReviewPage } from "../lib/types";
 
+// Keep the loading shell aligned with the API's default first-page size.
+const LATEST_PAGE_SIZE = 20;
+
 export function LatestPage() {
   const [searchParams] = useSearchParams();
   const preview = readDevPreviewOrFilled(searchParams);
@@ -176,7 +179,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const date = formatReviewDate(review.created_at);
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
-    <article className="min-h-[13rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:py-5">
+    <article className="min-h-56 min-w-0 border-b border-separator py-3 last:border-b-0 sm:py-5">
       <header className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 sm:flex sm:flex-wrap sm:justify-between sm:gap-x-3 sm:gap-y-0">
         <span className="col-start-1 row-start-1 inline-flex min-w-0 items-center text-[calc(13/15*1rem)] font-medium text-foreground">
           <ReviewAuthor
@@ -228,9 +231,9 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
 function LatestReviewSkeleton() {
   return (
     <div role="status" aria-label="正在加载最新课评">
-      {[0, 1, 2].map((row) => (
+      {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) => (
         <article
-          className="min-h-[13rem] border-b border-separator py-5 last:border-b-0"
+          className="min-h-56 border-b border-separator py-5 last:border-b-0"
           key={row}
         >
           <header className="flex min-h-8 items-center justify-between gap-3">
