@@ -368,9 +368,9 @@ test("public fold hides the entire card chrome", async ({ page }) => {
     folded.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
   ).toHaveCount(0);
   await expect(folded.getByRole("button", { name: "展开" })).toHaveCount(0);
-  await expect(folded.getByRole("button", { name: "看看" })).toBeVisible();
+  await expect(folded.getByRole("button", { name: "让我看看" })).toBeVisible();
 
-  await folded.getByRole("button", { name: "看看" }).click();
+  await folded.getByRole("button", { name: "让我看看" }).click();
   await expect(folded.getByText("质疑较多应收起的正文。")).toBeVisible();
   await expect(folded.getByRole("link", { name: /匿名用户/ })).toBeVisible();
   await expect(folded.locator("header time")).toHaveText("2026-08-20");
@@ -378,16 +378,19 @@ test("public fold hides the entire card chrome", async ({ page }) => {
   await expect(
     folded.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
   ).toBeVisible();
-  await expect(folded.getByRole("button", { name: "收起" })).toBeVisible();
+  await expect(folded.getByText("该评价因不受欢迎被折叠")).toBeVisible();
+  await expect(folded.getByRole("button", { name: "收起" })).toHaveCount(0);
+  await expect(folded.getByRole("button", { name: "让我看看" })).toHaveCount(0);
 
-  await folded.getByRole("button", { name: "收起" }).click();
+  await page.reload();
+  const foldedAgain = page.locator("article").filter({
+    has: page.getByText("该评价因不受欢迎被折叠"),
+  });
   await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
-  await expect(folded.getByRole("toolbar", { name: "评价动作" })).toHaveCount(0);
-  await expect(folded.locator("time")).toHaveCount(0);
-  await expect(folded.getByRole("button", { name: "看看" })).toBeVisible();
+  await expect(foldedAgain.getByRole("button", { name: "让我看看" })).toBeVisible();
 });
 
-test("crossing the public fold threshold keeps the open card until 收起", async ({
+test("crossing the public fold threshold keeps the open card without 收起", async ({
   page,
 }) => {
   await mockApi(page, guestStore());
@@ -399,15 +402,10 @@ test("crossing the public fold threshold keeps the open card until 收起", asyn
     .click();
   await expect(card.getByText("再一票就会过线的正文。")).toBeVisible();
   await expect(card.getByText("该评价因不受欢迎被折叠")).toBeVisible();
-  await expect(card.getByRole("button", { name: "收起" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "收起" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "让我看看" })).toHaveCount(0);
   await expect(card.getByRole("toolbar", { name: "评价动作" })).toBeVisible();
   await expect(card.locator("header time")).toHaveText("2026-08-19");
-
-  await card.getByRole("button", { name: "收起" }).click();
-  await expect(card.getByText("再一票就会过线的正文。")).toHaveCount(0);
-  await expect(card.getByRole("toolbar", { name: "评价动作" })).toHaveCount(0);
-  await expect(card.locator("time")).toHaveCount(0);
-  await expect(card.getByRole("button", { name: "看看" })).toBeVisible();
 });
 
 test("self challenge keeps avatar username and body visible", async ({
@@ -428,7 +426,7 @@ test("self challenge keeps avatar username and body visible", async ({
   await expect(self.getByRole("link", { name: /匿名用户/ })).toBeVisible();
   await expect(self.getByText("已折叠")).toHaveCount(0);
   await expect(self.getByText("该评价因不受欢迎被折叠")).toHaveCount(0);
-  await expect(self.getByRole("button", { name: "看看" })).toHaveCount(0);
+  await expect(self.getByRole("button", { name: "让我看看" })).toHaveCount(0);
   await expect(self.getByRole("button", { name: "收起" })).toHaveCount(0);
 
   await self

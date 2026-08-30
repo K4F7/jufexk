@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   isReviewFolded,
   REVIEW_FOLD_LABEL,
-  REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL,
   REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
   reviewFoldKind,
 } from "../src/lib/recognition";
@@ -16,8 +15,7 @@ describe("review fold threshold", () => {
       "public",
     );
     expect(REVIEW_FOLD_LABEL).toBe("该评价因不受欢迎被折叠");
-    expect(REVIEW_PUBLIC_FOLD_EXPAND_LABEL).toBe("看看");
-    expect(REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL).toBe("收起");
+    expect(REVIEW_PUBLIC_FOLD_EXPAND_LABEL).toBe("让我看看");
   });
 
   it("does not fold a tied or minority challenge below the public threshold", () => {
