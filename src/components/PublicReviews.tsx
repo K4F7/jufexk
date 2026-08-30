@@ -14,7 +14,11 @@ import { parseHandlePublicCode } from "../public-handle";
 import { FourDimLine } from "./FourDimLine";
 import { StarsWithCaption } from "./Stars";
 import { ReviewActionBar } from "./ReviewActionBar";
-import { ReviewFoldedBody } from "./ReviewFoldedBody";
+import {
+  ReviewFoldedBody,
+  reviewCardClassName,
+  useReviewPublicFold,
+} from "./ReviewFoldedBody";
 import { useReviewRecognition } from "./ReviewRecognitionControl";
 import { ReviewNoteContent } from "./ReviewNoteContent";
 import { ReviewAuthor } from "./ReviewAuthor";
@@ -151,10 +155,16 @@ function PublicReviewItem({
     loginPath,
     onUnauthenticated,
   });
+  const fold = useReviewPublicFold(
+    recognition.state.count,
+    recognition.challenge.count,
+  );
   return (
     <div role="listitem">
       {index > 0 ? <Separator /> : null}
-      <article className="py-4 [content-visibility:auto] [contain-intrinsic-size:auto_6rem]">
+      <article
+        className={reviewCardClassName({ compact: fold.compact, variant: "public" })}
+      >
         {counterpart === "course" ? (
           <p className="m-0 min-w-0 text-sm font-semibold">
             <RouterAriaLink
@@ -167,8 +177,7 @@ function PublicReviewItem({
           </p>
         ) : null}
         <ReviewFoldedBody
-          endorsementCount={recognition.state.count}
-          challengeCount={recognition.challenge.count}
+          fold={fold}
           date={formatReviewDate(review.created_at)}
           chromeClassName={counterpart === "course" ? "mt-1.5" : undefined}
           leading={
@@ -192,6 +201,20 @@ function PublicReviewItem({
                 />
               ) : null}
             </p>
+          }
+          footer={
+            <ReviewActionBar
+              review={review}
+              recognition={recognition}
+              ready={ready}
+              authenticated={authenticated}
+              loginPath={loginPath}
+              onUnauthenticated={onUnauthenticated}
+              endorsable={isEndorsableReview(review)}
+              seedComments={seedComments}
+              viewerPublicCode={viewerPublicCode}
+              previewComposer={previewComposer}
+            />
           }
         >
           <ReviewNoteContent
@@ -219,18 +242,6 @@ function PublicReviewItem({
             </div>
           ) : null}
         </ReviewFoldedBody>
-        <ReviewActionBar
-          review={review}
-          recognition={recognition}
-          ready={ready}
-          authenticated={authenticated}
-          loginPath={loginPath}
-          onUnauthenticated={onUnauthenticated}
-          endorsable={isEndorsableReview(review)}
-          seedComments={seedComments}
-          viewerPublicCode={viewerPublicCode}
-          previewComposer={previewComposer}
-        />
       </article>
     </div>
   );

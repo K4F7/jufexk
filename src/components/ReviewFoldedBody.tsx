@@ -1,14 +1,70 @@
 import { Button } from "@heroui/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   REVIEW_FOLD_LABEL,
   REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL,
   REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
   reviewFoldKind,
+  type ReviewFoldKind,
 } from "../lib/recognition";
 
 const HEADER_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
+
+export type ReviewPublicFold = {
+  kind: ReviewFoldKind;
+  publicOpen: boolean;
+  setPublicOpen: (open: boolean | ((current: boolean) => boolean)) => void;
+  compact: boolean;
+};
+
+export function useReviewPublicFold(
+  endorsementCount: number,
+  challengeCount: number,
+): ReviewPublicFold {
+  const kind = reviewFoldKind({
+    endorsementCount,
+    challengeCount,
+  });
+  const [publicOpen, setPublicOpen] = useState(false);
+  const previousKind = useRef(kind);
+
+  useEffect(() => {
+    if (kind !== "public") {
+      setPublicOpen(false);
+    } else if (previousKind.current === "none") {
+      setPublicOpen(true);
+    }
+    previousKind.current = kind;
+  }, [kind]);
+
+  return {
+    kind,
+    publicOpen,
+    setPublicOpen,
+    compact: kind === "public" && !publicOpen,
+  };
+}
+
+export function reviewCardClassName({
+  compact,
+  variant,
+}: {
+  compact: boolean;
+  variant: "course" | "public";
+}) {
+  const visibility = "[content-visibility:auto]";
+  const base =
+    variant === "course"
+      ? `scroll-mt-20 border-b border-separator last:border-b-0 ${visibility}`
+      : visibility;
+  if (compact) {
+    return `${base} py-2 [contain-intrinsic-size:auto_3rem]`;
+  }
+  return variant === "course"
+    ? `${base} py-5 [contain-intrinsic-size:auto_9rem]`
+    : `${base} py-4 [contain-intrinsic-size:auto_6rem]`;
+}
 
 function ReviewPostedDate({ date }: { date?: string }) {
   if (!date) return null;
@@ -58,46 +114,41 @@ function ReviewVisibleChrome({
 }
 
 export function ReviewFoldedBody({
-  endorsementCount,
-  challengeCount,
+  fold,
   date,
   header,
   leading,
   chromeClassName,
+  footer,
   children,
 }: {
-  endorsementCount: number;
-  challengeCount: number;
+  fold: ReviewPublicFold;
   date?: string;
   header: ReactNode;
   leading?: ReactNode;
   chromeClassName?: string;
+  footer?: ReactNode;
   children: ReactNode;
 }) {
-  const kind = reviewFoldKind({
-    endorsementCount,
-    challengeCount,
-  });
-  const [publicOpen, setPublicOpen] = useState(false);
-
-  useEffect(() => {
-    if (kind !== "public") setPublicOpen(false);
-  }, [kind]);
-
   const dateNode = <ReviewPostedDate date={date} />;
-  const showChrome = kind === "none" || publicOpen;
-  const chrome = showChrome ? (
+  const chrome = (
     <ReviewVisibleChrome
       leading={leading}
-      className={kind === "none" ? chromeClassName : undefined}
+      className={fold.kind === "none" ? chromeClassName : undefined}
       header={header}
-      date={kind === "none" ? dateNode : null}
+      date={dateNode}
     >
       {children}
     </ReviewVisibleChrome>
-  ) : null;
+  );
+  const expanded = (
+    <>
+      {chrome}
+      {footer}
+    </>
+  );
 
-  if (kind === "none") return chrome;
+  if (fold.kind === "none") return expanded;
 
   return (
     <>
@@ -107,17 +158,16 @@ export function ReviewFoldedBody({
         <Button
           size="sm"
           variant="ghost"
-          aria-expanded={publicOpen}
-          onPress={() => setPublicOpen((open) => !open)}
+          aria-expanded={fold.publicOpen}
+          onPress={() => fold.setPublicOpen((open) => !open)}
         >
           <span className="font-normal text-muted">{REVIEW_FOLD_LABEL}</span>
-          {publicOpen
+          {fold.publicOpen
             ? REVIEW_PUBLIC_FOLD_COLLAPSE_LABEL
             : REVIEW_PUBLIC_FOLD_EXPAND_LABEL}
         </Button>
-        {dateNode}
       </header>
-      {chrome}
+      {fold.publicOpen ? expanded : null}
     </>
   );
 }

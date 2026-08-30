@@ -20,6 +20,17 @@ type StanceSide = "recognition" | "challenge";
 
 export type ReviewRecognitionAppearance = "label" | "icon";
 
+export function ReviewActionCount({ count }: { count: number }) {
+  return (
+    <span
+      className="inline-block min-w-[2ch] text-center tabular"
+      aria-hidden={count <= 0 || undefined}
+    >
+      {count > 0 ? count : "\u00a0"}
+    </span>
+  );
+}
+
 export function useReviewRecognition({
   review,
   ready,
@@ -242,16 +253,12 @@ export function ReviewRecognitionButton({
       {({ isPending }) =>
         appearance === "icon" ? (
           <>
-            {isPending ? (
-              <Spinner color="current" size="sm" />
-            ) : state.endorsed ? (
+            {state.endorsed ? (
               <ThumbsUpFill aria-hidden />
             ) : (
               <ThumbsUp aria-hidden />
             )}
-            {state.count > 0 ? (
-              <span className="tabular">{state.count}</span>
-            ) : null}
+            <ReviewActionCount count={state.count} />
           </>
         ) : (
           <>
@@ -289,20 +296,12 @@ export function ReviewChallengeButton({
       className="aria-pressed:bg-accent-soft aria-pressed:text-accent"
       onPress={onPress}
     >
-      {({ isPending }) => (
-        <>
-          {isPending ? (
-            <Spinner color="current" size="sm" />
-          ) : state.challenged ? (
-            <ThumbsDownFill aria-hidden />
-          ) : (
-            <ThumbsDown aria-hidden />
-          )}
-          {state.count > 0 ? (
-            <span className="tabular">{state.count}</span>
-          ) : null}
-        </>
+      {state.challenged ? (
+        <ThumbsDownFill aria-hidden />
+      ) : (
+        <ThumbsDown aria-hidden />
       )}
+      <ReviewActionCount count={state.count} />
     </Button>
   );
 }
