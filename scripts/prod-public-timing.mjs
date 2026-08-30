@@ -7,8 +7,11 @@
  * and course-page review filters. Each scenario runs once cold then twice
  * warm (same context; catalog GETs have s-maxage=60).
  *
- * Does not log in, POST reviews, or follow 导师 / Tencent sheets.
- * Not wired into CI.
+ * Read-only against production. Does not change product UI, CSS, or copy.
+ * Idle waits observe existing a11y hooks (catalog skeleton
+ * `[role=status][aria-label=加载中…]`, #418) and already-shipped /latest
+ * / review-feed status text. Does not log in, POST reviews, or follow
+ * 导师 / Tencent sheets. Not wired into CI.
  *
  * Usage: node scripts/prod-public-timing.mjs
  *    or: pnpm run timing:prod-public
@@ -170,38 +173,50 @@ function forbiddenRequest(request) {
 }
 
 async function waitCatalogIdle(page, timeout = ACTION_TIMEOUT_MS) {
-  await page.waitForFunction(() => {
-    const loading = document.querySelector('[role="status"][aria-label="加载中…"]');
-    const countSkeleton = document.querySelector('[aria-label="数量加载中"]');
-    const busy = document.querySelector('[aria-busy="true"]');
-    const text = document.body.innerText;
-    const hasCount = /共\s*[1-9]\d*\s*条/.test(text);
-    const empty =
-      text.includes("没有找到匹配") || text.includes("目录暂无课程数据");
-    return !loading && !countSkeleton && !busy && (hasCount || empty);
-  }, { timeout });
+  await page.waitForFunction(
+    () => {
+      const loading = document.querySelector('[role="status"][aria-label="加载中…"]');
+      const countSkeleton = document.querySelector('[aria-label="数量加载中"]');
+      const busy = document.querySelector('[aria-busy="true"]');
+      const text = document.body.innerText;
+      const hasCount = /共\s*[1-9]\d*\s*条/.test(text);
+      const empty =
+        text.includes("没有找到匹配") || text.includes("目录暂无课程数据");
+      return !loading && !countSkeleton && !busy && (hasCount || empty);
+    },
+    null,
+    { timeout },
+  );
 }
 
 async function waitLatestIdle(page, timeout = ACTION_TIMEOUT_MS) {
-  await page.waitForFunction(() => {
-    const text = document.body.innerText;
-    if (!text.includes("最新课评")) return false;
-    if (text.includes("正在加载最新课评…")) return false;
-    return (
-      text.includes("暂时还没有公开课评") ||
-      document.querySelectorAll("main article, [role='main'] article").length > 0
-    );
-  }, { timeout });
+  await page.waitForFunction(
+    () => {
+      const text = document.body.innerText;
+      if (!text.includes("最新课评")) return false;
+      if (text.includes("正在加载最新课评…")) return false;
+      return (
+        text.includes("暂时还没有公开课评") ||
+        document.querySelectorAll("main article, [role='main'] article").length > 0
+      );
+    },
+    null,
+    { timeout },
+  );
 }
 
 async function waitReviewsIdle(page, timeout = ACTION_TIMEOUT_MS) {
-  await page.waitForFunction(() => {
-    const loading = document.querySelector('[role="status"][aria-label="评价加载中…"]');
-    const heading = document.getElementById("course-reviews-heading");
-    if (!heading) return false;
-    const text = document.body.innerText;
-    return !loading && (text.includes("暂无评价") || text.includes("条点评"));
-  }, { timeout });
+  await page.waitForFunction(
+    () => {
+      const loading = document.querySelector('[role="status"][aria-label="评价加载中…"]');
+      const heading = document.getElementById("course-reviews-heading");
+      if (!heading) return false;
+      const text = document.body.innerText;
+      return !loading && (text.includes("暂无评价") || text.includes("条点评"));
+    },
+    null,
+    { timeout },
+  );
 }
 
 async function readCatalogMeta(page) {
@@ -228,6 +243,147 @@ async function gotoCatalog(page, search = "") {
     timeout: 30_000,
   });
   await waitCatalogIdle(page);
+}
+
+async function timeGet(url) {
+  const started = Date.now();
+  const response = await fetch(url, {
+    headers: { "User-Agent": "jufexk-prod-public-timing" },
+    signal: AbortSignal.timeout(ACTION_TIMEOUT_MS),
+  });
+  const body = await response.arrayBuffer();
+  let json = null;
+  try {
+    json = JSON.parse(new TextDecoder().decode(body));
+  } catch {
+    json = null;
+  }
+  return {
+    url,
+    wallMs: Date.now() - started,
+    status: response.status,
+    cfCacheStatus: response.headers.get("cf-cache-status"),
+    cacheControl: response.headers.get("cache-control"),
+    cfRay: response.headers.get("cf-ray"),
+    contentLength: body.byteLength,
+    json,
+  };
+}
+
+async function runHttpMatrix() {
+  const rows = [];
+  async function repeat(id, group, url) {
+    let last = null;
+    for (let index = 0; index < 1 + WARM_REPEATS; index += 1) {
+      const heat = index === 0 ? "cold" : `warm${index}`;
+      const started = Date.now();
+      try {
+        const result = await timeGet(url);
+        last = result;
+        const row = {
+          id,
+          group,
+          heat,
+          ok: result.status < 400 || (id === "http-admin-session" && result.status === 401),
+          error: null,
+          visibleMs: Date.now() - started,
+          url,
+          primaryWallMs: result.wallMs,
+          primaryTtfbMs: null,
+          cfCacheStatus: result.cfCacheStatus ? [result.cfCacheStatus] : [],
+          status: result.status,
+          contentLength: result.contentLength,
+          cacheControl: result.cacheControl,
+        };
+        rows.push(row);
+        console.log(
+          `[HTTP ${row.ok ? "OK" : "FAIL"}] ${id} ${heat} ${result.wallMs}ms ${result.cfCacheStatus || "-"} ${result.status}`,
+        );
+      } catch (reason) {
+        rows.push({
+          id,
+          group,
+          heat,
+          ok: false,
+          error: String(reason?.message || reason),
+          visibleMs: Date.now() - started,
+          url,
+          primaryWallMs: null,
+          cfCacheStatus: [],
+        });
+        console.log(`[HTTP FAIL] ${id} ${heat} ${reason}`);
+      }
+    }
+    return last;
+  }
+
+  // Sequential so HIT/MISS is not racing itself across scenarios.
+  const first = await repeat(
+    "http-catalog-home",
+    "http-catalog",
+    `${ORIGIN}/api/courses?view=relations&page=1`,
+  );
+  const total = Number(first?.json?.total) || 0;
+  const pages = Number(first?.json?.pages) || (total > 0 ? Math.ceil(total / 20) : 0);
+
+  const catalogQueries = [
+    ["http-search-线性代数", "q=线性代数"],
+    ["http-search-teacher-孙爱琳", "q=孙爱琳"],
+    ["http-search-code-1004201162", "q=1004201162"],
+    ["http-search-short-微", "q=微"],
+    ["http-search-miss", "q=zzqxnevermatch999"],
+    ["http-category-通识", "category=general"],
+    ["http-category-数学", "category=math"],
+    ["http-category-思政", "category=ideology"],
+    ["http-category-英语", "category=english"],
+    ["http-category-体育", "category=sports"],
+    ["http-page-all-2", "page=2"],
+    ...(pages > 2 ? [["http-page-all-last", `page=${pages}`]] : []),
+    ["http-page-general-2", "category=general&page=2"],
+    ["http-page-sports-2", "category=sports&page=2"],
+  ];
+  for (const [id, query] of catalogQueries) {
+    await repeat(id, "http-catalog", `${ORIGIN}/api/courses?view=relations&${query}`);
+  }
+
+  const latest = await repeat(
+    "http-latest",
+    "http-latest",
+    `${ORIGIN}/api/reviews/latest`,
+  );
+  if (latest?.json?.nextCursor) {
+    await repeat(
+      "http-latest-more",
+      "http-latest",
+      `${ORIGIN}/api/reviews/latest?cursor=${encodeURIComponent(latest.json.nextCursor)}`,
+    );
+  }
+
+  const detailId = first?.json?.items?.[0]?.course_id ?? 378;
+  const teacherId = first?.json?.items?.[0]?.teacher_id ?? 565;
+  await repeat(
+    "http-course-detail",
+    "http-detail",
+    `${ORIGIN}/api/courses/${detailId}`,
+  );
+  for (const [id, query] of [
+    ["http-review-recognized", `teacherId=${teacherId}&sort=recognized`],
+    ["http-review-latest", `teacherId=${teacherId}&sort=latest`],
+    ["http-review-oldest", `teacherId=${teacherId}&sort=oldest`],
+    ["http-review-rating-desc", `teacherId=${teacherId}&sort=rating_desc`],
+    ["http-review-rating-5", `teacherId=${teacherId}&sort=recognized&rating=5`],
+    ["http-review-rating-1", `teacherId=${teacherId}&sort=recognized&rating=1`],
+  ]) {
+    await repeat(
+      id,
+      "http-reviews",
+      `${ORIGIN}/api/courses/${detailId}/reviews?${query}`,
+    );
+  }
+  await repeat("http-config", "http-shell", `${ORIGIN}/api/config`);
+  await repeat("http-admin-session", "http-shell", `${ORIGIN}/api/admin/session`);
+
+  return { total, pages, detailId, teacherId, rows };
 }
 
 async function gotoLatest(page) {
@@ -344,10 +500,31 @@ async function measure(page, collector, {
 
 async function runColdWarm(page, collector, spec) {
   for (let index = 0; index < 1 + WARM_REPEATS; index += 1) {
-    if (spec.prepare) await spec.prepare(index === 0 ? "cold" : `warm${index}`);
+    const heat = index === 0 ? "cold" : `warm${index}`;
+    try {
+      if (spec.prepare) await spec.prepare(heat);
+    } catch (reason) {
+      measurements.push({
+        id: spec.id,
+        group: spec.group,
+        heat,
+        ok: false,
+        error: `prepare: ${reason?.message || reason}`,
+        visibleMs: null,
+        url: page.url(),
+        primary: [],
+        extras: [],
+        primaryDurationMs: null,
+        primaryTtfbMs: null,
+        primaryWallMs: null,
+        cfCacheStatus: [],
+      });
+      console.log(`[FAIL] ${spec.id} ${heat} prepare ${reason?.message || reason}`);
+      continue;
+    }
     await measure(page, collector, {
       ...spec,
-      heat: index === 0 ? "cold" : `warm${index}`,
+      heat,
     });
   }
 }
@@ -383,7 +560,13 @@ async function runWalk(browser) {
   const page = await context.newPage();
   const collector = attachCollector(page);
 
-  await gotoCatalog(page);
+  try {
+    await gotoCatalog(page);
+  } catch (reason) {
+    notes.push({ id: "catalog-first-load-error", error: String(reason?.message || reason) });
+    await shot(page, "catalog-first-load-timeout").catch(() => {});
+    throw reason;
+  }
   const firstNav = await navigationTiming(page);
   const firstMeta = await readCatalogMeta(page);
   notes.push({
@@ -628,22 +811,56 @@ async function runWalk(browser) {
       url: event.url,
     })),
   };
+  console.log(`UI walk scenarios=${summary.length}`);
+  return report;
+}
+
+async function writeReport(report) {
   writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   writeFileSync(
     join(ARTIFACTS, "prod-public-timing-report.json"),
     `${JSON.stringify(report, null, 2)}\n`,
   );
-  console.log(`\nWrote ${OUT}/report.json  scenarios=${summary.length}`);
-  if (measurements.some((row) => !row.ok)) process.exitCode = 1;
-  return report;
+  console.log(`\nWrote ${OUT}/report.json`);
 }
 
 async function main() {
+  console.log("HTTP matrix (does not touch production UI)");
+  const http = await runHttpMatrix();
+  let ui = { summary: [], measurements: [], collector: [], notes: [] };
   const browser = await chromium.launch({ headless: true });
   try {
-    await runWalk(browser);
+    ui = await runWalk(browser);
+  } catch (reason) {
+    notes.push({ id: "ui-walk-error", error: String(reason?.message || reason) });
+    console.log(`UI walk aborted: ${reason?.message || reason}`);
   } finally {
     await browser.close();
+  }
+  const report = {
+    origin: ORIGIN,
+    ranAt: new Date().toISOString(),
+    viewport: { width: 1280, height: 800 },
+    warmRepeats: WARM_REPEATS,
+    productUiUnchanged: true,
+    notes: [...(http.notes ?? []), ...notes, ...(ui.notes ?? [])],
+    http: {
+      catalogTotal: http.total,
+      catalogPages: http.pages,
+      detailId: http.detailId,
+      teacherId: http.teacherId,
+      rows: http.rows,
+    },
+    summary: ui.summary,
+    measurements: ui.measurements ?? measurements,
+    collector: ui.collector ?? [],
+  };
+  await writeReport(report);
+  if (
+    measurements.some((row) => !row.ok) ||
+    http.rows.some((row) => !row.ok)
+  ) {
+    process.exitCode = 1;
   }
 }
 
