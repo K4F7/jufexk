@@ -165,18 +165,6 @@ describe("public user profile and follow", () => {
     );
     await env.DB.batch(statements);
     await env.DB.prepare(
-      `INSERT INTO legacy_import_batches(id,source_type,source_label,status,row_count,imported_at)
-       VALUES('u612-legacy','legacy_ocr','腾讯表格历史资料','imported',1,CURRENT_TIMESTAMP)`,
-    ).run();
-    await env.DB.prepare(
-      `INSERT INTO legacy_reviews(
-         import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,
-         course_id,teacher_id,category,comment,status
-       ) VALUES('u612-legacy','s.png','主要课程','1','原文',0.9,? ,1,'general','旧评同一门课','approved')`,
-    )
-      .bind(first)
-      .run();
-    await env.DB.prepare(
       `INSERT INTO public_historical_reviews(
          id,course_id,teacher_id,comment,package_contract,
          approved_package_manifest_sha256,approved_catalog_content_sha256

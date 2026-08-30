@@ -8,7 +8,6 @@ const sourceTables = [
   "teachers",
   "course_teachers",
   "reviews",
-  "legacy_reviews",
   "public_historical_reviews",
   "offerings",
   "offering_teachers",
@@ -160,34 +159,6 @@ it("marks public projections dirty for raw source-table inserts, updates and del
       env.DB.prepare("DELETE FROM reviews WHERE id=355005"),
     );
 
-    await env.DB.prepare(
-      `INSERT INTO legacy_import_batches(
-         id,source_type,source_label,status,row_count
-       ) VALUES('trigger-355','legacy_ocr','触发器测试','imported',1)`,
-    ).run();
-    await expectWriteToMarkDirty(
-      "legacy_reviews INSERT",
-      env.DB.prepare(
-        `INSERT INTO legacy_reviews(
-           id,import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,
-           ocr_confidence,course_id,teacher_id,category,comment,status
-         ) VALUES(
-           355006,'trigger-355','trigger.png','触发器','1','触发器原文',
-           1,1,1,'general','触发器历史评价甲','approved'
-         )`,
-      ),
-    );
-    await expectWriteToMarkDirty(
-      "legacy_reviews UPDATE",
-      env.DB.prepare(
-        "UPDATE legacy_reviews SET comment='触发器历史评价乙' WHERE id=355006",
-      ),
-    );
-    await expectWriteToMarkDirty(
-      "legacy_reviews DELETE",
-      env.DB.prepare("DELETE FROM legacy_reviews WHERE id=355006"),
-    );
-
     await expectWriteToMarkDirty(
       "public_historical_reviews INSERT",
       env.DB.prepare(
@@ -264,8 +235,6 @@ it("marks public projections dirty for raw source-table inserts, updates and del
     await env.DB.batch([
       env.DB.prepare("DELETE FROM public_historical_reviews WHERE id='trigger-355'"),
       env.DB.prepare("DELETE FROM reviews WHERE id=355005"),
-      env.DB.prepare("DELETE FROM legacy_reviews WHERE id=355006"),
-      env.DB.prepare("DELETE FROM legacy_import_batches WHERE id='trigger-355'"),
       env.DB.prepare("DELETE FROM offerings WHERE id IN (355007,355008)"),
       env.DB.prepare("DELETE FROM course_teachers WHERE course_id=355003"),
       env.DB.prepare("DELETE FROM courses WHERE id IN (355001,355003)"),

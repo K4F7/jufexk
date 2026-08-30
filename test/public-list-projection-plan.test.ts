@@ -301,24 +301,7 @@ describe("public list projection plan", () => {
         ) VALUES(57430,57431,'general',5,'   ','approved','vis-blank')`,
       ),
     ]);
-    await env.DB.prepare(
-      `INSERT INTO legacy_import_batches(
-        id,source_type,source_label,status,row_count,imported_at
-      ) VALUES('574-legacy','legacy_ocr','投影计数', 'imported', 2, CURRENT_TIMESTAMP)`,
-    ).run();
     await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO legacy_reviews(
-          import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,
-          ocr_confidence,course_id,teacher_id,category,comment,status
-        ) VALUES('574-legacy','a.png','表','1','ocr',0.9,57430,57431,'general','已审历史','approved')`,
-      ),
-      env.DB.prepare(
-        `INSERT INTO legacy_reviews(
-          import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,
-          ocr_confidence,course_id,teacher_id,category,comment,status
-        ) VALUES('574-legacy','b.png','表','2','ocr',0.9,57430,57431,'general','未审历史','pending')`,
-      ),
       env.DB.prepare(
         `INSERT INTO public_historical_reviews(
           id,course_id,teacher_id,comment,package_contract,
@@ -337,12 +320,6 @@ describe("public list projection plan", () => {
     } finally {
       await env.DB.prepare(
         "DELETE FROM public_historical_reviews WHERE id='hist-574'",
-      ).run();
-      await env.DB.prepare(
-        "DELETE FROM legacy_reviews WHERE import_batch_id='574-legacy'",
-      ).run();
-      await env.DB.prepare(
-        "DELETE FROM legacy_import_batches WHERE id='574-legacy'",
       ).run();
       await env.DB.prepare("DELETE FROM reviews WHERE course_id=57430").run();
       await env.DB.prepare(

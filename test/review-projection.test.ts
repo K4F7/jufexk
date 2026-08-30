@@ -68,53 +68,6 @@ describe("public course-teacher review projection", () => {
     await insertReview("pending", "待审核补充说明", "2026 春");
     await insertReview("rejected", "被驳回补充说明", "2026 春");
 
-    const batchId = `projection-${Date.now()}`;
-    await env.DB.prepare(
-      `INSERT INTO legacy_import_batches(
-        id,source_type,source_label,status,row_count,imported_at
-      ) VALUES(?, 'legacy_ocr', '投影测试历史资料', 'imported', 2, CURRENT_TIMESTAMP)`,
-    )
-      .bind(batchId)
-      .run();
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO legacy_reviews(
-          import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,
-          ocr_confidence,course_id,teacher_id,category,comment,status,term
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ).bind(
-        batchId,
-        "projection.png",
-        "测试表",
-        "1",
-        "private OCR",
-        0.99,
-        courseId,
-        teacherId,
-        "general",
-        "已审核历史资料",
-        "approved",
-        "2024 秋",
-      ),
-      env.DB.prepare(
-        `INSERT INTO legacy_reviews(
-          import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,
-          ocr_confidence,course_id,teacher_id,category,comment,status
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-      ).bind(
-        batchId,
-        "projection-pending.png",
-        "测试表",
-        "2",
-        "private pending OCR",
-        0.99,
-        courseId,
-        teacherId,
-        "general",
-        "待审核历史资料",
-        "pending",
-      ),
-    ]);
     const historicalIds = Array.from({ length: 23 }, (_, index) =>
       `${code}-historical-${String(index + 1).padStart(2, "0")}`,
     );
@@ -250,12 +203,6 @@ describe("public course-teacher review projection", () => {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM public_historical_reviews WHERE course_id=?").bind(
           courseId,
-        ),
-        env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=?").bind(
-          batchId,
-        ),
-        env.DB.prepare("DELETE FROM legacy_import_batches WHERE id=?").bind(
-          batchId,
         ),
         env.DB.prepare("DELETE FROM reviews WHERE course_id=?").bind(courseId),
         env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(

@@ -91,21 +91,6 @@ beforeAll(async () => {
   await insertLiveReview(popularCourseId, popularTeacherId, "   ");
   await insertLiveReview(popularCourseId, popularTeacherId, "待审核评价", "pending");
 
-  const batchId = `ordering-${Date.now()}`;
-  await env.DB.prepare(
-    `INSERT INTO legacy_import_batches(id,source_type,source_label,status,row_count,imported_at)
-     VALUES(?,'legacy_ocr','排序测试','imported',1,CURRENT_TIMESTAMP)`,
-  )
-    .bind(batchId)
-    .run();
-  await env.DB.prepare(
-    `INSERT INTO legacy_reviews(
-       import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,
-       course_id,teacher_id,category,comment,status
-     ) VALUES(?,'ordering.png','测试表','1','原文',.99,?,?,'general','批准的历史文字','approved')`,
-  )
-    .bind(batchId, popularCourseId, popularTeacherId)
-    .run();
   await env.DB.prepare(
     `INSERT INTO public_historical_reviews(
        id,course_id,teacher_id,comment,package_contract,

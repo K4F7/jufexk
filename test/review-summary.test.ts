@@ -259,16 +259,6 @@ describe("summary source collection", () => {
     await seedReview(courseId, "凑门槛的第五条公开评价");
     await seedReview(courseId, "凑门槛的第六条公开评价");
     await env.DB.prepare(
-      `INSERT INTO legacy_import_batches(id,source_type,source_label,status,row_count,imported_at)
-       VALUES('summary-col-batch','legacy_ocr','腾讯表格历史资料','imported',1,CURRENT_TIMESTAMP)`,
-    ).run();
-    await env.DB.prepare(
-      `INSERT INTO legacy_reviews(import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,ocr_confidence,course_id,teacher_id,category,comment,status)
-       VALUES('summary-col-batch','s.png','主要课程','1','原文',0.9,?,1,'general','旧脚手架资料行不应进摘要','approved')`,
-    )
-      .bind(courseId)
-      .run();
-    await env.DB.prepare(
       `INSERT INTO public_historical_reviews(id,course_id,teacher_id,comment,package_contract,approved_package_manifest_sha256,approved_catalog_content_sha256)
        VALUES('summary-col-phr',?,1,'公开历史评价正文','contract','manifest','catalog')`,
     )
@@ -290,7 +280,6 @@ describe("summary source collection", () => {
     expect(prompt).toContain("【评价 1】\n富文本加粗与链接");
     expect(prompt).toContain("【评价 2】\n内容扎实，值得推荐");
     expect(prompt).toContain("公开历史评价正文");
-    expect(prompt).not.toContain("旧脚手架资料行不应进摘要");
     expect(prompt).toContain("凑门槛的第五条公开评价");
     expect(prompt).toContain("凑门槛的第六条公开评价");
     expect(prompt).not.toContain("投稿中的文字");
