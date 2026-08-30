@@ -1,5 +1,8 @@
 # 公开面加载速度 — 2026-08-30
 
+> 这是 **#705 / #720 优化前** 的基线。优化后对照见
+> [load-speed-2026-08-30-after-opt.md](./load-speed-2026-08-30-after-opt.md)。
+
 未登录实测 **https://courses.sein.moe**。
 Cloud Agent 出口在 Cloudflare `IAD` / `cf-placement: local-EWR`（美东），不是校园网或国内宽带。
 这是单点远端样本，不是 RUM。

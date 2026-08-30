@@ -150,6 +150,7 @@ function attachCollector(page) {
       ttfbMs: resource?.ttfbMs ?? null,
       cfCacheStatus: headers["cf-cache-status"] ?? null,
       cacheControl: headers["cache-control"] ?? null,
+      serverTiming: headers["server-timing"] ?? null,
       cfRay: headers["cf-ray"] ?? null,
       contentLength: headers["content-length"]
         ? Number(headers["content-length"])
@@ -309,6 +310,8 @@ async function timeGet(url) {
     status: response.status,
     cfCacheStatus: response.headers.get("cf-cache-status"),
     cacheControl: response.headers.get("cache-control"),
+    serverTiming: response.headers.get("server-timing"),
+    cfPlacement: response.headers.get("cf-placement"),
     cfRay: response.headers.get("cf-ray"),
     contentLength: body.byteLength,
     json,
@@ -339,10 +342,12 @@ async function runHttpMatrix() {
           status: result.status,
           contentLength: result.contentLength,
           cacheControl: result.cacheControl,
+          serverTiming: result.serverTiming,
+          cfPlacement: result.cfPlacement,
         };
         rows.push(row);
         console.log(
-          `[HTTP ${row.ok ? "OK" : "FAIL"}] ${id} ${heat} ${result.wallMs}ms ${result.cfCacheStatus || "-"} ${result.status}`,
+          `[HTTP ${row.ok ? "OK" : "FAIL"}] ${id} ${heat} ${result.wallMs}ms app=${result.serverTiming || "-"} ${result.cfCacheStatus || "-"} ${result.status}`,
         );
       } catch (reason) {
         rows.push({
