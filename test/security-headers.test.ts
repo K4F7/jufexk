@@ -9,6 +9,7 @@ import {
 } from "../src/security-headers";
 import { STATUS_PAGE_URL } from "../src/lib/site-links";
 import assetHeaders from "../public/_headers?raw";
+import assetRedirects from "../public/_redirects?raw";
 
 const origin = "https://example.com";
 
@@ -27,6 +28,25 @@ function headerValue(file: string, name: string): string {
     .map((item) => item.trim())
     .find((item) => item.startsWith(`${name}:`));
   return line ? line.slice(name.length + 1).trim() : "";
+}
+
+function headerValueForPath(file: string, path: string, name: string): string {
+  const lines = file.split(/\r?\n/);
+  let inBlock = false;
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line || line.startsWith("#")) continue;
+    if (!/^\s/.test(raw) && line.length > 0) {
+      inBlock = line.trim() === path;
+      continue;
+    }
+    if (!inBlock) continue;
+    const trimmed = line.trim();
+    if (trimmed.startsWith(`${name}:`)) {
+      return trimmed.slice(name.length + 1).trim();
+    }
+  }
+  return "";
 }
 
 describe("public asset CSP", () => {
@@ -58,6 +78,16 @@ describe("public asset CSP", () => {
       "data:",
       HEROUI_AVATAR_ASSETS_ORIGIN,
     ]);
+  });
+
+  it("gives fingerprinted Vite assets a long immutable cache", () => {
+    expect(headerValueForPath(assetHeaders, "/assets/*", "Cache-Control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+  });
+
+  it("redirects the bare origin to the latest feed before the SPA boots", () => {
+    expect(assetRedirects).toMatch(/^\s*\/\s+\/latest\s+302\s*$/m);
   });
 });
 

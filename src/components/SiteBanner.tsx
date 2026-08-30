@@ -1,6 +1,5 @@
 import { Alert, CloseButton } from "@heroui/react";
-import DOMPurify from "dompurify";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   REVIEW_NOTE_ALLOWED_ATTRS,
   REVIEW_NOTE_ALLOWED_TAGS,
@@ -30,10 +29,25 @@ function BannerAlert({
   className: string;
   onDismiss: () => void;
 }) {
-  const sanitizedHtml = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [...REVIEW_NOTE_ALLOWED_TAGS],
-    ALLOWED_ATTR: [...REVIEW_NOTE_ALLOWED_ATTRS, "target", "rel"],
-  });
+  const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("dompurify").then(({ default: DOMPurify }) => {
+      if (cancelled) return;
+      setSanitizedHtml(
+        DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: [...REVIEW_NOTE_ALLOWED_TAGS],
+          ALLOWED_ATTR: [...REVIEW_NOTE_ALLOWED_ATTRS, "target", "rel"],
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [html]);
+
+  if (sanitizedHtml == null) return null;
   return (
     <Alert className={`${className} items-center py-2`} status="accent">
       <Alert.Indicator />

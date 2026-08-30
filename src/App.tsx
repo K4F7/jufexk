@@ -1,4 +1,4 @@
-import { RouterProvider } from "@heroui/react";
+import { RouterProvider, Spinner } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   BrowserRouter,
@@ -15,29 +15,64 @@ import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
-import { AccountPage } from "./pages/AccountPage";
-import { AdminBannerPage } from "./pages/admin/AdminBannerPage";
-import { AdminHubPage } from "./pages/admin/AdminHubPage";
-import { AdminStudentBindingsPage } from "./pages/admin/AdminStudentBindingsPage";
-import { AdminUserBlockPage } from "./pages/admin/AdminUserBlockPage";
-import { CourseDetailPage } from "./pages/CourseDetailPage";
 import { CoursesPage } from "./pages/CoursesPage";
 import { LatestPage } from "./pages/LatestPage";
-import { LoginPage } from "./pages/LoginPage";
-import { NotFoundPage } from "./pages/NotFoundPage";
-import { ProfilePage } from "./pages/ProfilePage";
-import { PublicUserPage } from "./pages/PublicUserPage";
-import { SchedulePage } from "./pages/SchedulePage";
-import {
-  AboutPage,
-  ContactPage,
-  ResourcesPage,
-  TermsPage,
-} from "./pages/SiteInfoPages";
-import { SubmitPage } from "./pages/SubmitPage";
-import { TeacherDetailPage } from "./pages/TeacherDetailPage";
 
 const THEME_STORAGE_KEY = "jufexk-theme";
+
+const AccountPage = lazy(() =>
+  import("./pages/AccountPage").then((m) => ({ default: m.AccountPage })),
+);
+const AdminBannerPage = lazy(() =>
+  import("./pages/admin/AdminBannerPage").then((m) => ({ default: m.AdminBannerPage })),
+);
+const AdminHubPage = lazy(() =>
+  import("./pages/admin/AdminHubPage").then((m) => ({ default: m.AdminHubPage })),
+);
+const AdminStudentBindingsPage = lazy(() =>
+  import("./pages/admin/AdminStudentBindingsPage").then((m) => ({
+    default: m.AdminStudentBindingsPage,
+  })),
+);
+const AdminUserBlockPage = lazy(() =>
+  import("./pages/admin/AdminUserBlockPage").then((m) => ({ default: m.AdminUserBlockPage })),
+);
+const CourseDetailPage = lazy(() =>
+  import("./pages/CourseDetailPage").then((m) => ({ default: m.CourseDetailPage })),
+);
+const LoginPage = lazy(() =>
+  import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })),
+);
+const NotFoundPage = lazy(() =>
+  import("./pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage })),
+);
+const ProfilePage = lazy(() =>
+  import("./pages/ProfilePage").then((m) => ({ default: m.ProfilePage })),
+);
+const PublicUserPage = lazy(() =>
+  import("./pages/PublicUserPage").then((m) => ({ default: m.PublicUserPage })),
+);
+const SchedulePage = lazy(() =>
+  import("./pages/SchedulePage").then((m) => ({ default: m.SchedulePage })),
+);
+const SubmitPage = lazy(() =>
+  import("./pages/SubmitPage").then((m) => ({ default: m.SubmitPage })),
+);
+const TeacherDetailPage = lazy(() =>
+  import("./pages/TeacherDetailPage").then((m) => ({ default: m.TeacherDetailPage })),
+);
+const AboutPage = lazy(() =>
+  import("./pages/SiteInfoPages").then((m) => ({ default: m.AboutPage })),
+);
+const ContactPage = lazy(() =>
+  import("./pages/SiteInfoPages").then((m) => ({ default: m.ContactPage })),
+);
+const ResourcesPage = lazy(() =>
+  import("./pages/SiteInfoPages").then((m) => ({ default: m.ResourcesPage })),
+);
+const TermsPage = lazy(() =>
+  import("./pages/SiteInfoPages").then((m) => ({ default: m.TermsPage })),
+);
 
 /** Dev-only: lazy so production builds do not ship Gallery / switcher / token CSS. */
 const PrototypeGalleryPage = import.meta.env.DEV
@@ -47,6 +82,15 @@ const PrototypeGalleryPage = import.meta.env.DEV
       })),
     )
   : null;
+
+function RouteFallback() {
+  return (
+    <div className="flex flex-col items-center gap-2 py-10" role="status">
+      <Spinner size="sm" />
+      <span className="text-xs text-muted">加载中…</span>
+    </div>
+  );
+}
 
 function DevPrototypeMount() {
   const [chrome, setChrome] = useState<ReactNode>(null);
@@ -170,6 +214,7 @@ export function App() {
         <ViewerProvider>
           <AdminSessionProvider>
             <AppShell banner={banner} config={config}>
+              <Suspense fallback={<RouteFallback />}>
               <Routes>
               <Route path="/" element={<Navigate to="/latest" replace />} />
               <Route path="/courses" element={<CoursesPage />} />
@@ -194,15 +239,12 @@ export function App() {
               {PrototypeGalleryPage ? (
                 <Route
                   path="/prototype"
-                  element={
-                    <Suspense fallback={<p className="text-sm text-muted">加载 Prototype…</p>}>
-                      <PrototypeGalleryPage />
-                    </Suspense>
-                  }
+                  element={<PrototypeGalleryPage />}
                 />
               ) : null}
               <Route path="*" element={<NotFoundPage />} />
               </Routes>
+              </Suspense>
               {import.meta.env.DEV ? <DevPrototypeMount /> : null}
             </AppShell>
           </AdminSessionProvider>

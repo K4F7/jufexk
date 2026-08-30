@@ -87,7 +87,7 @@ function SkipToMain() {
 }
 
 function navSelectedKey(pathname: string): string {
-  if (pathname === "/latest") return "latest";
+  if (pathname === "/" || pathname === "/latest") return "latest";
   if (pathname === "/schedule" || pathname.startsWith("/schedule/")) {
     return "schedule";
   }
