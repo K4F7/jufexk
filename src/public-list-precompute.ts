@@ -28,6 +28,7 @@ const REFRESH_ATTEMPTS = 2;
 const REFRESH_ACQUIRE_ATTEMPTS = 5;
 const REFRESH_LEASE_SECONDS = 60;
 const REFRESH_LEASE_POLL_MS = 100;
+export const PUBLIC_PROJECTION_MAX_STALE_SECONDS = 300;
 const publicPrecomputeRefreshes = new WeakMap<D1Database, Promise<void>>();
 
 class PublicPrecomputeLeaseLostError extends Error {}
@@ -35,6 +36,8 @@ class PublicPrecomputeLeaseLostError extends Error {}
 type PublicPrecomputeState = {
   dirty: number;
   generation: number;
+  published_generation: number;
+  published_at: number;
   refresh_token: string | null;
   refresh_lease_until: number | null;
 };
@@ -42,7 +45,8 @@ type PublicPrecomputeState = {
 const publicPrecomputeState = (db: D1Database) =>
   db
     .prepare(
-      `SELECT dirty,generation,refresh_token,refresh_lease_until
+      `SELECT dirty,generation,published_generation,published_at,
+         refresh_token,refresh_lease_until
        FROM public_precompute_state WHERE id=1`,
     )
     .first<PublicPrecomputeState>();
@@ -142,7 +146,11 @@ async function refreshPublicListPrecomputesAttempt(
     const published = await db
       .prepare(
         `UPDATE public_precompute_state
-         SET dirty=0,refresh_token=NULL,refresh_lease_until=NULL
+         SET dirty=0,
+             published_generation=?,
+             published_at=unixepoch(),
+             refresh_token=NULL,
+             refresh_lease_until=NULL
          WHERE id=1
            AND dirty=1
            AND generation=?
@@ -150,7 +158,7 @@ async function refreshPublicListPrecomputesAttempt(
            AND refresh_lease_until>unixepoch()
          RETURNING id`,
       )
-      .bind(generation, token)
+      .bind(generation, generation, token)
       .run();
     if (published.results.length) return;
 
@@ -204,10 +212,58 @@ export async function refreshPublicListPrecomputes(db: D1Database) {
   }
 }
 
-export async function ensurePublicListPrecomputes(db: D1Database) {
+export type PublicPrecomputeReadMode = "blocking" | "stale";
+
+export type PublicPrecomputeReadOptions = {
+  mode?: PublicPrecomputeReadMode;
+  waitUntil?: (promise: Promise<void>) => void;
+};
+
+function schedulePublicPrecomputeRefresh(
+  db: D1Database,
+  waitUntil?: (promise: Promise<void>) => void,
+) {
+  const refresh = refreshPublicListPrecomputes(db).catch((error) => {
+    console.error(
+      JSON.stringify({
+        event: "public_precompute_refresh_failed",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  });
+  if (waitUntil) {
+    waitUntil(refresh);
+    return;
+  }
+  return refresh;
+}
+
+export async function ensurePublicListPrecomputes(
+  db: D1Database,
+  options: PublicPrecomputeReadOptions = {},
+) {
   const state = await db
     .prepare("SELECT dirty FROM public_precompute_state WHERE id=1")
     .first<{ dirty: number }>();
   if (!state) return refreshPublicListPrecomputes(db);
-  if (state.dirty) await refreshPublicListPrecomputes(db);
+  if (!state.dirty) return;
+  if (options.mode === "stale") {
+    const published = await db
+      .prepare(
+        `SELECT published_generation,published_at
+         FROM public_precompute_state WHERE id=1`,
+      )
+      .first<{ published_generation: number; published_at: number }>();
+    const age = Math.floor(Date.now() / 1000) - Number(published?.published_at || 0);
+    if (
+      Number(published?.published_generation) >= 0 &&
+      age >= 0 &&
+      age <= PUBLIC_PROJECTION_MAX_STALE_SECONDS
+    ) {
+      const scheduled = schedulePublicPrecomputeRefresh(db, options.waitUntil);
+      if (scheduled) await scheduled;
+      return;
+    }
+  }
+  await refreshPublicListPrecomputes(db);
 }

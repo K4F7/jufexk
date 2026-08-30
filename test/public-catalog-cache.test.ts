@@ -4,6 +4,10 @@ import {
   DEFAULT_API_CACHE_CONTROL,
   PUBLIC_CATALOG_CACHE_CONTROL,
   PUBLIC_CATALOG_CACHE_TAG,
+  PUBLIC_CONFIG_CACHE_CONTROL,
+  PUBLIC_CONFIG_CACHE_TAG,
+  PUBLIC_DETAIL_CACHE_CONTROL,
+  PUBLIC_DETAIL_CACHE_TAG,
   purgePublicCatalogCache,
   setPublicCatalogCacheHeaders,
 } from "../src/lib/public-catalog-cache";
@@ -20,6 +24,15 @@ const isNotPublicCatalogCache = (response: Response) => {
   expect(response.headers.get("Cache-Tag")).not.toBe(PUBLIC_CATALOG_CACHE_TAG);
 };
 
+const isScopedPublicCache = (
+  response: Response,
+  control: string,
+  tag: string,
+) => {
+  expect(response.headers.get("Cache-Control")).toBe(control);
+  expect(response.headers.get("Cache-Tag")).toBe(tag);
+};
+
 describe("public catalog cache headers", () => {
   it.each([
     "/api/courses",
@@ -32,10 +45,10 @@ describe("public catalog cache headers", () => {
     isPublicCatalogCache(response);
   });
 
-  it("keeps /api/config uncached", async () => {
+  it("short-caches anonymous /api/config", async () => {
     const response = await SELF.fetch(`${origin}/api/config`);
     expect(response.status).toBe(200);
-    isNotPublicCatalogCache(response);
+    isScopedPublicCache(response, PUBLIC_CONFIG_CACHE_CONTROL, PUBLIC_CONFIG_CACHE_TAG);
     expect(await response.json()).toMatchObject({ showScheduleNav: false });
   });
 
@@ -51,10 +64,34 @@ describe("public catalog cache headers", () => {
     isNotPublicCatalogCache(response);
   });
 
-  it("does not publicly cache course detail", async () => {
+  it("publicly caches anonymous course detail", async () => {
     const response = await SELF.fetch(`${origin}/api/courses/1`);
     expect(response.status).toBe(200);
+    isScopedPublicCache(response, PUBLIC_DETAIL_CACHE_CONTROL, PUBLIC_DETAIL_CACHE_TAG);
+  });
+
+  it.each([
+    "jufexk_voter=abc",
+    "jufexk_user_session=abc",
+    "jufexk_admin=abc",
+    "jufexk_ehall_session=abc",
+  ])("keeps course detail no-store with credential cookie %s", async (cookie) => {
+    const response = await SELF.fetch(`${origin}/api/courses/1`, {
+      headers: { Cookie: cookie },
+    });
+    expect(response.status).toBe(200);
     isNotPublicCatalogCache(response);
+  });
+
+  it("publicly caches anonymous course reviews but not voter requests", async () => {
+    const anonymous = await SELF.fetch(`${origin}/api/courses/1/reviews?teacherId=1&sort=recognized`);
+    expect(anonymous.status).toBe(200);
+    isScopedPublicCache(anonymous, PUBLIC_DETAIL_CACHE_CONTROL, PUBLIC_DETAIL_CACHE_TAG);
+    const personalized = await SELF.fetch(`${origin}/api/courses/1/reviews?teacherId=1&sort=recognized`, {
+      headers: { Cookie: "jufexk_voter=abc" },
+    });
+    expect(personalized.status).toBe(200);
+    isNotPublicCatalogCache(personalized);
   });
 });
 

@@ -42,6 +42,10 @@ import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { api } from "../lib/api";
 import {
+  getCatalogData,
+  invalidateCatalogData,
+} from "../lib/catalog-data-cache";
+import {
   PREVIEW_REVIEW_COMMENTS,
   previewFilledCourseDetail,
   previewFilledCourseReviews,
@@ -270,7 +274,8 @@ export function CourseDetailPage() {
     setError("");
     (async () => {
       try {
-        const d = await api<Detail>(`/api/courses/${id}`);
+        const detailUrl = `/api/courses/${id}`;
+        const d = await getCatalogData(detailUrl, () => api<Detail>(detailUrl));
         if (!cancelled) setData(d);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -316,7 +321,9 @@ export function CourseDetailPage() {
   /** 管理员公告保存后重拉课程详情（只刷新课程载荷，不动评价缓存）。 */
   const reloadCourse = useCallback(async () => {
     try {
-      setData(await api<Detail>(`/api/courses/${id}`));
+      const detailUrl = `/api/courses/${id}`;
+      invalidateCatalogData(detailUrl);
+      setData(await getCatalogData(detailUrl, () => api<Detail>(detailUrl)));
     } catch {
       /* 保留旧数据；下次进入页面会重试 */
     }
@@ -341,7 +348,11 @@ export function CourseDetailPage() {
     }
     const cacheKey = `${id}:${teacherQuery}`;
     // 刚提交的评价立刻公开：绕过会话缓存重拉第一页。
-    if (submitted) reviewCacheRef.current.delete(cacheKey);
+    const reviewsUrl = `/api/courses/${id}/reviews?${teacherQuery}`;
+    if (submitted) {
+      reviewCacheRef.current.delete(cacheKey);
+      invalidateCatalogData(reviewsUrl);
+    }
     const cached = reviewCacheRef.current.get(cacheKey);
     if (cached) {
       reviewFeed.reset(cached.items, cached.nextCursor);
@@ -355,8 +366,10 @@ export function CourseDetailPage() {
       reviewCacheRef.current,
       reviewInflightRef.current,
       cacheKey,
-      () =>
-        api<PublicReviewPage>(`/api/courses/${id}/reviews?${teacherQuery}`),
+      () => getCatalogData(
+        reviewsUrl,
+        () => api<PublicReviewPage>(reviewsUrl),
+      ),
     )
       .then((page) => {
         if (!cancelled) {
@@ -378,8 +391,9 @@ export function CourseDetailPage() {
   /** 管理动作（屏蔽/解除/删除）后：清空评价会话缓存并 bump 版本重拉。 */
   const handleReviewsChanged = useCallback(() => {
     reviewCacheRef.current.clear();
+    invalidateCatalogData(`/api/courses/${id}/reviews`);
     setReviewsVersion((v) => v + 1);
-  }, []);
+  }, [id]);
 
   /** 加载更多成功后把完整已加载列表回写进会话缓存，切走再切回时整页恢复。 */
   const handleLoadMore = useCallback(async () => {

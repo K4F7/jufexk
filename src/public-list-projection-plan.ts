@@ -6,6 +6,8 @@ import {
   publicPeDisplaySearchSql,
   publicPeHasTextReviewSql,
   publicCourseVisibleSql,
+  publicSportsMatchSql,
+  publicHasMoocTagSql,
 } from "./lib/public-course-presentation";
 import {
   guestReviewBindingSql,
@@ -33,9 +35,36 @@ const refreshLeaseGuard = `EXISTS(
     AND refresh_lease_until>unixepoch()
 )`;
 
-const canonicalInsert = `
+export type PublicProjectionTarget = "active" | "staging";
+
+type ProjectionTables = {
+  canonicals: string;
+  reviewCounts: string;
+  teacherCourseCounts: string;
+  teacherSearch: string;
+  relationRatings: string;
+};
+
+const projectionTables = (target: PublicProjectionTarget): ProjectionTables =>
+  target === "staging"
+    ? {
+        canonicals: "public_course_canonicals_staging",
+        reviewCounts: "public_review_counts_staging",
+        teacherCourseCounts: "public_teacher_course_counts_staging",
+        teacherSearch: "public_teacher_search_staging",
+        relationRatings: "public_relation_ratings_staging",
+      }
+    : {
+        canonicals: "public_course_canonicals",
+        reviewCounts: "public_review_counts",
+        teacherCourseCounts: "public_teacher_course_counts",
+        teacherSearch: "public_teacher_search",
+        relationRatings: "public_relation_ratings",
+      };
+
+const canonicalInsert = (tables: ProjectionTables) => `
   WITH classified AS (
-    SELECT c.id,c.name,c.code,c.department,
+    SELECT c.id,c.name,c.code,c.category,c.scheme_key,c.department,
       (${publicBrowseFamilySql("c")}) family_label,
       CASE WHEN ${publicPeHasTextReviewSql("c")} THEN 0 ELSE 1 END has_text,
       CASE
@@ -72,8 +101,8 @@ const canonicalInsert = `
     FROM course_name_variants
     GROUP BY course_id
   )
-  INSERT INTO public_course_canonicals(
-    course_id,canonical_course_id,family_label,search_text,match_text,teacher_variant_text
+  INSERT INTO ${tables.canonicals}(
+    course_id,canonical_course_id,family_label,search_text,match_text,teacher_variant_text,is_public_sports
   )
   SELECT c.id,COALESCE(r.canonical_id,c.id),c.family_label,
     COALESCE(fs.search_text,COALESCE(c.name,'') || ' ' || COALESCE(c.code,'')),
@@ -87,7 +116,9 @@ const canonicalInsert = `
       COALESCE(tt.names,'') || ' ' ||
       COALESCE(vt.names,'')
     ),
-    COALESCE(tt.delimited,'') || COALESCE(vt.delimited,'')
+    COALESCE(tt.delimited,'') || COALESCE(vt.delimited,''),
+    CASE WHEN (${publicSportsMatchSql("c")} OR c.scheme_key='pe')
+       AND NOT ${publicHasMoocTagSql("c")} THEN 1 ELSE 0 END
   FROM classified c
   LEFT JOIN ranked r ON r.id=c.id
   LEFT JOIN family_search fs ON fs.family_label=c.family_label
@@ -96,15 +127,15 @@ const canonicalInsert = `
   WHERE ${refreshLeaseGuard};
 `;
 
-const teacherSearchInsert = `
-  INSERT INTO public_teacher_search(teacher_id,match_text)
+const teacherSearchInsert = (tables: ProjectionTables) => `
+  INSERT INTO ${tables.teacherSearch}(teacher_id,match_text)
   SELECT id, trim(COALESCE(name,'') || ' ' || COALESCE(department,''))
   FROM teachers
   WHERE ${refreshLeaseGuard};
 `;
 
-const aggregateInsert = `
-  INSERT INTO public_review_counts(course_id,teacher_id,review_count)
+const aggregateInsert = (tables: ProjectionTables) => `
+  INSERT INTO ${tables.reviewCounts}(course_id,teacher_id,review_count)
   SELECT course_id,teacher_id,COUNT(*)
   FROM (
     SELECT r.course_id,r.teacher_id
@@ -126,15 +157,25 @@ const aggregateInsert = `
   GROUP BY course_id,teacher_id;
 `;
 
-const teacherCourseCountInsert = `
-  INSERT INTO public_teacher_course_counts(teacher_id,course_count)
+const teacherCourseCountInsert = (tables: ProjectionTables) => `
+  INSERT INTO ${tables.teacherCourseCounts}(teacher_id,course_count)
   SELECT ct.teacher_id,COUNT(DISTINCT pcc.canonical_course_id)
   FROM course_teachers ct
   JOIN courses c ON c.id=ct.course_id
-  JOIN public_course_canonicals pcc ON pcc.course_id=c.id
+  JOIN ${tables.canonicals} pcc ON pcc.course_id=c.id
   WHERE ${publicCourseVisibleSql("c")}
     AND ${refreshLeaseGuard}
   GROUP BY ct.teacher_id;
+`;
+
+const relationRatingInsert = (tables: ProjectionTables) => `
+  INSERT INTO ${tables.relationRatings}(course_id,teacher_id,rating)
+  SELECT r.course_id,r.teacher_id,ROUND(AVG(r.overall),1)
+  FROM reviews r
+  WHERE r.status='approved'${guestReviewBindingSql}
+    AND r.overall IS NOT NULL
+    AND ${refreshLeaseGuard}
+  GROUP BY r.course_id,r.teacher_id;
 `;
 
 export const publicCourseCanonicalJoin =
@@ -160,6 +201,7 @@ async function refreshCatalogPinyinTexts(
   generation: number,
   token: string,
   renewLease: () => Promise<void>,
+  tables: ProjectionTables,
 ) {
   await renewLease();
   const courses = await db
@@ -177,7 +219,7 @@ async function refreshCatalogPinyinTexts(
           FROM course_name_variants cnv
           WHERE cnv.course_id=c.id
         ),'') variants
-       FROM public_course_canonicals pcc
+       FROM ${tables.canonicals} pcc
        JOIN courses c ON c.id=pcc.course_id`,
     )
     .all<{
@@ -198,7 +240,7 @@ async function refreshCatalogPinyinTexts(
     ...courses.results.map((row) =>
       db
         .prepare(
-          `UPDATE public_course_canonicals SET pinyin_text=?
+          `UPDATE ${tables.canonicals} SET pinyin_text=?
            WHERE course_id=? AND ${refreshLeaseGuard}`,
         )
         .bind(
@@ -217,7 +259,7 @@ async function refreshCatalogPinyinTexts(
     ...teachers.results.map((row) =>
       db
         .prepare(
-          `UPDATE public_teacher_search SET pinyin_text=?
+          `UPDATE ${tables.teacherSearch} SET pinyin_text=?
            WHERE teacher_id=? AND ${refreshLeaseGuard}`,
         )
         .bind(
@@ -246,23 +288,57 @@ export async function rebuildPublicListProjection({
   token: string;
   renewLease: () => Promise<void>;
 }): Promise<void> {
+  const staging = projectionTables("staging");
+  const active = projectionTables("active");
   await db.batch([
-    db
-      .prepare(guardedProjectionDelete("public_course_canonicals"))
-      .bind(generation, token),
-    db.prepare(canonicalInsert).bind(generation, token),
-    db
-      .prepare(guardedProjectionDelete("public_review_counts"))
-      .bind(generation, token),
-    db.prepare(aggregateInsert).bind(generation, token),
-    db
-      .prepare(guardedProjectionDelete("public_teacher_course_counts"))
-      .bind(generation, token),
-    db.prepare(teacherCourseCountInsert).bind(generation, token),
-    db
-      .prepare(guardedProjectionDelete("public_teacher_search"))
-      .bind(generation, token),
-    db.prepare(teacherSearchInsert).bind(generation, token),
+    db.prepare(`DELETE FROM ${staging.canonicals}`),
+    db.prepare(`DELETE FROM ${staging.reviewCounts}`),
+    db.prepare(`DELETE FROM ${staging.teacherCourseCounts}`),
+    db.prepare(`DELETE FROM ${staging.teacherSearch}`),
+    db.prepare(`DELETE FROM ${staging.relationRatings}`),
+    db.prepare(canonicalInsert(staging)).bind(generation, token),
+    db.prepare(aggregateInsert(staging)).bind(generation, token),
+    db.prepare(teacherCourseCountInsert(staging)).bind(generation, token),
+    db.prepare(teacherSearchInsert(staging)).bind(generation, token),
+    db.prepare(relationRatingInsert(staging)).bind(generation, token),
   ]);
-  await refreshCatalogPinyinTexts(db, generation, token, renewLease);
+  await refreshCatalogPinyinTexts(db, generation, token, renewLease, staging);
+  await renewLease();
+  await db.batch([
+    db.prepare(guardedProjectionDelete(active.canonicals)).bind(generation, token),
+    db.prepare(
+      `INSERT INTO ${active.canonicals}(
+         course_id,canonical_course_id,family_label,search_text,match_text,
+         teacher_variant_text,pinyin_text,is_public_sports
+       )
+       SELECT course_id,canonical_course_id,family_label,search_text,match_text,
+         teacher_variant_text,pinyin_text,is_public_sports
+       FROM ${staging.canonicals}
+       WHERE ${refreshLeaseGuard}`,
+    ).bind(generation, token),
+    db.prepare(guardedProjectionDelete(active.reviewCounts)).bind(generation, token),
+    db.prepare(
+      `INSERT INTO ${active.reviewCounts}(course_id,teacher_id,review_count)
+       SELECT course_id,teacher_id,review_count FROM ${staging.reviewCounts}
+       WHERE ${refreshLeaseGuard}`,
+    ).bind(generation, token),
+    db.prepare(guardedProjectionDelete(active.teacherCourseCounts)).bind(generation, token),
+    db.prepare(
+      `INSERT INTO ${active.teacherCourseCounts}(teacher_id,course_count)
+       SELECT teacher_id,course_count FROM ${staging.teacherCourseCounts}
+       WHERE ${refreshLeaseGuard}`,
+    ).bind(generation, token),
+    db.prepare(guardedProjectionDelete(active.teacherSearch)).bind(generation, token),
+    db.prepare(
+      `INSERT INTO ${active.teacherSearch}(teacher_id,match_text,pinyin_text)
+       SELECT teacher_id,match_text,pinyin_text FROM ${staging.teacherSearch}
+       WHERE ${refreshLeaseGuard}`,
+    ).bind(generation, token),
+    db.prepare(guardedProjectionDelete(active.relationRatings)).bind(generation, token),
+    db.prepare(
+      `INSERT INTO ${active.relationRatings}(course_id,teacher_id,rating)
+       SELECT course_id,teacher_id,rating FROM ${staging.relationRatings}
+       WHERE ${refreshLeaseGuard}`,
+    ).bind(generation, token),
+  ]);
 }

@@ -4,10 +4,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { api, setAdminCsrfToken } from "../lib/api";
+import { clearCatalogDataCache } from "../lib/catalog-data-cache";
 import { useViewer } from "./useViewer";
 
 /**
@@ -32,15 +34,22 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   const { viewer, ready: viewerReady } = useViewer();
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
+  const lastViewerAuth = useRef<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const d = await api<{ csrfToken: string }>("/api/admin/session");
       setAdminCsrfToken(d.csrfToken);
-      setAuthed(true);
+      setAuthed((previous) => {
+        if (!previous) clearCatalogDataCache();
+        return true;
+      });
     } catch {
       setAdminCsrfToken("");
-      setAuthed(false);
+      setAuthed((previous) => {
+        if (previous) clearCatalogDataCache();
+        return false;
+      });
     } finally {
       setReady(true);
     }
@@ -51,14 +60,19 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       await api("/api/admin/logout", { method: "POST", body: "{}" });
     } finally {
       setAdminCsrfToken("");
-      setAuthed(false);
+      setAuthed((previous) => {
+        if (previous) clearCatalogDataCache();
+        return false;
+      });
     }
   }, []);
 
   useEffect(() => {
     if (!viewerReady) return;
+    if (lastViewerAuth.current === viewer.authenticated && ready) return;
+    lastViewerAuth.current = viewer.authenticated;
     void refresh();
-  }, [refresh, viewer.authenticated, viewerReady]);
+  }, [ready, refresh, viewer.authenticated, viewerReady]);
 
   const value = useMemo<AdminSessionContextValue>(
     () => ({ authed, ready, logout, refresh }),

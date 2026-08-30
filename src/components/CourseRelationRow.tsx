@@ -5,6 +5,7 @@
  * 按钮；目录行用 w-full! / rounded-none! 拉齐内容区全宽，无悬停底。
  */
 import { fourDimLineLabels } from "../lib/dimension-labels";
+import { prefetchCourseDetail } from "../lib/catalog-data-cache";
 import type { CourseRelation } from "../lib/types";
 import { FourDimLine } from "./FourDimLine";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -38,6 +39,7 @@ export function CourseRelationRow({
   return (
     <RouterAriaLink
       to={href}
+      onIntent={() => prefetchCourseDetail(relation.course_id, relation.teacher_id)}
       className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-transparent hover:no-underline! [content-visibility:auto] [contain-intrinsic-size:auto_5.5rem]"
     >
       <span className="block text-[1rem] font-medium text-accent">

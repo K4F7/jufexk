@@ -471,13 +471,13 @@ describe("public list projection plan", () => {
         `SELECT
            SUM(CASE WHEN pinyin_text<>'' THEN 1 ELSE 0 END) filled,
            SUM(CASE WHEN pinyin_text='' THEN 1 ELSE 0 END) empty
-         FROM public_teacher_search
+         FROM public_teacher_search_staging
          WHERE teacher_id BETWEEN 57480 AND 57521`,
       ).first<{ filled: number; empty: number }>();
       const written = await env.DB.prepare(
         `SELECT
-           (SELECT COUNT(*) FROM public_course_canonicals WHERE pinyin_text<>'') +
-           (SELECT COUNT(*) FROM public_teacher_search WHERE pinyin_text<>'') count`,
+           (SELECT COUNT(*) FROM public_course_canonicals_staging WHERE pinyin_text<>'') +
+           (SELECT COUNT(*) FROM public_teacher_search_staging WHERE pinyin_text<>'') count`,
       ).first<{ count: number }>();
       expect(written?.count).toBeGreaterThan(0);
       expect(dummy?.empty).toBeGreaterThan(0);

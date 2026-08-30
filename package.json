@@ -19,6 +19,7 @@
     "test:catalog-baseline": "vitest run --config vitest.catalog-baseline.config.ts",
     "test:program-plan": "vitest run --config vitest.program-plan.config.ts",
     "test:browser": "playwright test",
+    "timing:prod-public": "node scripts/prod-public-timing.mjs",
     "build:catalog-userscript": "node scripts/catalog-baseline/build-userscript.mjs",
     "build:program-plan-userscript": "node scripts/program-plan/build-userscript.mjs",
     "program-plan": "tsx scripts/program-plan/cli.ts",

@@ -416,13 +416,16 @@ export function publicCategoryFilterError(): string {
 export function publicCategoryFilterSql(
   category: string,
   alias = "c",
+  projectionAlias?: string,
 ): { sql: string; args: string[] } {
   if (!category) return { sql: "1=1", args: [] };
   const moocTag = publicHasMoocTagSql(alias);
   if (category === "mooc") return { sql: moocTag, args: [] };
   if (category === "sports") {
     return {
-      sql: `((${publicSportsMatchSql(alias)} OR ${alias}.scheme_key='pe') AND NOT ${moocTag})`,
+      sql: projectionAlias
+        ? `(${projectionAlias}.is_public_sports=1)`
+        : `((${publicSportsMatchSql(alias)} OR ${alias}.scheme_key='pe') AND NOT ${moocTag})`,
       args: [],
     };
   }

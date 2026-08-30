@@ -52,5 +52,12 @@ export async function api<T = any>(
   if (!response.ok) {
     throw new ApiError(data?.error || "请求失败", response.status, data);
   }
+  if ((options.method || "GET").toUpperCase() !== "GET") {
+    // Mutations can change any public projection; invalidate in-memory intent
+    // prefetched data without coupling the low-level API helper statically.
+    void import("./catalog-data-cache").then(({ clearCatalogDataCache }) =>
+      clearCatalogDataCache(),
+    );
+  }
   return data as T;
 }

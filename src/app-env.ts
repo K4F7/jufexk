@@ -35,6 +35,7 @@ export type Vars = {
   adminCsrf?: string;
   adminSource?: "student";
   publicCatalogCacheChanged?: boolean;
+  publicCatalogCacheScopes?: Array<"list" | "detail" | "config">;
 };
 
 export type AppEnv = { Bindings: Bindings; Variables: Vars };

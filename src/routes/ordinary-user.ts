@@ -58,6 +58,16 @@ import {
 } from "./request-schemas";
 
 const ordinaryUserRoutes = new Hono<AppEnv>();
+
+const withPublicCacheInvalidation = (
+  handler: (c: AppContext) => Response | Promise<Response>,
+) =>
+  async (c: AppContext) => {
+    const response = await handler(c);
+    if (response.status < 400)
+      markPublicCatalogCacheChanged(c, ["list", "detail"]);
+    return response;
+  };
 ordinaryUserRoutes.put("/api/u/:code/follow", handleFollowPublicUser);
 ordinaryUserRoutes.delete("/api/u/:code/follow", handleUnfollowPublicUser);
 ordinaryUserRoutes.get("/api/user/notifications", handleListNotifications);
@@ -69,52 +79,61 @@ ordinaryUserRoutes.post(
   "/api/user/notifications/read",
   handleMarkAllNotificationsRead,
 );
-ordinaryUserRoutes.put("/api/reviews/:id/endorsement", handleCreateEndorsement);
+ordinaryUserRoutes.put(
+  "/api/reviews/:id/endorsement",
+  withPublicCacheInvalidation(handleCreateEndorsement),
+);
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/endorsement",
-  handleWithdrawEndorsement,
+  withPublicCacheInvalidation(handleWithdrawEndorsement),
 );
-ordinaryUserRoutes.put("/api/reviews/:id/challenge", handleCreateChallenge);
+ordinaryUserRoutes.put(
+  "/api/reviews/:id/challenge",
+  withPublicCacheInvalidation(handleCreateChallenge),
+);
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/challenge",
-  handleWithdrawChallenge,
+  withPublicCacheInvalidation(handleWithdrawChallenge),
 );
-ordinaryUserRoutes.post("/api/reviews/:id/comments", handleCreateReviewComment);
+ordinaryUserRoutes.post(
+  "/api/reviews/:id/comments",
+  withPublicCacheInvalidation(handleCreateReviewComment),
+);
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/comments/:commentId",
-  handleDeleteReviewComment,
+  withPublicCacheInvalidation(handleDeleteReviewComment),
 );
 ordinaryUserRoutes.put(
   "/api/reviews/:id/comments/:commentId/endorsement",
-  handleCreateCommentEndorsement,
+  withPublicCacheInvalidation(handleCreateCommentEndorsement),
 );
 ordinaryUserRoutes.delete(
   "/api/reviews/:id/comments/:commentId/endorsement",
-  handleWithdrawCommentEndorsement,
+  withPublicCacheInvalidation(handleWithdrawCommentEndorsement),
 );
 ordinaryUserRoutes.put(
   "/api/courses/:id/teachers/:teacherId/follow",
-  handleCreateFollow,
+  withPublicCacheInvalidation(handleCreateFollow),
 );
 ordinaryUserRoutes.delete(
   "/api/courses/:id/teachers/:teacherId/follow",
-  handleWithdrawFollow,
+  withPublicCacheInvalidation(handleWithdrawFollow),
 );
 ordinaryUserRoutes.put(
   "/api/courses/:id/teachers/:teacherId/recommend",
-  handleCreateRecommend,
+  withPublicCacheInvalidation(handleCreateRecommend),
 );
 ordinaryUserRoutes.delete(
   "/api/courses/:id/teachers/:teacherId/recommend",
-  handleWithdrawRecommend,
+  withPublicCacheInvalidation(handleWithdrawRecommend),
 );
 ordinaryUserRoutes.put(
   "/api/courses/:id/teachers/:teacherId/not-recommend",
-  handleCreateNotRecommend,
+  withPublicCacheInvalidation(handleCreateNotRecommend),
 );
 ordinaryUserRoutes.delete(
   "/api/courses/:id/teachers/:teacherId/not-recommend",
-  handleWithdrawNotRecommend,
+  withPublicCacheInvalidation(handleWithdrawNotRecommend),
 );
 
 async function verifyTurnstile(c: AppContext, response: string, ip: string) {

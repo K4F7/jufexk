@@ -22,17 +22,28 @@ import { fail } from "./routes/support";
 const app = new Hono<AppEnv>();
 
 app.use("/api/*", async (c, next) => {
+  const startedAt = performance.now();
   await next();
-  if (
-    c.res.status < 400 &&
-    (c.get("publicCatalogCacheChanged") === true ||
-      shouldRefreshPublicListPrecomputes(c.req.method, c.req.path))
-  ) {
-    await purgePublicCatalogCache(c);
+  if (c.res.status < 400) {
+    const changed = c.get("publicCatalogCacheChanged") === true;
+    const refreshesProjection = shouldRefreshPublicListPrecomputes(
+      c.req.method,
+      c.req.path,
+    );
+    if (changed || refreshesProjection) {
+      await purgePublicCatalogCache(
+        c,
+        changed ? c.get("publicCatalogCacheScopes") || ["list", "detail"] : ["list"],
+      );
+    }
   }
   if (!c.res.headers.get("Cache-Control")) {
     c.header("Cache-Control", DEFAULT_API_CACHE_CONTROL);
   }
+  c.header(
+    "Server-Timing",
+    `app;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`,
+  );
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "same-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
