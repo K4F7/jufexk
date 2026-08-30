@@ -540,10 +540,17 @@ test("guest comment login prompt reaches login and returns to the source page", 
 });
 
 test("dev-only local login goes to the personal homepage", async ({ page }) => {
+  let sessionCalls = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/user/session") sessionCalls += 1;
+  });
   await page.goto("/login");
+  await expect.poll(() => sessionCalls).toBeGreaterThan(0);
+  const initialSessionCalls = sessionCalls;
   await page.getByRole("button", { name: "本地测试登录" }).click();
   await expect(page).toHaveURL(/\/profile$/);
   await expect(page.getByText("我的主页")).toBeVisible();
+  expect(sessionCalls).toBe(initialSessionCalls);
 });
 
 const QR_DATA_URL =

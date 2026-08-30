@@ -55,8 +55,11 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
   const [viewer, setViewer] = useState<ViewerSession>(GUEST);
   const [ready, setReady] = useState(false);
   const previousAuth = useRef<boolean | null>(null);
+  const sessionEpoch = useRef(0);
+  const refreshGeneration = useRef(0);
 
   const apply = useCallback((next: Partial<ViewerSession>) => {
+    sessionEpoch.current += 1;
     setCsrfToken(next.csrfToken || "");
     const authenticated = !!next.authenticated;
     if (previousAuth.current !== null && previousAuth.current !== authenticated) {
@@ -74,10 +77,23 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    const requestGeneration = ++refreshGeneration.current;
+    const requestEpoch = sessionEpoch.current;
     try {
-      apply(await api<Partial<ViewerSession>>("/api/user/session"));
+      const next = await api<Partial<ViewerSession>>("/api/user/session");
+      if (
+        refreshGeneration.current === requestGeneration &&
+        sessionEpoch.current === requestEpoch
+      ) {
+        apply(next);
+      }
     } catch {
-      apply(GUEST);
+      if (
+        refreshGeneration.current === requestGeneration &&
+        sessionEpoch.current === requestEpoch
+      ) {
+        apply(GUEST);
+      }
     } finally {
       setReady(true);
     }
@@ -99,6 +115,10 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
       setReady(true);
       return;
     }
+    // Session state is bootstrapped once. Route changes must not overwrite an
+    // explicitly applied login session with a stale guest response.
+    if (ready) return;
+
     let cancelled = false;
     const load = () => {
       if (!cancelled) void refresh();
@@ -126,7 +146,7 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       globalThis.clearTimeout(timeoutId);
     };
-  }, [apply, identity, pathname, refresh]);
+  }, [apply, identity, pathname, ready, refresh]);
 
   const value = useMemo<ViewerContextValue>(
     () => ({ viewer, ready, refresh, applySession: apply, clear }),

@@ -16,10 +16,15 @@ import {
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { SiteConfig } from "../lib/types";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
-import { AccountNavControl } from "./AccountNavControl";
-import { SiteFooter } from "./SiteFooter";
-import { ThemeToggle } from "./ThemeToggle";
 import { SiteBanner } from "./SiteBanner";
+import { SiteFooter } from "./SiteFooter";
+
+const AccountNavControlLazy = lazy(() =>
+  import("./AccountNavControl").then((m) => ({ default: m.AccountNavControl })),
+);
+const ThemeToggleLazy = lazy(() =>
+  import("./ThemeToggle").then((m) => ({ default: m.ThemeToggle })),
+);
 
 /**
  * Production shell — USTC 评课社区对齐（Issue #402）：
@@ -274,6 +279,42 @@ function ShellCourseSearch() {
   );
 }
 
+function useLoadShellControls() {
+  const [load, setLoad] = useState(import.meta.env.DEV);
+
+  useEffect(() => {
+    if (load) return;
+    const timer = window.setTimeout(() => setLoad(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  return load;
+}
+
+function DeferredAccountNavControl() {
+  const load = useLoadShellControls();
+  if (!load) {
+    return <span aria-hidden className="inline-block h-8 w-12 shrink-0" />;
+  }
+  return (
+    <Suspense fallback={<span aria-hidden className="inline-block h-8 w-12 shrink-0" />}>
+      <AccountNavControlLazy />
+    </Suspense>
+  );
+}
+
+function DeferredThemeToggle() {
+  const load = useLoadShellControls();
+  if (!load) {
+    return <span aria-hidden className="inline-block size-8 shrink-0" />;
+  }
+  return (
+    <Suspense fallback={<span aria-hidden className="inline-block size-8 shrink-0" />}>
+      <ThemeToggleLazy />
+    </Suspense>
+  );
+}
+
 function DefaultShell({
   banner,
   config,
@@ -321,8 +362,8 @@ function DefaultShell({
                 to={brandTo}
               />
               <div className="flex shrink-0 items-center gap-1">
-                <AccountNavControl />
-                <ThemeToggle />
+                <DeferredAccountNavControl />
+                <DeferredThemeToggle />
               </div>
             </div>
             <div className="min-w-0">
@@ -379,8 +420,8 @@ function DefaultShell({
               )}
             </div>
             <div className="flex items-center justify-end gap-2">
-              <AccountNavControl />
-              <ThemeToggle />
+              <DeferredAccountNavControl />
+              <DeferredThemeToggle />
             </div>
           </div>
           )}
