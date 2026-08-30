@@ -39,7 +39,7 @@ describe("DEV preview guards", () => {
     expect(resolveDevAtlasSession(false, search)).toBe(false);
   });
 
-  it("defaults DEV catalog pages to filled unless empty/error is explicit", () => {
+  it("fills DEV catalog pages only when preview or atlas is present", () => {
     expect(resolveDevPreviewOrFilled(false, new URLSearchParams())).toBeNull();
     expect(
       resolveDevPreviewOrFilled(
@@ -47,9 +47,16 @@ describe("DEV preview guards", () => {
         new URLSearchParams(`${DEV_PREVIEW_PARAM}=filled`),
       ),
     ).toBeNull();
-    expect(resolveDevPreviewOrFilled(true, new URLSearchParams())).toBe(
-      "filled",
-    );
+    expect(resolveDevPreviewOrFilled(true, new URLSearchParams())).toBeNull();
+    expect(
+      resolveDevPreviewOrFilled(true, new URLSearchParams(`${DEV_ATLAS_PARAM}=1`)),
+    ).toBe("filled");
+    expect(
+      resolveDevPreviewOrFilled(
+        true,
+        new URLSearchParams(`${DEV_PREVIEW_PARAM}=filled`),
+      ),
+    ).toBe("filled");
     expect(
       resolveDevPreviewOrFilled(
         true,

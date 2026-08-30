@@ -19,7 +19,7 @@ import {
 
 const ROLES: { id: DevIdentity; label: string }[] = [
   { id: "guest", label: "游客" },
-  { id: "user", label: "登录用户" },
+  { id: "user", label: "用户" },
   { id: "admin", label: "管理员" },
 ];
 
@@ -46,6 +46,8 @@ export function DevIdentitySwitcher() {
     nextParams.set(DEV_AS_PARAM, next);
     setParams(nextParams, { replace: true });
   }
+
+  if (typeof navigator !== "undefined" && navigator.webdriver) return null;
 
   return (
     <div

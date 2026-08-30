@@ -87,8 +87,8 @@ export function resolveDevPreview(
 const DEV_EMPTY_PREVIEWS = new Set(["empty", "empty-catalog"]);
 
 /**
- * DEV Vite/HMR surface: default to filled mocks unless empty/error is explicit.
- * Production always returns null so Vite can DCE the mock branches.
+ * DEV mocks only when `?preview=` or `?atlas=1` is present.
+ * Bare Vite DEV / Playwright must hit the real (or test-mocked) API.
  * Login-only previews (mfa, qr, …) should keep using {@link resolveDevPreview}.
  */
 export function resolveDevPreviewOrFilled(
@@ -97,6 +97,8 @@ export function resolveDevPreviewOrFilled(
 ): string | null {
   if (!isDev) return null;
   const explicit = search.get(DEV_PREVIEW_PARAM);
+  const atlas = search.get(DEV_ATLAS_PARAM) === "1";
+  if (!explicit && !atlas) return null;
   if (explicit === "error") return "error";
   if (explicit && DEV_EMPTY_PREVIEWS.has(explicit)) return explicit;
   return "filled";

@@ -13,6 +13,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { SiteConfig } from "../lib/types";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
 import { AccountNavControl } from "./AccountNavControl";
@@ -284,6 +285,7 @@ function DefaultShell({
 }) {
   const location = useLocation();
   const [params] = useSearchParams();
+  const isXl = useMediaQuery("(min-width: 80rem)");
   const selectedKey = navSelectedKey(location.pathname);
   const showMobileBrowseTabs = !isMeAccountSurface(location.pathname);
   const globalSearchVariant = useGlobalSearchPrototypeVariant();
@@ -309,8 +311,9 @@ function DefaultShell({
       <SkipToMain />
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
         <div className="mx-auto max-w-[1520px] px-3 py-2 sm:px-5 xl:px-4 xl:py-2.5">
-          {/* 窄屏：品牌+账号 / 整行搜索 / 等宽 Tabs。不要把桌面三列挤扁。 */}
-          <div className="flex flex-col gap-2 xl:hidden">
+          {/* 只挂一套顶栏，避免窄屏/桌面各一份账号与搜索进无障碍树。 */}
+          {!isXl ? (
+          <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
               <ShellBrand
                 className="max-w-[min(11rem,calc(100%-7rem))]"
@@ -346,9 +349,8 @@ function DefaultShell({
               </nav>
             ) : null}
           </div>
-
-          {/* xl+ 冻结生产壳：左簇品牌+Button 导航 · 居中搜索 · 右账号。 */}
-          <div className="hidden grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] items-center gap-x-4 xl:grid">
+          ) : (
+          <div className="grid grid-cols-[minmax(min-content,1fr)_minmax(12rem,28rem)_minmax(0,1fr)] items-center gap-x-4">
             <div className="flex items-center gap-2">
               <ShellBrand siteName={siteName} to={brandTo} />
               <nav
@@ -381,6 +383,7 @@ function DefaultShell({
               <ThemeToggle />
             </div>
           </div>
+          )}
         </div>
       </header>
 
