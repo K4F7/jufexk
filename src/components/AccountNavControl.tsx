@@ -53,7 +53,9 @@ export function AccountNavControl() {
     (previewUnreadNotificationCount(preview) != null ||
       previewNotificationInbox(preview) != null);
 
-  if (!ready && !previewAccount) return null;
+  if (!ready && !previewAccount) {
+    return <span aria-hidden className="inline-block h-8 w-12 shrink-0" />;
+  }
 
   if (!viewer.authenticated && !previewAccount) {
     const from = `${location.pathname}${location.search}`;

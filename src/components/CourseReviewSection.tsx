@@ -55,7 +55,8 @@ import {
   useReviewRecognition,
 } from "./ReviewRecognitionControl";
 import { ReviewAuthor } from "./ReviewAuthor";
-import { DetailErrorAlert, DetailLoadingStatus } from "./DetailFeedback";
+import { DetailErrorAlert } from "./DetailErrorAlert";
+import { DetailLoadingStatus } from "./DetailFeedback";
 import { ReviewAdminControls } from "./ReviewAdminControls";
 import { ReviewAdminDock } from "./ReviewAdminDock";
 import { ReviewNoteContent } from "./ReviewNoteContent";

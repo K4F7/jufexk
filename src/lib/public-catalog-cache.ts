@@ -119,9 +119,8 @@ export function isPublicCatalogCacheableRequest(c: {
 }
 
 /**
- * Plain course lists never serialize viewer signals, so the anonymous voter
- * marker is safe to ignore for shared caching. Relation lists deliberately use
- * the stricter helper above because their payload contains viewer fields.
+ * Public course and relation lists never serialize viewer signals, so the
+ * anonymous voter marker is safe to ignore for shared caching.
  */
 export function isPublicCourseListCacheableRequest(c: {
   req: {

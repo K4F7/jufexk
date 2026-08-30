@@ -86,6 +86,21 @@ describe("public asset CSP", () => {
     );
   });
 
+  it("gives stable public icons a long immutable cache", () => {
+    for (const path of [
+      "/favicon.ico",
+      "/favicon.svg",
+      "/favicon-32.png",
+      "/favicon-16.png",
+      "/apple-touch-icon.png",
+      "/icon-512.png",
+    ]) {
+      expect(headerValueForPath(assetHeaders, path, "Cache-Control")).toBe(
+        "public, max-age=31536000, immutable",
+      );
+    }
+  });
+
   it("redirects the bare origin to the latest feed before the SPA boots", () => {
     expect(assetRedirects).toMatch(/^\s*\/\s+\/latest\s+302\s*$/m);
   });

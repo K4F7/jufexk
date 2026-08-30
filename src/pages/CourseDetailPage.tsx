@@ -42,9 +42,9 @@ import {
   type CourseReviewSort,
 } from "../components/CourseReviewSection";
 import {
-  DetailErrorAlert,
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
+import { DetailErrorAlert } from "../components/DetailErrorAlert";
 import { FourDimLine } from "../components/FourDimLine";
 import {
   RelationFollowButton,

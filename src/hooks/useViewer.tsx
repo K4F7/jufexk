@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { api, setCsrfToken } from "../lib/api";
 import { clearCatalogDataCache } from "../lib/catalog-data-cache";
 import {
@@ -51,6 +51,7 @@ const ViewerContext = createContext<ViewerContextValue | null>(null);
 export function ViewerProvider({ children }: { children: ReactNode }) {
   const [searchParams] = useSearchParams();
   const identity = readDevIdentity(searchParams);
+  const { pathname } = useLocation();
   const [viewer, setViewer] = useState<ViewerSession>(GUEST);
   const [ready, setReady] = useState(false);
   const previousAuth = useRef<boolean | null>(null);
@@ -98,8 +99,34 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
       setReady(true);
       return;
     }
-    void refresh();
-  }, [apply, identity, refresh]);
+    let cancelled = false;
+    const load = () => {
+      if (!cancelled) void refresh();
+    };
+
+    // The latest feed is anonymous; let its first content paint before
+    // checking the account state. Auth-sensitive routes still check eagerly.
+    if (pathname !== "/" && pathname !== "/latest") {
+      load();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if ("requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(load, { timeout: 1500 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = globalThis.setTimeout(load, 1000);
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [apply, identity, pathname, refresh]);
 
   const value = useMemo<ViewerContextValue>(
     () => ({ viewer, ready, refresh, applySession: apply, clear }),

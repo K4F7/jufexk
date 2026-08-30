@@ -135,7 +135,7 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   });
 
   await mockShellApi(page);
-  await page.goto("/latest");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
   const article = firstLatestArticle(page);
@@ -168,7 +168,7 @@ test("latest author and date share a header row on desktop and mobile", async ({
 }) => {
   await mockShellApi(page);
   await page.setViewportSize({ width: 800, height: 720 });
-  await page.goto("/latest");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
 
   const article = firstLatestArticle(page);
   await expectStackedAuthorLayout(article);
@@ -184,7 +184,7 @@ test("latest feed shows threshold-folded reviews without 收起 chrome", async (
   page,
 }) => {
   await mockShellApi(page);
-  await page.goto("/latest");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
   await expect(page.getByText("折叠演示：不受欢迎")).toBeVisible();
   await expect(page.getByText(REVIEW_FOLD_LABEL)).toHaveCount(0);
@@ -198,7 +198,7 @@ test("latest empty state keeps the official Card composition", async ({ page }) 
   await page.route("**/api/reviews/latest", (route) =>
     route.fulfill({ json: { items: [], nextCursor: null } }),
   );
-  await page.goto("/latest");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
 
   const emptyState = page.getByRole("status");
   await expect(emptyState).toHaveAttribute("data-slot", "card");
@@ -209,11 +209,73 @@ test("latest feed falls back to comment text when headline is empty", async ({
   page,
 }) => {
   await mockShellApi(page);
-  await page.goto("/latest");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
 
   // 历史行没有 headline（服务端投影为空串），哨兵在视口内时自动取下一页。
   await expect(page.getByText("课堂气氛好，考试不难。")).toBeVisible();
+});
+
+test("latest reserves review space while the first page is loading", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/config") {
+      return route.fulfill({
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
+      });
+    }
+    if (url.pathname === "/api/user/session") {
+      return route.fulfill({
+        json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
+      });
+    }
+    if (url.pathname === "/api/site/banner") {
+      return route.fulfill({ json: { desktopHtml: "", mobileHtml: "", updatedAt: null } });
+    }
+    if (url.pathname === "/api/reviews/latest") {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return route.fulfill({ json: { items: [LATEST[0]], nextCursor: null } });
+    }
+    return route.fulfill({ status: 404, json: { error: "not mocked" } });
+  });
+
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  const loading = page.getByRole("status", { name: "正在加载最新课评" });
+  await expect(loading).toBeVisible();
+  await expect(loading.locator("article")).toHaveCount(3);
+  const firstSkeleton = await loading.locator("article").first().boundingBox();
+  expect(firstSkeleton?.height).toBeGreaterThanOrEqual(190);
+  const footerBefore = await page.getByRole("contentinfo").boundingBox();
+  expect(footerBefore?.y).toBeGreaterThan(400);
+  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+});
+
+test("latest content renders while the viewer session is still pending", async ({ page }) => {
+  let releaseSession!: () => void;
+  const sessionGate = new Promise<void>((resolve) => {
+    releaseSession = resolve;
+  });
+  await mockShellApi(page);
+  await page.route("**/api/user/session", async (route) => {
+    await sessionGate;
+    return route.fulfill({
+      json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
+    });
+  });
+
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+  releaseSession();
+});
+
+test("latest does not load the table chunk or eagerly load the status iframe", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  await mockShellApi(page);
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
+  expect(requests.some((url) => url.includes("table-"))).toBe(false);
+  await expect(page.getByTitle("系统运行状态")).toHaveAttribute("loading", "lazy");
 });
 
 test("latest feed keeps 继续加载 as a retry after an auto-load error", async ({
@@ -239,7 +301,7 @@ test("latest feed keeps 继续加载 as a retry after an auto-load error", async
     });
   });
 
-  await page.goto("/latest");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("alert")).toContainText("继续加载失败");
   await expect.poll(() => cursorCalls).toBe(1);
   await page.waitForTimeout(400);
@@ -252,7 +314,7 @@ test("latest feed keeps 继续加载 as a retry after an auto-load error", async
 
 test("latest feed column aligns with the course catalog @mobile-smoke", async ({ page }) => {
   await mockShellApi(page);
-  await page.goto("/latest");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
   const latest = await page.locator("main > section").boundingBox();
 
