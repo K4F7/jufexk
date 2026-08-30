@@ -108,6 +108,47 @@ async function insertReview(input: {
   return Number(result.meta.last_row_id);
 }
 
+async function insertReviewChallenges(
+  reviewId: number,
+  count: number,
+  stamp: string,
+) {
+  for (let i = 0; i < count; i += 1) {
+    await env.DB.prepare(
+      "INSERT INTO review_challenges(user_id, review_id) VALUES(?, ?)",
+    )
+      .bind(`guest:latest-fold-${stamp}-${i}`, reviewId)
+      .run();
+  }
+}
+
+async function insertReviewEndorsements(
+  reviewId: number,
+  count: number,
+  stamp: string,
+) {
+  for (let i = 0; i < count; i += 1) {
+    await env.DB.prepare(
+      "INSERT INTO review_endorsements(user_id, review_id) VALUES(?, ?)",
+    )
+      .bind(`guest:latest-endorse-${stamp}-${i}`, reviewId)
+      .run();
+  }
+}
+
+async function latestComments(pageSize = 50, cursor?: string) {
+  const query = new URLSearchParams({ pageSize: String(pageSize) });
+  if (cursor) query.set("cursor", cursor);
+  const response = await SELF.fetch(
+    `${origin}/api/reviews/latest?${query.toString()}`,
+  );
+  expect(response.status).toBe(200);
+  return response.json<{
+    items: Array<{ comment: string; headline?: string }>;
+    nextCursor: string | null;
+  }>();
+}
+
 describe("USTC backend APIs (issue #410)", () => {
   it("lists course×teacher rows with rating, four-dims, and sort=rating", async () => {
     const stamp = String(Date.now());
@@ -363,6 +404,105 @@ describe("USTC backend APIs (issue #410)", () => {
     );
     const more = await secondPage.json<{ items: Array<{ comment: string }> }>();
     expect(more.items[0]?.comment).toBe(`较旧最新流${stamp}`);
+  });
+
+  it("omits public-fold reviews from the latest stream but keeps them on the course list", async () => {
+    const stamp = String(Date.now());
+    const visible = await insertCourseTeacher(`${stamp}-latest-fold-ok`);
+    const folded = await insertCourseTeacher(`${stamp}-latest-fold-hide`);
+    const tied = await insertCourseTeacher(`${stamp}-latest-fold-tie`);
+    const minority = await insertCourseTeacher(`${stamp}-latest-fold-min`);
+    await insertReview({
+      ...visible,
+      comment: `课评流可见${stamp}`,
+      createdAt: "2099-12-28 00:00:00",
+    });
+    const foldedId = await insertReview({
+      ...folded,
+      comment: `折叠演示：不受欢迎${stamp}`,
+      createdAt: "2099-12-27 00:00:00",
+    });
+    const tiedId = await insertReview({
+      ...tied,
+      comment: `平票仍出现${stamp}`,
+      createdAt: "2099-12-26 12:00:00",
+    });
+    const minorityId = await insertReview({
+      ...minority,
+      comment: `未达阈值仍出现${stamp}`,
+      createdAt: "2099-12-26 00:00:00",
+    });
+    await insertReviewChallenges(foldedId, 3, `${stamp}-fold`);
+    await insertReviewEndorsements(tiedId, 3, `${stamp}-tie`);
+    await insertReviewChallenges(tiedId, 3, `${stamp}-tie`);
+    await insertReviewChallenges(minorityId, 2, `${stamp}-min`);
+
+    const historicalId = `latest-fold-hist-${stamp}`;
+    await env.DB.prepare(
+      `INSERT INTO public_historical_reviews(
+         id,course_id,teacher_id,comment,package_contract,
+         approved_package_manifest_sha256,approved_catalog_content_sha256,imported_at
+       ) VALUES(?,?,?,?,?,?,?,?)`,
+    )
+      .bind(
+        historicalId,
+        folded.courseId,
+        folded.teacherId,
+        `历史折叠${stamp}`,
+        "legacy-historical-production-freeze-v1",
+        "a".repeat(64),
+        "b".repeat(64),
+        "2099-12-27 12:00:00",
+      )
+      .run();
+    for (let i = 0; i < 3; i += 1) {
+      await env.DB.prepare(
+        "INSERT INTO historical_review_challenges(user_id, historical_review_id) VALUES(?, ?)",
+      )
+        .bind(`guest:latest-hist-fold-${stamp}-${i}`, historicalId)
+        .run();
+    }
+
+    const firstPage = await latestComments(1);
+    expect(firstPage.items.map((item) => item.comment)).toEqual([
+      `课评流可见${stamp}`,
+    ]);
+    expect(firstPage.nextCursor).toBeTruthy();
+
+    const secondPage = await latestComments(2, firstPage.nextCursor || "");
+    expect(secondPage.items.map((item) => item.comment)).toEqual([
+      `平票仍出现${stamp}`,
+      `未达阈值仍出现${stamp}`,
+    ]);
+    expect(
+      [...firstPage.items, ...secondPage.items].some((item) =>
+        item.comment.includes("折叠演示：不受欢迎"),
+      ),
+    ).toBe(false);
+
+    const wide = await latestComments(50);
+    expect(wide.items.some((item) => item.comment === `课评流可见${stamp}`)).toBe(
+      true,
+    );
+    expect(
+      wide.items.some((item) => item.comment === `折叠演示：不受欢迎${stamp}`),
+    ).toBe(false);
+    expect(wide.items.some((item) => item.comment === `历史折叠${stamp}`)).toBe(
+      false,
+    );
+
+    const course = await SELF.fetch(
+      `${origin}/api/courses/${folded.courseId}/reviews?teacherId=${folded.teacherId}`,
+    );
+    expect(course.status).toBe(200);
+    const courseBody = await course.json<{
+      items: Array<{ comment: string; challenge_count?: number }>;
+    }>();
+    const foldedRow = courseBody.items.find(
+      (item) => item.comment === `折叠演示：不受欢迎${stamp}`,
+    );
+    expect(foldedRow).toBeTruthy();
+    expect(foldedRow?.challenge_count).toBeGreaterThanOrEqual(3);
   });
 
   it("supports follow/recommend PUT DELETE with counts and 401 for guests", async () => {

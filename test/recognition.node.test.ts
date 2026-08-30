@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   isReviewFolded,
+  REVIEW_FOLD_CHALLENGE_MIN,
   REVIEW_FOLD_LABEL,
   REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
   reviewFoldKind,
+  reviewPublicFoldSql,
 } from "../src/lib/recognition";
 
 describe("review fold threshold", () => {
@@ -52,5 +54,17 @@ describe("review fold threshold", () => {
         challengeCount: 3,
       }),
     ).toBe("public");
+  });
+
+  it("keeps the latest-feed SQL predicate on the same public threshold", () => {
+    expect(reviewPublicFoldSql()).toBe(
+      `(challenge_count>=${REVIEW_FOLD_CHALLENGE_MIN} AND challenge_count>endorsement_count)`,
+    );
+    expect(
+      isReviewFolded({
+        endorsementCount: 2,
+        challengeCount: REVIEW_FOLD_CHALLENGE_MIN,
+      }),
+    ).toBe(true);
   });
 });

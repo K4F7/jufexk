@@ -8,6 +8,7 @@ import {
   publicGrade,
   publicHeadline,
 } from "./lib/public-review-fields";
+import { reviewPublicFoldSql } from "./lib/recognition";
 import {
   authoredReviewAuthorSql,
   authoredReviewJoinSql,
@@ -51,7 +52,11 @@ const latestUnion = `
   SELECT 'historical:' || phr.id id, phr.course_id, phr.teacher_id, phr.comment,
     NULL comment_format, '' headline, NULL grade,
     c.name course_name, c.code course_code, t.name teacher_name,
-    phr.imported_at created_at, ${reservedAuthorSql}
+    phr.imported_at created_at, ${reservedAuthorSql},
+    (SELECT COUNT(*) FROM historical_review_endorsements e
+     WHERE e.historical_review_id=phr.id) endorsement_count,
+    (SELECT COUNT(*) FROM historical_review_challenges e
+     WHERE e.historical_review_id=phr.id) challenge_count
   FROM public_historical_reviews phr
   JOIN courses c ON c.id=phr.course_id
   JOIN teachers t ON t.id=phr.teacher_id
@@ -60,7 +65,11 @@ const latestUnion = `
   SELECT 'legacy:' || lr.id id, lr.course_id, lr.teacher_id, lr.comment,
     NULL comment_format, '' headline, NULL grade,
     c.name course_name, c.code course_code, t.name teacher_name,
-    lr.created_at, ${reservedAuthorSql}
+    lr.created_at, ${reservedAuthorSql},
+    (SELECT COUNT(*) FROM legacy_review_endorsements e
+     WHERE e.legacy_review_id=lr.id) endorsement_count,
+    (SELECT COUNT(*) FROM legacy_review_challenges e
+     WHERE e.legacy_review_id=lr.id) challenge_count
   FROM legacy_reviews lr
   JOIN courses c ON c.id=lr.course_id
   JOIN teachers t ON t.id=lr.teacher_id
@@ -69,7 +78,9 @@ const latestUnion = `
   SELECT 'review:' || r.id id, r.course_id, r.teacher_id, r.comment,
     r.comment_format, r.headline, r.grade,
     c.name course_name, c.code course_code, t.name teacher_name,
-    r.created_at, ${authoredReviewAuthorSql}
+    r.created_at, ${authoredReviewAuthorSql},
+    (SELECT COUNT(*) FROM review_endorsements e WHERE e.review_id=r.id) endorsement_count,
+    (SELECT COUNT(*) FROM review_challenges e WHERE e.review_id=r.id) challenge_count
   FROM reviews r
   JOIN courses c ON c.id=r.course_id
   JOIN teachers t ON t.id=r.teacher_id
@@ -83,12 +94,14 @@ export async function handleLatestPublicReviews(c: Context) {
   const rawCursor = c.req.query("cursor");
   const cursor = decodeLatestCursor(rawCursor);
   if (rawCursor && !cursor) return fail(c, "评价游标无效", 400);
+  const foldFilter = `NOT ${reviewPublicFoldSql()}`;
   const cursorFilter = cursor
-    ? "WHERE created_at<? OR (created_at=? AND id<?)"
+    ? "AND (created_at<? OR (created_at=? AND id<?))"
     : "";
   const raw = await c.env.DB.prepare(
     `SELECT id,course_id,teacher_id,comment,comment_format,headline,grade,course_name,course_code,teacher_name,created_at,author_public_code,author_avatar_key
      FROM (${latestUnion}) latest_reviews
+     WHERE ${foldFilter}
      ${cursorFilter}
      ORDER BY created_at DESC, id DESC
      LIMIT ?`,
