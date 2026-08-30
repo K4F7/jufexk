@@ -54,9 +54,7 @@ export function reviewCardClassName({
 }) {
   const visibility = "[content-visibility:auto]";
   const base =
-    variant === "course"
-      ? `scroll-mt-20 border-b border-separator last:border-b-0 ${visibility}`
-      : visibility;
+    variant === "course" ? `scroll-mt-20 ${visibility}` : visibility;
   if (compact) {
     return `${base} py-2 [contain-intrinsic-size:auto_3rem]`;
   }

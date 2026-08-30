@@ -848,6 +848,9 @@ test("review items render grade and FourDimLine without a title line", async ({
   await page.goto("/courses/8?teacher=9");
   const items = reviewItems(page);
   await expect(items).toHaveCount(2);
+  await expect(
+    page.getByRole("list", { name: "评价列表" }).getByRole("separator"),
+  ).toHaveCount(1);
 
   const withGrade = items.nth(0);
   // 正文按纯文本展示；一句话总结不再单独加粗成行；成绩单独一行在正文后。
