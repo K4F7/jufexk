@@ -84,8 +84,6 @@ import {
   guestReviewBindingSql,
   historicalNotDeletedSql,
   historicalPublicVisibleSql,
-  legacyNotDeletedSql,
-  legacyPublicVisibleSql,
   publicReviewBindingSql,
   reviewNotDeletedBindingSql,
 } from "../public-review-visibility";
@@ -97,11 +95,11 @@ import {
   fail,
   hasValidAdminSession,
   integer,
+  markServerTiming,
   pageArgs,
   parseTagCsv,
   publicCourseRawName,
   skipTurnstile,
-  markServerTiming,
   windowedPage,
   withMappedCourseNames,
   withPublicCourseCategory,
@@ -122,7 +120,6 @@ function publicPrecomputeReadOptions(
   return {
     mode: "stale",
     waitUntil: (promise) => c.executionCtx.waitUntil(promise),
-    recordTiming: (name, durationMs) => markServerTiming(c, name, durationMs),
   };
 }
 
@@ -290,9 +287,6 @@ const getPublicReviewPage = async (
   const historicalBinding = includeBlocked
     ? historicalNotDeletedSql("phr")
     : historicalPublicVisibleSql("phr");
-  const legacyBinding = includeBlocked
-    ? legacyNotDeletedSql("lr")
-    : legacyPublicVisibleSql("lr");
   /** 课程页评价按 课程×教师 作用域展示：选定教师时追加逐分支过滤。 */
   const teacherFilter = (alias: string) =>
     teacherId ? ` AND ${alias}.teacher_id=?` : "";
@@ -350,23 +344,6 @@ const getPublicReviewPage = async (
            ON signal.source_kind='historical' AND signal.source_id=CAST(phr.id AS TEXT)
          WHERE phr.${subject}=?${teacherFilter("phr")}${historicalBinding}
          UNION ALL
-         SELECT 1 source_order,printf('%020d',lr.id) sort_key,'legacy:' || lr.id id,
-           lr.course_id,lr.teacher_id,lr.comment,NULL comment_format,
-           '' headline,NULL grade,
-           c.name course_name,c.code course_code,t.name teacher_name,
-           COALESCE(signal.endorsement_count,0) endorsement_count,
-           COALESCE(signal.challenge_count,0) challenge_count,
-           NULL scheme_key,NULL scheme_version,NULL scores,
-           NULL overall,lr.created_at,
-           ${reservedAuthorSql}, lr.blocked_at
-         FROM legacy_reviews lr
-         JOIN courses c ON c.id=lr.course_id
-         JOIN teachers t ON t.id=lr.teacher_id
-         LEFT JOIN public_review_signal_counts signal
-           ON signal.source_kind='legacy' AND signal.source_id=CAST(lr.id AS TEXT)
-         WHERE lr.${subject}=? AND lr.status='approved'
-           AND trim(COALESCE(lr.comment,''))<>''${teacherFilter("lr")}${legacyBinding}
-         UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,r.comment_format,
            r.headline,r.grade,
@@ -391,14 +368,7 @@ const getPublicReviewPage = async (
        ORDER BY ${order?.expression} ${order?.direction},source_order,sort_key LIMIT ?`
     : `WHERE source_order>? OR (source_order=? AND sort_key>?)
        ORDER BY source_order,sort_key LIMIT ?`;
-  const baseBinds = [
-    id,
-    ...teacherBinds,
-    id,
-    ...teacherBinds,
-    id,
-    ...teacherBinds,
-  ];
+  const baseBinds = [id, ...teacherBinds, id, ...teacherBinds];
   const needsCount = query
     ? !(orderedCursor && "total" in orderedCursor)
     : !(cursor && "total" in cursor);
@@ -408,9 +378,7 @@ const getPublicReviewPage = async (
         .bind(...baseBinds, ...filterBinds)
         .first<{ n: number }>()
     : Promise.resolve({
-        n: Number(
-          ((query ? orderedCursor : cursor) as { total?: number } | null)?.total,
-        ) || 0,
+        n: Number(((query ? orderedCursor : cursor) as { total?: number } | null)?.total) || 0,
       });
   const queryStarted = performance.now();
   const [pageResult, countResult] = await Promise.all([
@@ -445,53 +413,53 @@ const getPublicReviewPage = async (
       .all(),
     countPromise,
   ]);
-  recordTiming?.("query", performance.now() - queryStarted);
   const typedResults = (pageResult.results || []) as Array<
     Record<string, unknown> & { source_order: number; sort_key: string }
   >;
+  recordTiming?.("query", performance.now() - queryStarted);
   const hasMore = typedResults.length > size;
   const page = typedResults.slice(0, size);
   const last = page.at(-1);
   const projectionStarted = performance.now();
   const decoratedItems = await decoratePublicReviews(
-    db,
-    page.map(
-      ({
-        source_order: _source,
-        sort_key: _key,
-        scheme_key: schemeKey,
-        scheme_version: schemeVersion,
-        scores,
-        grade: rawGrade,
-        blocked_at: blockedAt,
-        ...review
-      }) => {
-        const dimensionAverage = publicDimensionAverage({
-          schemeKey,
-          schemeVersion,
+      db,
+      page.map(
+        ({
+          source_order: _source,
+          sort_key: _key,
+          scheme_key: schemeKey,
+          scheme_version: schemeVersion,
           scores,
-        });
-        const dimensionLabels = publicDimensionLabels({
-          schemeKey,
-          schemeVersion,
-          scores,
-        });
-        const grade = publicGrade(rawGrade);
-        return {
-          ...review,
-          headline: publicHeadline(review.headline),
-          ...(grade == null ? {} : { grade }),
-          overall: publicOverall(review.overall),
-          created_at: publicCreatedAt(review.created_at),
-          ...publicAuthorFields(review),
-          ...(dimensionAverage == null ? {} : { dimensionAverage }),
-          ...(dimensionLabels == null ? {} : { dimensionLabels }),
-          ...(includeBlocked && blockedAt ? { blocked: true } : {}),
-        };
-      },
-    ),
-    viewerUserId,
-  );
+          grade: rawGrade,
+          blocked_at: blockedAt,
+          ...review
+        }) => {
+          const dimensionAverage = publicDimensionAverage({
+            schemeKey,
+            schemeVersion,
+            scores,
+          });
+          const dimensionLabels = publicDimensionLabels({
+            schemeKey,
+            schemeVersion,
+            scores,
+          });
+          const grade = publicGrade(rawGrade);
+          return {
+            ...review,
+            headline: publicHeadline(review.headline),
+            ...(grade == null ? {} : { grade }),
+            overall: publicOverall(review.overall),
+            created_at: publicCreatedAt(review.created_at),
+            ...publicAuthorFields(review),
+            ...(dimensionAverage == null ? {} : { dimensionAverage }),
+            ...(dimensionLabels == null ? {} : { dimensionLabels }),
+            ...(includeBlocked && blockedAt ? { blocked: true } : {}),
+          };
+        },
+      ),
+      viewerUserId,
+    );
   recordTiming?.("projection", performance.now() - projectionStarted);
   return {
     items: decoratedItems,
@@ -1186,7 +1154,7 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
   const hasReviewQuery = Boolean(rawSort || c.req.query("rating"));
   const reviewQuery: PublicReviewQuery | null = hasReviewQuery
     ? {
-        sort: (rawSort as PublicReviewSort) || "recognized",
+        sort: (rawSort as PublicReviewSort) || "latest",
         rating,
       }
     : null;
