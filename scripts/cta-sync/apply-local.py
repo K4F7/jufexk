@@ -85,19 +85,33 @@ def main() -> int:
             if homepage_locked:
                 continue
             if row["match"] == "unique" and row.get("homepageUrl") and row.get("ctaUid"):
-                conn.execute(
-                    """UPDATE teachers
-                          SET cta_fid=?, cta_uid=?, homepage_url=?, homepage_match='unique',
-                              avatar_sha256=?, cta_synced_at=CURRENT_TIMESTAMP
-                        WHERE id=?""",
-                    (
-                        109051,
-                        int(row["ctaUid"]),
-                        row["homepageUrl"],
-                        row.get("avatarSha256"),
-                        teacher_id,
-                    ),
-                )
+                if row.get("avatarSha256"):
+                    conn.execute(
+                        """UPDATE teachers
+                              SET cta_fid=?, cta_uid=?, homepage_url=?, homepage_match='unique',
+                                  avatar_sha256=?, cta_synced_at=CURRENT_TIMESTAMP
+                            WHERE id=?""",
+                        (
+                            109051,
+                            int(row["ctaUid"]),
+                            row["homepageUrl"],
+                            row["avatarSha256"],
+                            teacher_id,
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """UPDATE teachers
+                              SET cta_fid=?, cta_uid=?, homepage_url=?, homepage_match='unique',
+                                  cta_synced_at=CURRENT_TIMESTAMP
+                            WHERE id=?""",
+                        (
+                            109051,
+                            int(row["ctaUid"]),
+                            row["homepageUrl"],
+                            teacher_id,
+                        ),
+                    )
             else:
                 conn.execute(
                     """UPDATE teachers
