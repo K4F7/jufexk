@@ -18,6 +18,7 @@ import type { LatestReview, PublicReviewPage } from "../lib/types";
 
 // Keep the loading shell aligned with the API's default first-page size.
 const LATEST_PAGE_SIZE = 20;
+const INITIAL_MOBILE_REVIEW_COUNT = 6;
 
 declare global {
   interface Window {
@@ -51,10 +52,29 @@ export function LatestPage() {
   const [error, setError] = useState("");
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState("");
+  const [renderedItemCount, setRenderedItemCount] = useState(() =>
+    window.matchMedia("(max-width: 639px)").matches
+      ? INITIAL_MOBILE_REVIEW_COUNT
+      : LATEST_PAGE_SIZE,
+  );
   const nextCursorRef = useRef(nextCursor);
   const isLoadingMoreRef = useRef(isLoadingMore);
   nextCursorRef.current = nextCursor;
   isLoadingMoreRef.current = isLoadingMore;
+
+  useEffect(() => {
+    if (items.length <= renderedItemCount) return;
+
+    let cancelled = false;
+    const reveal = () => {
+      if (!cancelled) setRenderedItemCount(items.length);
+    };
+    const timeoutId = window.setTimeout(reveal, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [items.length, renderedItemCount]);
 
   useEffect(() => {
     if (preview === "error") {
@@ -163,7 +183,7 @@ export function LatestPage() {
         </Card>
       ) : (
         <div>
-          {items.map((review) => (
+          {items.slice(0, renderedItemCount).map((review) => (
             <LatestReviewItem key={review.id} review={review} />
           ))}
           {nextCursor ? (
