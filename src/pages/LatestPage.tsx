@@ -196,7 +196,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const date = formatReviewDate(review.created_at);
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
-    <article className="min-h-56 min-w-0 border-b border-separator py-3 last:border-b-0 sm:py-5">
+    <article className="min-h-56 min-w-0 border-b border-separator py-3 last:border-b-0 max-sm:[content-visibility:auto] max-sm:[contain-intrinsic-size:224px] sm:py-5">
       <header className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 sm:flex sm:flex-wrap sm:justify-between sm:gap-x-3 sm:gap-y-0">
         <span className="col-start-1 row-start-1 inline-flex min-w-0 items-center text-[calc(13/15*1rem)] font-medium text-foreground">
           <ReviewAuthor
