@@ -863,7 +863,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
               onChange={setOverall}
               accessory={
                 <Checkbox
-                  className="ml-auto shrink-0"
+                  className="ml-auto shrink-0 scroll-mt-24"
                   isSelected={reviewOnly}
                   name="reviewOnly"
                   variant="secondary"

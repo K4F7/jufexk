@@ -52,7 +52,7 @@ export function DevIdentitySwitcher() {
   return (
     <div
       aria-label="身份切换"
-      className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex justify-center px-3"
+      className="pointer-events-none fixed bottom-4 right-4 z-40 flex justify-end"
     >
       <div className="pointer-events-auto flex max-w-[min(720px,100%)] flex-wrap items-center justify-center gap-1 rounded-full border border-border bg-overlay/95 px-2 py-1.5 text-overlay-foreground shadow-overlay backdrop-blur">
         {ROLES.map((role) => {
