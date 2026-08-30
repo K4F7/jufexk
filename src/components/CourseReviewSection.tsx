@@ -17,6 +17,7 @@ import {
   Label,
   ListBox,
   Select,
+  Separator,
   Spinner,
   Typography,
 } from "@heroui/react";
@@ -362,8 +363,9 @@ export function CourseReviewSection({
       ) : (
         <div>
           <div className="mt-2" role="list" aria-label="评价列表">
-            {reviews.map((review) => (
+            {reviews.map((review, index) => (
               <div key={review.id} role="listitem">
+                {index > 0 ? <Separator /> : null}
                 <CourseReviewItem
                   review={review}
                   ready={ready}
