@@ -147,38 +147,6 @@ async function insertHistorical(comment: string) {
   return id;
 }
 
-async function insertLegacy(comment: string) {
-  const batchId = `endorsement-legacy-${Date.now()}`;
-  await env.DB.prepare(
-    `INSERT INTO legacy_import_batches(
-      id,source_type,source_label,status,row_count,imported_at
-    ) VALUES(?, 'legacy_ocr', '认可测试历史资料', 'imported', 1, CURRENT_TIMESTAMP)`,
-  )
-    .bind(batchId)
-    .run();
-  const result = await env.DB.prepare(
-    `INSERT INTO legacy_reviews(
-      import_batch_id,source_file,sheet_name,source_row,raw_ocr_text,
-      ocr_confidence,course_id,teacher_id,category,comment,status
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-  )
-    .bind(
-      batchId,
-      "endorsement.png",
-      "测试表",
-      "1",
-      "private OCR",
-      0.99,
-      1,
-      1,
-      "general",
-      comment,
-      "approved",
-    )
-    .run();
-  return Number(result.meta.last_row_id);
-}
-
 async function putEndorsement(
   reviewId: number | string,
   session: Awaited<ReturnType<typeof viewerSession>>,
@@ -466,8 +434,7 @@ describe("review endorsement API", () => {
 
   it("rejects retired legacy: public ids", async () => {
     const session = await viewerSession("user-endorse-legacy-retired");
-    const legacyId = await insertLegacy("资料评价不再认可");
-    const response = await putEndorsement(`legacy:${legacyId}`, session);
+    const response = await putEndorsement("legacy:1", session);
     expect(response.status).toBe(404);
   });
 

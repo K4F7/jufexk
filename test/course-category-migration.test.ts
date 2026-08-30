@@ -22,7 +22,7 @@ const migrationsBeforeCategory = () => {
 describe("review template kind migration", () => {
   it("replays from scratch with only general and sports", async () => {
     const schema = await env.DB.prepare(
-      "SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('courses','reviews','legacy_reviews','catalog_requests') ORDER BY name",
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('courses','reviews','catalog_requests') ORDER BY name",
     ).all<{ sql: string }>();
     const sql = schema.results.map((row) => row.sql).join("\n");
     const categoryChecks = sql.match(/category TEXT[^,]*CHECK\([^)]+\)/g) ?? [];
@@ -35,13 +35,24 @@ describe("review template kind migration", () => {
       await env.DB.prepare(
         `SELECT COUNT(*) n FROM (
           SELECT category FROM courses UNION ALL SELECT category FROM reviews
-          UNION ALL SELECT category FROM legacy_reviews UNION ALL SELECT category FROM catalog_requests
+          UNION ALL SELECT category FROM catalog_requests
         ) WHERE category IN ('major','pe','required','elective')`,
       ).first(),
     ).toEqual({ n: 0 });
     expect((await env.DB.prepare("PRAGMA foreign_key_check").all()).results).toEqual(
       [],
     );
+    expect(
+      (
+        await env.DB.prepare(
+          `SELECT name FROM sqlite_master
+           WHERE type='table' AND name IN (
+             'legacy_reviews','legacy_import_batches','legacy_review_endorsements',
+             'legacy_review_challenges','legacy_review_visibility_events','legacy_review_moderation_events'
+           )`,
+        ).all<{ name: string }>()
+      ).results,
+    ).toEqual([]);
   });
 
   it("maps every legacy non-sports value to general while preserving IDs, relations, and variants", async () => {

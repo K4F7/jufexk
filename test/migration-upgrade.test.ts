@@ -47,10 +47,19 @@ it("upgrades from 0008 without losing referenced seed catalog mappings", async (
     ).first(),
   ).toEqual({ courses: 2, teachers: 1, relations: 1, offerings: 1 });
   expect(
-    await db.prepare(
-      "SELECT course_id,teacher_id,offering_id FROM legacy_reviews WHERE import_batch_id='upgrade-legacy'",
-    ).first(),
-  ).toEqual({ course_id: 1, teacher_id: 1, offering_id: 1 });
+    (
+      await db
+        .prepare(
+          `SELECT name FROM sqlite_master
+           WHERE type='table' AND name IN (
+             'legacy_reviews','legacy_import_batches','legacy_review_endorsements',
+             'legacy_review_challenges','legacy_review_visibility_events',
+             'legacy_review_moderation_events'
+           )`,
+        )
+        .all<{ name: string }>()
+    ).results,
+  ).toEqual([]);
   expect(
     await db.prepare(
       "SELECT created_course_id,created_teacher_id FROM catalog_requests WHERE course_code='PE012'",
