@@ -144,8 +144,10 @@ describe("classifyChangedPaths", () => {
     expect(ctaSyncApplyWorkflow).toContain("production-cta-sync");
     expect(ctaSyncApplyWorkflow).toContain("environment: production");
     expect(ctaSyncApplyWorkflow).toContain("secrets.CLOUDFLARE_API_TOKEN");
-    expect(ctaSyncApplyWorkflow).toContain("gh release download");
+    expect(ctaSyncApplyWorkflow).toContain("releases/assets/");
+    expect(ctaSyncApplyWorkflow).toContain("application/octet-stream");
     expect(ctaSyncApplyWorkflow).toContain("cta-sync.tar.gz");
+    expect(ctaSyncApplyWorkflow).not.toContain("gh release download");
     expect(ctaSyncApplyWorkflow).toContain(
       "scripts/cta-sync/apply-remote.ts --remote --apply",
     );

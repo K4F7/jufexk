@@ -20,7 +20,7 @@ concurrency:
   group: production-cta-sync
   cancel-in-progress: false
 permissions:
-  contents: read
+  contents: write
 jobs:
   apply:
     name: apply
@@ -50,10 +50,17 @@ jobs:
             echo "invalid release_tag" >&2
             exit 1
           fi
-          gh release download "$RELEASE_TAG" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern "cta-sync.tar.gz" \
-            --dir "${RUNNER_TEMP}"
+          # Draft tags 404 on /releases/tags/{tag}; list releases then fetch the asset.
+          asset_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq \
+            ".[] | select(.tag_name == \"${RELEASE_TAG}\") | .assets[] | select(.name == \"cta-sync.tar.gz\") | .id" \
+            | head -n 1)"
+          if [[ -z "$asset_id" ]]; then
+            echo "draft release asset not found for ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" \
+            -H "Accept: application/octet-stream" \
+            > "${RUNNER_TEMP}/cta-sync.tar.gz"
           python3 - <<'PY'
           import os
           import tarfile
