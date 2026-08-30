@@ -410,7 +410,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
     await env.DB.prepare("DELETE FROM teachers WHERE name=?").bind(`${code} 申请教师`).run();
   });
 
-  it("protects courses and teachers referenced by approved legacy reviews", async () => {
+  it("does not let leftover legacy_reviews rows block course or teacher deletes", async () => {
     const code = unique("LEGACY-GUARD");
     const teacherName = unique("历史教师");
     const courseId = await insertCourse(code);
@@ -450,16 +450,6 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
       )
       .run();
     const auth = await login();
-    const deleteCourse = await SELF.fetch(`${origin}/api/admin/courses/${courseId}`, {
-      method: "DELETE",
-      headers: adminHeaders(auth),
-    });
-    expect(deleteCourse.status).toBe(409);
-    const deleteTeacher = await SELF.fetch(`${origin}/api/admin/teachers/${teacherId}`, {
-      method: "DELETE",
-      headers: adminHeaders(auth),
-    });
-    expect(deleteTeacher.status).toBe(409);
     expect(
       await env.DB.prepare(
         "SELECT course_id,teacher_id FROM legacy_reviews WHERE id=?",
@@ -467,15 +457,23 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         .bind(Number(review.meta.last_row_id))
         .first(),
     ).toEqual({ course_id: courseId, teacher_id: teacherId });
+    const deleteCourse = await SELF.fetch(`${origin}/api/admin/courses/${courseId}`, {
+      method: "DELETE",
+      headers: adminHeaders(auth),
+    });
+    expect(deleteCourse.status).toBe(200);
+    const deleteTeacher = await SELF.fetch(`${origin}/api/admin/teachers/${teacherId}`, {
+      method: "DELETE",
+      headers: adminHeaders(auth),
+    });
+    expect(deleteTeacher.status).toBe(200);
     await env.DB.prepare("DELETE FROM legacy_reviews WHERE id=?")
       .bind(Number(review.meta.last_row_id))
       .run();
     await env.DB.prepare("DELETE FROM legacy_import_batches WHERE id=?").bind(batchId).run();
-    await env.DB.prepare("DELETE FROM courses WHERE id=?").bind(courseId).run();
-    await env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId).run();
   });
 
-  it("protects every catalog binding referenced by a pending legacy review", async () => {
+  it("does not let leftover pending legacy_reviews rows block catalog mutations", async () => {
     const code = unique("LEGACY-PENDING-GUARD");
     const teacherName = unique("待审历史教师");
     const courseId = await insertCourse(code);
@@ -553,7 +551,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         }),
       },
     );
-    expect(removeOfferingTeacher.status).toBe(409);
+    expect(removeOfferingTeacher.status).toBe(200);
     expect(
       (
         await SELF.fetch(`${origin}/api/admin/offerings/${offeringId}`, {
@@ -561,7 +559,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
           headers: adminHeaders(auth),
         })
       ).status,
-    ).toBe(409);
+    ).toBe(200);
     expect(
       (
         await SELF.fetch(`${origin}/api/admin/courses/${courseId}`, {
@@ -569,7 +567,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
           headers: adminHeaders(auth),
         })
       ).status,
-    ).toBe(409);
+    ).toBe(200);
     expect(
       (
         await SELF.fetch(`${origin}/api/admin/teachers/${teacherId}`, {
@@ -577,14 +575,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
           headers: adminHeaders(auth),
         })
       ).status,
-    ).toBe(409);
-    expect(
-      await env.DB.prepare(
-        "SELECT course_id,teacher_id,offering_id FROM legacy_reviews WHERE import_batch_id=?",
-      )
-        .bind(batchId)
-        .first(),
-    ).toEqual({ course_id: courseId, teacher_id: teacherId, offering_id: offeringId });
+    ).toBe(200);
     await env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=?")
       .bind(batchId)
       .run();
@@ -596,7 +587,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
     await env.DB.prepare("DELETE FROM teachers WHERE id=?").bind(teacherId).run();
   });
 
-  it("revalidates legacy bindings before approval", async () => {
+  it("returns 404 for retired legacy-review approval", async () => {
     const code = unique("LEGACY-REVALIDATE");
     const teacherName = unique("重新校验教师");
     const courseId = await insertCourse(code);
@@ -647,7 +638,7 @@ describe("backend regression fixes: moderation, deletion and submission", () => 
         body: JSON.stringify({ status: "approved", note: "尝试批准" }),
       },
     );
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(404);
     expect(
       await env.DB.prepare("SELECT status FROM legacy_reviews WHERE id=?")
         .bind(id)
@@ -971,7 +962,7 @@ describe("backend regression fixes: atomic course saves and imports", () => {
 
 
 
-  it("blocks category changes while legacy reviews depend on the course", async () => {
+  it("allows category changes when only leftover legacy_reviews remain", async () => {
     const auth = await login();
     const code = unique("LEGACY-CATEGORY");
     const courseId = await insertCourse(code);
@@ -998,12 +989,12 @@ describe("backend regression fixes: atomic course saves and imports", () => {
         category: "sports",
       }),
     });
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     expect(
       await env.DB.prepare("SELECT category FROM courses WHERE id=?")
         .bind(courseId)
         .first(),
-    ).toEqual({ category: "general" });
+    ).toEqual({ category: "sports" });
     await env.DB.batch([
       env.DB.prepare("DELETE FROM legacy_reviews WHERE import_batch_id=?").bind(
         `batch-${code}`,

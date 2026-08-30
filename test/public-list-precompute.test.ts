@@ -52,7 +52,6 @@ describe("public list refresh coordination", () => {
     ["PATCH", "/api/admin/catalog-requests/42"],
     ["PATCH", "/api/admin/reviews/42"],
     ["PATCH", "/api/admin/reviews/42/content"],
-    ["PATCH", "/api/admin/legacy-reviews/42"],
     ["POST", "/api/admin/catalog-baseline/uploads"],
     ["PUT", "/api/admin/catalog-baseline/uploads/batch-42/chunks/0"],
     ["POST", "/api/admin/catalog-baseline/uploads/batch-42/finalize"],

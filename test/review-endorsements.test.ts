@@ -444,26 +444,31 @@ describe("review endorsement API", () => {
     }
   });
 
-  it("creates and withdraws endorsements on historical and legacy text reviews", async () => {
+  it("creates and withdraws endorsements on historical text reviews", async () => {
     const session = await viewerSession("user-endorse-historical");
     const historicalId = await insertHistorical("历史评价可以认可");
-    const legacyId = await insertLegacy("资料评价可以认可");
-    for (const target of [`historical:${historicalId}`, `legacy:${legacyId}`]) {
-      const created = await putEndorsement(target, session);
-      expect(created.status, target).toBe(200);
-      await expect(created.json()).resolves.toEqual({
-        endorsementCount: 1,
-        viewerEndorsed: true,
-        ...emptyChallenge,
-      });
-      const withdrawn = await deleteEndorsement(target, session);
-      expect(withdrawn.status, target).toBe(200);
-      await expect(withdrawn.json()).resolves.toEqual({
-        endorsementCount: 0,
-        viewerEndorsed: false,
-        ...emptyChallenge,
-      });
-    }
+    const target = `historical:${historicalId}`;
+    const created = await putEndorsement(target, session);
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toEqual({
+      endorsementCount: 1,
+      viewerEndorsed: true,
+      ...emptyChallenge,
+    });
+    const withdrawn = await deleteEndorsement(target, session);
+    expect(withdrawn.status).toBe(200);
+    await expect(withdrawn.json()).resolves.toEqual({
+      endorsementCount: 0,
+      viewerEndorsed: false,
+      ...emptyChallenge,
+    });
+  });
+
+  it("rejects retired legacy: public ids", async () => {
+    const session = await viewerSession("user-endorse-legacy-retired");
+    const legacyId = await insertLegacy("资料评价不再认可");
+    const response = await putEndorsement(`legacy:${legacyId}`, session);
+    expect(response.status).toBe(404);
   });
 
   it("exposes public counts without identity and viewer state only for a vote actor", async () => {
@@ -713,28 +718,26 @@ describe("review endorsement API", () => {
     });
   });
 
-  it("creates and withdraws challenges on historical and legacy text reviews", async () => {
+  it("creates and withdraws challenges on historical text reviews", async () => {
     const session = await viewerSession("user-challenge-historical");
     const historicalId = await insertHistorical("历史评价可以质疑");
-    const legacyId = await insertLegacy("资料评价可以质疑");
-    for (const target of [`historical:${historicalId}`, `legacy:${legacyId}`]) {
-      const created = await putChallenge(target, session);
-      expect(created.status, target).toBe(200);
-      await expect(created.json()).resolves.toEqual({
-        endorsementCount: 0,
-        challengeCount: 1,
-        viewerEndorsed: false,
-        viewerChallenged: true,
-      });
-      const withdrawn = await deleteChallenge(target, session);
-      expect(withdrawn.status, target).toBe(200);
-      await expect(withdrawn.json()).resolves.toEqual({
-        endorsementCount: 0,
-        challengeCount: 0,
-        viewerEndorsed: false,
-        viewerChallenged: false,
-      });
-    }
+    const target = `historical:${historicalId}`;
+    const created = await putChallenge(target, session);
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toEqual({
+      endorsementCount: 0,
+      challengeCount: 1,
+      viewerEndorsed: false,
+      viewerChallenged: true,
+    });
+    const withdrawn = await deleteChallenge(target, session);
+    expect(withdrawn.status).toBe(200);
+    await expect(withdrawn.json()).resolves.toEqual({
+      endorsementCount: 0,
+      challengeCount: 0,
+      viewerEndorsed: false,
+      viewerChallenged: false,
+    });
   });
 
   it("lets guests challenge with CSRF and keeps a forged voter cookie from stealing the vote", async () => {

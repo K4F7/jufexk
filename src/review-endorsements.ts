@@ -50,21 +50,10 @@ async function loadEligibleTarget(db: D1Database, target: PublicReviewTarget) {
       .bind(target.id)
       .first();
   }
-  if (target.kind === "historical") {
-    return db
-      .prepare(
-        `SELECT id FROM public_historical_reviews
-         WHERE id=? AND blocked_at IS NULL AND deleted_at IS NULL`,
-      )
-      .bind(target.id)
-      .first();
-  }
   return db
     .prepare(
-      `SELECT id FROM legacy_reviews
-       WHERE id=? AND status='approved'
-         AND trim(COALESCE(comment,''))<>''
-         AND blocked_at IS NULL AND deleted_at IS NULL`,
+      `SELECT id FROM public_historical_reviews
+       WHERE id=? AND blocked_at IS NULL AND deleted_at IS NULL`,
     )
     .bind(target.id)
     .first();
@@ -77,14 +66,8 @@ async function targetExists(db: D1Database, target: PublicReviewTarget) {
       .bind(target.id)
       .first();
   }
-  if (target.kind === "historical") {
-    return db
-      .prepare("SELECT id FROM public_historical_reviews WHERE id=?")
-      .bind(target.id)
-      .first();
-  }
   return db
-    .prepare("SELECT id FROM legacy_reviews WHERE id=?")
+    .prepare("SELECT id FROM public_historical_reviews WHERE id=?")
     .bind(target.id)
     .first();
 }
@@ -98,19 +81,12 @@ async function endorsementCount(db: D1Database, target: PublicReviewTarget) {
           )
           .bind(target.id)
           .first<{ count: number }>()
-      : target.kind === "historical"
-        ? await db
-            .prepare(
-              "SELECT COUNT(*) count FROM historical_review_endorsements WHERE historical_review_id=?",
-            )
-            .bind(target.id)
-            .first<{ count: number }>()
-        : await db
-            .prepare(
-              "SELECT COUNT(*) count FROM legacy_review_endorsements WHERE legacy_review_id=?",
-            )
-            .bind(target.id)
-            .first<{ count: number }>();
+      : await db
+          .prepare(
+            "SELECT COUNT(*) count FROM historical_review_endorsements WHERE historical_review_id=?",
+          )
+          .bind(target.id)
+          .first<{ count: number }>();
   return row?.count || 0;
 }
 
@@ -127,19 +103,12 @@ async function viewerEndorsed(
           )
           .bind(userId, target.id)
           .first()
-      : target.kind === "historical"
-        ? await db
-            .prepare(
-              "SELECT 1 ok FROM historical_review_endorsements WHERE user_id=? AND historical_review_id=?",
-            )
-            .bind(userId, target.id)
-            .first()
-        : await db
-            .prepare(
-              "SELECT 1 ok FROM legacy_review_endorsements WHERE user_id=? AND legacy_review_id=?",
-            )
-            .bind(userId, target.id)
-            .first();
+      : await db
+          .prepare(
+            "SELECT 1 ok FROM historical_review_endorsements WHERE user_id=? AND historical_review_id=?",
+          )
+          .bind(userId, target.id)
+          .first();
   return !!row;
 }
 
@@ -157,18 +126,9 @@ async function insertEndorsement(
       .run();
     return;
   }
-  if (target.kind === "historical") {
-    await db
-      .prepare(
-        "INSERT OR IGNORE INTO historical_review_endorsements(user_id,historical_review_id) VALUES(?,?)",
-      )
-      .bind(userId, target.id)
-      .run();
-    return;
-  }
   await db
     .prepare(
-      "INSERT OR IGNORE INTO legacy_review_endorsements(user_id,legacy_review_id) VALUES(?,?)",
+      "INSERT OR IGNORE INTO historical_review_endorsements(user_id,historical_review_id) VALUES(?,?)",
     )
     .bind(userId, target.id)
     .run();
@@ -186,18 +146,9 @@ async function deleteEndorsement(
       .run();
     return;
   }
-  if (target.kind === "historical") {
-    await db
-      .prepare(
-        "DELETE FROM historical_review_endorsements WHERE user_id=? AND historical_review_id=?",
-      )
-      .bind(userId, target.id)
-      .run();
-    return;
-  }
   await db
     .prepare(
-      "DELETE FROM legacy_review_endorsements WHERE user_id=? AND legacy_review_id=?",
+      "DELETE FROM historical_review_endorsements WHERE user_id=? AND historical_review_id=?",
     )
     .bind(userId, target.id)
     .run();
@@ -230,19 +181,12 @@ async function challengeCount(db: D1Database, target: PublicReviewTarget) {
           )
           .bind(target.id)
           .first<{ count: number }>()
-      : target.kind === "historical"
-        ? await db
-            .prepare(
-              "SELECT COUNT(*) count FROM historical_review_challenges WHERE historical_review_id=?",
-            )
-            .bind(target.id)
-            .first<{ count: number }>()
-        : await db
-            .prepare(
-              "SELECT COUNT(*) count FROM legacy_review_challenges WHERE legacy_review_id=?",
-            )
-            .bind(target.id)
-            .first<{ count: number }>();
+      : await db
+          .prepare(
+            "SELECT COUNT(*) count FROM historical_review_challenges WHERE historical_review_id=?",
+          )
+          .bind(target.id)
+          .first<{ count: number }>();
   return row?.count || 0;
 }
 
@@ -259,19 +203,12 @@ async function viewerChallenged(
           )
           .bind(userId, target.id)
           .first()
-      : target.kind === "historical"
-        ? await db
-            .prepare(
-              "SELECT 1 ok FROM historical_review_challenges WHERE user_id=? AND historical_review_id=?",
-            )
-            .bind(userId, target.id)
-            .first()
-        : await db
-            .prepare(
-              "SELECT 1 ok FROM legacy_review_challenges WHERE user_id=? AND legacy_review_id=?",
-            )
-            .bind(userId, target.id)
-            .first();
+      : await db
+          .prepare(
+            "SELECT 1 ok FROM historical_review_challenges WHERE user_id=? AND historical_review_id=?",
+          )
+          .bind(userId, target.id)
+          .first();
   return !!row;
 }
 
@@ -289,18 +226,9 @@ async function insertChallenge(
       .run();
     return;
   }
-  if (target.kind === "historical") {
-    await db
-      .prepare(
-        "INSERT OR IGNORE INTO historical_review_challenges(user_id,historical_review_id) VALUES(?,?)",
-      )
-      .bind(userId, target.id)
-      .run();
-    return;
-  }
   await db
     .prepare(
-      "INSERT OR IGNORE INTO legacy_review_challenges(user_id,legacy_review_id) VALUES(?,?)",
+      "INSERT OR IGNORE INTO historical_review_challenges(user_id,historical_review_id) VALUES(?,?)",
     )
     .bind(userId, target.id)
     .run();
@@ -318,18 +246,9 @@ async function deleteChallenge(
       .run();
     return;
   }
-  if (target.kind === "historical") {
-    await db
-      .prepare(
-        "DELETE FROM historical_review_challenges WHERE user_id=? AND historical_review_id=?",
-      )
-      .bind(userId, target.id)
-      .run();
-    return;
-  }
   await db
     .prepare(
-      "DELETE FROM legacy_review_challenges WHERE user_id=? AND legacy_review_id=?",
+      "DELETE FROM historical_review_challenges WHERE user_id=? AND historical_review_id=?",
     )
     .bind(userId, target.id)
     .run();
@@ -433,13 +352,11 @@ async function loadViewerEndorsedIds(
   const endorsed = new Set<string>();
   const reviewIds: number[] = [];
   const historicalIds: string[] = [];
-  const legacyIds: number[] = [];
   for (const item of items) {
     const target = parsePublicReviewTarget(String(item.id ?? ""));
     if (!target) continue;
     if (target.kind === "review") reviewIds.push(target.id);
-    else if (target.kind === "historical") historicalIds.push(target.id);
-    else legacyIds.push(target.id);
+    else historicalIds.push(target.id);
   }
   if (reviewIds.length) {
     const placeholders = reviewIds.map(() => "?").join(",");
@@ -464,17 +381,6 @@ async function loadViewerEndorsedIds(
     for (const row of results)
       endorsed.add(`historical:${row.historical_review_id}`);
   }
-  if (legacyIds.length) {
-    const placeholders = legacyIds.map(() => "?").join(",");
-    const { results } = await db
-      .prepare(
-        `SELECT legacy_review_id FROM legacy_review_endorsements
-         WHERE user_id=? AND legacy_review_id IN (${placeholders})`,
-      )
-      .bind(userId, ...legacyIds)
-      .all<{ legacy_review_id: number }>();
-    for (const row of results) endorsed.add(`legacy:${row.legacy_review_id}`);
-  }
   return endorsed;
 }
 
@@ -486,13 +392,11 @@ async function loadViewerChallengedIds(
   const challenged = new Set<string>();
   const reviewIds: number[] = [];
   const historicalIds: string[] = [];
-  const legacyIds: number[] = [];
   for (const item of items) {
     const target = parsePublicReviewTarget(String(item.id ?? ""));
     if (!target) continue;
     if (target.kind === "review") reviewIds.push(target.id);
-    else if (target.kind === "historical") historicalIds.push(target.id);
-    else legacyIds.push(target.id);
+    else historicalIds.push(target.id);
   }
   if (reviewIds.length) {
     const placeholders = reviewIds.map(() => "?").join(",");
@@ -516,18 +420,6 @@ async function loadViewerChallengedIds(
       .all<{ historical_review_id: string }>();
     for (const row of results)
       challenged.add(`historical:${row.historical_review_id}`);
-  }
-  if (legacyIds.length) {
-    const placeholders = legacyIds.map(() => "?").join(",");
-    const { results } = await db
-      .prepare(
-        `SELECT legacy_review_id FROM legacy_review_challenges
-         WHERE user_id=? AND legacy_review_id IN (${placeholders})`,
-      )
-      .bind(userId, ...legacyIds)
-      .all<{ legacy_review_id: number }>();
-    for (const row of results)
-      challenged.add(`legacy:${row.legacy_review_id}`);
   }
   return challenged;
 }

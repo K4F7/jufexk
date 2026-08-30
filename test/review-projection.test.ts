@@ -157,7 +157,7 @@ describe("public course-teacher review projection", () => {
 
       // 课程详情只返回评价总数；评价流经 /reviews 获取，可按 课程×教师
       // 作用域过滤，未指定 teacherId 时返回该课全部公开评价（Issue #201）。
-      expect(courseBody.reviewCount).toBe(26);
+      expect(courseBody.reviewCount).toBe(25);
       expect(courseBody).not.toHaveProperty("reviews");
       expect(courseBody).not.toHaveProperty("nextReviewCursor");
 
@@ -209,14 +209,13 @@ describe("public course-teacher review projection", () => {
           response.json<{ items: Array<Record<string, unknown>> }>(),
         ),
       ]);
-      expect(courseNext.items).toHaveLength(6);
+      expect(courseNext.items).toHaveLength(5);
       expect(teacherNext.items).toEqual(courseNext.items);
       expect(courseRefresh.items).toEqual(courseReviews.items);
       const allIds = [...courseReviews.items, ...courseNext.items].map((review) => review.id);
-      expect(new Set(allIds).size).toBe(26);
+      expect(new Set(allIds).size).toBe(25);
       expect(allIds).toEqual([
         ...historicalIds.map((reviewId) => `historical:${reviewId}`),
-        expect.stringMatching(/^legacy:/),
         expect.stringMatching(/^review:/),
         expect.stringMatching(/^review:/),
       ]);

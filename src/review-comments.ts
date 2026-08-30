@@ -1,5 +1,5 @@
 /**
- * 评价回复（评论区）：公开文字流条目（review: / historical: / legacy:）下的回复。
+ * 评价回复（评论区）：公开文字流条目（review: / historical:）下的回复。
  * GET 公开；POST/DELETE 走普通用户写闸门。当前任课评价的顶层回复经触发器
  * 通知作者；历史评价没有作者，只通知被回复者。
  */
@@ -13,7 +13,6 @@ import { ensureUserPublicHandle } from "./public-handle";
 import {
   guestReviewBindingSql,
   historicalPublicVisibleSql,
-  legacyPublicVisibleSql,
   publicReviewBindingSql,
 } from "./public-review-visibility";
 import {
@@ -116,20 +115,10 @@ async function loadCommentableTarget(
       .bind(target.id)
       .first();
   }
-  if (target.kind === "historical") {
-    return db
-      .prepare(
-        `SELECT id FROM public_historical_reviews phr
-         WHERE phr.id=?${historicalPublicVisibleSql("phr")}`,
-      )
-      .bind(target.id)
-      .first();
-  }
   return db
     .prepare(
-      `SELECT id FROM legacy_reviews lr
-       WHERE lr.id=? AND lr.status='approved'
-         AND trim(COALESCE(lr.comment,''))<>''${legacyPublicVisibleSql("lr")}`,
+      `SELECT id FROM public_historical_reviews phr
+       WHERE phr.id=?${historicalPublicVisibleSql("phr")}`,
     )
     .bind(target.id)
     .first();
