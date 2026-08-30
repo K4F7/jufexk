@@ -1,5 +1,5 @@
 /**
- * Course review footer: date + 认可 / 质疑 / 评论 / 分享, and the
+ * Course review footer: 认可 / 质疑 / 评论 / 分享, and the
  * HeroUI comments Surface. 认可 uses the live endorsement API. 回复默认收起，
  * 点评论按钮展开并拉取 /api/reviews/:id/comments；DEV atlas / preview
  * 保持本地种子回复。回复他人的评论会展开回复区并聚焦输入框。
@@ -57,7 +57,6 @@ function commentSnippet(body: string, max = 20): string {
 
 export function ReviewActionBar({
   review,
-  date,
   recognition,
   ready,
   authenticated,
@@ -70,7 +69,6 @@ export function ReviewActionBar({
   showAdminControls = false,
 }: {
   review: PublicReview;
-  date: string;
   recognition: ReturnType<typeof useReviewRecognition>;
   ready: boolean;
   authenticated: boolean;
@@ -156,11 +154,6 @@ export function ReviewActionBar({
   return (
     <div className="mt-3">
       <div className="flex flex-wrap items-center gap-2">
-        {date ? (
-          <time className="text-[calc(12/15*1rem)] text-muted" dateTime={date}>
-            {date}
-          </time>
-        ) : null}
         <Toolbar aria-label="评价动作">
           {endorsable ? (
             <>

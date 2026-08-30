@@ -61,6 +61,7 @@ function liveReviews(store: Store) {
       challenge_count: store.challengeCounts["review:301"],
       viewer_endorsed: store.endorsed["review:301"],
       viewer_challenged: store.challenged["review:301"],
+      created_at: "2026-08-17 08:00:00",
     }),
     review("review:302", "非零计数当前文字评价。", {
       endorsement_count: store.counts["review:302"],
@@ -276,11 +277,16 @@ test("guest can vote without a login prompt and still needs login to comment", a
 }) => {
   await mockApi(page, guestStore());
   await page.goto("/courses/8?teacher=9");
+  const zeroEntry = entry(page, "零计数当前文字评价。");
   await expect(
-    entry(page, "零计数当前文字评价。").getByRole("button", {
+    zeroEntry.getByRole("button", {
       name: "认可这条评价，还没有人认可",
     }),
   ).toBeEnabled();
+  await expect(zeroEntry.locator("header time")).toHaveText("2026-08-17");
+  await expect(
+    actionBar(page, "零计数当前文字评价。").locator("time"),
+  ).toHaveCount(0);
 
   const zero = entry(page, "零计数当前文字评价。").getByRole("button", {
     name: "认可这条评价，还没有人认可",
@@ -344,12 +350,23 @@ test("public fold hides the body and keeps vote chrome", async ({ page }) => {
   });
   await expect(folded.getByText("该评价因不受欢迎被折叠")).toBeVisible();
   await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
-  await expect(folded.getByText("2026-08-20")).toBeVisible();
+  await expect(folded.getByRole("link", { name: /匿名用户/ })).toHaveCount(0);
+  await expect(folded.locator("header time")).toHaveText("2026-08-20");
+  await expect(folded.getByRole("toolbar").locator("time")).toHaveCount(0);
   await expect(
     folded.getByRole("button", { name: "质疑这条评价，当前 3 人质疑" }),
   ).toBeVisible();
   await expect(folded.getByRole("button", { name: "展开" })).toHaveCount(0);
-  await expect(folded.getByRole("button", { name: "收起" })).toHaveCount(0);
+  await expect(folded.getByRole("button", { name: "看看" })).toBeVisible();
+
+  await folded.getByRole("button", { name: "看看" }).click();
+  await expect(folded.getByText("质疑较多应收起的正文。")).toBeVisible();
+  await expect(folded.getByRole("link", { name: /匿名用户/ })).toBeVisible();
+  await expect(folded.getByRole("button", { name: "收起" })).toBeVisible();
+
+  await folded.getByRole("button", { name: "收起" }).click();
+  await expect(page.getByText("质疑较多应收起的正文。")).toHaveCount(0);
+  await expect(folded.getByRole("button", { name: "看看" })).toBeVisible();
 });
 
 test("self challenge folds immediately and unfolds when withdrawn", async ({
@@ -365,9 +382,12 @@ test("self challenge folds immediately and unfolds when withdrawn", async ({
       name: "已质疑，按下可撤回我的质疑，当前 1 人质疑",
     }),
   });
-  await expect(self.getByText("该评价因不受欢迎被折叠")).toBeVisible();
+  await expect(self.getByText("已折叠")).toBeVisible();
   await expect(page.getByText("非零计数当前文字评价。")).toHaveCount(0);
+  await expect(self.getByRole("link", { name: /匿名用户/ })).toHaveCount(0);
   await expect(self.getByRole("button", { name: "展开" })).toHaveCount(0);
+  await expect(self.getByRole("button", { name: "看看" })).toHaveCount(0);
+  await expect(self.getByRole("button", { name: "收起" })).toHaveCount(0);
 
   await self
     .getByRole("button", {
@@ -375,7 +395,7 @@ test("self challenge folds immediately and unfolds when withdrawn", async ({
     })
     .click();
   await expect(page.getByText("非零计数当前文字评价。")).toBeVisible();
-  await expect(self.getByText("该评价因不受欢迎被折叠")).toHaveCount(0);
+  await expect(self.getByText("已折叠")).toHaveCount(0);
 });
 
 test("signed-in user can endorse and withdraw with pending and selected state", async ({
@@ -478,7 +498,7 @@ test("signed-in user can challenge, switch away from recognition, and withdraw",
   await expect(
     demo().getByRole("button", { name: "认可这条评价，当前 3 人认可" }),
   ).toHaveAttribute("aria-pressed", "false");
-  await expect(demoArticle().getByText("该评价因不受欢迎被折叠")).toBeVisible();
+  await expect(demoArticle().getByText("已折叠")).toBeVisible();
 
   await demo().getByRole("button", { name: "认可这条评价，当前 3 人认可" }).click();
   await expect(
