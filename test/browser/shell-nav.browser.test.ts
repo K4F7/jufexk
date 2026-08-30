@@ -78,23 +78,15 @@ function browseNav(page: Page) {
   return page.getByRole("navigation", { name: "主导航" });
 }
 
-/** Desktop production shell uses Links; narrow chrome uses official Tabs (role=tab). */
+/** Both shell variants expose semantic navigation links. */
 function browseNavItem(page: Page, name: string) {
-  const nav = browseNav(page);
-  return isDesktopNav(page)
-    ? nav.getByRole("link", { name, exact: true })
-    : nav.getByRole("tab", { name, exact: true });
+  return browseNav(page).getByRole("link", { name, exact: true });
 }
 
 async function expectBrowseItemCurrent(page: Page, name: string, current: boolean) {
   const item = browseNavItem(page, name);
-  if (isDesktopNav(page)) {
-    if (current) await expect(item).toHaveAttribute("aria-current", "page");
-    else await expect(item).not.toHaveAttribute("aria-current", "page");
-    return;
-  }
-  if (current) await expect(item).toHaveAttribute("aria-selected", "true");
-  else await expect(item).not.toHaveAttribute("aria-selected", "true");
+  if (current) await expect(item).toHaveAttribute("aria-current", "page");
+  else await expect(item).not.toHaveAttribute("aria-current", "page");
 }
 
 test("main nav is 课评/课程 on mobile, plus 导师 on desktop, with a center course search @mobile-smoke", async ({
@@ -137,12 +129,12 @@ test("main nav is 课评/课程 on mobile, plus 导师 on desktop, with a center
     await expect(mentorLink).toHaveAttribute("target", "_blank");
     await expect(mentorLink).toHaveAttribute("rel", /noreferrer/);
   } else {
-    // 浏览页窄屏 Tabs 只挂课评 / 课程。个人面（/profile /account /submit）另测。
-    const navTabs = nav.getByRole("tab");
+    // 浏览页窄屏只挂课评 / 课程。个人面（/profile /account /submit）另测。
+    const navLinks = nav.getByRole("link");
     await expect(mentorLink).toHaveCount(0);
-    await expect(navTabs).toHaveCount(2);
-    await expect(navTabs.nth(0)).toHaveText("课评");
-    await expect(navTabs.nth(1)).toHaveText("课程");
+    await expect(navLinks).toHaveCount(2);
+    await expect(navLinks.nth(0)).toHaveText("课评");
+    await expect(navLinks.nth(1)).toHaveText("课程");
   }
   await expect(nav.getByRole("button")).toHaveCount(0);
   await expect(nav.locator("a button")).toHaveCount(0);
@@ -183,7 +175,7 @@ test("schedule nav appears only when config.showScheduleNav is true", async ({
   if (isXl) {
     await expect(nav.getByRole("link")).toHaveCount(4);
   } else {
-    await expect(nav.getByRole("tab")).toHaveCount(3);
+    await expect(nav.getByRole("link")).toHaveCount(3);
   }
   await scheduleItem.click();
   await expect(page).toHaveURL(/\/schedule$/);
@@ -264,8 +256,6 @@ test("mobile header hides 课评/课程 tabs on personal account surfaces", asyn
   }
 
   await expect(browseNav(page)).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "课评" })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "课程" })).toHaveCount(0);
 
   await page.goto("/account");
   await expect(page).toHaveURL(/\/profile$/);
@@ -274,8 +264,6 @@ test("mobile header hides 课评/课程 tabs on personal account surfaces", asyn
   await page.goto("/submit");
   await expect(page).toHaveURL(/\/submit$/);
   await expect(browseNav(page)).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "课评" })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "课程" })).toHaveCount(0);
 
   await mockShellApi(page, { authenticated: false });
   await page.goto("/account");
