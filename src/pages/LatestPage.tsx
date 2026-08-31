@@ -14,12 +14,13 @@ import { api } from "../lib/api";
 import { previewFilledLatestReviews, readDevPreviewOrFilled } from "../lib/dev-preview";
 import { formatReviewDate } from "../lib/review-date";
 import { reviewAnchorId } from "../lib/review-dimensions";
+import {
+  INITIAL_MOBILE_REVIEW_COUNT,
+  LATEST_API_PAGE_SIZE,
+  LATEST_PAGE_SIZE,
+  latestLoadingSkeletonCount,
+} from "../lib/latest-loading";
 import type { LatestReview, PublicReviewPage } from "../lib/types";
-
-// Keep the loading shell aligned with the API's default first-page size.
-const LATEST_PAGE_SIZE = 20;
-const LATEST_API_PAGE_SIZE = 10;
-const INITIAL_MOBILE_REVIEW_COUNT = 6;
 
 declare global {
   interface Window {
@@ -187,9 +188,14 @@ export function LatestPage() {
           {items.slice(0, renderedItemCount).map((review) => (
             <LatestReviewItem key={review.id} review={review} />
           ))}
-          {items.length > renderedItemCount
+          {Math.max(items.length, nextCursor ? items.length : LATEST_PAGE_SIZE) >
+          Math.min(items.length, renderedItemCount)
             ? Array.from(
-                { length: items.length - renderedItemCount },
+                {
+                  length:
+                    Math.max(items.length, nextCursor ? items.length : LATEST_PAGE_SIZE) -
+                    Math.min(items.length, renderedItemCount),
+                },
                 (_, index) => <LatestReviewSpace key={`space-${index}`} />,
               )
             : null}
@@ -291,23 +297,28 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
 function LatestReviewSkeleton() {
   return (
     <div role="status" aria-label="正在加载最新课评">
-      {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) => (
-        <article
-          className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
-          key={row}
-        >
-          <header className="flex min-h-8 items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Skeleton className="size-8 shrink-0 rounded-full" />
-              <Skeleton className="h-4 w-28 rounded" />
-            </div>
-            <Skeleton className="h-3 w-20 rounded" />
-          </header>
-          <Skeleton className="mt-3 h-4 w-3/4 rounded" />
-          <Skeleton className="mt-3 h-[4.5rem] w-full rounded" />
-          <Skeleton className="mt-3 h-4 w-16 rounded" />
-        </article>
-      ))}
+      {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) =>
+        row < latestLoadingSkeletonCount() ? (
+          <article
+            className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+            data-loading-skeleton="true"
+            key={row}
+          >
+            <header className="flex min-h-8 items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Skeleton className="size-8 shrink-0 rounded-full" />
+                <Skeleton className="h-4 w-28 rounded" />
+              </div>
+              <Skeleton className="h-3 w-20 rounded" />
+            </header>
+            <Skeleton className="mt-3 h-4 w-3/4 rounded" />
+            <Skeleton className="mt-3 h-[4.5rem] w-full rounded" />
+            <Skeleton className="mt-3 h-4 w-16 rounded" />
+          </article>
+        ) : (
+          <LatestReviewSpace key={row} />
+        ),
+      )}
     </div>
   );
 }
