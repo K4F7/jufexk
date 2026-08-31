@@ -272,14 +272,22 @@ function GuestLoginLink({
 function ShellAccountControl() {
   const { viewer } = useViewer();
   const location = useLocation();
+  const [params] = useSearchParams();
   const from = `${location.pathname}${location.search}`;
   const login = (
     <GuestLoginLink from={from} loginPath={viewer.loginPath} />
   );
+  const previewAccount =
+    import.meta.env.DEV &&
+    params.get("as") !== "guest" &&
+    (params.has("preview") ||
+      params.get("as") === "user" ||
+      params.get("as") === "admin");
 
-  // Guests get the login link on first paint. The account menu chunk stays
-  // lazy so /latest does not pay Dropdown/Dialog cost until authenticated.
-  if (!viewer.authenticated) return login;
+  // Production guests get the login link on first paint. The account menu
+  // chunk stays lazy so /latest does not pay Dropdown/Dialog cost. DEV
+  // preview=filled still mounts AccountNavControl for the notice mocks.
+  if (!viewer.authenticated && !previewAccount) return login;
 
   return <Suspense fallback={login}><AccountNavControlLazy /></Suspense>;
 }
