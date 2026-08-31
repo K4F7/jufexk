@@ -133,12 +133,9 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // /latest is anonymous; keep the session probe out of its initial render
-    // even when the browser reports an idle window during startup.
-    const timeoutId = globalThis.setTimeout(
-      load,
-      pathname === "/" || pathname === "/latest" ? 3000 : 1000,
-    );
+    // /latest is anonymous; let its first content paint commit before checking
+    // the account state, while keeping the header useful for signed-in users.
+    const timeoutId = globalThis.setTimeout(load, 2500);
     return () => {
       cancelled = true;
       globalThis.clearTimeout(timeoutId);
