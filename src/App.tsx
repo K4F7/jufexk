@@ -14,6 +14,7 @@ import { AppShell } from "./components/AppShell";
 import { AdminSessionProvider } from "./hooks/useAdminSession";
 import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
+import { LATEST_PAGE_SIZE, latestLoadingSkeletonCount } from "./lib/latest-loading";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
 
@@ -134,23 +135,31 @@ function LatestRouteFallback() {
       <header aria-hidden="true" className="mb-3 max-sm:sr-only">
         <Skeleton className="h-6 w-24 rounded" />
       </header>
-      {Array.from({ length: 20 }, (_, row) => (
-        <article
-          className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
-          key={row}
-        >
-          <header className="flex min-h-8 items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Skeleton className="size-8 shrink-0 rounded-full" />
-              <Skeleton className="h-4 w-28 rounded" />
-            </div>
-            <Skeleton className="h-3 w-20 rounded" />
-          </header>
-          <Skeleton className="mt-3 h-4 w-3/4 rounded" />
-          <Skeleton className="mt-3 h-[4.5rem] w-full rounded" />
-          <Skeleton className="mt-3 h-4 w-16 rounded" />
-        </article>
-      ))}
+      {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) =>
+        row < latestLoadingSkeletonCount() ? (
+          <article
+            className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+            key={row}
+          >
+            <header className="flex min-h-8 items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Skeleton className="size-8 shrink-0 rounded-full" />
+                <Skeleton className="h-4 w-28 rounded" />
+              </div>
+              <Skeleton className="h-3 w-20 rounded" />
+            </header>
+            <Skeleton className="mt-3 h-4 w-3/4 rounded" />
+            <Skeleton className="mt-3 h-[4.5rem] w-full rounded" />
+            <Skeleton className="mt-3 h-4 w-16 rounded" />
+          </article>
+        ) : (
+          <div
+            aria-hidden="true"
+            className="invisible min-h-[22rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+            key={row}
+          />
+        ),
+      )}
     </div>
   );
 }

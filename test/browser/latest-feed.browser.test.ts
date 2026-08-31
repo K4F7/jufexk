@@ -255,6 +255,9 @@ test("latest reserves review space while the first page is loading", async ({ pa
   await expect(loading).toBeVisible();
   const skeletonRows = loading.locator("article");
   await expect(skeletonRows).toHaveCount(20);
+  await expect(loading.locator('[data-loading-skeleton="true"]')).toHaveCount(
+    (page.viewportSize()?.width ?? 1280) < 640 ? 6 : 20,
+  );
   await expect(skeletonRows.first()).toBeVisible();
   await expect(skeletonRows.first()).toHaveClass(/min-h-\[22rem\]/);
   const footerBefore = await page.getByRole("contentinfo").boundingBox();
@@ -269,6 +272,76 @@ test("latest reserves review space while the first page is loading", async ({ pa
     expect(Math.min(...rows)).toBeGreaterThanOrEqual(287);
   }
   expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
+});
+
+test("latest uses a smaller loading shell on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 720 });
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/site/banner") {
+      return route.fulfill({ json: { desktopHtml: "", mobileHtml: "", updatedAt: null } });
+    }
+    if (url.pathname === "/api/reviews/latest") {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return route.fulfill({ json: { items: [], nextCursor: null } });
+    }
+    if (url.pathname === "/api/config") {
+      return route.fulfill({
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
+      });
+    }
+    if (url.pathname === "/api/user/session") {
+      return route.fulfill({
+        json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: "not mocked" } });
+  });
+
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  const loading = page.getByRole("status", { name: "正在加载最新课评" });
+  await expect(loading.locator("article")).toHaveCount(6);
+  await expect(loading.locator("article").first()).toHaveClass(/min-h-\[22rem\]/);
+});
+
+test("latest preserves the reserved shell when the first page has fewer reviews", async ({
+  page,
+}) => {
+  let releaseReviews!: () => void;
+  const reviewsGate = new Promise<void>((resolve) => {
+    releaseReviews = resolve;
+  });
+  await page.setViewportSize({ width: 375, height: 720 });
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/site/banner") {
+      return route.fulfill({ json: { desktopHtml: "", mobileHtml: "", updatedAt: null } });
+    }
+    if (url.pathname === "/api/reviews/latest") {
+      await reviewsGate;
+      return route.fulfill({ json: { items: LATEST, nextCursor: null } });
+    }
+    if (url.pathname === "/api/config") {
+      return route.fulfill({
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
+      });
+    }
+    if (url.pathname === "/api/user/session") {
+      return route.fulfill({
+        json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: "not mocked" } });
+  });
+
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  const footerBefore = await page.getByRole("contentinfo").boundingBox();
+  expect(footerBefore).toBeTruthy();
+  releaseReviews();
+  await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
+  const footerAfter = await page.getByRole("contentinfo").boundingBox();
+  expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
+  await expect(page.locator("main > section article")).toHaveCount(20);
 });
 
 test("latest content renders while the viewer session is still pending", async ({ page }) => {
