@@ -252,31 +252,36 @@ function MobilePrimaryNav({
   );
 }
 
-function DeferredAccountNavControl() {
-  const { viewer, ready } = useViewer();
-  const location = useLocation();
-
-  if (!ready) {
-    return <span aria-hidden className="inline-block h-8 w-12 shrink-0" />;
-  }
-
-  if (!viewer.authenticated && !import.meta.env.DEV) {
-    const from = `${location.pathname}${location.search}`;
-    return (
-      <a
-        className={`${buttonVariants({ size: "sm", variant: "ghost" })} min-w-12 justify-center no-underline`}
-        href={`/login?from=${encodeURIComponent(from)}`}
-      >
-        登录
-      </a>
-    );
-  }
-
+function GuestLoginLink({
+  from,
+  loginPath = "/login",
+}: {
+  from: string;
+  loginPath?: string;
+}) {
   return (
-    <Suspense fallback={<span aria-hidden className="inline-block h-8 w-12 shrink-0" />}>
-      <AccountNavControlLazy />
-    </Suspense>
+    <a
+      className={`${buttonVariants({ size: "sm", variant: "ghost" })} min-w-12 justify-center no-underline`}
+      href={`${loginPath}?from=${encodeURIComponent(from)}`}
+    >
+      登录
+    </a>
   );
+}
+
+function ShellAccountControl() {
+  const { viewer } = useViewer();
+  const location = useLocation();
+  const from = `${location.pathname}${location.search}`;
+  const login = (
+    <GuestLoginLink from={from} loginPath={viewer.loginPath} />
+  );
+
+  // Guests get the login link on first paint. The account menu chunk stays
+  // lazy so /latest does not pay Dropdown/Dialog cost until authenticated.
+  if (!viewer.authenticated) return login;
+
+  return <Suspense fallback={login}><AccountNavControlLazy /></Suspense>;
 }
 
 function DefaultShell({
@@ -333,7 +338,7 @@ function DefaultShell({
                 to={brandTo}
               />
               <div className="flex shrink-0 items-center gap-1">
-                <DeferredAccountNavControl />
+                <ShellAccountControl />
                 <ThemeToggle />
               </div>
             </div>
@@ -389,7 +394,7 @@ function DefaultShell({
               )}
             </div>
             <div className="flex items-center justify-end gap-2">
-              <DeferredAccountNavControl />
+              <ShellAccountControl />
               <ThemeToggle />
             </div>
           </div>

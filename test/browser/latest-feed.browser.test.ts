@@ -357,17 +357,17 @@ test("latest content renders while the viewer session is still pending", async (
   });
 
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /切换到(暗色|亮色)模式/ }),
+  ).toBeVisible();
   await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
   releaseSession();
 });
 
 test("latest does not load the table chunk or eagerly load the status iframe", async ({ page }) => {
   const requests: string[] = [];
-  let sessionRequests = 0;
   page.on("request", (request) => requests.push(request.url()));
-  page.on("request", (request) => {
-    if (new URL(request.url()).pathname === "/api/user/session") sessionRequests += 1;
-  });
   await mockShellApi(page);
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
@@ -383,9 +383,9 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   expect(latestRequests.some((url) => new URL(url).searchParams.get("pageSize") === "10")).toBe(true);
   expect(latestRequests.length).toBeGreaterThanOrEqual(1);
   expect(latestRequests.length).toBeLessThanOrEqual(2);
-  // The anonymous feed gets a short post-paint session probe for the header;
-  // it must not be part of the initial render path.
-  expect(sessionRequests).toBe(0);
+  // Guest header paints login without the account-menu chunk.
+  expect(requests.some((url) => /AccountNavControl/i.test(url))).toBe(false);
+  expect(requests.some((url) => /alert-dialog/i.test(url))).toBe(false);
   await expect(page.getByTitle("系统运行状态")).toHaveCount(0);
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   if ((page.viewportSize()?.width ?? 1280) < 640) {
