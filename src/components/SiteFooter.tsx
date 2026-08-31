@@ -50,7 +50,7 @@ export function SiteFooter({
   universityName: string;
 }) {
   return (
-    <footer className="border-t border-border px-4 pt-3 pb-20 text-center text-sm text-muted sm:px-5 sm:py-4">
+    <footer className="hidden border-t border-border px-4 pt-3 pb-20 text-center text-sm text-muted sm:block sm:px-5 sm:py-4">
       <div className="-mx-4 flex justify-center sm:mx-0">
         <div
           className="flex w-fit shrink-0 flex-col items-center gap-1.5 text-center sm:max-w-[1520px] sm:gap-2"
