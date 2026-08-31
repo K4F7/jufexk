@@ -112,12 +112,16 @@ const worker = Object.assign(app, {
           await asset.text(),
           page as PublicReviewPage<LatestReview>,
         );
+        const optimizedHtml = html.replace(
+          /<link rel="stylesheet"([^>]+)>/,
+          '<link rel="preload" as="style"$1 data-app-css>',
+        );
         const headers = new Headers(asset.headers);
         headers.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
         headers.set("Cache-Tag", PUBLIC_CATALOG_CACHE_TAG);
         const serverTiming = pageResponse.headers.get("Server-Timing");
         if (serverTiming) headers.set("Server-Timing", serverTiming);
-        const response = new Response(html, { status: asset.status, headers });
+        const response = new Response(optimizedHtml, { status: asset.status, headers });
         ctx.waitUntil(htmlCache.put(cacheKey, response.clone()));
         return response;
       } catch {

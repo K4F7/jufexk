@@ -34,8 +34,10 @@ export function renderLatestShell(page: PublicReviewPage<LatestReview>) {
 
 export function injectLatestShell(documentHtml: string, page: PublicReviewPage<LatestReview>) {
   const shell = renderLatestShell(page);
-  return documentHtml.replace(
+  const criticalStyle = `<style data-latest-critical>.latest-feed{max-width:48rem;margin:0 auto;padding:1rem}.latest-feed h1{font-size:1.125rem;line-height:1.25;font-weight:700;margin:0 0 .75rem}.latest-ssr-review{padding:.75rem 0;border-bottom:1px solid #e4e4e7}.latest-ssr-review header{display:flex;justify-content:space-between;gap:.75rem;font-size:.875rem;line-height:1.25}.latest-ssr-review time{color:#71717a;white-space:nowrap}.latest-ssr-review p{margin:.5rem 0 0;line-height:1.5;white-space:pre-wrap}.latest-feed a{color:#2563eb;text-decoration:none}</style>`;
+  const withShell = documentHtml.replace(
     '<div id="app"></div>',
     `<div id="app">${shell.html}</div>${shell.data}`,
   );
+  return withShell.replace("</head>", `${criticalStyle}</head>`);
 }
