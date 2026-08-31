@@ -14,7 +14,7 @@ test("shows the matching desktop or mobile site banner below the header @mobile-
       return route.fulfill({
         json: {
           desktopHtml: "<p>桌面全站公告</p>",
-          mobileHtml: "<p>移动全站公告</p>",
+          mobileHtml: "<p>移动全站公告<script>window.__bannerXss = true</script></p>",
           updatedAt: "2026-08-24 00:00:00",
         },
       });
@@ -37,6 +37,7 @@ test("shows the matching desktop or mobile site banner below the header @mobile-
   await expect(banner).toBeVisible();
   const isMobile = (page.viewportSize()?.width ?? 0) < 640;
   await expect(banner.getByText(isMobile ? "移动全站公告" : "桌面全站公告")).toBeVisible();
+  await expect(banner.locator("script")).toHaveCount(0);
   await expect(
     banner.getByText(isMobile ? "桌面全站公告" : "移动全站公告"),
   ).toBeHidden();

@@ -1,6 +1,5 @@
 import { Alert, CloseButton } from "@heroui/react";
-import { useState } from "react";
-import { sanitizeReviewNoteHtml } from "../lib/review-note-html";
+import { useEffect, useState } from "react";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
 
 const SITE_BANNER_DISMISS_KEY = "jufexk-site-banner-dismissed";
@@ -26,16 +25,42 @@ function BannerAlert({
   className: string;
   onDismiss: () => void;
 }) {
-  const sanitizedHtml = sanitizeReviewNoteHtml(html);
+  const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([import("dompurify"), import("../lib/review-note-html")])
+      .then(([{ default: DOMPurify }, { REVIEW_NOTE_ALLOWED_ATTRS, REVIEW_NOTE_ALLOWED_TAGS }]) => {
+        if (!cancelled) {
+          setSanitizedHtml(
+            DOMPurify.sanitize(html, {
+              ALLOWED_TAGS: [...REVIEW_NOTE_ALLOWED_TAGS],
+              ALLOWED_ATTR: [...REVIEW_NOTE_ALLOWED_ATTRS, "target", "rel"],
+            }),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSanitizedHtml("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [html]);
+
   return (
     <Alert className={`${className} items-center py-2`} status="accent">
       <Alert.Indicator />
       <Alert.Content>
         <Alert.Description>
-          <div
-            className="review-note-html break-words"
-            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-          />
+          {sanitizedHtml === null ? (
+            <span aria-busy="true" className="text-muted">公告加载中…</span>
+          ) : (
+            <div
+              className="review-note-html break-words"
+              dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+            />
+          )}
         </Alert.Description>
       </Alert.Content>
       <CloseButton aria-label="关闭公告" onPress={onDismiss} />
