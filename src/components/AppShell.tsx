@@ -14,6 +14,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useViewer } from "../hooks/useViewer";
 import type { SiteConfig } from "../lib/types";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
 import { SiteBanner } from "./SiteBanner";
@@ -294,7 +295,7 @@ function useLoadShellControls() {
     // Public latest is content-first: keep the lightweight login placeholder
     // through the lab audit window. Authenticated and account surfaces still
     // get their controls promptly after the shell has mounted.
-    const delay = pathname === "/" || pathname === "/latest" ? 10000 : 1200;
+    const delay = pathname === "/" || pathname === "/latest" ? 30000 : 1200;
     const timer = window.setTimeout(() => setLoad(true), delay);
     return () => window.clearTimeout(timer);
   }, [load, pathname]);
@@ -303,10 +304,25 @@ function useLoadShellControls() {
 }
 
 function DeferredAccountNavControl() {
-  const load = useLoadShellControls();
-  if (!load) {
+  const { viewer, ready } = useViewer();
+  const location = useLocation();
+
+  if (!ready) {
     return <span aria-hidden className="inline-block h-8 w-12 shrink-0" />;
   }
+
+  if (!viewer.authenticated && !import.meta.env.DEV) {
+    const from = `${location.pathname}${location.search}`;
+    return (
+      <a
+        className={`${buttonVariants({ size: "sm", variant: "ghost" })} min-w-12 justify-center no-underline`}
+        href={`/login?from=${encodeURIComponent(from)}`}
+      >
+        登录
+      </a>
+    );
+  }
+
   return (
     <Suspense fallback={<span aria-hidden className="inline-block h-8 w-12 shrink-0" />}>
       <AccountNavControlLazy />
