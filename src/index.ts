@@ -100,12 +100,14 @@ const worker = Object.assign(app, {
           url.pathname === "/"
             ? new Request(new URL("/latest", request.url), request)
             : request;
-        const asset = await env.ASSETS.fetch(assetRequest);
-        if (!asset.ok) return asset;
         const apiRequest = new Request(new URL("/api/reviews/latest?pageSize=10", request.url), {
           headers: { Accept: "application/json" },
         });
-        const pageResponse = await appFetch(apiRequest, env, ctx);
+        const [asset, pageResponse] = await Promise.all([
+          env.ASSETS.fetch(assetRequest),
+          appFetch(apiRequest, env, ctx),
+        ]);
+        if (!asset.ok) return asset;
         if (!pageResponse.ok) return asset;
         const page = await pageResponse.json();
         const html = injectLatestShell(
