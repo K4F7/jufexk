@@ -12,6 +12,7 @@ import {
 } from "./review-summary";
 import adminRoutes from "./routes/admin";
 import authRoutes from "./routes/auth";
+import biRoutes from "./routes/bi";
 import importRoutes from "./routes/imports";
 import ordinaryUserRoutes from "./routes/ordinary-user";
 import programPlanRoutes from "./routes/program-plan";
@@ -53,6 +54,7 @@ app.use("/api/*", async (c, next) => {
   c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 });
 
+app.route("/", biRoutes);
 app.route("/", publicCatalogRoutes);
 app.route("/", scheduleOfferingRoutes);
 app.route("/", programPlanRoutes);

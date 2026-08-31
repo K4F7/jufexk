@@ -60,6 +60,7 @@ import {
   parseTagCsv,
   token,
 } from "./support";
+import { loadAdminBi } from "../bi";
 import {
   adminCourseNoticeSchema,
   adminCourseSchema,
@@ -282,6 +283,10 @@ adminRoutes.get("/api/admin/session", (c) =>
     csrfToken: c.get("adminCsrf"),
   }),
 );
+adminRoutes.get("/api/admin/bi", async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  return c.json(await loadAdminBi(c.env));
+});
 adminRoutes.post("/api/admin/logout", async (c) => {
   await c.env.DB.prepare(
     "UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=?",

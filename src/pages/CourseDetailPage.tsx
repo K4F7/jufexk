@@ -54,6 +54,7 @@ import {
 import { RouterAriaLink } from "../components/RouterAriaLink";
 import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
+import { useReviewBi } from "../hooks/useReviewBi";
 import { api } from "../lib/api";
 import {
   getCatalogData,
@@ -264,7 +265,7 @@ export function CourseDetailPage() {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [reviewsError, setReviewsError] = useState("");
-  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewSort, setReviewSort] = useState<CourseReviewSort>("latest");
   const [reviewRating, setReviewRating] = useState<number[]>([]);
   const [filteredReviewTotal, setFilteredReviewTotal] = useState(0);
@@ -320,6 +321,15 @@ export function CourseDetailPage() {
   );
 
   const preview = readDevPreviewOrFilled(new URLSearchParams(location.search));
+  useReviewBi({
+    courseId: Number(id) || undefined,
+    teacherId: effectiveTeacherId,
+    active:
+      !preview &&
+      !reviewsLoading &&
+      !reviewsError &&
+      Boolean(id && effectiveTeacherId),
+  });
 
   useEffect(() => {
     if (preview === "error") {

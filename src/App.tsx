@@ -65,6 +65,9 @@ const CoursesPage = lazy(() =>
 const AdminBannerPage = lazy(() =>
   import("./pages/admin/AdminBannerPage").then((m) => ({ default: m.AdminBannerPage })),
 );
+const AdminBiPage = lazy(() =>
+  import("./pages/admin/AdminBiPage").then((m) => ({ default: m.AdminBiPage })),
+);
 const AdminHubPage = lazy(() =>
   import("./pages/admin/AdminHubPage").then((m) => ({ default: m.AdminHubPage })),
 );
@@ -325,6 +328,7 @@ export function App() {
               <Route path="/resources" element={<ResourcesPage />} />
               <Route path="/terms" element={<TermsPage />} />
               <Route path="/admin" element={<AdminHubPage />} />
+              <Route path="/admin/bi" element={<AdminBiPage />} />
               <Route path="/admin/admins" element={<AdminStudentBindingsPage />} />
               <Route path="/admin/banner" element={<AdminBannerPage />} />
               <Route path="/admin/users/:id" element={<AdminUserBlockPage />} />
