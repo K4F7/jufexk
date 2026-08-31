@@ -68,9 +68,15 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await expect(footerNav.getByRole("link", { name: "公告" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "管理" })).toHaveCount(0);
   await expect(footerNav.getByRole("link", { name: "系统状态" })).toHaveCount(0);
+  await page.evaluate(() => {
+    window.scrollTo(0, document.body.scrollHeight);
+    window.dispatchEvent(new Event("scroll"));
+  });
   const badge = footer.locator('iframe[title="系统运行状态"]:visible');
   await expect(badge).toBeVisible();
   await expect(badge).toHaveAttribute("src", /\/badge\?theme=(light|dark)$/);
+  await expect(badge).toHaveAttribute("width", "250");
+  await expect(badge).toHaveAttribute("height", "30");
   expect([statusBadgeUrl("light"), statusBadgeUrl("dark")]).toContain(
     await badge.getAttribute("src"),
   );

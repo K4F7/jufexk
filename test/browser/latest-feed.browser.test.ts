@@ -284,7 +284,7 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   );
   expect(latestRequests.length).toBeGreaterThanOrEqual(1);
   expect(latestRequests.length).toBeLessThanOrEqual(2);
-  await expect(page.getByTitle("系统运行状态")).toHaveAttribute("loading", "lazy");
+  await expect(page.getByTitle("系统运行状态")).toHaveCount(0);
 });
 
 test("latest reuses the HTML-bootstrap banner request", async ({ page }) => {

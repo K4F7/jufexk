@@ -27,29 +27,39 @@ export function StatusPageBadge() {
 
   useEffect(() => {
     let cancelled = false;
+    let hasUserScrolled = false;
     const load = () => {
       if (!cancelled) setShouldLoad(true);
     };
     const placeholder = placeholderRef.current;
-    if (!placeholder || !("IntersectionObserver" in window)) {
-      const timeoutId = window.setTimeout(load, 2000);
-      return () => {
-        cancelled = true;
-        window.clearTimeout(timeoutId);
-      };
+    if (!placeholder) return;
+    let observer: IntersectionObserver | null = null;
+    const loadIfVisible = () => {
+      if (!hasUserScrolled) return;
+      const rect = placeholder.getBoundingClientRect();
+      if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
+      observer?.disconnect();
+      window.setTimeout(load, 0);
+    };
+    const onScroll = () => {
+      hasUserScrolled = true;
+      loadIfVisible();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    if ("IntersectionObserver" in window) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          loadIfVisible();
+        },
+        { rootMargin: "0px" },
+      );
+      observer.observe(placeholder);
     }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        observer.disconnect();
-        window.setTimeout(load, 0);
-      },
-      { rootMargin: "0px" },
-    );
-    observer.observe(placeholder);
     return () => {
       cancelled = true;
-      observer.disconnect();
+      window.removeEventListener("scroll", onScroll);
+      observer?.disconnect();
     };
   }, []);
 
