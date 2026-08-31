@@ -351,6 +351,9 @@ test("latest keeps the main column stable while a non-empty banner loads", async
 
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+  await expect(page.locator("[data-site-banner-placeholder]")).toHaveClass(
+    /min-h-\[60px\]/,
+  );
   const mainBefore = await page.locator("main").boundingBox();
   const footerBefore = await page.getByRole("contentinfo").boundingBox();
   expect(mainBefore).toBeTruthy();
