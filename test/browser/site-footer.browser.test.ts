@@ -46,6 +46,11 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   await page.goto("/courses", { waitUntil: "domcontentloaded" });
 
   const footer = page.getByRole("contentinfo");
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
+  if (isMobile) {
+    await expect(footer).toBeHidden();
+    return;
+  }
   const footerNav = footer.getByRole("navigation", { name: "页脚" });
   await expect(footer.getByText("非官方课评@JUFE · 江西财经大学")).toBeVisible();
 
@@ -86,27 +91,9 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
     await expect(separator.locator("..")).toHaveAttribute("aria-hidden", "true");
   }
 
-  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
-  if (isMobile) {
-    const brand = footer.getByText("非官方课评@JUFE · 江西财经大学");
-    const brandBox = await brand.boundingBox();
-    const badgeBox = await badge.boundingBox();
-    const navBox = await footerNav.boundingBox();
-    expect(brandBox).toBeTruthy();
-    expect(badgeBox).toBeTruthy();
-    expect(navBox).toBeTruthy();
-    expect(brandBox!.height).toBeLessThan(32);
-    expect(
-      Math.abs(brandBox!.y + brandBox!.height / 2 - (badgeBox!.y + badgeBox!.height / 2)),
-    ).toBeLessThan(16);
-    expect(badgeBox!.y + badgeBox!.height / 2).toBeLessThan(navBox!.y);
-    expect(brandBox!.x).toBeLessThan(badgeBox!.x);
-    expect(badgeBox!.width).toBeGreaterThan(180);
-  } else {
-    const badgePair = badge.locator("..");
-    await expect(badgePair.locator('[data-slot="separator"]')).toHaveCount(1);
-    await expect(badgePair).toHaveCSS("white-space", "nowrap");
-  }
+  const badgePair = badge.locator("..");
+  await expect(badgePair.locator('[data-slot="separator"]')).toHaveCount(1);
+  await expect(badgePair).toHaveCSS("white-space", "nowrap");
 
   for (const link of await footerNav.getByRole("link").all()) {
     if ((await link.getAttribute("aria-label")) === "GitHub 仓库") continue;
@@ -117,6 +104,7 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
 });
 
 test("footer site-info links open their pages", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 1280) < 640, "footer is hidden on mobile");
   await page.goto("/courses", { waitUntil: "domcontentloaded" });
   const footerNav = page
     .getByRole("contentinfo")

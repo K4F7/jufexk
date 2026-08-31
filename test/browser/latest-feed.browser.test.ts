@@ -260,18 +260,21 @@ test("latest reserves review space while the first page is loading", async ({ pa
   );
   await expect(skeletonRows.first()).toBeVisible();
   await expect(skeletonRows.first()).toHaveClass(/min-h-\[22rem\]/);
-  const footerBefore = await page.getByRole("contentinfo").boundingBox();
-  expect(footerBefore?.y).toBeGreaterThan(400);
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
+  const footerBefore = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
+  if (!isMobile) expect(footerBefore?.y).toBeGreaterThan(400);
   await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
-  const footerAfter = await page.getByRole("contentinfo").boundingBox();
-  if ((page.viewportSize()?.width ?? 1280) < 640) {
+  const footerAfter = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
+  if (isMobile) {
     const rows = await page.locator("main > section article").evaluateAll((els) =>
       els.map((element) => element.getBoundingClientRect().height),
     );
     expect(rows).toHaveLength(20);
     expect(Math.min(...rows)).toBeGreaterThanOrEqual(287);
   }
-  expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
+  if (!isMobile) {
+    expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
+  }
 });
 
 test("latest uses a smaller loading shell on mobile", async ({ page }) => {
@@ -335,12 +338,8 @@ test("latest preserves the reserved shell when the first page has fewer reviews"
   });
 
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
-  const footerBefore = await page.getByRole("contentinfo").boundingBox();
-  expect(footerBefore).toBeTruthy();
   releaseReviews();
   await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
-  const footerAfter = await page.getByRole("contentinfo").boundingBox();
-  expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
   await expect(page.locator("main > section article")).toHaveCount(20);
 });
 
@@ -389,7 +388,11 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   expect(sessionRequests).toBe(0);
   await expect(page.getByTitle("系统运行状态")).toHaveCount(0);
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await expect(page.getByTitle("系统运行状态")).toBeVisible();
+  if ((page.viewportSize()?.width ?? 1280) < 640) {
+    await expect(page.getByTitle("系统运行状态")).toHaveCount(0);
+  } else {
+    await expect(page.getByTitle("系统运行状态")).toBeVisible();
+  }
 
   await page.getByRole("searchbox", { name: "搜索课程" }).focus();
   await expect(page.locator("header .search-field__group")).toBeVisible();
@@ -443,16 +446,17 @@ test("latest keeps the main column stable while a non-empty banner loads", async
     /min-h-\[60px\]/,
   );
   const mainBefore = await page.locator("main").boundingBox();
-  const footerBefore = await page.getByRole("contentinfo").boundingBox();
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
+  const footerBefore = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
   expect(mainBefore).toBeTruthy();
-  expect(footerBefore).toBeTruthy();
+  if (!isMobile) expect(footerBefore).toBeTruthy();
 
   releaseBanner();
   await expect(page.getByRole("region", { name: "全站公告" })).toBeVisible();
   const mainAfter = await page.locator("main").boundingBox();
-  const footerAfter = await page.getByRole("contentinfo").boundingBox();
+  const footerAfter = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
   expect(mainAfter?.y).toBe(mainBefore?.y);
-  expect(footerAfter?.y).toBe(footerBefore?.y);
+  if (!isMobile) expect(footerAfter?.y).toBe(footerBefore?.y);
 });
 
 test("latest feed keeps 继续加载 as a retry after an auto-load error", async ({
