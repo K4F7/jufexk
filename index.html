@@ -22,28 +22,6 @@
     <meta property="og:url" content="https://courses.sein.moe/" />
     <meta name="twitter:card" content="summary" />
     <title>非官方课评@JUFE</title>
-    <script>
-      if (location.pathname === "/" || location.pathname === "/latest") {
-        window.__jufexkLatestPageRequest = fetch("/api/reviews/latest?pageSize=10", {
-          credentials: "same-origin",
-        }).then(async (response) => {
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data?.error || "最新课评加载失败");
-          }
-          return data;
-        });
-        window.__jufexkSiteBannerRequest = fetch("/api/site/banner", {
-          credentials: "same-origin",
-        }).then(async (response) => {
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data?.error || "公告加载失败");
-          }
-          return data;
-        });
-      }
-    </script>
   </head>
   <body class="bg-background text-foreground">
     <div id="app"></div>

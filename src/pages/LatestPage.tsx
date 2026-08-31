@@ -34,6 +34,19 @@ declare global {
 }
 
 let initialLatestPageRequest = window.__jufexkLatestPageRequest ?? null;
+let initialLatestPageData: PublicReviewPage<LatestReview> | null = null;
+
+if (!initialLatestPageRequest) {
+  const dataElement = document.getElementById("jufexk-latest-data");
+  if (dataElement?.textContent) {
+    try {
+      initialLatestPageData = JSON.parse(dataElement.textContent) as PublicReviewPage<LatestReview>;
+      initialLatestPageRequest = Promise.resolve(initialLatestPageData);
+    } catch {
+      initialLatestPageRequest = null;
+    }
+  }
+}
 
 if (
   !initialLatestPageRequest &&
@@ -52,9 +65,9 @@ if (
 export function LatestPage() {
   const [searchParams] = useSearchParams();
   const preview = readDevPreviewOrFilled(searchParams);
-  const [items, setItems] = useState<LatestReview[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<LatestReview[]>(() => initialLatestPageData?.items ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(() => initialLatestPageData?.nextCursor ?? null);
+  const [loading, setLoading] = useState(() => !initialLatestPageData);
   const [error, setError] = useState("");
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState("");

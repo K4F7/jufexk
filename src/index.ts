@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "./app-env";
 import {
   DEFAULT_API_CACHE_CONTROL,
+  PUBLIC_CATALOG_CACHE_TAG,
   purgePublicCatalogCache,
 } from "./lib/public-catalog-cache";
 import { API_CONTENT_SECURITY_POLICY } from "./security-headers";
@@ -18,6 +19,8 @@ import programPlanRoutes from "./routes/program-plan";
 import publicCatalogRoutes from "./routes/public-catalog";
 import scheduleOfferingRoutes from "./routes/schedule-offerings";
 import { fail } from "./routes/support";
+import { injectLatestShell } from "./latest-ssr";
+import type { PublicReviewPage, LatestReview } from "./lib/types";
 
 const app = new Hono<AppEnv>();
 
@@ -72,7 +75,41 @@ app.onError((e, c) => {
   );
   return fail(c, "服务器暂时开小差了", 500);
 });
+const appFetch = app.fetch.bind(app);
 const worker = Object.assign(app, {
+  async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext) {
+    const url = new URL(request.url);
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/" || url.pathname === "/latest") &&
+      !url.searchParams.has("preview")
+    ) {
+      try {
+        const asset = await env.ASSETS.fetch(request);
+        if (!asset.ok) return asset;
+        const apiRequest = new Request(new URL("/api/reviews/latest?pageSize=10", request.url), {
+          headers: { Accept: "application/json" },
+        });
+        const pageResponse = await appFetch(apiRequest, env, ctx);
+        if (!pageResponse.ok) return asset;
+        const page = await pageResponse.json();
+        const html = injectLatestShell(
+          await asset.text(),
+          page as PublicReviewPage<LatestReview>,
+        );
+        const headers = new Headers(asset.headers);
+        headers.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
+        headers.set("Cache-Tag", PUBLIC_CATALOG_CACHE_TAG);
+        const serverTiming = pageResponse.headers.get("Server-Timing");
+        if (serverTiming) headers.set("Server-Timing", serverTiming);
+        return new Response(html, { status: asset.status, headers });
+      } catch {
+        return env.ASSETS.fetch(request);
+      }
+    }
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    return appFetch(request, env, ctx);
+  },
   queue: (batch: MessageBatch<AiSummaryQueueMessage>, env: Cloudflare.Env) =>
     consumeAiSummaryQueue(batch, env),
 });

@@ -6,7 +6,6 @@ import {
   CLOUDFLARE_WEB_ANALYTICS_CONNECT_ORIGIN,
   CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN,
   HEROUI_AVATAR_ASSETS_ORIGIN,
-  LATEST_REQUEST_BOOTSTRAP_CSP_HASH,
 } from "../src/security-headers";
 import { STATUS_PAGE_URL } from "../src/lib/site-links";
 import assetHeaders from "../public/_headers?raw";
@@ -62,7 +61,6 @@ describe("public asset CSP", () => {
     expect(policy).toBe(ASSET_CONTENT_SECURITY_POLICY);
     expect(cspDirectiveSources(policy, "script-src")).toEqual([
       "'self'",
-      LATEST_REQUEST_BOOTSTRAP_CSP_HASH,
       "https://challenges.cloudflare.com",
       CLOUDFLARE_WEB_ANALYTICS_SCRIPT_ORIGIN,
     ]);

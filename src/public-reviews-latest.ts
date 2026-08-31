@@ -68,7 +68,10 @@ const latestUnion = `
     AND trim(COALESCE(r.comment,''))<>''${guestReviewBindingSql}
 `;
 
-export async function handleLatestPublicReviews(c: Context) {
+export async function handleLatestPublicReviews(
+  c: Context,
+  onQuery?: (name: string, durationMs: number) => void,
+) {
   const size = Math.min(50, Math.max(1, integer(c.req.query("pageSize")) || 20));
   const rawCursor = c.req.query("cursor");
   const cursor = decodeLatestCursor(rawCursor);
@@ -76,6 +79,7 @@ export async function handleLatestPublicReviews(c: Context) {
   const cursorFilter = cursor
     ? "AND (created_at<? OR (created_at=? AND id<?))"
     : "";
+  const queryStarted = performance.now();
   const raw = await c.env.DB.prepare(
     `SELECT id,course_id,teacher_id,comment,comment_format,headline,grade,course_name,course_code,teacher_name,created_at,author_public_code,author_avatar_key
      FROM (${latestUnion}) latest_reviews
@@ -89,6 +93,7 @@ export async function handleLatestPublicReviews(c: Context) {
       size + 1,
     )
     .all();
+  onQuery?.("query", performance.now() - queryStarted);
   const results = raw.results as Array<{
     id: string;
     course_id: number;
