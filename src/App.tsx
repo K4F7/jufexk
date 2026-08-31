@@ -15,7 +15,6 @@ import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
-import { LatestPage } from "./pages/LatestPage";
 
 declare global {
   interface Window {
@@ -24,6 +23,28 @@ declare global {
 }
 
 const THEME_STORAGE_KEY = "jufexk-theme";
+
+type LatestPageModule = {
+  default: typeof import("./pages/LatestPage").LatestPage;
+};
+
+let latestPageImport: Promise<LatestPageModule> | undefined;
+function loadLatestPage() {
+  return (latestPageImport ??= import("./pages/LatestPage").then((module) => ({
+    default: module.LatestPage,
+  })));
+}
+const LatestPage = lazy(loadLatestPage);
+
+// Start the route chunk before React mounts on the two public entry paths.
+// The lazy route consumes this same promise, so it does not create a second
+// module request or add a serial chunk dependency to the first render.
+if (
+  typeof window !== "undefined" &&
+  (window.location.pathname === "/" || window.location.pathname === "/latest")
+) {
+  void loadLatestPage();
+}
 
 let initialSiteBannerRequest = window.__jufexkSiteBannerRequest ?? null;
 
@@ -96,7 +117,7 @@ const PrototypeGalleryPage = import.meta.env.DEV
 function RouteFallback() {
   return (
     <div className="flex flex-col items-center gap-2 py-10" role="status">
-      <Spinner size="sm" />
+      <Spinner aria-hidden="true" size="sm" />
       <span className="text-xs text-muted">加载中…</span>
     </div>
   );
