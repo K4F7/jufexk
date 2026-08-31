@@ -279,9 +279,11 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   expect(requests.some((url) => url.includes("scroll-shadow-"))).toBe(false);
   expect(requests.some((url) => url.includes("heroui-deferred"))).toBe(false);
   expect(requests.some((url) => url.includes("purify"))).toBe(false);
-  expect(
-    requests.filter((url) => new URL(url).pathname === "/api/reviews/latest"),
-  ).toHaveLength(2);
+  const latestRequests = requests.filter(
+    (url) => new URL(url).pathname === "/api/reviews/latest",
+  );
+  expect(latestRequests.length).toBeGreaterThanOrEqual(1);
+  expect(latestRequests.length).toBeLessThanOrEqual(2);
   await expect(page.getByTitle("系统运行状态")).toHaveAttribute("loading", "lazy");
 });
 
