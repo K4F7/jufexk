@@ -89,6 +89,18 @@ async function expectBrowseItemCurrent(page: Page, name: string, current: boolea
   else await expect(item).not.toHaveAttribute("aria-current", "page");
 }
 
+test("non-latest entry pages do not preload the latest route chunk", async ({ page }) => {
+  const latestChunkRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/LatestPage/i.test(request.url())) latestChunkRequests.push(request.url());
+  });
+
+  await mockShellApi(page);
+  await page.goto("/courses");
+  await expect(browseNavItem(page, "课程")).toHaveAttribute("aria-current", "page");
+  expect(latestChunkRequests).toEqual([]);
+});
+
 test("main nav is 课评/课程 on mobile, plus 导师 on desktop, with a center course search @mobile-smoke", async ({
   page,
 }) => {
@@ -117,7 +129,7 @@ test("main nav is 课评/课程 on mobile, plus 导师 on desktop, with a center
   await expect(browseNavItem(page, "写评价")).toHaveCount(0);
   if (isXl) {
     const navLinks = nav.getByRole("link");
-    await expect(mentorLink).toBeVisible();
+  await expect(mentorLink).toBeVisible();
     await expect(navLinks).toHaveCount(3);
     await expect(navLinks.nth(0)).toHaveText("课评");
     await expect(navLinks.nth(1)).toHaveText("课程");
