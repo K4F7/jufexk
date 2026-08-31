@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { statusBadgeUrl } from "../lib/site-links";
 
 function readScheme(): "light" | "dark" {
@@ -10,9 +11,11 @@ function readScheme(): "light" | "dark" {
 }
 
 export function StatusPageBadge() {
+  const { pathname } = useLocation();
   const [scheme, setScheme] = useState<"light" | "dark">(readScheme);
   const [shouldLoad, setShouldLoad] = useState(false);
   const placeholderRef = useRef<HTMLSpanElement>(null);
+  const defer = pathname === "/" || pathname === "/latest";
 
   useEffect(() => {
     const sync = () => setScheme(readScheme());
@@ -26,6 +29,10 @@ export function StatusPageBadge() {
   }, []);
 
   useEffect(() => {
+    if (!defer) {
+      setShouldLoad(true);
+      return;
+    }
     let cancelled = false;
     let hasUserScrolled = false;
     const load = () => {
@@ -61,7 +68,7 @@ export function StatusPageBadge() {
       window.removeEventListener("scroll", onScroll);
       observer?.disconnect();
     };
-  }, []);
+  }, [defer]);
 
   if (!shouldLoad) {
     return (
