@@ -129,3 +129,12 @@ export function isPublicCourseListCacheableRequest(c: {
 }) {
   return isPublicRequestCacheable(c, true);
 }
+
+/** The latest public review projection also omits all viewer-specific fields. */
+export function isPublicLatestReviewsCacheableRequest(c: {
+  req: {
+    header: (name: string) => string | undefined;
+  };
+}) {
+  return isPublicRequestCacheable(c, true);
+}
