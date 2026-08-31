@@ -1,4 +1,4 @@
-import { buttonVariants, Link, SearchField } from "@heroui/react";
+import { buttonVariants, Link } from "@heroui/react";
 import {
   lazy,
   Suspense,
@@ -19,6 +19,7 @@ import type { SiteConfig } from "../lib/types";
 import type { SiteBanner as SiteBannerValue } from "../site-banner";
 import { SiteBanner } from "./SiteBanner";
 import { SiteFooter } from "./SiteFooter";
+import { DeferredShellCourseSearch } from "./DeferredShellCourseSearch";
 
 const AccountNavControlLazy = lazy(() =>
   import("./AccountNavControl").then((m) => ({ default: m.AccountNavControl })),
@@ -254,38 +255,6 @@ function MobilePrimaryNav({
   );
 }
 
-/** Center course search: submit jumps to /courses?q=... (Issue #402). */
-function ShellCourseSearch() {
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const [query, setQuery] = useState(params.get("q") ?? "");
-  useEffect(() => {
-    setQuery(params.get("q") ?? "");
-  }, [params]);
-  const submit = (value: string) => {
-    const trimmed = value.trim();
-    navigate(trimmed ? `/courses?q=${encodeURIComponent(trimmed)}` : "/courses");
-  };
-  return (
-    <SearchField
-      fullWidth
-      aria-label="搜索课程"
-      className="w-full"
-      name="shell-course-search"
-      value={query}
-      variant="secondary"
-      onChange={setQuery}
-      onSubmit={submit}
-    >
-      <SearchField.Group>
-        <SearchField.SearchIcon />
-        <SearchField.Input className="w-full" placeholder="搜索课程、老师" />
-        <SearchField.ClearButton aria-label="清空课程搜索" />
-      </SearchField.Group>
-    </SearchField>
-  );
-}
-
 function useLoadShellControls() {
   const { pathname } = useLocation();
   const [load, setLoad] = useState(import.meta.env.DEV);
@@ -411,7 +380,7 @@ function DefaultShell({
                   />
                 </Suspense>
               ) : (
-                <ShellCourseSearch />
+                <DeferredShellCourseSearch />
               )}
             </div>
             {showMobileBrowseTabs ? (
@@ -448,7 +417,7 @@ function DefaultShell({
                   />
                 </Suspense>
               ) : (
-                <ShellCourseSearch />
+                <DeferredShellCourseSearch />
               )}
             </div>
             <div className="flex items-center justify-end gap-2">
