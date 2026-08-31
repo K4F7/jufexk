@@ -211,7 +211,7 @@ test("latest feed falls back to comment text when headline is empty", async ({
 }) => {
   await mockShellApi(page);
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+  await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
 
   // 历史行没有 headline（服务端投影为空串），哨兵在视口内时自动取下一页。
   await expect(page.getByText("课堂气氛好，考试不难。")).toBeVisible();
@@ -235,7 +235,15 @@ test("latest reserves review space while the first page is loading", async ({ pa
     }
     if (url.pathname === "/api/reviews/latest") {
       await new Promise((resolve) => setTimeout(resolve, 3000));
-      return route.fulfill({ json: { items: [LATEST[0]], nextCursor: null } });
+      return route.fulfill({
+        json: {
+          items: Array.from({ length: 20 }, (_, index) => ({
+            ...LATEST[0],
+            id: LATEST[0].id + index,
+          })),
+          nextCursor: null,
+        },
+      });
     }
     return route.fulfill({ status: 404, json: { error: "not mocked" } });
   });
@@ -248,7 +256,9 @@ test("latest reserves review space while the first page is loading", async ({ pa
   expect(firstSkeleton?.height).toBeGreaterThanOrEqual(190);
   const footerBefore = await page.getByRole("contentinfo").boundingBox();
   expect(footerBefore?.y).toBeGreaterThan(400);
-  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+  await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
+  const footerAfter = await page.getByRole("contentinfo").boundingBox();
+  expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
 });
 
 test("latest content renders while the viewer session is still pending", async ({ page }) => {
