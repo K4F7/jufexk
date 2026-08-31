@@ -18,9 +18,10 @@ import {
   INITIAL_MOBILE_REVIEW_COUNT,
   LATEST_API_PAGE_SIZE,
   LATEST_PAGE_SIZE,
-  LATEST_FEED_COLUMN_CLASS,
   LATEST_REVIEW_RESERVED_ROW_CLASS,
   LATEST_REVIEW_ROW_CLASS,
+  latestFeedColumnClass,
+  latestFeedNeedsViewportReserve,
   latestLoadingSkeletonCount,
   latestReservedSpacerCount,
 } from "../lib/latest-loading";
@@ -158,7 +159,12 @@ export function LatestPage() {
   });
 
   return (
-    <section aria-label="最新课评" className={LATEST_FEED_COLUMN_CLASS}>
+    <section
+      aria-label="最新课评"
+      className={latestFeedColumnClass(
+        latestFeedNeedsViewportReserve(loading, items.length, renderedItemCount),
+      )}
+    >
       <header aria-label="最新课评标题" className="mb-3 max-sm:sr-only">
         <Typography
           className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"

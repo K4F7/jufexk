@@ -142,6 +142,28 @@ async function expectStackedAuthorLayout(article: Locator) {
   }
 }
 
+async function expectFooterOutOfInitialViewport(page: Page) {
+  const viewport = page.viewportSize();
+  const isMobile = (viewport?.width ?? 1280) < 640;
+  const footer = page.getByRole("contentinfo");
+  if (isMobile) {
+    const mounted = page.locator("[data-site-footer]");
+    if ((await footer.count()) === 0) {
+      if ((await mounted.count()) > 0) {
+        await expect(mounted).toBeHidden();
+        expect(await mounted.boundingBox()).toBeNull();
+      }
+      return;
+    }
+    await expect(footer).toBeHidden();
+    return;
+  }
+  await expect(footer).toHaveCount(1);
+  const box = await footer.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box?.y ?? 0).toBeGreaterThanOrEqual(viewport?.height ?? 0);
+}
+
 test("latest page lists newest public reviews and deep-links to the course", async ({
   page,
 }) => {
@@ -295,10 +317,8 @@ test("latest reserves review space while the first page is loading", async ({ pa
   );
   await expect(skeletonRows.first()).toBeVisible();
   await expect(skeletonRows.first()).toHaveClass(/min-h-\[12rem\]/);
-  const footerBefore = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
-  if (!isMobile) expect(footerBefore?.y).toBeGreaterThan(400);
+  await expectFooterOutOfInitialViewport(page);
   await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
-  const footerAfter = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
   await expect
     .poll(async () =>
       page.locator("main > section article:not([aria-hidden='true'])").count(),
@@ -311,7 +331,71 @@ test("latest reserves review space while the first page is loading", async ({ pa
   expect(Math.max(...loadedRows)).toBeLessThan(240);
   expect(Math.min(...loadedRows)).toBeGreaterThan(80);
   if (!isMobile) {
-    expect(footerAfter?.y).toBeGreaterThan(400);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(page.getByRole("contentinfo")).toBeVisible();
+  } else {
+    await expect(page.getByRole("contentinfo")).toHaveCount(0);
+  }
+});
+
+test("latest keeps the footer below the fold for a short first batch", async ({
+  page,
+}) => {
+  const desktop = (page.viewportSize()?.width ?? 1280) >= 640;
+  await page.setViewportSize(
+    desktop ? { width: 1280, height: 800 } : { width: 390, height: 844 },
+  );
+  let releaseMore!: () => void;
+  const moreGate = new Promise<void>((resolve) => {
+    releaseMore = resolve;
+  });
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/config") {
+      return route.fulfill({
+        json: { siteName: "非官方课评@JUFE", universityName: "江西财经大学", admin: false },
+      });
+    }
+    if (url.pathname === "/api/user/session") {
+      return route.fulfill({
+        json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
+      });
+    }
+    if (url.pathname === "/api/site/banner") {
+      return route.fulfill({ json: { desktopHtml: "", mobileHtml: "", updatedAt: null } });
+    }
+    if (url.pathname === "/api/reviews/latest") {
+      if (url.searchParams.get("cursor")) {
+        await moreGate;
+        return route.fulfill({
+          json: {
+            items: Array.from({ length: 20 }, (_, index) => ({
+              ...LATEST[1],
+              id: `${LATEST[1].id}-${index}`,
+            })),
+            nextCursor: null,
+          },
+        });
+      }
+      return route.fulfill({
+        json: { items: [LATEST[0]], nextCursor: "next-latest" },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: "not mocked" } });
+  });
+
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /加载中|继续加载/ })).toBeVisible();
+  await expectFooterOutOfInitialViewport(page);
+
+  releaseMore();
+  await expect(page.getByText("课堂气氛好，考试不难。").first()).toBeVisible();
+  if (desktop) {
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(page.getByRole("contentinfo")).toBeVisible();
+  } else {
+    await expect(page.getByRole("contentinfo")).toHaveCount(0);
   }
 });
 

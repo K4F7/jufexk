@@ -16,6 +16,7 @@ import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
 import {
   LATEST_FEED_COLUMN_CLASS,
+  LATEST_FEED_VIEWPORT_RESERVE_CLASS,
   LATEST_PAGE_SIZE,
   LATEST_REVIEW_RESERVED_ROW_CLASS,
   latestLoadingSkeletonCount,
@@ -136,7 +137,11 @@ function RouteFallback() {
 
 function LatestRouteFallback() {
   return (
-    <div className={LATEST_FEED_COLUMN_CLASS} role="status" aria-label="正在加载最新课评">
+    <div
+      className={`${LATEST_FEED_COLUMN_CLASS} ${LATEST_FEED_VIEWPORT_RESERVE_CLASS}`}
+      role="status"
+      aria-label="正在加载最新课评"
+    >
       <header aria-hidden="true" className="mb-3 max-sm:sr-only">
         <Skeleton className="h-6 w-24 rounded" />
       </header>
