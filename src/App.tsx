@@ -1,4 +1,4 @@
-import { RouterProvider, Spinner } from "@heroui/react";
+import { RouterProvider, Skeleton, Spinner } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   BrowserRouter,
@@ -115,10 +115,40 @@ const PrototypeGalleryPage = import.meta.env.DEV
   : null;
 
 function RouteFallback() {
+  if (window.location.pathname === "/latest") {
+    return <LatestRouteFallback />;
+  }
   return (
     <div className="flex flex-col items-center gap-2 py-10" role="status">
       <Spinner aria-hidden="true" size="sm" />
       <span className="text-xs text-muted">加载中…</span>
+    </div>
+  );
+}
+
+function LatestRouteFallback() {
+  return (
+    <div role="status" aria-label="正在加载最新课评">
+      <header aria-hidden="true" className="mb-3 max-sm:sr-only">
+        <Skeleton className="h-6 w-24 rounded" />
+      </header>
+      {Array.from({ length: 20 }, (_, row) => (
+        <article
+          className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+          key={row}
+        >
+          <header className="flex min-h-8 items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-28 rounded" />
+            </div>
+            <Skeleton className="h-3 w-20 rounded" />
+          </header>
+          <Skeleton className="mt-3 h-4 w-3/4 rounded" />
+          <Skeleton className="mt-3 h-[4.5rem] w-full rounded" />
+          <Skeleton className="mt-3 h-4 w-16 rounded" />
+        </article>
+      ))}
     </div>
   );
 }

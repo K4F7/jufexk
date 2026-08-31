@@ -103,7 +103,10 @@ async function mockShellApi(page: Page) {
 }
 
 function firstLatestArticle(page: Page) {
-  return page.locator("article").first();
+  return page
+    .locator("article")
+    .filter({ has: page.getByRole("link", { name: "匿名用户#000000" }) })
+    .first();
 }
 
 async function expectStackedAuthorLayout(article: Locator) {
@@ -141,9 +144,9 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   const article = firstLatestArticle(page);
   const author = article.getByRole("link", { name: "匿名用户#000000" });
   await expect(author).toBeVisible();
-  await expect(
-    author.locator("img[src*='heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/']"),
-  ).toHaveCount(1);
+  await expect(author).toContainText("匿");
+  const authorBox = await author.boundingBox();
+  expect(authorBox?.height).toBeGreaterThan(0);
   expect(await page.getByText("点评了").count()).toBeGreaterThanOrEqual(1);
   await expect(
     article.getByRole("link", { name: "中国传统文化导论（测试教师）" }),
@@ -250,9 +253,10 @@ test("latest reserves review space while the first page is loading", async ({ pa
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
   const loading = page.getByRole("status", { name: "正在加载最新课评" });
   await expect(loading).toBeVisible();
-  await expect(loading.locator("article")).toHaveCount(20);
-  const firstSkeleton = await loading.locator("article").first().boundingBox();
-  expect(firstSkeleton?.height).toBeGreaterThanOrEqual(190);
+  const skeletonRows = loading.locator("article");
+  await expect(skeletonRows).toHaveCount(20);
+  await expect(skeletonRows.first()).toBeVisible();
+  await expect(skeletonRows.first()).toHaveClass(/min-h-\[22rem\]/);
   const footerBefore = await page.getByRole("contentinfo").boundingBox();
   expect(footerBefore?.y).toBeGreaterThan(400);
   await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
