@@ -4,6 +4,7 @@
 > 三轮总结见 [load-speed-2026-08-30-summary.md](./load-speed-2026-08-30-summary.md)。
 > 第一轮后见 [load-speed-2026-08-30-after-opt.md](./load-speed-2026-08-30-after-opt.md)。
 > 第二轮后见 [load-speed-2026-08-30-after-round2.md](./load-speed-2026-08-30-after-round2.md)。
+> 2026-08-31 复测见 [load-speed-2026-08-31.md](./load-speed-2026-08-31.md)。
 
 未登录实测 **https://courses.sein.moe**。
 用户在大陆。本探针出口在 Cloudflare `IAD`，墙钟含海外 RTT，**不当作用户指标**。

@@ -16,7 +16,8 @@
 | --- | --- | --- |
 | 基线 | 01:26Z，#720 前 | [load-speed-2026-08-30.md](./load-speed-2026-08-30.md) |
 | 第一轮 | 04:19Z，[#720](https://github.com/K4F7/jxufe-course-review/pull/720) | [load-speed-2026-08-30-after-opt.md](./load-speed-2026-08-30-after-opt.md) |
-| 第二轮 | 12:59Z，[#734](https://github.com/K4F7/jxufe-course-review/pull/734) | [load-speed-2026-08-30-after-round2.md](./load-speed-2026-08-30-after-round2.md) |
+| 第二轮 | 12:59Z，[#734](https://github.com/K4F7/jxufe-course-review/pull/734)，`remote-SIN` | [load-speed-2026-08-30-after-round2.md](./load-speed-2026-08-30-after-round2.md) |
+| 2026-08-31 | 11:30Z，#734 之后的课评流缓存等，`local-EWR` | [load-speed-2026-08-31.md](./load-speed-2026-08-31.md) |
 
 ## 两轮优化做了什么
 
@@ -56,9 +57,17 @@
 
 本探针 `/latest` ~300ms、admin 401 ~270ms 是美东 RTT，**不是用户体验，也不排优先级**。
 
+## 2026-08-31 复测
+
+同一套脚本。Worker 全程 `local-EWR` / `ORD` / `MIA`，`app` 回到 1.0–1.6s。热路径仍是 10ms HIT。
+这是美东本地 Worker 打 D1 的距离，**不是 #734 SQL 被回退**（课号快路径、stale 预计算仍在主干）。
+大陆用户继续以 #734 `remote-SIN` 的 50–160ms 为源站参照。
+
+新变化：`/latest` 已可缓存（冷 MISS → 热 HIT）。关系列表带 `jufexk_voter` 仍 BYPASS。
+
 ## 还剩什么
 
-秒级源站已经没有了。还值得做的产品改动只有一件：
+秒级源站（在靠近 D1 的 placement 下）已经没有了。还值得做的产品改动只有一件：
 
 **关系列表忽略 `jufexk_voter`。** 课表 / 搜索 / pill 走 `view=relations`。游客点过点评就会带这颗 Cookie，关系列表被挡在共享缓存外，每次回源 50–160ms。匿名 payload 不带 `viewer_*`（只登录用户才有）。#734 已对普通课程列表放行，关系列表还没有。放行后回访会变成边缘 HIT（约 10ms）。
 
