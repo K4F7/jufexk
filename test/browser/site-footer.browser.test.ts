@@ -108,10 +108,53 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   }
 });
 
+async function installFooterViewportProbe(page: Page) {
+  await page.addInitScript(() => {
+    const mark = () => {
+      const footer = document.querySelector("[data-site-footer]");
+      if (!(footer instanceof HTMLElement)) return;
+      const style = getComputedStyle(footer);
+      const rect = footer.getBoundingClientRect();
+      const visible =
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight;
+      if (visible) {
+        (
+          window as unknown as { __jufexkFooterWasInViewport?: boolean }
+        ).__jufexkFooterWasInViewport = true;
+      }
+    };
+    const observer = new MutationObserver(mark);
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+    document.addEventListener("DOMContentLoaded", mark);
+  });
+}
+
 test("latest does not mount a footer on mobile", async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 1280) >= 640, "desktop keeps footer");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installFooterViewportProbe(page);
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  const footer = page.locator("[data-site-footer]");
   await expect(page.getByRole("contentinfo")).toHaveCount(0);
+  if ((await footer.count()) > 0) {
+    await expect(footer).toBeHidden();
+    expect(await footer.boundingBox()).toBeNull();
+  }
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __jufexkFooterWasInViewport?: boolean })
+          .__jufexkFooterWasInViewport === true,
+    ),
+  ).toBe(false);
   await page.evaluate(() => {
     window.scrollTo(0, document.body.scrollHeight);
     window.dispatchEvent(new Event("scroll"));

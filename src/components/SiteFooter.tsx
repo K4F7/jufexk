@@ -33,7 +33,10 @@ export function SiteFooter({
   if (!isDesktop) return null;
 
   return (
-    <footer className="border-t border-border px-5 py-4 text-center text-sm text-muted">
+    <footer
+      className="border-t border-border px-5 py-4 text-center text-sm text-muted"
+      data-site-footer=""
+    >
       <div className="flex justify-center">
         <div
           className="flex w-fit max-w-[1520px] shrink-0 flex-col items-center gap-2 text-center"

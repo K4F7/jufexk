@@ -117,6 +117,17 @@ body {
   min-height: 100vh;
 }
 
+/*
+ * Hide the site footer on mobile in entry CSS so first paint cannot show it
+ * while React still thinks the viewport is desktop / unknown. JS also omits
+ * the node after hydrate so overscroll cannot reveal a hidden footer.
+ */
+@media (max-width: 639px) {
+  footer[data-site-footer] {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
