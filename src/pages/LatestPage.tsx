@@ -229,7 +229,7 @@ function LatestReviewSpace() {
   return (
     <article
       aria-hidden="true"
-      className="invisible min-h-[16.5rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+      className="invisible min-h-[22rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
     />
   );
 }
@@ -238,7 +238,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const date = formatReviewDate(review.created_at);
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
-    <article className="min-h-[16.5rem] min-w-0 border-b border-separator py-3 last:border-b-0 max-sm:[content-visibility:auto] max-sm:[contain-intrinsic-size:264px] sm:min-h-56 sm:py-5">
+    <article className="min-h-[22rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5">
       <header className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 sm:flex sm:flex-wrap sm:justify-between sm:gap-x-3 sm:gap-y-0">
         <span className="col-start-1 row-start-1 inline-flex min-w-0 items-center text-[calc(13/15*1rem)] font-medium text-foreground">
           <ReviewAuthor
@@ -292,7 +292,7 @@ function LatestReviewSkeleton() {
     <div role="status" aria-label="正在加载最新课评">
       {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) => (
         <article
-          className="min-h-[16.5rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+          className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
           key={row}
         >
           <header className="flex min-h-8 items-center justify-between gap-3">
