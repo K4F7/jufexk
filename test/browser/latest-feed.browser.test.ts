@@ -198,7 +198,7 @@ test("latest feed shows threshold-folded reviews without 收起 chrome", async (
 
 test("latest empty state keeps the official Card composition", async ({ page }) => {
   await mockShellApi(page);
-  await page.route("**/api/reviews/latest", (route) =>
+  await page.route("**/api/reviews/latest*", (route) =>
     route.fulfill({ json: { items: [], nextCursor: null } }),
   );
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
@@ -302,6 +302,7 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   const latestRequests = requests.filter(
     (url) => new URL(url).pathname === "/api/reviews/latest",
   );
+  expect(latestRequests.some((url) => new URL(url).searchParams.get("pageSize") === "10")).toBe(true);
   expect(latestRequests.length).toBeGreaterThanOrEqual(1);
   expect(latestRequests.length).toBeLessThanOrEqual(2);
   await expect(page.getByTitle("系统运行状态")).toHaveCount(0);

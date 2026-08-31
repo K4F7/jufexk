@@ -24,7 +24,7 @@
     <title>非官方课评@JUFE</title>
     <script>
       if (location.pathname === "/" || location.pathname === "/latest") {
-        window.__jufexkLatestPageRequest = fetch("/api/reviews/latest", {
+        window.__jufexkLatestPageRequest = fetch("/api/reviews/latest?pageSize=10", {
           credentials: "same-origin",
         }).then(async (response) => {
           const data = await response.json();
