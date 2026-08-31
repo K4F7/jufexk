@@ -11,6 +11,7 @@ import {
 } from "./ordinary-user-authentication";
 import { LOGIN_PATH, sessionPayloadForUser } from "./ordinary-user-session";
 import { originOk } from "./ordinary-user-write-authorization";
+import { trackLogin } from "./bi";
 import { readSecret } from "./secrets";
 import { buildVerificationEmail } from "./verification-email";
 
@@ -27,6 +28,7 @@ const SENT_SHAPE = { ok: true } as const;
 
 type MailEnv = {
   DB: D1Database;
+  BI?: { writeDataPoint(event: AnalyticsEngineDataPoint): void };
   SITE_NAME?: string;
   IP_HASH_SECRET?: string | { get(): Promise<string> };
   CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
@@ -147,6 +149,7 @@ export async function handleEmailLoginRequest(c: Context<{ Bindings: MailEnv }>)
       REQUEST_RATE_LIMIT,
     ))
   ) {
+    await trackLogin(c, "login_fail", "rate_limit");
     return fail(c, "请求过于频繁，请稍后再试", 429);
   }
 
@@ -155,6 +158,7 @@ export async function handleEmailLoginRequest(c: Context<{ Bindings: MailEnv }>)
   const from = backTargetFrom(typeof body?.from === "string" ? body.from : null);
   const identitySecret = await readSecret(c.env.CAMPUS_IDENTITY_SECRET);
   if (!email || !identitySecret) return c.json(SENT_SHAPE);
+  await trackLogin(c, "login_submit", "email");
 
   const code = randomDigits(6);
   const token = randomToken();
@@ -218,12 +222,16 @@ export async function handleEmailLoginVerify(c: Context<{ Bindings: MailEnv }>) 
       VERIFY_RATE_LIMIT,
     ))
   ) {
+    await trackLogin(c, "login_fail", "rate_limit");
     return fail(c, "请求过于频繁，请稍后再试", 429);
   }
 
   const body = await readJsonBody(c);
   const identitySecret = await readSecret(c.env.CAMPUS_IDENTITY_SECRET);
-  if (!body || !identitySecret) return fail(c, "验证失败，请重新获取验证信");
+  if (!body || !identitySecret) {
+    await trackLogin(c, "login_fail", "email");
+    return fail(c, "验证失败，请重新获取验证信");
+  }
 
   const token = typeof body.token === "string" ? body.token.trim() : "";
   const code = typeof body.code === "string" ? body.code.trim() : "";
@@ -246,7 +254,10 @@ export async function handleEmailLoginVerify(c: Context<{ Bindings: MailEnv }>) 
       .first<ChallengeRow>();
   }
   const subject = await consumeChallenge(c.env.DB, row);
-  if (!subject) return fail(c, "验证失败，请重新获取验证信");
+  if (!subject) {
+    await trackLogin(c, "login_fail", "email");
+    return fail(c, "验证失败，请重新获取验证信");
+  }
 
   const user = await resolveOrCreateIdentityUser(c.env.DB, {
     provider: AUTH_PROVIDER_EMAIL,
@@ -258,5 +269,6 @@ export async function handleEmailLoginVerify(c: Context<{ Bindings: MailEnv }>) 
   }
 
   await issueOrdinaryUserSessionCookie(c, user.id, identitySecret);
+  await trackLogin(c, "login_success", "email", "user");
   return c.json(sessionPayloadForUser(c, user));
 }

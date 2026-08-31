@@ -12,6 +12,9 @@
       "migrations_dir": "migrations",
     },
   ],
+  "analytics_engine_datasets": [
+    { "binding": "BI", "dataset": "jufexk_events_test" },
+  ],
   "queues": {
     "producers": [
       { "binding": "AI_SUMMARY_QUEUE", "queue": "jufexk-ai-summary-test" },
@@ -26,5 +29,6 @@
     "V5_IMPORT_ARTIFACT_SHA256": "manifest",
     "V5_IMPORT_MANIFEST_SHA256": "manifest",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
+    "CLOUDFLARE_ACCOUNT_ID": "test-account",
   },
 }

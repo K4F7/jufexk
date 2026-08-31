@@ -19,6 +19,9 @@
       "migrations_dir": "migrations",
     },
   ],
+  "analytics_engine_datasets": [
+    { "binding": "BI", "dataset": "jufexk_events" },
+  ],
   "queues": {
     "producers": [
       { "binding": "AI_SUMMARY_QUEUE", "queue": "jufexk-ai-summary" },
@@ -44,8 +47,11 @@
     "V5_IMPORT_ARTIFACT_SHA256": "4bfcf6008c2539494d4f3b4346d4c6e958144a3f0d83a06c4095ce472a1974dd",
     "V5_IMPORT_MANIFEST_SHA256": "a0889ee7ebba559af4179ff4331de5c3324ae7da89ab1d17b6c735afe0576266",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
+    "CLOUDFLARE_ACCOUNT_ID": "fa1d0d91a980d4e2c22ac7272f038bf8",
     // OPENAI_MODEL is a dashboard-only var (live: grok-4.5). Do not commit it
     // here — an empty or omitted value without keep_vars wipes the dashboard.
+    // BI_ANALYTICS_READ_TOKEN is a dashboard Worker secret (Account Analytics
+    // Read). Do not bind it as a Secrets Store entry.
   },
   // Keep dashboard vars such as OPENAI_MODEL across wrangler deploy.
   "keep_vars": true,
@@ -97,7 +103,11 @@
         "V5_IMPORT_ARTIFACT_SHA256": "4bfcf6008c2539494d4f3b4346d4c6e958144a3f0d83a06c4095ce472a1974dd",
         "V5_IMPORT_MANIFEST_SHA256": "a0889ee7ebba559af4179ff4331de5c3324ae7da89ab1d17b6c735afe0576266",
         "TURNSTILE_SITE_KEY": "0x4AAAAAAD2pZlHJDQEqRlVH",
+        "CLOUDFLARE_ACCOUNT_ID": "fa1d0d91a980d4e2c22ac7272f038bf8",
       },
+      "analytics_engine_datasets": [
+        { "binding": "BI", "dataset": "jufexk_events_preview" },
+      ],
       "d1_databases": [
         {
           "binding": "DB",

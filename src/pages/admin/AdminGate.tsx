@@ -15,6 +15,7 @@ const ADMIN_TABS = [
   { id: "hub", href: "/admin", label: "概览" },
   { id: "banner", href: "/admin/banner", label: "Banner" },
   { id: "admins", href: "/admin/admins", label: "学号" },
+  { id: "bi", href: "/admin/bi", label: "数据" },
 ] as const;
 
 /**
@@ -80,6 +81,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
 }
 
 function adminTabKey(pathname: string): string {
+  if (pathname === "/admin/bi") return "bi";
   if (pathname === "/admin/banner") return "banner";
   if (pathname === "/admin/admins") return "admins";
   return "hub";

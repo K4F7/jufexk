@@ -32,6 +32,7 @@ import {
   prepareEhallLogin,
   type EhallLoginPreparation,
 } from "./lib/jxufe-ehall";
+import { trackLogin } from "./bi";
 import { readSecret } from "./secrets";
 
 export const CAS_LOGIN_PATH = "/api/auth/cas";
@@ -65,6 +66,7 @@ type CasChallengeHold = PreparedMfaHold | PreparedQrHold;
 
 type CasEnv = {
   DB: D1Database;
+  BI?: { writeDataPoint(event: AnalyticsEngineDataPoint): void };
   IP_HASH_SECRET?: string | { get(): Promise<string> };
   CAMPUS_IDENTITY_SECRET?: string | { get(): Promise<string> };
   CAS_CHALLENGE_SECRET?: string | { get(): Promise<string> };
@@ -266,6 +268,8 @@ async function issueOrdinarySession(
   identitySecret: string,
   sso?: CasSsoGrant,
   ehall?: EhallLoginPreparation | null,
+  method = "cas",
+  recordSuccess = true,
 ) {
   const subject = await hmacHex(`cas-username:${username}`, identitySecret);
   const user = await resolveOrCreateIdentityUser(c.env.DB, {
@@ -280,6 +284,7 @@ async function issueOrdinarySession(
   if (sso && ehall) {
     await issueEhallSessionCookie(c, user.id, siteSession, sso, ehall).catch(() => {});
   }
+  if (recordSuccess) await trackLogin(c, "login_success", method, "user");
   return c.json(sessionPayloadForUser(c, user));
 }
 
@@ -301,15 +306,18 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
       REQUEST_RATE_LIMIT,
     ))
   ) {
+    await trackLogin(c, "login_fail", "rate_limit");
     return fail(c, "请求过于频繁，请稍后再试", 429);
   }
 
   const username = normalizeCasUsername(body?.username);
   const password = normalizeCasPassword(body?.password);
   if (!username || !password || !identitySecret) {
+    await trackLogin(c, "login_fail", "password");
     return fail(c, "学号或密码不正确", 401);
   }
 
+  await trackLogin(c, "login_submit", "cas");
   const ehall = await prepareEhallLogin().catch(() => null);
   const result = await startCasPasswordLogin(
     username,
@@ -337,6 +345,7 @@ export async function handleCasLogin(c: Context<{ Bindings: CasEnv }>) {
       maskedPhone: result.hold.maskedPhone,
     });
   }
+  await trackLogin(c, "login_fail", "password");
   return fail(c, result.error, result.status);
 }
 
@@ -358,6 +367,7 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
       MFA_RATE_LIMIT,
     ))
   ) {
+    await trackLogin(c, "login_fail", "rate_limit");
     return fail(c, "请求过于频繁，请稍后再试", 429);
   }
 
@@ -377,6 +387,7 @@ export async function handleCasMfa(c: Context<{ Bindings: CasEnv }>) {
 
   const result = await completeCasPasswordLogin(hold.cas, code, password);
   if (!result.ok) {
+    await trackLogin(c, "login_fail", "mfa");
     if (result.needsMfa) return fail(c, "登录失败，请稍后重试");
     return fail(c, result.error, result.status);
   }
@@ -412,13 +423,18 @@ export async function handleCasQrStart(c: Context<{ Bindings: CasEnv }>) {
       REQUEST_RATE_LIMIT,
     ))
   ) {
+    await trackLogin(c, "login_fail", "rate_limit");
     return fail(c, "请求过于频繁，请稍后再试", 429);
   }
   if (!identitySecret || !secret) return fail(c, "登录失败，请稍后重试", 503);
 
   const ehall = await prepareEhallLogin().catch(() => null);
   const result = await startCasQrLogin(ehall?.casServiceUrl || CAS_SERVICE_URL);
-  if (!result.ok) return fail(c, result.error, result.status);
+  if (!result.ok) {
+    await trackLogin(c, "login_fail", "cas_qr");
+    return fail(c, result.error, result.status);
+  }
+  await trackLogin(c, "login_submit", "cas_qr");
 
   const id = newChallengeId();
   await c.env.DB.prepare(
@@ -491,6 +507,7 @@ export async function handleCasQrStatus(c: Context<{ Bindings: CasEnv }>) {
     identitySecret,
     result.sso,
     hold.ehall,
+    "cas_qr",
   );
 }
 
@@ -504,5 +521,13 @@ export async function handleDevLogin(c: Context<{ Bindings: CasEnv }>) {
   if (!originOk(c)) return fail(c, "来源校验失败", 403);
   const identitySecret = await ordinaryUserIdentitySecret(c);
   if (!identitySecret) return fail(c, "登录失败，请稍后重试", 503);
-  return issueOrdinarySession(c, DEV_LOGIN_USERNAME, identitySecret);
+  return issueOrdinarySession(
+    c,
+    DEV_LOGIN_USERNAME,
+    identitySecret,
+    undefined,
+    undefined,
+    "cas",
+    false,
+  );
 }

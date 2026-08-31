@@ -56,6 +56,12 @@ export function AdminHubPage() {
           to="/admin/banner"
         />
         <HubCard
+          action="打开数据"
+          description="注册用户日增长，以及课评浏览、停留和登录尝试。"
+          title="数据"
+          to="/admin/bi"
+        />
+        <HubCard
           action="管理员学号"
           description="手动绑定一位或多位校园登录学号；对方登录后即可进入管理分区。"
           title="管理员学号"

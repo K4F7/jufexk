@@ -28,6 +28,9 @@ export type Bindings = Omit<
   OPENAI_MODEL?: string;
   PUBLIC_SURFACE?: string;
   ALLOW_DEV_LOGIN?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  BI_ANALYTICS_READ_TOKEN?: RuntimeSecret;
+  BI?: { writeDataPoint(event: AnalyticsEngineDataPoint): void };
 };
 export type Vars = {
   adminSession?: string;

@@ -21,6 +21,7 @@ import { useEffect, useRef, useState, type FormEvent, type Key } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../components/DetailFeedback";
 import { useViewer } from "../hooks/useViewer";
+import { sendBiBeacon } from "../lib/bi-beacon";
 import { ApiError, api } from "../lib/api";
 import { backTargetFrom } from "../lib/back-target";
 
@@ -205,6 +206,11 @@ export function LoginPage() {
   const loginPreview = import.meta.env.DEV
     ? searchParams.get(LOGIN_PREVIEW_PARAM)
     : null;
+
+  useEffect(() => {
+    if (loginPreview) return;
+    sendBiBeacon({ type: "login_view" });
+  }, [loginPreview]);
 
   useEffect(() => {
     if (!import.meta.env.DEV || !loginPreview) return;

@@ -23,6 +23,7 @@ Worker/GHA 的 JWXT 编排变量和凭据已移至归档分支；`main` 不再�
 
 不要写入 Secrets Store：
 
+- `BI_ANALYTICS_READ_TOKEN`：dashboard Worker secret（Account Analytics Read），给 `/admin/bi` 查 Analytics Engine SQL。与 `OPENAI_API_KEY` 一样 `wrangler secret put`，不要绑 Secrets Store。`CLOUDFLARE_ACCOUNT_ID` 已在 `wrangler.jsonc` vars。
 - `SITE_NAME`、`UNIVERSITY_NAME`、`PUBLIC_SURFACE`、`TURNSTILE_SITE_KEY`、历史导入哈希、D1 `database_id`：`wrangler.jsonc` 公开配置。
 - 预览 Worker `jufexk-preview` 共用同一 Secrets Store；会话 Cookie 按 Host 隔离，不会写回生产 D1。
 - 已淘汰、不要再绑定：`MAIL_DELIVERY_URL`、`MAIL_FROM`、`MAIL_DELIVERY_TOKEN`、`REVIEW_AUTHOR_LOOKUP_TO`。远程 store 里若还留着旧邮件密钥，可之后人工删除，不要重新绑到 Worker。#478 曾为点评作者查询把邮件变量绑回，#500 再次解绑以免 deploy 依赖不存在的 Secrets Store 条目。
