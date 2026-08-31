@@ -36,7 +36,7 @@
    * success / warning / danger: HeroUI defaults (untouched)
    */
   /* Keep the Sky hue while meeting AA contrast for small link text. */
-  --accent: oklch(0.56 0.195 253.83);
+  --accent: oklch(0.48 0.18 253.83);
   --accent-foreground: var(--snow);
   --focus: var(--accent);
   --foreground: var(--eclipse);
