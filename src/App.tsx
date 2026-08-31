@@ -44,16 +44,6 @@ function loadLatestPage() {
 }
 const LatestPage = lazy(loadLatestPage);
 
-// Start the route chunk before React mounts on the two public entry paths.
-// The lazy route consumes this same promise, so it does not create a second
-// module request or add a serial chunk dependency to the first render.
-if (
-  typeof window !== "undefined" &&
-  (window.location.pathname === "/" || window.location.pathname === "/latest")
-) {
-  void loadLatestPage();
-}
-
 let initialSiteBannerRequest = window.__jufexkSiteBannerRequest ?? null;
 
 const AccountPage = lazy(() =>

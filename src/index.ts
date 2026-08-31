@@ -85,7 +85,13 @@ const worker = Object.assign(app, {
       !url.searchParams.has("preview")
     ) {
       try {
-        const asset = await env.ASSETS.fetch(request);
+        // The static root asset redirects to /latest. Resolve that redirect
+        // inside the Worker so the public entry has one document request.
+        const assetRequest =
+          url.pathname === "/"
+            ? new Request(new URL("/latest", request.url), request)
+            : request;
+        const asset = await env.ASSETS.fetch(assetRequest);
         if (!asset.ok) return asset;
         const apiRequest = new Request(new URL("/api/reviews/latest?pageSize=10", request.url), {
           headers: { Accept: "application/json" },
