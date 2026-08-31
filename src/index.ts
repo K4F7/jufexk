@@ -114,7 +114,7 @@ const worker = Object.assign(app, {
         );
         let optimizedHtml = html.replace(
           /<link rel="stylesheet"([^>]+)>/,
-          '<link rel="preload" as="style"$1 data-app-css>',
+          '<link rel="preload" as="style" fetchpriority="low"$1 data-app-css>',
         );
         let entryScript = "";
         optimizedHtml = optimizedHtml.replace(
