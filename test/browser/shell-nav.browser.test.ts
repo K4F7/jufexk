@@ -311,6 +311,26 @@ test("root path opens the latest feed", async ({ page }) => {
   await expectBrowseItemCurrent(page, "课评", true);
 });
 
+test("guests see login and theme toggle immediately on latest @mobile-smoke", async ({
+  page,
+}) => {
+  await mockShellApi(page);
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+
+  const login = page.getByRole("link", { name: "登录" });
+  const toggle = page.getByRole("button", { name: /切换到(暗色|亮色)模式/ });
+  await expect(login).toBeVisible();
+  await expect(toggle).toBeVisible();
+  await expect(
+    page.locator("header span.inline-block.size-8.shrink-0[aria-hidden]"),
+  ).toHaveCount(0);
+  await expect(page.locator("header span.inline-block.h-8.w-12[aria-hidden]")).toHaveCount(0);
+
+  const before = await toggle.getAttribute("aria-label");
+  await toggle.click();
+  await expect(toggle).not.toHaveAttribute("aria-label", before ?? "");
+});
+
 test("guests get a real login link outside the nav", async ({ page }) => {
   await mockShellApi(page);
   await page.goto("/courses");

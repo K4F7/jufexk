@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { api, setCsrfToken } from "../lib/api";
 import { clearCatalogDataCache } from "../lib/catalog-data-cache";
 import {
@@ -51,7 +51,6 @@ const ViewerContext = createContext<ViewerContextValue | null>(null);
 export function ViewerProvider({ children }: { children: ReactNode }) {
   const [searchParams] = useSearchParams();
   const identity = readDevIdentity(searchParams);
-  const { pathname } = useLocation();
   const [viewer, setViewer] = useState<ViewerSession>(GUEST);
   const [ready, setReady] = useState(false);
   const previousAuth = useRef<boolean | null>(null);
@@ -124,23 +123,13 @@ export function ViewerProvider({ children }: { children: ReactNode }) {
       if (!cancelled) void refresh();
     };
 
-    // The latest feed is anonymous; let its first content paint before
-    // checking the account state. Auth-sensitive routes still check eagerly.
-    if (pathname !== "/" && pathname !== "/latest") {
-      load();
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    // /latest is anonymous; let its first content paint commit before checking
-    // the account state, while keeping the header useful for signed-in users.
-    const timeoutId = globalThis.setTimeout(load, 2500);
+    // Header shows a guest login link immediately; this probe only swaps in
+    // the account menu if the visitor is already signed in.
+    load();
     return () => {
       cancelled = true;
-      globalThis.clearTimeout(timeoutId);
     };
-  }, [apply, identity, pathname, ready, refresh]);
+  }, [apply, identity, ready, refresh]);
 
   const value = useMemo<ViewerContextValue>(
     () => ({ viewer, ready, refresh, applySession: apply, clear }),
