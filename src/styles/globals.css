@@ -59,7 +59,7 @@
    * HeroUI default --muted is 4.43:1 on this canvas (#71717a / #f5f5f5).
    * Nudge L down so body/meta text meets WCAG 2.2 AA 4.5:1.
    */
-  --muted: oklch(0.5 0.014 285.94);
+  --muted: oklch(0.47 0.014 285.94);
   --surface: var(--white);
   --surface-secondary: oklch(0.9524 0.0013 286.37);
   --border: oklch(90% 0.004 286.32);
