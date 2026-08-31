@@ -1,6 +1,3 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { App } from "./App";
 import "./styles/globals.css";
 
 // The SSR shell has critical styles inline. Enable the full stylesheet after
@@ -15,8 +12,18 @@ if (typeof document !== "undefined") {
 const root = document.getElementById("app");
 if (!root) throw new Error("#app root missing");
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+const start = () => {
+  void import("react-dom/client").then(({ createRoot }) =>
+    import("./App").then(({ App }) => {
+      createRoot(root).render(
+        <App />,
+      );
+    }),
+  );
+};
+
+if ("requestIdleCallback" in window) {
+  window.requestIdleCallback(start, { timeout: 1200 });
+} else {
+  window.setTimeout(start, 0);
+}
