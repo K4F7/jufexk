@@ -112,10 +112,24 @@ const worker = Object.assign(app, {
           await asset.text(),
           page as PublicReviewPage<LatestReview>,
         );
-        const optimizedHtml = html.replace(
+        let optimizedHtml = html.replace(
           /<link rel="stylesheet"([^>]+)>/,
           '<link rel="preload" as="style"$1 data-app-css>',
         );
+        let entryScript = "";
+        optimizedHtml = optimizedHtml.replace(
+          /\s*<script type="module" crossorigin src="([^"]+)"><\/script>/,
+          (_match, src: string) => {
+            entryScript = src;
+            return "";
+          },
+        );
+        if (entryScript) {
+          optimizedHtml = optimizedHtml.replace(
+            "</body>",
+            `<script type="module" crossorigin src="${entryScript}"></script></body>`,
+          );
+        }
         const headers = new Headers(asset.headers);
         headers.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
         headers.set("CDN-Cache-Control", "public, max-age=60, stale-while-revalidate=300");
