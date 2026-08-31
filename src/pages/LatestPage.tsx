@@ -186,6 +186,12 @@ export function LatestPage() {
           {items.slice(0, renderedItemCount).map((review) => (
             <LatestReviewItem key={review.id} review={review} />
           ))}
+          {items.length > renderedItemCount
+            ? Array.from(
+                { length: items.length - renderedItemCount },
+                (_, index) => <LatestReviewSpace key={`space-${index}`} />,
+              )
+            : null}
           {nextCursor ? (
             <div className="flex flex-col items-center pt-4">
               <Button
@@ -219,11 +225,20 @@ export function LatestPage() {
   );
 }
 
+function LatestReviewSpace() {
+  return (
+    <article
+      aria-hidden="true"
+      className="invisible min-h-[16.5rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+    />
+  );
+}
+
 function LatestReviewItem({ review }: { review: LatestReview }) {
   const date = formatReviewDate(review.created_at);
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
-    <article className="min-h-56 min-w-0 border-b border-separator py-3 last:border-b-0 max-sm:[content-visibility:auto] max-sm:[contain-intrinsic-size:224px] sm:py-5">
+    <article className="min-h-[16.5rem] min-w-0 border-b border-separator py-3 last:border-b-0 max-sm:[content-visibility:auto] max-sm:[contain-intrinsic-size:264px] sm:min-h-56 sm:py-5">
       <header className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 sm:flex sm:flex-wrap sm:justify-between sm:gap-x-3 sm:gap-y-0">
         <span className="col-start-1 row-start-1 inline-flex min-w-0 items-center text-[calc(13/15*1rem)] font-medium text-foreground">
           <ReviewAuthor
@@ -277,7 +292,7 @@ function LatestReviewSkeleton() {
     <div role="status" aria-label="正在加载最新课评">
       {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) => (
         <article
-          className="min-h-56 border-b border-separator py-5 last:border-b-0"
+          className="min-h-[16.5rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
           key={row}
         >
           <header className="flex min-h-8 items-center justify-between gap-3">
