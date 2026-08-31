@@ -826,7 +826,10 @@ export function CourseDetailPage() {
                 )}
                 type="h1"
               >
-                <RouterAriaLink to={`/teachers/${selectedTeacher.id}`}>
+                <RouterAriaLink
+                  className="text-accent"
+                  to={`/teachers/${selectedTeacher.id}`}
+                >
                   {selectedTeacher.name}
                 </RouterAriaLink>
               </Typography>
