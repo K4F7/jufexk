@@ -6,6 +6,7 @@ import {
   Route,
   Routes,
   useHref,
+  useLocation,
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
@@ -115,7 +116,8 @@ const PrototypeGalleryPage = import.meta.env.DEV
   : null;
 
 function RouteFallback() {
-  if (window.location.pathname === "/latest") {
+  const { pathname } = useLocation();
+  if (pathname === "/latest") {
     return <LatestRouteFallback />;
   }
   return (
