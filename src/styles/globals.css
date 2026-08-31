@@ -74,7 +74,8 @@
 
 .dark,
 [data-theme="dark"] {
-  --accent: oklch(0.74 0.12 253.83);
+  /* Dark-surface links need a lighter Sky value for small-text AA contrast. */
+  --accent: oklch(0.82 0.1 253.83);
   --accent-foreground: var(--snow);
   --focus: var(--accent);
   --link: var(--foreground);
