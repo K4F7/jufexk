@@ -14,7 +14,12 @@ import { AppShell } from "./components/AppShell";
 import { AdminSessionProvider } from "./hooks/useAdminSession";
 import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
-import { LATEST_PAGE_SIZE, latestLoadingSkeletonCount } from "./lib/latest-loading";
+import {
+  LATEST_FEED_COLUMN_CLASS,
+  LATEST_PAGE_SIZE,
+  LATEST_REVIEW_RESERVED_ROW_CLASS,
+  latestLoadingSkeletonCount,
+} from "./lib/latest-loading";
 import type { SiteConfig } from "./lib/types";
 import type { SiteBanner } from "./site-banner";
 
@@ -131,21 +136,20 @@ function RouteFallback() {
 
 function LatestRouteFallback() {
   return (
-    <div role="status" aria-label="正在加载最新课评">
+    <div className={LATEST_FEED_COLUMN_CLASS} role="status" aria-label="正在加载最新课评">
       <header aria-hidden="true" className="mb-3 max-sm:sr-only">
         <Skeleton className="h-6 w-24 rounded" />
       </header>
       {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) =>
         row < latestLoadingSkeletonCount() ? (
           <article
-            className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+            className={LATEST_REVIEW_RESERVED_ROW_CLASS}
+            data-loading-skeleton="true"
             key={row}
           >
-            <header className="flex min-h-8 items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Skeleton className="size-8 shrink-0 rounded-full" />
-                <Skeleton className="h-4 w-28 rounded" />
-              </div>
+            <header className="flex w-fit max-w-full flex-wrap items-center gap-2">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-28 rounded" />
               <Skeleton className="h-3 w-20 rounded" />
             </header>
             <Skeleton className="mt-3 h-4 w-3/4 rounded" />
@@ -155,7 +159,7 @@ function LatestRouteFallback() {
         ) : (
           <div
             aria-hidden="true"
-            className="invisible min-h-[22rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+            className={`invisible ${LATEST_REVIEW_RESERVED_ROW_CLASS}`}
             key={row}
           />
         ),

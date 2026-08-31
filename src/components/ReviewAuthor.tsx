@@ -12,11 +12,13 @@ export function ReviewAuthor({
   avatarKey,
   size = "sm",
   layout = "inline",
+  className,
 }: {
   publicCode?: number | null;
   avatarKey?: number | null;
   size?: "sm" | "md" | "lg";
   layout?: "inline" | "responsive";
+  className?: string;
 }) {
   const code = publicCode ?? RESERVED_PUBLIC_CODE;
   const key = avatarKey ?? defaultAvatarKey(code);
@@ -24,15 +26,15 @@ export function ReviewAuthor({
   const avatar = (
     <AnonymousAvatar avatarKey={key} size={size} className="shrink-0" />
   );
+  const layoutClass =
+    layout === "responsive"
+      ? "inline-flex min-w-0 max-w-full flex-col items-start gap-1.5 leading-none text-accent no-underline max-sm:min-h-[44px] sm:flex-row sm:items-center sm:gap-2"
+      : "inline-flex min-w-0 max-w-full items-center gap-2 text-accent no-underline";
   return (
     <RouterAriaLink
       to={`/u/${formatPublicCode(code)}`}
       aria-label={handle}
-      className={
-        layout === "responsive"
-          ? "inline-flex min-w-0 max-w-full flex-col items-start gap-1.5 leading-none text-accent no-underline max-sm:min-h-[44px] sm:flex-row sm:items-center sm:gap-2"
-          : "inline-flex min-w-0 max-w-full items-center gap-2 leading-none text-accent no-underline"
-      }
+      className={className ? `${layoutClass} ${className}` : layoutClass}
     >
       {layout === "responsive" ? (
         <>
@@ -44,7 +46,7 @@ export function ReviewAuthor({
       ) : (
         <>
           {avatar}
-          <span className="min-w-0 break-words [overflow-wrap:anywhere] leading-none">
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">
             {handle}
           </span>
         </>

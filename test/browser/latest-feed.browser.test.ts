@@ -111,21 +111,35 @@ function firstLatestArticle(page: Page) {
 
 async function expectStackedAuthorLayout(article: Locator) {
   const author = article.getByRole("link", { name: "匿名用户#000000" });
+  const verb = article.getByText("点评了", { exact: true });
+  const course = article.getByRole("link", { name: "中国传统文化导论（测试教师）" });
   const date = article.locator("time");
   const headline = article.getByText("讲得清楚，作业适中");
   await expect(author).toBeVisible();
+  await expect(verb).toBeVisible();
+  await expect(course).toBeVisible();
   await expect(date).toBeVisible();
   await expect(headline).toBeVisible();
 
   const authorBox = await author.boundingBox();
+  const handleBox = await author.getByText("匿名用户#000000").boundingBox();
+  const verbBox = await verb.boundingBox();
+  const courseBox = await course.boundingBox();
   const dateBox = await date.boundingBox();
   const headlineBox = await headline.boundingBox();
   expect(authorBox).toBeTruthy();
+  expect(handleBox).toBeTruthy();
+  expect(verbBox).toBeTruthy();
+  expect(courseBox).toBeTruthy();
   expect(dateBox).toBeTruthy();
   expect(headlineBox).toBeTruthy();
-  expect(Math.abs((authorBox?.y ?? 0) - (dateBox?.y ?? 0))).toBeLessThan(12);
+  expect(Math.abs((handleBox?.y ?? 0) - (verbBox?.y ?? 0))).toBeLessThan(4);
+  expect(Math.abs((courseBox?.y ?? 0) - (verbBox?.y ?? 0))).toBeLessThan(4);
   expect(headlineBox?.y ?? 0).toBeGreaterThan((authorBox?.y ?? 0) + (authorBox?.height ?? 0) / 2);
   expect(headlineBox?.x ?? 0).toBeLessThanOrEqual((authorBox?.x ?? 0) + 24);
+  if (dateBox && courseBox && Math.abs((dateBox.y ?? 0) - (courseBox.y ?? 0)) < 12) {
+    expect(dateBox.x).toBeLessThan(courseBox.x + courseBox.width + 40);
+  }
 }
 
 test("latest page lists newest public reviews and deep-links to the course", async ({
@@ -152,6 +166,14 @@ test("latest page lists newest public reviews and deep-links to the course", asy
     article.getByRole("link", { name: "中国传统文化导论（测试教师）" }),
   ).toBeVisible();
   await expect(article.getByText("2026-08-20")).toBeVisible();
+  await expect(article).not.toHaveClass(/min-h-\[22rem\]/);
+  await expect(article).not.toHaveClass(/min-h-\[12rem\]/);
+  const loadedBox = await article.boundingBox();
+  expect(loadedBox?.height ?? 0).toBeGreaterThan(80);
+  expect(loadedBox?.height ?? 0).toBeLessThan(240);
+  if ((page.viewportSize()?.width ?? 1280) >= 640) {
+    expect(loadedBox?.width ?? 0).toBeLessThanOrEqual(720);
+  }
   // 有 headline 的条目优先展示 headline 作为摘要，不再显示正文。
   await expect(article.getByText("讲得清楚，作业适中")).toBeVisible();
   await expect(
@@ -170,10 +192,22 @@ test("latest author and date share a header row on desktop and mobile", async ({
   page,
 }) => {
   await mockShellApi(page);
-  await page.setViewportSize({ width: 800, height: 720 });
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
 
   const article = firstLatestArticle(page);
+  await expectStackedAuthorLayout(article);
+  await expect(article.getByRole("link", { name: "查看全文" })).toBeVisible();
+  const wideBox = await article.boundingBox();
+  const verbBox = await article.getByText("点评了", { exact: true }).boundingBox();
+  const courseBox = await article
+    .getByRole("link", { name: "中国传统文化导论（测试教师）" })
+    .boundingBox();
+  expect(wideBox?.width ?? 0).toBeLessThanOrEqual(720);
+  expect(wideBox?.height ?? 0).toBeLessThan(240);
+  expect(Math.abs((verbBox?.y ?? 0) - (courseBox?.y ?? 0))).toBeLessThan(2);
+
+  await page.setViewportSize({ width: 800, height: 720 });
   await expectStackedAuthorLayout(article);
   await expect(article.getByRole("link", { name: "查看全文" })).toBeVisible();
 
@@ -203,7 +237,7 @@ test("latest empty state keeps the official Card composition", async ({ page }) 
   );
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
 
-  const emptyState = page.getByRole("status");
+  const emptyState = page.getByRole("status").filter({ hasText: "暂时还没有公开课评" });
   await expect(emptyState).toHaveAttribute("data-slot", "card");
   await expect(emptyState).toContainText("暂时还没有公开课评");
 });
@@ -253,27 +287,31 @@ test("latest reserves review space while the first page is loading", async ({ pa
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
   const loading = page.getByRole("status", { name: "正在加载最新课评" });
   await expect(loading).toBeVisible();
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
   const skeletonRows = loading.locator("article");
-  await expect(skeletonRows).toHaveCount(20);
+  await expect(skeletonRows).toHaveCount(isMobile ? 6 : 20);
   await expect(loading.locator('[data-loading-skeleton="true"]')).toHaveCount(
-    (page.viewportSize()?.width ?? 1280) < 640 ? 6 : 20,
+    isMobile ? 6 : 20,
   );
   await expect(skeletonRows.first()).toBeVisible();
-  await expect(skeletonRows.first()).toHaveClass(/min-h-\[22rem\]/);
-  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
+  await expect(skeletonRows.first()).toHaveClass(/min-h-\[12rem\]/);
   const footerBefore = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
   if (!isMobile) expect(footerBefore?.y).toBeGreaterThan(400);
   await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
   const footerAfter = isMobile ? null : await page.getByRole("contentinfo").boundingBox();
-  if (isMobile) {
-    const rows = await page.locator("main > section article").evaluateAll((els) =>
-      els.map((element) => element.getBoundingClientRect().height),
-    );
-    expect(rows).toHaveLength(20);
-    expect(Math.min(...rows)).toBeGreaterThanOrEqual(287);
-  }
+  await expect
+    .poll(async () =>
+      page.locator("main > section article:not([aria-hidden='true'])").count(),
+    )
+    .toBe(20);
+  const loadedRows = await page
+    .locator("main > section article:not([aria-hidden='true'])")
+    .evaluateAll((els) => els.map((element) => element.getBoundingClientRect().height));
+  expect(loadedRows).toHaveLength(20);
+  expect(Math.max(...loadedRows)).toBeLessThan(240);
+  expect(Math.min(...loadedRows)).toBeGreaterThan(80);
   if (!isMobile) {
-    expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
+    expect(footerAfter?.y).toBeGreaterThan(400);
   }
 });
 
@@ -285,7 +323,7 @@ test("latest uses a smaller loading shell on mobile", async ({ page }) => {
       return route.fulfill({ json: { desktopHtml: "", mobileHtml: "", updatedAt: null } });
     }
     if (url.pathname === "/api/reviews/latest") {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       return route.fulfill({ json: { items: [], nextCursor: null } });
     }
     if (url.pathname === "/api/config") {
@@ -303,8 +341,10 @@ test("latest uses a smaller loading shell on mobile", async ({ page }) => {
 
   await page.goto("/latest", { waitUntil: "domcontentloaded" });
   const loading = page.getByRole("status", { name: "正在加载最新课评" });
+  await expect(loading).toBeVisible();
+  const firstSkeleton = loading.locator("article").first();
+  await expect(firstSkeleton).toHaveClass(/min-h-\[12rem\]/);
   await expect(loading.locator("article")).toHaveCount(6);
-  await expect(loading.locator("article").first()).toHaveClass(/min-h-\[22rem\]/);
 });
 
 test("latest preserves the reserved shell when the first page has fewer reviews", async ({
@@ -505,6 +545,15 @@ test("latest feed column aligns with the course catalog @mobile-smoke", async ({
 
   expect(latest).toBeTruthy();
   expect(courses).toBeTruthy();
-  expect(latest?.x).toBe(courses?.x);
-  expect(latest?.width).toBe(courses?.width);
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
+  if (isMobile) {
+    expect(latest?.x).toBe(courses?.x);
+    expect(latest?.width).toBe(courses?.width);
+  } else {
+    expect(latest?.width).toBeLessThanOrEqual(720);
+    expect(latest?.width).toBeLessThan(courses?.width ?? 0);
+    const latestCenter = (latest?.x ?? 0) + (latest?.width ?? 0) / 2;
+    const coursesCenter = (courses?.x ?? 0) + (courses?.width ?? 0) / 2;
+    expect(Math.abs(latestCenter - coursesCenter)).toBeLessThan(2);
+  }
 });
