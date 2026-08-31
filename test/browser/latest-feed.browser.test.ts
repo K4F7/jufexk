@@ -299,6 +299,8 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   expect(requests.some((url) => url.includes("scroll-shadow-"))).toBe(false);
   expect(requests.some((url) => url.includes("heroui-deferred"))).toBe(false);
   expect(requests.some((url) => url.includes("purify"))).toBe(false);
+  expect(requests.some((url) => url.includes("search-field-"))).toBe(false);
+  expect(requests.some((url) => url.includes("ShellCourseSearch-"))).toBe(false);
   const latestRequests = requests.filter(
     (url) => new URL(url).pathname === "/api/reviews/latest",
   );
@@ -306,6 +308,9 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   expect(latestRequests.length).toBeGreaterThanOrEqual(1);
   expect(latestRequests.length).toBeLessThanOrEqual(2);
   await expect(page.getByTitle("系统运行状态")).toHaveCount(0);
+
+  await page.getByRole("searchbox", { name: "搜索课程" }).focus();
+  await expect(page.locator("header .search-field__group")).toBeVisible();
 });
 
 test("latest reuses the HTML-bootstrap banner request", async ({ page }) => {
