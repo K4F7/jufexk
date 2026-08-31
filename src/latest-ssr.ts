@@ -27,14 +27,14 @@ export function renderLatestShell(page: PublicReviewPage<LatestReview>) {
     .join("");
   const content = items || `<p class="m-0 text-muted">暂时还没有公开课评</p>`;
   return {
-    html: `<div class="latest-ssr-header-spacer" aria-hidden="true"></div><section aria-label="最新课评" class="latest-feed"><h1 class="m-0 mb-3 text-lg font-bold leading-tight">最新课评</h1><div>${content}</div></section>`,
+    html: `<div class="latest-ssr-header-spacer" aria-hidden="true"><div class="latest-ssr-header-inner"><strong>非官方课评@JUFE</strong><nav>课评　课程</nav></div></div><section aria-label="最新课评" class="latest-feed"><h1 class="m-0 mb-3 text-lg font-bold leading-tight">最新课评</h1><div>${content}</div></section>`,
     data: `<script type="application/json" id="jufexk-latest-data">${escapeJsonForHtml(page)}</script>`,
   };
 }
 
 export function injectLatestShell(documentHtml: string, page: PublicReviewPage<LatestReview>) {
   const shell = renderLatestShell(page);
-  const criticalStyle = `<style data-latest-critical>.latest-ssr-header-spacer{height:195px}.latest-feed{max-width:48rem;margin:0 auto;padding:1rem}.latest-feed h1{font-size:1.125rem;line-height:1.25;font-weight:700;margin:0 0 .75rem}.latest-ssr-review{padding:.75rem 0;border-bottom:1px solid #e4e4e7}.latest-ssr-review header{display:flex;justify-content:space-between;gap:.75rem;font-size:.875rem;line-height:1.25}.latest-ssr-review time{color:#5f5f69;white-space:nowrap}.latest-ssr-review p{margin:.5rem 0 0;line-height:1.5;white-space:pre-wrap}.latest-feed a{color:#2563eb;text-decoration:none}@media (min-width:80rem){.latest-ssr-header-spacer{height:88px}}</style>`;
+  const criticalStyle = `<style data-latest-critical>.latest-ssr-header-spacer{height:195px;background:#f5f5f5;border-bottom:1px solid #e4e4e7}.latest-ssr-header-inner{height:135px;display:flex;flex-direction:column;justify-content:center;gap:1rem;max-width:48rem;margin:0 auto;padding:0 1rem;color:#18181b}.latest-ssr-header-inner strong{font-size:1rem}.latest-ssr-header-inner nav{font-size:.875rem;color:#52525b}.latest-feed{max-width:48rem;margin:0 auto;padding:1rem}.latest-feed h1{font-size:1.125rem;line-height:1.25;font-weight:700;margin:0 0 .75rem}.latest-ssr-review{padding:.75rem 0;border-bottom:1px solid #e4e4e7}.latest-ssr-review header{display:flex;justify-content:space-between;gap:.75rem;font-size:.875rem;line-height:1.25}.latest-ssr-review time{color:#5f5f69;white-space:nowrap}.latest-ssr-review p{margin:.5rem 0 0;line-height:1.5;white-space:pre-wrap}.latest-feed a{color:#2563eb;text-decoration:none}@media (min-width:80rem){.latest-ssr-header-spacer{height:88px}.latest-ssr-header-inner{height:72px;flex-direction:row;align-items:center;justify-content:space-between}}</style>`;
   const withShell = documentHtml.replace(
     '<div id="app"></div>',
     `<div id="app">${shell.html}</div>${shell.data}`,
