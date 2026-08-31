@@ -28,8 +28,11 @@ import {
   publicDimensionLabels,
 } from "../lib/review-schemes";
 import {
+  PUBLIC_CATALOG_CACHE_CONTROL,
+  PUBLIC_CATALOG_CACHE_TAG,
   isPublicCatalogCacheableRequest,
   isPublicCourseListCacheableRequest,
+  isPublicLatestReviewsCacheableRequest,
   setPublicCatalogCacheHeaders,
 } from "../lib/public-catalog-cache";
 import {
@@ -1215,8 +1218,15 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
 
 publicCatalogRoutes.get("/api/reviews/latest", async (c) => {
   const response = await handleLatestPublicReviews(c);
-  if (isPublicCatalogCacheableRequest(c) && response.status < 400) {
-    setPublicCatalogCacheHeaders(c, "list");
+  if (isPublicLatestReviewsCacheableRequest(c) && response.status < 400) {
+    const headers = new Headers(response.headers);
+    headers.set("Cache-Control", PUBLIC_CATALOG_CACHE_CONTROL);
+    headers.set("Cache-Tag", PUBLIC_CATALOG_CACHE_TAG);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   }
   return response;
 });

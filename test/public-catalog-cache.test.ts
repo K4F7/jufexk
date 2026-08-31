@@ -115,6 +115,15 @@ describe("public catalog cache headers", () => {
     expect(personalized.status).toBe(200);
     isNotPublicCatalogCache(personalized);
   });
+
+  it("caches latest public reviews with the guest voter marker", async () => {
+    const response = await SELF.fetch(`${origin}/api/reviews/latest?pageSize=1`, {
+      headers: { Cookie: "jufexk_voter=abc" },
+    });
+    expect(response.status).toBe(200);
+    isPublicCatalogCache(response);
+    expect(JSON.stringify(await response.json())).not.toContain("viewer_");
+  });
 });
 
 describe("public catalog cache helpers", () => {
