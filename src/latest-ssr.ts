@@ -13,10 +13,10 @@ const escapeJsonForHtml = (value: unknown) =>
   JSON.stringify(value).replaceAll("<", "\\u003c");
 
 export function renderLatestShell(page: PublicReviewPage<LatestReview>) {
-  // Four rows cover the mobile first viewport; the JSON payload still carries
+  // Three rows cover the mobile first viewport; the JSON payload still carries
   // the full first page for React to reveal after it takes over.
   const items = page.items
-    .slice(0, 4)
+    .slice(0, 3)
     .map((review) => {
       const date = formatReviewDate(review.created_at);
       const href = `/courses/${review.course_id}?teacher=${review.teacher_id}`;
