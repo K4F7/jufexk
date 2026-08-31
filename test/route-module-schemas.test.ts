@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import app from "../src/index";
 import adminRoutes from "../src/routes/admin";
 import authRoutes from "../src/routes/auth";
+import biRoutes from "../src/routes/bi";
 import importRoutes from "../src/routes/imports";
 import ordinaryUserRoutes from "../src/routes/ordinary-user";
 import programPlanRoutes from "../src/routes/program-plan";
@@ -26,6 +27,7 @@ describe("domain route composition", () => {
   it("assembles every domain router and keeps the admin guard before import routes", () => {
     const appKeys = app.routes.map(routeKey);
     const domainRoutes = [
+      biRoutes,
       publicCatalogRoutes,
       scheduleOfferingRoutes,
       programPlanRoutes,
@@ -44,6 +46,8 @@ describe("domain route composition", () => {
   });
 
   it("keeps representative routes in their owning domains", () => {
+    expect(biRoutes.routes.map(routeKey)).toContain("POST /api/bi/beacon");
+    expect(adminRoutes.routes.map(routeKey)).toContain("GET /api/admin/bi");
     expect(publicCatalogRoutes.routes.map(routeKey)).toContain(
       "GET /api/courses",
     );
