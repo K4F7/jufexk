@@ -118,6 +118,7 @@ const worker = Object.assign(app, {
         );
         const headers = new Headers(asset.headers);
         headers.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
+        headers.set("CDN-Cache-Control", "public, max-age=60, stale-while-revalidate=300");
         headers.set("Cache-Tag", PUBLIC_CATALOG_CACHE_TAG);
         const serverTiming = pageResponse.headers.get("Server-Timing");
         if (serverTiming) headers.set("Server-Timing", serverTiming);
