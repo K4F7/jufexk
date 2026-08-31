@@ -93,11 +93,11 @@ function isPublicRequestCacheable(
       header: (name: string) => string | undefined;
     };
   },
-  allowVoterCookie: boolean,
+  allowedCookies: readonly string[],
 ) {
-  const blockedCookies = allowVoterCookie
-    ? PUBLIC_CACHE_CREDENTIAL_COOKIES.filter((name) => name !== "jufexk_voter")
-    : PUBLIC_CACHE_CREDENTIAL_COOKIES;
+  const blockedCookies = PUBLIC_CACHE_CREDENTIAL_COOKIES.filter(
+    (name) => !allowedCookies.includes(name),
+  );
   const cookieHeader = c.req.header("Cookie") || "";
   const hasCookie = (name: string) =>
     cookieHeader.split(";").some((part) => part.trim().startsWith(`${name}=`));
@@ -115,7 +115,7 @@ export function isPublicCatalogCacheableRequest(c: {
     header: (name: string) => string | undefined;
   };
 }) {
-  return isPublicRequestCacheable(c, false);
+  return isPublicRequestCacheable(c, []);
 }
 
 /**
@@ -127,7 +127,7 @@ export function isPublicCourseListCacheableRequest(c: {
     header: (name: string) => string | undefined;
   };
 }) {
-  return isPublicRequestCacheable(c, true);
+  return isPublicRequestCacheable(c, ["jufexk_voter"]);
 }
 
 /** The latest public review projection also omits all viewer-specific fields. */
@@ -136,5 +136,5 @@ export function isPublicLatestReviewsCacheableRequest(c: {
     header: (name: string) => string | undefined;
   };
 }) {
-  return isPublicRequestCacheable(c, true);
+  return isPublicRequestCacheable(c, ["jufexk_voter", "jufexk_user_csrf"]);
 }

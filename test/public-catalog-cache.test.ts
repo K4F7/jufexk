@@ -124,6 +124,14 @@ describe("public catalog cache headers", () => {
     isPublicCatalogCache(response);
     expect(JSON.stringify(await response.json())).not.toContain("viewer_");
   });
+
+  it("caches latest public reviews with anonymous voter and csrf markers", async () => {
+    const response = await SELF.fetch(`${origin}/api/reviews/latest?pageSize=1`, {
+      headers: { Cookie: "jufexk_voter=abc; jufexk_user_csrf=csrf" },
+    });
+    expect(response.status).toBe(200);
+    isPublicCatalogCache(response);
+  });
 });
 
 describe("public catalog cache helpers", () => {
