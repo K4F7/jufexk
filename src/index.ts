@@ -85,6 +85,15 @@ const worker = Object.assign(app, {
       !url.searchParams.has("preview")
     ) {
       try {
+        const htmlCache = caches.default;
+        // Root and /latest render the same public document. Normalize their
+        // cache key so a warm edge does not run the SSR query twice.
+        const cacheKey = new Request(new URL("/latest", request.url), {
+          method: "GET",
+        });
+        const cachedHtml = await htmlCache.match(cacheKey);
+        if (cachedHtml) return cachedHtml;
+
         // The static root asset redirects to /latest. Resolve that redirect
         // inside the Worker so the public entry has one document request.
         const assetRequest =
@@ -108,7 +117,9 @@ const worker = Object.assign(app, {
         headers.set("Cache-Tag", PUBLIC_CATALOG_CACHE_TAG);
         const serverTiming = pageResponse.headers.get("Server-Timing");
         if (serverTiming) headers.set("Server-Timing", serverTiming);
-        return new Response(html, { status: asset.status, headers });
+        const response = new Response(html, { status: asset.status, headers });
+        ctx.waitUntil(htmlCache.put(cacheKey, response.clone()));
+        return response;
       } catch {
         return env.ASSETS.fetch(request);
       }
