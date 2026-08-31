@@ -42,13 +42,14 @@ export function StatusPageBadge() {
     if (!placeholder) return;
     let observer: IntersectionObserver | null = null;
     const loadIfVisible = () => {
-      if (!hasUserScrolled) return;
+      if (!hasUserScrolled || window.scrollY <= 0) return;
       const rect = placeholder.getBoundingClientRect();
       if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
       observer?.disconnect();
       window.setTimeout(load, 0);
     };
     const onScroll = () => {
+      if (window.scrollY <= 0) return;
       hasUserScrolled = true;
       loadIfVisible();
     };
