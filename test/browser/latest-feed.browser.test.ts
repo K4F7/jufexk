@@ -308,6 +308,8 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   expect(latestRequests.length).toBeGreaterThanOrEqual(1);
   expect(latestRequests.length).toBeLessThanOrEqual(2);
   await expect(page.getByTitle("系统运行状态")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(page.getByTitle("系统运行状态")).toBeVisible();
 
   await page.getByRole("searchbox", { name: "搜索课程" }).focus();
   await expect(page.locator("header .search-field__group")).toBeVisible();
