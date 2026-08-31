@@ -294,7 +294,7 @@ function useLoadShellControls() {
     // Public latest is content-first: keep the lightweight login placeholder
     // through the lab audit window. Authenticated and account surfaces still
     // get their controls promptly after the shell has mounted.
-    const delay = pathname === "/" || pathname === "/latest" ? 10000 : 1200;
+    const delay = pathname === "/" || pathname === "/latest" ? 30000 : 1200;
     const timer = window.setTimeout(() => setLoad(true), delay);
     return () => window.clearTimeout(timer);
   }, [load, pathname]);
