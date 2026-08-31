@@ -1,5 +1,6 @@
 import { LogoGithub } from "@gravity-ui/icons";
 import { buttonVariants, Separator } from "@heroui/react";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { GITHUB_REPO_URL } from "../lib/site-links";
 import { RouterAriaLink } from "./RouterAriaLink";
 import { StatusPageBadge } from "./StatusPageBadge";
@@ -11,37 +12,16 @@ const INTERNAL_LINKS = [
   { to: "/terms", label: "使用条款" },
 ] as const;
 
-const ghostSmLinkClass = `${buttonVariants({
-  size: "sm",
-  variant: "ghost",
-})} no-underline max-sm:!px-2`;
-
 const ghostSmIconClass = `${buttonVariants({
   isIconOnly: true,
   size: "sm",
   variant: "ghost",
-})} max-sm:!w-auto max-sm:!min-w-0 max-sm:!px-2`;
+})}`;
 
 /**
- * Official iframe stays 250×30 so the widget does not reflow.
- * The painted chip (`<a>` on the Better Stack badge page) is 183×30;
- * crop the layout box to that plus 1px slack so empty iframe space
- * is not part of the centered cluster.
+ * Desktop-only site footer. Mobile viewports omit the node entirely so
+ * overscroll / rubber-band cannot reveal a CSS-hidden footer.
  */
-const BADGE_PAINTED_WIDTH = 184;
-const BADGE_PAINTED_HEIGHT = 30;
-
-function MobileStatusPageBadge() {
-  return (
-    <span
-      className="block shrink-0 overflow-hidden sm:hidden"
-      style={{ width: BADGE_PAINTED_WIDTH, height: BADGE_PAINTED_HEIGHT }}
-    >
-      <StatusPageBadge />
-    </span>
-  );
-}
-
 export function SiteFooter({
   siteName,
   universityName,
@@ -49,61 +29,52 @@ export function SiteFooter({
   siteName: string;
   universityName: string;
 }) {
+  const isDesktop = useMediaQuery("(min-width: 640px)");
+  if (!isDesktop) return null;
+
   return (
-    <footer className="hidden border-t border-border px-4 pt-3 pb-20 text-center text-sm text-muted sm:block sm:px-5 sm:py-4">
-      <div className="-mx-4 flex justify-center sm:mx-0">
+    <footer className="border-t border-border px-5 py-4 text-center text-sm text-muted">
+      <div className="flex justify-center">
         <div
-          className="flex w-fit shrink-0 flex-col items-center gap-1.5 text-center sm:max-w-[1520px] sm:gap-2"
+          className="flex w-fit max-w-[1520px] shrink-0 flex-col items-center gap-2 text-center"
           data-footer-cluster=""
         >
-        <div className="flex w-fit items-center justify-center gap-2">
           <p className="m-0 whitespace-nowrap">
             {siteName} · {universityName}
           </p>
-          <MobileStatusPageBadge />
-        </div>
-        <nav
-          aria-label="页脚"
-          className="flex w-fit flex-nowrap items-center justify-center gap-x-1 sm:flex-wrap sm:gap-x-4 sm:gap-y-2"
-        >
-          <a
-            aria-label="GitHub 仓库"
-            className={ghostSmIconClass}
-            href={GITHUB_REPO_URL}
-            rel="noreferrer"
-            target="_blank"
+          <nav
+            aria-label="页脚"
+            className="flex w-fit flex-wrap items-center justify-center gap-x-4 gap-y-2"
           >
-            <LogoGithub aria-hidden />
-          </a>
-          {INTERNAL_LINKS.map((link) => (
-            <span
-              key={link.to}
-              className="inline-flex items-center justify-center gap-4 whitespace-nowrap"
+            <a
+              aria-label="GitHub 仓库"
+              className={ghostSmIconClass}
+              href={GITHUB_REPO_URL}
+              rel="noreferrer"
+              target="_blank"
             >
-              <span aria-hidden className="max-sm:hidden">
+              <LogoGithub aria-hidden />
+            </a>
+            {INTERNAL_LINKS.map((link) => (
+              <span
+                key={link.to}
+                className="inline-flex items-center justify-center gap-4 whitespace-nowrap"
+              >
+                <span aria-hidden>
+                  <Separator className="h-4" orientation="vertical" />
+                </span>
+                <RouterAriaLink className="text-muted" to={link.to}>
+                  {link.label}
+                </RouterAriaLink>
+              </span>
+            ))}
+            <span className="inline-flex items-center gap-4 whitespace-nowrap">
+              <span aria-hidden>
                 <Separator className="h-4" orientation="vertical" />
               </span>
-              <RouterAriaLink
-                className={`${ghostSmLinkClass} sm:hidden`}
-                to={link.to}
-              >
-                {link.label}
-              </RouterAriaLink>
-              <RouterAriaLink
-                className="text-muted max-sm:hidden"
-                to={link.to}
-              >
-                {link.label}
-              </RouterAriaLink>
+              <StatusPageBadge />
             </span>
-          ))}
-          <span className="hidden items-center gap-4 whitespace-nowrap sm:inline-flex">
-            <span aria-hidden>
-              <Separator className="h-4" orientation="vertical" />
-            </span>
-            <StatusPageBadge />
-          </span>
-        </nav>
+          </nav>
         </div>
       </div>
     </footer>

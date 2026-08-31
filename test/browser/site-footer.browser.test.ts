@@ -48,7 +48,12 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   const footer = page.getByRole("contentinfo");
   const isMobile = (page.viewportSize()?.width ?? 1280) < 640;
   if (isMobile) {
-    await expect(footer).toBeHidden();
+    await expect(footer).toHaveCount(0);
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+      window.dispatchEvent(new Event("scroll"));
+    });
+    await expect(page.getByRole("contentinfo")).toHaveCount(0);
     return;
   }
   const footerNav = footer.getByRole("navigation", { name: "页脚" });
@@ -103,8 +108,19 @@ test("footer exposes GitHub, feedback, and site-info links", async ({
   }
 });
 
+test("latest does not mount a footer on mobile", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 1280) >= 640, "desktop keeps footer");
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("contentinfo")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.scrollTo(0, document.body.scrollHeight);
+    window.dispatchEvent(new Event("scroll"));
+  });
+  await expect(page.getByRole("contentinfo")).toHaveCount(0);
+});
+
 test("footer site-info links open their pages", async ({ page }) => {
-  test.skip((page.viewportSize()?.width ?? 1280) < 640, "footer is hidden on mobile");
+  test.skip((page.viewportSize()?.width ?? 1280) < 640, "footer is not rendered on mobile");
   await page.goto("/courses", { waitUntil: "domcontentloaded" });
   const footerNav = page
     .getByRole("contentinfo")

@@ -4,7 +4,6 @@ import {
   Suspense,
   useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from "react";
 import {
@@ -20,12 +19,10 @@ import type { SiteBanner as SiteBannerValue } from "../site-banner";
 import { SiteBanner } from "./SiteBanner";
 import { SiteFooter } from "./SiteFooter";
 import { DeferredShellCourseSearch } from "./DeferredShellCourseSearch";
+import { ThemeToggle } from "./ThemeToggle";
 
 const AccountNavControlLazy = lazy(() =>
   import("./AccountNavControl").then((m) => ({ default: m.AccountNavControl })),
-);
-const ThemeToggleLazy = lazy(() =>
-  import("./ThemeToggle").then((m) => ({ default: m.ThemeToggle })),
 );
 
 function loadDeferredHeroUiStyles(pathname: string) {
@@ -255,23 +252,6 @@ function MobilePrimaryNav({
   );
 }
 
-function useLoadShellControls() {
-  const { pathname } = useLocation();
-  const [load, setLoad] = useState(import.meta.env.DEV);
-
-  useEffect(() => {
-    if (load) return;
-    // Public latest is content-first: keep the lightweight login placeholder
-    // through the lab audit window. Authenticated and account surfaces still
-    // get their controls promptly after the shell has mounted.
-    const delay = pathname === "/" || pathname === "/latest" ? 30000 : 1200;
-    const timer = window.setTimeout(() => setLoad(true), delay);
-    return () => window.clearTimeout(timer);
-  }, [load, pathname]);
-
-  return load;
-}
-
 function DeferredAccountNavControl() {
   const { viewer, ready } = useViewer();
   const location = useLocation();
@@ -295,18 +275,6 @@ function DeferredAccountNavControl() {
   return (
     <Suspense fallback={<span aria-hidden className="inline-block h-8 w-12 shrink-0" />}>
       <AccountNavControlLazy />
-    </Suspense>
-  );
-}
-
-function DeferredThemeToggle() {
-  const load = useLoadShellControls();
-  if (!load) {
-    return <span aria-hidden className="inline-block size-8 shrink-0" />;
-  }
-  return (
-    <Suspense fallback={<span aria-hidden className="inline-block size-8 shrink-0" />}>
-      <ThemeToggleLazy />
     </Suspense>
   );
 }
@@ -366,7 +334,7 @@ function DefaultShell({
               />
               <div className="flex shrink-0 items-center gap-1">
                 <DeferredAccountNavControl />
-                <DeferredThemeToggle />
+                <ThemeToggle />
               </div>
             </div>
             <div className="min-w-0">
@@ -422,7 +390,7 @@ function DefaultShell({
             </div>
             <div className="flex items-center justify-end gap-2">
               <DeferredAccountNavControl />
-              <DeferredThemeToggle />
+              <ThemeToggle />
             </div>
           </div>
           )}
