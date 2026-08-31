@@ -285,6 +285,63 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   await expect(page.getByTitle("系统运行状态")).toHaveAttribute("loading", "lazy");
 });
 
+test("latest reuses the HTML-bootstrap banner request", async ({ page }) => {
+  let bannerRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/site/banner") {
+      bannerRequests += 1;
+    }
+  });
+  await mockShellApi(page);
+  await page.route("**/api/site/banner", (route) =>
+    route.fulfill({
+      json: {
+        desktopHtml: "<p>桌面公告</p>",
+        mobileHtml: "<p>移动公告</p>",
+        updatedAt: "2026-08-30 00:00:00",
+      },
+    }),
+  );
+
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("region", { name: "全站公告" })).toBeVisible();
+  expect(bannerRequests).toBe(1);
+});
+
+test("latest keeps the main column stable while a non-empty banner loads", async ({
+  page,
+}) => {
+  let releaseBanner!: () => void;
+  const bannerGate = new Promise<void>((resolve) => {
+    releaseBanner = resolve;
+  });
+  await mockShellApi(page);
+  await page.route("**/api/site/banner", async (route) => {
+    await bannerGate;
+    return route.fulfill({
+      json: {
+        desktopHtml: "<p>桌面公告</p>",
+        mobileHtml: "<p>移动公告</p>",
+        updatedAt: "2026-08-30 00:00:00",
+      },
+    });
+  });
+
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("讲得清楚，作业适中")).toBeVisible();
+  const mainBefore = await page.locator("main").boundingBox();
+  const footerBefore = await page.getByRole("contentinfo").boundingBox();
+  expect(mainBefore).toBeTruthy();
+  expect(footerBefore).toBeTruthy();
+
+  releaseBanner();
+  await expect(page.getByRole("region", { name: "全站公告" })).toBeVisible();
+  const mainAfter = await page.locator("main").boundingBox();
+  const footerAfter = await page.getByRole("contentinfo").boundingBox();
+  expect(mainAfter?.y).toBe(mainBefore?.y);
+  expect(footerAfter?.y).toBe(footerBefore?.y);
+});
+
 test("latest feed keeps 继续加载 as a retry after an auto-load error", async ({
   page,
 }) => {

@@ -43,8 +43,13 @@ function BannerAlert({
   );
 }
 
-export function SiteBanner({ banner }: { banner: SiteBannerValue | null }) {
-  const token = banner ? bannerDismissToken(banner) : "";
+export function SiteBanner({
+  banner,
+  loading = false,
+}: {
+  banner: SiteBannerValue | null;
+  loading?: boolean;
+}) {
   const [dismissedToken, setDismissedToken] = useState(() => {
     try {
       return window.localStorage.getItem(SITE_BANNER_DISMISS_KEY) ?? "";
@@ -52,6 +57,18 @@ export function SiteBanner({ banner }: { banner: SiteBannerValue | null }) {
       return "";
     }
   });
+
+  if (loading) {
+    return (
+      <section
+        aria-hidden
+        className="mx-auto min-h-14 w-full max-w-[1520px] px-4 pt-2 sm:min-h-16 sm:px-5 xl:px-4"
+        data-site-banner-placeholder
+      />
+    );
+  }
+
+  const token = banner ? bannerDismissToken(banner) : "";
   const dismissed = Boolean(token) && dismissedToken === token;
 
   if (!banner || (!banner.desktopHtml && !banner.mobileHtml) || dismissed) {

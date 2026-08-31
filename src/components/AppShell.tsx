@@ -325,10 +325,12 @@ function DeferredThemeToggle() {
 
 function DefaultShell({
   banner,
+  bannerLoading,
   config,
   children,
 }: {
   banner: SiteBannerValue | null;
+  bannerLoading: boolean;
   config: SiteConfig | null;
   children: ReactNode;
 }) {
@@ -439,7 +441,7 @@ function DefaultShell({
         </div>
       </header>
 
-      <SiteBanner banner={banner} />
+      <SiteBanner banner={banner} loading={bannerLoading} />
 
       <main
         className="mx-auto flex w-full max-w-[1520px] flex-1 flex-col px-4 pb-4 pt-8 sm:px-5 sm:pb-16 xl:px-4"
@@ -475,10 +477,12 @@ function withGlobalSearchParams(path: string, params: URLSearchParams) {
 
 export function AppShell({
   banner,
+  bannerLoading = false,
   config,
   children,
 }: {
   banner: SiteBannerValue | null;
+  bannerLoading?: boolean;
   config: SiteConfig | null;
   children: React.ReactNode;
 }) {
@@ -486,7 +490,7 @@ export function AppShell({
 
   if (prototypeVariant && PrototypeShellLazy) {
     return (
-      <Suspense fallback={<DefaultShell banner={banner} config={config}>{children}</DefaultShell>}>
+      <Suspense fallback={<DefaultShell banner={banner} bannerLoading={bannerLoading} config={config}>{children}</DefaultShell>}>
         <PrototypeShellLazy variant={prototypeVariant} config={config}>
           {children}
         </PrototypeShellLazy>
@@ -494,5 +498,5 @@ export function AppShell({
     );
   }
 
-  return <DefaultShell banner={banner} config={config}>{children}</DefaultShell>;
+  return <DefaultShell banner={banner} bannerLoading={bannerLoading} config={config}>{children}</DefaultShell>;
 }

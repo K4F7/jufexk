@@ -33,6 +33,15 @@
           }
           return data;
         });
+        window.__jufexkSiteBannerRequest = fetch("/api/site/banner", {
+          credentials: "same-origin",
+        }).then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data?.error || "公告加载失败");
+          }
+          return data;
+        });
       }
     </script>
   </head>

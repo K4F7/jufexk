@@ -16,7 +16,7 @@ export const HEROUI_AVATAR_ASSETS_ORIGIN =
 
 /** SHA-256 allowlist for the tiny /latest request bootstrap in index.html. */
 export const LATEST_REQUEST_BOOTSTRAP_CSP_HASH =
-  "'sha256-A4c7FVNHBYos9oj9KG/SDmaZx4WCR75jv3CdgHGA07I='";
+  "'sha256-jDLvLWbYDqWjMW2IZsxLca0ML0NT6SdAK9WHa6ngFz8='";
 
 export const ASSET_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
