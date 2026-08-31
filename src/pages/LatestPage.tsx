@@ -18,7 +18,11 @@ import {
   INITIAL_MOBILE_REVIEW_COUNT,
   LATEST_API_PAGE_SIZE,
   LATEST_PAGE_SIZE,
+  LATEST_FEED_COLUMN_CLASS,
+  LATEST_REVIEW_RESERVED_ROW_CLASS,
+  LATEST_REVIEW_ROW_CLASS,
   latestLoadingSkeletonCount,
+  latestReservedSpacerCount,
 } from "../lib/latest-loading";
 import type { LatestReview, PublicReviewPage } from "../lib/types";
 
@@ -154,7 +158,7 @@ export function LatestPage() {
   });
 
   return (
-    <section aria-label="最新课评">
+    <section aria-label="最新课评" className={LATEST_FEED_COLUMN_CLASS}>
       <header aria-label="最新课评标题" className="mb-3 max-sm:sr-only">
         <Typography
           className="m-0 text-lg font-bold leading-tight tracking-tight text-foreground"
@@ -188,17 +192,6 @@ export function LatestPage() {
           {items.slice(0, renderedItemCount).map((review) => (
             <LatestReviewItem key={review.id} review={review} />
           ))}
-          {Math.max(items.length, nextCursor ? items.length : LATEST_PAGE_SIZE) >
-          Math.min(items.length, renderedItemCount)
-            ? Array.from(
-                {
-                  length:
-                    Math.max(items.length, nextCursor ? items.length : LATEST_PAGE_SIZE) -
-                    Math.min(items.length, renderedItemCount),
-                },
-                (_, index) => <LatestReviewSpace key={`space-${index}`} />,
-              )
-            : null}
           {nextCursor ? (
             <div className="flex flex-col items-center pt-4">
               <Button
@@ -221,6 +214,10 @@ export function LatestPage() {
               />
             </div>
           ) : null}
+          {Array.from(
+            { length: latestReservedSpacerCount(items.length, renderedItemCount) },
+            (_, index) => <LatestReviewSpace key={`space-${index}`} />,
+          )}
           {loadMoreError ? (
             <p className="mt-3 text-center text-[calc(13/15*1rem)] text-danger" role="alert">
               {loadMoreError}
@@ -236,7 +233,7 @@ function LatestReviewSpace() {
   return (
     <article
       aria-hidden="true"
-      className="invisible min-h-[22rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+      className={`invisible ${LATEST_REVIEW_RESERVED_ROW_CLASS}`}
     />
   );
 }
@@ -245,19 +242,18 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
   const date = formatReviewDate(review.created_at);
   const moreHref = `/courses/${review.course_id}?teacher=${review.teacher_id}#${encodeURIComponent(reviewAnchorId(review.id))}`;
   return (
-    <article className="min-h-[22rem] min-w-0 border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5">
-      <header className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 sm:flex sm:flex-wrap sm:justify-between sm:gap-x-3 sm:gap-y-0">
-        <span className="col-start-1 row-start-1 inline-flex min-w-0 items-center text-[calc(13/15*1rem)] font-medium text-foreground">
+    <article className={LATEST_REVIEW_ROW_CLASS}>
+      <header className="flex w-fit max-w-full flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:flex-nowrap">
+        <p className="m-0 min-w-0 text-[calc(13/15*1rem)] leading-6 sm:whitespace-nowrap">
           <ReviewAuthor
             publicCode={review.author_public_code}
             avatarKey={review.author_avatar_key}
+            className="align-middle leading-6"
           />
-        </span>
-        <p className="col-start-2 row-start-1 mb-0 mt-0 min-h-12 min-w-0 text-[calc(13/15*1rem)] leading-6 sm:order-3 sm:mt-2 sm:w-full sm:basis-full">
-          <span className="text-muted">点评了 </span>
+          <span className="text-muted"> 点评了 </span>
           <RouterAriaLink
             to={`/courses/${review.course_id}?teacher=${review.teacher_id}`}
-            className="max-sm:!inline break-words [overflow-wrap:anywhere] text-accent sm:inline-block sm:max-w-full"
+            className="inline break-words [overflow-wrap:anywhere] text-[calc(13/15*1rem)] leading-6 text-accent"
           >
             {review.course_name}
             {review.teacher_name ? `（${review.teacher_name}）` : ""}
@@ -265,7 +261,7 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
         </p>
         {date ? (
           <time
-            className="col-start-3 row-start-1 min-w-0 max-w-full shrink-0 whitespace-normal break-words text-[calc(12/15*1rem)] text-muted sm:order-2"
+            className="shrink-0 text-[calc(12/15*1rem)] leading-6 text-muted"
             dateTime={date}
           >
             {date}
@@ -300,15 +296,13 @@ function LatestReviewSkeleton() {
       {Array.from({ length: LATEST_PAGE_SIZE }, (_, row) =>
         row < latestLoadingSkeletonCount() ? (
           <article
-            className="min-h-[22rem] border-b border-separator py-3 last:border-b-0 sm:min-h-56 sm:py-5"
+            className={LATEST_REVIEW_RESERVED_ROW_CLASS}
             data-loading-skeleton="true"
             key={row}
           >
-            <header className="flex min-h-8 items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Skeleton className="size-8 shrink-0 rounded-full" />
-                <Skeleton className="h-4 w-28 rounded" />
-              </div>
+            <header className="flex w-fit max-w-full flex-wrap items-center gap-2">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-28 rounded" />
               <Skeleton className="h-3 w-20 rounded" />
             </header>
             <Skeleton className="mt-3 h-4 w-3/4 rounded" />
@@ -316,7 +310,11 @@ function LatestReviewSkeleton() {
             <Skeleton className="mt-3 h-4 w-16 rounded" />
           </article>
         ) : (
-          <LatestReviewSpace key={row} />
+          <div
+            aria-hidden="true"
+            className={`invisible ${LATEST_REVIEW_RESERVED_ROW_CLASS}`}
+            key={row}
+          />
         ),
       )}
     </div>
