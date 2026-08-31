@@ -48,8 +48,6 @@
 @import "@heroui/styles/components/radio.css" layer(components);
 @import "@heroui/styles/components/textfield.css" layer(components);
 @import "@heroui/styles/components/textarea.css" layer(components);
-@import "@heroui/styles/components/error-message.css" layer(components);
-@import "@heroui/styles/components/field-error.css" layer(components);
 @import "@heroui/styles/components/calendar.css" layer(components);
 @import "@heroui/styles/components/range-calendar.css" layer(components);
 @import "@heroui/styles/components/calendar-year-picker.css" layer(components);
