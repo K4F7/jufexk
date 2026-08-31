@@ -18,6 +18,7 @@ import type { LatestReview, PublicReviewPage } from "../lib/types";
 
 // Keep the loading shell aligned with the API's default first-page size.
 const LATEST_PAGE_SIZE = 20;
+const LATEST_API_PAGE_SIZE = 10;
 const INITIAL_MOBILE_REVIEW_COUNT = 6;
 
 declare global {
@@ -33,7 +34,9 @@ if (
   window.location.pathname === "/latest" &&
   !new URLSearchParams(window.location.search).has("preview")
 ) {
-  const request = api<PublicReviewPage<LatestReview>>("/api/reviews/latest");
+  const request = api<PublicReviewPage<LatestReview>>(
+    `/api/reviews/latest?pageSize=${LATEST_API_PAGE_SIZE}`,
+  );
   initialLatestPageRequest = request.catch((reason) => {
     initialLatestPageRequest = null;
     throw reason;
@@ -104,9 +107,10 @@ export function LatestPage() {
     setLoading(true);
     setError("");
     (initialLatestPageRequest ??
-      api<PublicReviewPage<LatestReview>>("/api/reviews/latest", {
-        signal: controller.signal,
-      }))
+      api<PublicReviewPage<LatestReview>>(
+        `/api/reviews/latest?pageSize=${LATEST_API_PAGE_SIZE}`,
+        { signal: controller.signal },
+      ))
       .then((page) => {
         if (cancelled) return;
         setItems(page.items);
