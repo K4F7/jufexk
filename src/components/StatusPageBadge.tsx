@@ -44,7 +44,7 @@ export function StatusPageBadge() {
         observer.disconnect();
         window.setTimeout(load, 0);
       },
-      { rootMargin: "256px 0px" },
+      { rootMargin: "0px" },
     );
     observer.observe(placeholder);
     return () => {
