@@ -35,7 +35,8 @@
    * - 0.5rem radius, default shadows, link=foreground
    * success / warning / danger: HeroUI defaults (untouched)
    */
-  --accent: oklch(0.6204 0.195 253.83);
+  /* Keep the Sky hue while meeting AA contrast for small link text. */
+  --accent: oklch(0.56 0.195 253.83);
   --accent-foreground: var(--snow);
   --focus: var(--accent);
   --foreground: var(--eclipse);
@@ -73,7 +74,7 @@
 
 .dark,
 [data-theme="dark"] {
-  --accent: oklch(0.6204 0.195 253.83);
+  --accent: oklch(0.74 0.12 253.83);
   --accent-foreground: var(--snow);
   --focus: var(--accent);
   --link: var(--foreground);
