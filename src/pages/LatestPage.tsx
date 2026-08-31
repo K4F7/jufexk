@@ -41,9 +41,6 @@ if (
     initialLatestPageRequest = null;
     throw reason;
   });
-  initialLatestPageRequest.then(() => {
-    initialLatestPageRequest = null;
-  });
 }
 
 export function LatestPage() {
