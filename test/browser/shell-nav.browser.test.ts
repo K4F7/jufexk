@@ -209,6 +209,7 @@ test("desktop header stays one row for the production site name", async ({
   const brand = page.getByRole("banner").getByRole("link", { name: "非官方课评@JUFE" });
   const nav = page.getByRole("navigation", { name: "主导航" });
   const search = page.getByRole("searchbox", { name: "搜索课程" });
+  await expect(search).toBeVisible();
   const stacked = await Promise.all([
     brand.boundingBox(),
     nav.boundingBox(),
