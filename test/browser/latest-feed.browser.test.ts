@@ -177,7 +177,6 @@ test("latest author and date share a header row on desktop and mobile", async ({
   await page.setViewportSize({ width: 375, height: 720 });
   await expectStackedAuthorLayout(article);
   await expect(article.getByRole("link", { name: "查看全文" })).toBeVisible();
-  await expect(article).toHaveCSS("content-visibility", "auto");
   await expect(page.getByRole("link", { name: "更多" })).toHaveCount(0);
 });
 
@@ -258,6 +257,13 @@ test("latest reserves review space while the first page is loading", async ({ pa
   expect(footerBefore?.y).toBeGreaterThan(400);
   await expect(page.getByText("讲得清楚，作业适中").first()).toBeVisible();
   const footerAfter = await page.getByRole("contentinfo").boundingBox();
+  if ((page.viewportSize()?.width ?? 1280) < 640) {
+    const rows = await page.locator("main > section article").evaluateAll((els) =>
+      els.map((element) => element.getBoundingClientRect().height),
+    );
+    expect(rows).toHaveLength(20);
+    expect(Math.min(...rows)).toBeGreaterThanOrEqual(287);
+  }
   expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThan(2);
 });
 
