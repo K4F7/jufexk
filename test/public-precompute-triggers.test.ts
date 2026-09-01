@@ -104,7 +104,7 @@ it("marks public projections dirty for raw source-table inserts, updates and del
     );
     await expectWriteToMarkDirty(
       "teachers UPDATE",
-      env.DB.prepare("UPDATE teachers SET title='讲师' WHERE id=355002"),
+      env.DB.prepare("UPDATE teachers SET name='触发器教师改名' WHERE id=355002"),
     );
     await expectWriteToMarkDirty(
       "teachers DELETE",
@@ -195,7 +195,7 @@ it("marks public projections dirty for raw source-table inserts, updates and del
     await expectWriteToMarkDirty(
       "offerings UPDATE",
       env.DB.prepare(
-        "UPDATE offerings SET campus='蛟桥园' WHERE id=355007",
+        "UPDATE offerings SET course_id=course_id WHERE id=355007",
       ),
     );
     await expectWriteToMarkDirty(
@@ -244,5 +244,133 @@ it("marks public projections dirty for raw source-table inserts, updates and del
       ),
       env.DB.prepare("UPDATE public_precompute_state SET dirty=1 WHERE id=1"),
     ]);
+  }
+});
+
+it("ignores unrelated writes and coalesces one dirty epoch", async () => {
+  const before = await env.DB.prepare(
+    "SELECT dirty,generation,refresh_token,refresh_lease_until,published_generation,published_at FROM public_precompute_state WHERE id=1",
+  ).first<{
+    dirty: number;
+    generation: number;
+    refresh_token: string | null;
+    refresh_lease_until: number | null;
+    published_generation: number;
+    published_at: number;
+  }>();
+  await env.DB.prepare(
+    "UPDATE public_precompute_state SET dirty=0,generation=100,refresh_token='held',refresh_lease_until=unixepoch()+60 WHERE id=1",
+  ).run();
+  try {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE teachers SET title=title WHERE id=1"),
+      env.DB.prepare("UPDATE teachers SET bio=bio WHERE id=1"),
+    ]);
+    const clean = await env.DB.prepare(
+      "SELECT dirty,generation,refresh_token,refresh_lease_until FROM public_precompute_state WHERE id=1",
+    ).first<{ dirty: number; generation: number; refresh_token: string | null; refresh_lease_until: number | null }>();
+    expect(clean?.dirty).toBe(0);
+    expect(clean?.generation).toBe(100);
+    expect(clean?.refresh_token).toBe("held");
+
+    await env.DB.batch([
+      env.DB.prepare("UPDATE teachers SET name=name WHERE id=1"),
+      env.DB.prepare("UPDATE teachers SET department=department WHERE id=1"),
+      env.DB.prepare("UPDATE courses SET name=name WHERE id=1"),
+    ]);
+    const dirty = await env.DB.prepare(
+      "SELECT dirty,generation,refresh_token,refresh_lease_until FROM public_precompute_state WHERE id=1",
+    ).first<{ dirty: number; generation: number; refresh_token: string | null; refresh_lease_until: number | null }>();
+    expect(dirty).toEqual({ dirty: 1, generation: 101, refresh_token: null, refresh_lease_until: null });
+
+    await env.DB.batch([
+      env.DB.prepare("UPDATE teachers SET name=name WHERE id=1"),
+      env.DB.prepare("UPDATE courses SET department=department WHERE id=1"),
+    ]);
+    const coalesced = await env.DB.prepare(
+      "SELECT generation FROM public_precompute_state WHERE id=1",
+    ).first<{ generation: number }>();
+    expect(coalesced?.generation).toBe(101);
+  } finally {
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET dirty=?,generation=?,refresh_token=?,refresh_lease_until=?,published_generation=?,published_at=? WHERE id=1",
+    ).bind(
+      before?.dirty ?? 1,
+      before?.generation ?? 0,
+      before?.refresh_token ?? null,
+      before?.refresh_lease_until ?? null,
+      before?.published_generation ?? -1,
+      before?.published_at ?? 0,
+    ).run();
+  }
+});
+
+it("keeps offering and tag invalidation scoped to projection inputs", async () => {
+  const before = await env.DB.prepare(
+    "SELECT generation FROM public_precompute_state WHERE id=1",
+  ).first<{ generation: number }>();
+  await env.DB.prepare(
+    "UPDATE public_precompute_state SET dirty=0,refresh_token=NULL,refresh_lease_until=NULL WHERE id=1",
+  ).run();
+  try {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO teachers(id,source_teacher_label,name) VALUES(355008,'触发器开课教师','触发器开课教师')"),
+      env.DB.prepare("INSERT INTO courses(id,code,name,category) VALUES(355009,'TRIGGER355T','触发器标签课程','general')"),
+      env.DB.prepare("INSERT INTO offerings(id,course_id,term,section,status) VALUES(355007,1,'触发器学期','触发器班','active')"),
+      env.DB.prepare("INSERT INTO offering_teachers(offering_id,teacher_id) VALUES(355007,355008)"),
+      env.DB.prepare("UPDATE public_precompute_state SET dirty=0,refresh_token=NULL,refresh_lease_until=NULL WHERE id=1"),
+    ]);
+    const baseline = await env.DB.prepare(
+      "SELECT generation FROM public_precompute_state WHERE id=1",
+    ).first<{ generation: number }>();
+    const offeringTrigger = await env.DB.prepare(
+      "SELECT sql FROM sqlite_schema WHERE name='public_precompute_dirty_offerings_update'",
+    ).first<{ sql: string }>();
+    const offeringTeacherTrigger = await env.DB.prepare(
+      "SELECT sql FROM sqlite_schema WHERE name='public_precompute_dirty_offering_teachers_update'",
+    ).first<{ sql: string }>();
+    expect(offeringTrigger?.sql).toContain("UPDATE OF id,course_id");
+    expect(offeringTeacherTrigger?.sql).toContain("UPDATE OF offering_id,teacher_id");
+    const unrelated = await env.DB.prepare(
+      "SELECT dirty,generation FROM public_precompute_state WHERE id=1",
+    ).first<{ dirty: number; generation: number }>();
+    expect(unrelated).toEqual({ dirty: 0, generation: baseline?.generation ?? 0 });
+
+    await env.DB.prepare(
+      "INSERT INTO course_tags(course_id,tag) VALUES(355009,'mooc')",
+    ).run();
+    const inserted = await env.DB.prepare(
+      "SELECT dirty FROM public_precompute_state WHERE id=1",
+    ).first<{ dirty: number }>();
+    expect(inserted?.dirty).toBe(1);
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET dirty=0,refresh_token=NULL,refresh_lease_until=NULL WHERE id=1",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE course_tags SET course_id=355009 WHERE course_id=355009 AND tag='mooc'",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET dirty=0,refresh_token=NULL,refresh_lease_until=NULL WHERE id=1",
+    ).run();
+    await env.DB.prepare(
+      "DELETE FROM course_tags WHERE course_id=355009 AND tag='mooc'",
+    ).run();
+    const deleted = await env.DB.prepare(
+      "SELECT dirty FROM public_precompute_state WHERE id=1",
+    ).first<{ dirty: number }>();
+    expect(deleted?.dirty).toBe(1);
+  } finally {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM offering_teachers WHERE offering_id=355007"),
+      env.DB.prepare("DELETE FROM offerings WHERE id=355007"),
+      env.DB.prepare("DELETE FROM teachers WHERE id=355008"),
+      env.DB.prepare("DELETE FROM courses WHERE id=355009"),
+    ]);
+    await env.DB.prepare(
+      "DELETE FROM course_tags WHERE course_id=1 AND tag IN ('trigger-tag','trigger-tag-updated')",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE public_precompute_state SET dirty=1,refresh_token=NULL,refresh_lease_until=NULL WHERE id=1",
+    ).run();
   }
 });
