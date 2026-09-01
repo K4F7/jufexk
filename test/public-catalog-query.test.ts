@@ -125,6 +125,7 @@ describe("公开目录查询 module", () => {
     });
     const row = page.items.find((item) => item.name === courseName);
     expect(row?.id).toBe(courseId);
+    expect(row?.public_id).toBe(`course:${courseId}`);
     expect(row?.teachers?.split(",")).toEqual(
       expect.arrayContaining([firstTeacher, secondTeacher]),
     );
