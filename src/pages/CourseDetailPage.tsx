@@ -61,6 +61,12 @@ import {
   invalidateCatalogData,
 } from "../lib/catalog-data-cache";
 import {
+  courseDetailApiPath,
+  courseDetailHref,
+  publicCourseMatchesParam,
+  publicCoursePageIdentity,
+} from "../lib/public-course-identity";
+import {
   PREVIEW_REVIEW_COMMENTS,
   previewFilledCourseDetail,
   previewFilledCourseReviews,
@@ -279,9 +285,11 @@ export function CourseDetailPage() {
    * 路由 id 已变但仍握着上一门课的 data 时当作未就绪，避免用错教师。 */
   const urlTeacherId = parseTeacherId(location.search);
   const course =
-    data?.course != null && id != null && data.course.id === Number(id)
+    data?.course != null && publicCourseMatchesParam(data.course, id)
       ? data.course
       : null;
+  const courseIdentity =
+    (course ? publicCoursePageIdentity(course) : null) ?? id ?? "";
   const teachers = course?.teachers ?? [];
   const selectedTeacher =
     (urlTeacherId != null
@@ -291,10 +299,7 @@ export function CourseDetailPage() {
     null;
   /** 课程到达后只用校验过的任课教师；加载中可先按 URL 教师并行拉评价。 */
   const effectiveTeacherId = course ? selectedTeacher?.id : urlTeacherId;
-  const relationSignals = useRelationSignals(
-    course?.id ?? 0,
-    selectedTeacher,
-  );
+  const relationSignals = useRelationSignals(courseIdentity, selectedTeacher);
   let teacherQuery = "";
   if (effectiveTeacherId) {
     const query = new URLSearchParams({
@@ -348,12 +353,17 @@ export function CourseDetailPage() {
       setData(previewFilledCourseDetail(Number(id) || 8));
       return;
     }
+    if (!id) {
+      setData(null);
+      setError("课程不存在");
+      return;
+    }
     let cancelled = false;
     setData(null);
     setError("");
     (async () => {
       try {
-        const detailUrl = `/api/courses/${id}`;
+        const detailUrl = courseDetailApiPath(id);
         const d = await getCatalogData(detailUrl, () => api<Detail>(detailUrl));
         if (!cancelled) setData(d);
       } catch (e) {
@@ -400,7 +410,7 @@ export function CourseDetailPage() {
   /** 管理员公告保存后重拉课程详情（只刷新课程载荷，不动评价缓存）。 */
   const reloadCourse = useCallback(async () => {
     try {
-      const detailUrl = `/api/courses/${id}`;
+      const detailUrl = courseDetailApiPath(id ?? "");
       invalidateCatalogData(detailUrl);
       setData(await getCatalogData(detailUrl, () => api<Detail>(detailUrl)));
     } catch {
@@ -434,7 +444,7 @@ export function CourseDetailPage() {
     }
     const cacheKey = `${id}:${teacherQuery}`;
     // 刚提交的评价立刻公开：绕过会话缓存重拉第一页。
-    const reviewsUrl = `/api/courses/${id}/reviews?${teacherQuery}`;
+    const reviewsUrl = courseDetailApiPath(id, `/reviews?${teacherQuery}`);
     if (submitted) {
       reviewCacheRef.current.delete(cacheKey);
       invalidateCatalogData(reviewsUrl);
@@ -477,7 +487,7 @@ export function CourseDetailPage() {
   /** 管理动作（屏蔽/解除/删除）后：清空评价会话缓存并 bump 版本重拉。 */
   const handleReviewsChanged = useCallback(() => {
     reviewCacheRef.current.clear();
-    invalidateCatalogData(`/api/courses/${id}/reviews`);
+    invalidateCatalogData(courseDetailApiPath(id ?? "", "/reviews"));
     setReviewsVersion((v) => v + 1);
   }, [id]);
 
@@ -612,7 +622,7 @@ export function CourseDetailPage() {
     (teacher) => teacher.id !== effectiveTeacherId,
   );
   const teacherOtherCourses = (teacherCourses ?? []).filter(
-    (item) => item.id !== course.id,
+    (item) => publicCoursePageIdentity(item) !== publicCoursePageIdentity(course),
   );
   /** 当前关系已有总结时展示真实 AI 总结（#401）；未生成时保留占位块。 */
   const relationSummary =
@@ -628,11 +638,8 @@ export function CourseDetailPage() {
     const q = sp.toString();
     return q ? `/courses?${q}` : "/courses";
   })();
-  const relationHref = (teacherId: number) => {
-    const sp = new URLSearchParams(location.search);
-    sp.set("teacher", String(teacherId));
-    return `/courses/${course.id}?${sp.toString()}`;
-  };
+  const relationHref = (teacherId: number) =>
+    courseDetailHref(courseIdentity, teacherId, location.search);
   const metaRows: Array<[string, string]> = [
     ["选课类别", course.enrollment_category || "—"],
     ["教学类型", course.teaching_type || "—"],
@@ -871,8 +878,11 @@ export function CourseDetailPage() {
               <ul className="m-0 flex list-none flex-col gap-1 p-0">
                 {teacherOtherCourses.map((item) => (
                   <SideRelationRow
-                    key={item.id}
-                    href={`/courses/${item.id}?teacher=${effectiveTeacherId}`}
+                    key={item.public_id ?? item.id ?? item.name}
+                    href={courseDetailHref(
+                      publicCoursePageIdentity(item) ?? String(item.id ?? ""),
+                      effectiveTeacherId,
+                    )}
                     label={item.name}
                     code={item.code || undefined}
                     rating={item.rating}

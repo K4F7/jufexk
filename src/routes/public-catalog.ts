@@ -12,12 +12,10 @@ import { buildCatalogSearchRanking } from "../lib/catalog-search-ranking";
 import {
   groupEnglishLevelItems,
   isPublicListCategoryFilter,
-  isVirtualPeSportId,
   publicCategoryFilterError,
   publicOptionDisplayName,
   publicCourseVisibleSql,
   VIRTUAL_PE_SPORTS,
-  virtualPeSportById,
   virtualPeSportDisplayName,
   virtualPeSportForTeacherName,
   virtualPeSportMatchesQuery,
@@ -91,6 +89,19 @@ import {
   reviewNotDeletedBindingSql,
 } from "../public-review-visibility";
 import { getCourseRelationSummaries } from "../review-summary";
+import { publicPeCourseIdentity } from "../lib/public-pe-course-projection";
+import {
+  loadMappedPeCourseDetail,
+  loadMappedPeSourceRelations,
+  loadVirtualPeCourseDetail,
+  peCourseFromTeacherRelation,
+  resolvePublicPeReadTarget,
+  virtualPeCourseListItem,
+} from "../lib/public-pe-detail";
+import {
+  loadPublicPeRelationProjection,
+  publicPeMappedSourceRelationExcludeSql,
+} from "../lib/public-pe-relation-projection";
 import { readSecret } from "../secrets";
 import { loadSiteBanner } from "../site-banner";
 import {
@@ -170,22 +181,7 @@ const withPublicCourseOption = <
     ...view,
   };
 };
-const virtualPeSportItem = (
-  sport: (typeof VIRTUAL_PE_SPORTS)[number],
-  teachers: Array<{ id: number; name: string }>,
-) => ({
-  id: sport.id,
-  code: "",
-  name: virtualPeSportDisplayName(sport),
-  category: "sports" as const,
-  department: "",
-  teachers: teachers.map((teacher) => teacher.name).join(","),
-  teacher_refs: teachers
-    .map((teacher) => `${teacher.id}:${teacher.name}`)
-    .join(","),
-  review_count: 0,
-  rating: null,
-});
+const virtualPeSportItem = virtualPeCourseListItem;
 const loadVirtualPeSportItems = async (
   db: D1Database,
   searchTerms: string[],
@@ -268,6 +264,12 @@ const decodePublicReviewCursor = (
 };
 const encodePublicReviewCursor = (cursor: PublicReviewCursor) =>
   utf8ToBase64(JSON.stringify(cursor));
+type ReviewSourceRelation = { courseId: number; teacherId: number };
+const emptyPublicReviewPage = {
+  items: [] as Awaited<ReturnType<typeof decoratePublicReviews>>,
+  total: 0,
+  nextCursor: null as string | null,
+};
 const getPublicReviewPage = async (
   db: D1Database,
   subject: "course_id" | "teacher_id",
@@ -279,7 +281,9 @@ const getPublicReviewPage = async (
   query: PublicReviewQuery | null = null,
   includeBlocked = false,
   recordTiming?: (name: string, durationMs: number) => void,
+  sourceRelations: ReviewSourceRelation[] | null = null,
 ) => {
+  if (sourceRelations && !sourceRelations.length) return emptyPublicReviewPage;
   const cursorSource = cursor && "source" in cursor ? cursor.source : -1;
   const cursorKey = cursor && "key" in cursor ? cursor.key : "";
   const reviewBinding = includeBlocked
@@ -294,6 +298,15 @@ const getPublicReviewPage = async (
   const teacherFilter = (alias: string) =>
     teacherId ? ` AND ${alias}.teacher_id=?` : "";
   const teacherBinds = teacherId ? [teacherId] : [];
+  const pairFilter = (alias: string) =>
+    sourceRelations
+      ? ` AND (${sourceRelations
+          .map(() => `(${alias}.course_id=? AND ${alias}.teacher_id=?)`)
+          .join(" OR ")})`
+      : "";
+  const pairBinds = sourceRelations
+    ? sourceRelations.flatMap((item) => [item.courseId, item.teacherId])
+    : [];
   const filterParts: string[] = [];
   const filterBinds: unknown[] = [];
   if (query?.rating?.length) {
@@ -345,7 +358,11 @@ const getPublicReviewPage = async (
          JOIN teachers t ON t.id=phr.teacher_id
          LEFT JOIN public_review_signal_counts signal
            ON signal.source_kind='historical' AND signal.source_id=CAST(phr.id AS TEXT)
-         WHERE phr.${subject}=?${teacherFilter("phr")}${historicalBinding}
+         WHERE ${
+           sourceRelations
+             ? `1=1${pairFilter("phr")}${historicalBinding}`
+             : `phr.${subject}=?${teacherFilter("phr")}${historicalBinding}`
+         }
          UNION ALL
          SELECT 2 source_order,printf('%020d',r.id) sort_key,'review:' || r.id id,
            r.course_id,r.teacher_id,r.comment,r.comment_format,
@@ -362,8 +379,13 @@ const getPublicReviewPage = async (
          LEFT JOIN public_review_signal_counts signal
            ON signal.source_kind='review' AND signal.source_id=CAST(r.id AS TEXT)
          ${authoredReviewJoinSql}
-         WHERE r.${subject}=? AND r.status='approved'
-           AND trim(COALESCE(r.comment,''))<>''${reviewBinding}${teacherFilter("r")}
+         WHERE ${
+           sourceRelations
+             ? `r.status='approved'
+           AND trim(COALESCE(r.comment,''))<>''${reviewBinding}${pairFilter("r")}`
+             : `r.${subject}=? AND r.status='approved'
+           AND trim(COALESCE(r.comment,''))<>''${reviewBinding}${teacherFilter("r")}`
+         }
        `;
   const filterSql = filterParts.length ? filterParts.join(" AND ") : "1=1";
   const pageSql = query
@@ -371,7 +393,9 @@ const getPublicReviewPage = async (
        ORDER BY ${order?.expression} ${order?.direction},source_order,sort_key LIMIT ?`
     : `WHERE source_order>? OR (source_order=? AND sort_key>?)
        ORDER BY source_order,sort_key LIMIT ?`;
-  const baseBinds = [id, ...teacherBinds, id, ...teacherBinds];
+  const baseBinds = sourceRelations
+    ? [...pairBinds, ...pairBinds]
+    : [id, ...teacherBinds, id, ...teacherBinds];
   const needsCount = query
     ? !(orderedCursor && "total" in orderedCursor)
     : !(cursor && "total" in cursor);
@@ -502,6 +526,7 @@ const getPublicReviewPageFor = async (
   teacherId: number | null = null,
   query: PublicReviewQuery | null = null,
   cacheable = false,
+  sourceRelations: ReviewSourceRelation[] | null = null,
 ) =>
   getPublicReviewPage(
     c.env.DB,
@@ -514,6 +539,7 @@ const getPublicReviewPageFor = async (
     query,
     cacheable ? false : await hasValidAdminSession(c),
     (name, durationMs) => markServerTiming(c, name, durationMs),
+    sourceRelations,
   );
 publicCatalogRoutes.get("/api/config", async (c) => {
   const turnstileSecret = await readSecret(c.env.TURNSTILE_SECRET);
@@ -793,6 +819,7 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
        LEFT JOIN public_review_counts visible_counts
          ON visible_counts.course_id=c.id AND visible_counts.teacher_id=ct.teacher_id
        WHERE ct.teacher_id=? AND ${publicCourseVisibleSql("taught")} AND ${publicCourseVisibleSql("c")}
+         AND ${publicPeMappedSourceRelationExcludeSql("taught", "ct")}
        GROUP BY c.id
        ORDER BY review_count DESC,c.name,c.id`,
     ).bind(id, id),
@@ -818,13 +845,32 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
       [key: string]: unknown;
     }>,
   );
+  const peRelations = (await loadPublicPeRelationProjection(c.env.DB)).items.filter(
+    (item) => item.teacher_id === id,
+  );
+  const peSpecs = new Set(peRelations.map((item) => item.specialization));
+  for (const item of peRelations) {
+    const peCourse = peCourseFromTeacherRelation(item);
+    if (
+      publicCourses.some(
+        (course) => String(course.public_id ?? "") === peCourse.public_id,
+      )
+    ) {
+      continue;
+    }
+    publicCourses.push(peCourse);
+  }
   const teacherName =
     typeof teacher.name === "string" ? teacher.name : "";
   const visibleSport = virtualPeSportForTeacherName(teacherName);
   if (
     visibleSport &&
+    !peSpecs.has(visibleSport.label) &&
     !publicCourses.some(
-      (course) => course.name === virtualPeSportDisplayName(visibleSport),
+      (course) =>
+        course.public_id === publicPeCourseIdentity(visibleSport.label) ||
+        course.name === virtualPeSportDisplayName(visibleSport) ||
+        Number(course.id) === visibleSport.id,
     )
   ) {
     publicCourses.push(
@@ -835,8 +881,7 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
         },
       ]),
     );
-    teacher.course_count =
-      Number(teacher.course_count || 0) + 1;
+    teacher.course_count = Number(teacher.course_count || 0) + 1;
   }
   if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
   return c.json({
@@ -988,58 +1033,20 @@ publicCatalogRoutes.get("/api/courses/departments", async (c) => {
 });
 publicCatalogRoutes.get("/api/courses/:id", async (c) => {
   await ensurePublicListPrecomputes(c.env.DB, publicPrecomputeReadOptions(c));
-  const id = integer(c.req.param("id"));
-  const virtual = id ? virtualPeSportById(id) : null;
-  if (virtual) {
-    const placeholders = virtual.teacherNames.map(() => "?").join(",");
-    const teachers = (
-      await c.env.DB.prepare(
-        `SELECT t.*,0 review_count,NULL rating FROM teachers t
-         WHERE t.name IN (${placeholders}) ORDER BY t.name,t.id`,
-      )
-        .bind(...virtual.teacherNames)
-        .all()
-    ).results;
-    if (!teachers.length) return fail(c, "课程不存在", 404);
+  const peTarget = await resolvePublicPeReadTarget(c.env.DB, c.req.param("id"));
+  if (peTarget.kind === "missing") return fail(c, "课程不存在", 404);
+  if (peTarget.kind === "mapped" || peTarget.kind === "virtual") {
     const cacheable = isPublicCatalogCacheableRequest(c);
     const viewerId = cacheable ? null : await publicReviewViewerId(c);
-    const typedTeachers = teachers as Array<{ id: number; name: string }>;
-    const signals = await loadRelationSignalPayloads(
-      c.env.DB,
-      typedTeachers.map((teacher) => ({
-        courseId: virtual.id,
-        teacherId: teacher.id,
-      })),
-      viewerId,
-    );
+    const payload =
+      peTarget.kind === "mapped"
+        ? await loadMappedPeCourseDetail(c.env.DB, peTarget.specialization, viewerId)
+        : await loadVirtualPeCourseDetail(c.env.DB, peTarget.sport, viewerId);
+    if (!payload) return fail(c, "课程不存在", 404);
     if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
-    return c.json({
-      course: {
-        id: virtual.id,
-        code: "",
-        name: virtualPeSportDisplayName(virtual),
-        category: "sports",
-        department: "",
-        teachers: typedTeachers.map((teacher) => ({
-          ...toPublicTeacher(teacher as Record<string, unknown>),
-          review_count: 0,
-          rating: null,
-          dimensionLabels: null,
-          ...(signals.get(`${virtual.id}:${teacher.id}`) ?? {
-            follow_count: 0,
-            recommend_count: 0,
-            not_recommend_count: 0,
-          }),
-        })),
-        nameVariants: [],
-        enrollment_category: "",
-        teaching_type: "",
-        course_level: "",
-        ...courseSchemeView(null, "sports", []),
-      },
-      reviewCount: 0,
-    });
+    return c.json(payload);
   }
+  const id = peTarget.courseId;
   const [
     courseResult,
     reviewCountResult,
@@ -1140,7 +1147,6 @@ publicCatalogRoutes.get("/api/courses/:id", async (c) => {
   });
 });
 publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
-  const id = integer(c.req.param("id"));
   const cacheable = isPublicCatalogCacheableRequest(c);
   const teacherId = integer(c.req.query("teacherId"));
   const rawSort = clean(c.req.query("sort"), 20);
@@ -1161,22 +1167,46 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
         rating,
       }
     : null;
-  if (id && isVirtualPeSportId(id)) {
-    // 虚拟体育课没有课程级评价行：未选教师时返回空页，选定教师后按其教师流展示。
+  const peTarget = await resolvePublicPeReadTarget(c.env.DB, c.req.param("id"));
+  if (peTarget.kind === "missing") return fail(c, "课程不存在", 404);
+  if (peTarget.kind === "mapped") {
+    const sources = await loadMappedPeSourceRelations(
+      c.env.DB,
+      peTarget.specialization,
+      teacherId,
+    );
+    if (teacherId && !sources.length) return fail(c, "课程不存在", 404);
+    const rawMappedCursor = c.req.query("cursor");
+    const mappedCursor = decodePublicReviewCursor(rawMappedCursor);
+    if (rawMappedCursor && !mappedCursor) return fail(c, "评价游标无效", 400);
+    const page = await getPublicReviewPageFor(
+      c,
+      "course_id",
+      null,
+      publicReviewPageSize(c),
+      mappedCursor,
+      null,
+      reviewQuery,
+      cacheable,
+      sources,
+    );
+    if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
+    return c.json(page);
+  }
+  if (peTarget.kind === "virtual") {
+    // 无映射时保留空虚拟行：未选教师返回空页，选定教师后按其教师流展示。
     if (!teacherId) {
       if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
       return c.json({ items: [], nextCursor: null });
     }
-    const virtual = virtualPeSportById(id);
     const teacher = await c.env.DB.prepare(
       "SELECT id,name FROM teachers WHERE id=?",
     )
       .bind(teacherId)
       .first<{ id: number; name: string }>();
     if (
-      !virtual ||
       !teacher ||
-      !(virtual.teacherNames as readonly string[]).includes(teacher.name)
+      !(peTarget.sport.teacherNames as readonly string[]).includes(teacher.name)
     )
       return fail(c, "课程不存在", 404);
     const rawVirtualCursor = c.req.query("cursor");
@@ -1195,6 +1225,7 @@ publicCatalogRoutes.get("/api/courses/:id/reviews", async (c) => {
     if (cacheable) setPublicCatalogCacheHeaders(c, "detail");
     return c.json(page);
   }
+  const id = peTarget.courseId;
   const course = await c.env.DB.prepare("SELECT id FROM courses WHERE id=?")
     .bind(id)
     .first();

@@ -4,6 +4,10 @@
  * Issue #482 · docs/ui/foundations.md §详情体验.
  */
 import { Separator } from "@heroui/react";
+import {
+  courseDetailHref,
+  publicCoursePageIdentity,
+} from "../lib/public-course-identity";
 import type { Course } from "../lib/types";
 import { RouterAriaLink } from "./RouterAriaLink";
 import { Stars } from "./Stars";
@@ -17,13 +21,10 @@ export type TeacherCourseTableProps = {
   className?: string;
 };
 
-function courseHref(courseId: number, teacherId?: number, search = "") {
-  const sp = new URLSearchParams(
-    search.startsWith("?") ? search.slice(1) : search,
-  );
-  if (teacherId != null) sp.set("teacher", String(teacherId));
-  const q = sp.toString();
-  return `/courses/${courseId}${q ? `?${q}` : ""}`;
+function courseHref(course: Course, teacherId?: number, search = "") {
+  const identity = publicCoursePageIdentity(course);
+  if (!identity) return "/courses";
+  return courseDetailHref(identity, teacherId, search);
 }
 
 export function TeacherCourseTable({
@@ -46,11 +47,11 @@ export function TeacherCourseTable({
         const rating = course.rating ?? null;
         const reviewCount = course.review_count ?? 0;
         return (
-          <div key={course.id} role="listitem">
+          <div key={course.public_id ?? course.id ?? course.name} role="listitem">
             {index > 0 ? <Separator /> : null}
             <RouterAriaLink
               className="block! w-full! min-w-0 rounded-none! py-2.5 no-underline hover:bg-transparent hover:no-underline! sm:py-3"
-              to={courseHref(course.id, teacherId, search)}
+              to={courseHref(course, teacherId, search)}
             >
               <span className="block min-w-0 break-words [overflow-wrap:anywhere] text-[1rem] font-medium text-accent">
                 {course.name}

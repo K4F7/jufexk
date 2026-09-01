@@ -497,7 +497,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
 
   useEffect(() => {
     if (preview === "filled") return;
-    if (!selectedCourse || !teacherId) return;
+    if (!selectedCourse || selectedCourse.id == null || !teacherId) return;
     const key = `${selectedCourse.id}:${teacherId}`;
     if (restoredDraftKey.current === key) return;
     const draft = loadReviewDraft(selectedCourse.id, teacherId);
@@ -581,7 +581,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
   }
 
   function saveDraft() {
-    if (!selectedCourse || !teacherId) {
+    if (!selectedCourse || selectedCourse.id == null || !teacherId) {
       setMsg("请先确定课程和任课教师再保存");
       return;
     }
@@ -598,7 +598,7 @@ export function SubmitPage({ config: _config }: { config: SiteConfig | null }) {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedCourse || !teacherId) {
+    if (!selectedCourse || selectedCourse.id == null || !teacherId) {
       setMsg("请选择课程和任课教师");
       return;
     }

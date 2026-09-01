@@ -48,7 +48,7 @@ export function usePublicReviewPagination(
     try {
       const query = `${extraQuery ? `${extraQuery}&` : ""}cursor=${encodeURIComponent(cursor)}`;
       const page = await api<PublicReviewPage>(
-        `/api/${subject}/${id}/reviews?${query}`,
+        `/api/${subject}/${encodeURIComponent(id)}/reviews?${query}`,
       );
       const accumulated = {
         items: mergePublicReviewPages(reviewsRef.current, page.items),

@@ -312,7 +312,7 @@ export function CourseReviewSection({
   onLoadMore,
   onReviewChanged,
 }: {
-  courseId: number;
+  courseId: number | null;
   /** 当前选中的任课教师；为空（课程无教师）时隐藏写点评入口。 */
   teacherId: number | null;
   sort: CourseReviewSort;
@@ -350,7 +350,12 @@ export function CourseReviewSection({
     useReviewAdminChrome();
   const showAdminControls = showAdminDock && adminChromeVisible;
 
-  const writeHref = `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`;
+  const writeHref =
+    courseId != null
+      ? `/submit?courseId=${courseId}${teacherId ? `&teacherId=${teacherId}` : ""}`
+      : teacherId
+        ? `/submit?teacherId=${teacherId}`
+        : "/submit";
 
   return (
     <section className="mt-6 min-w-0 sm:mt-10" aria-labelledby="course-reviews-heading">

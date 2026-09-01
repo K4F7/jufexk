@@ -22,6 +22,7 @@ export function parseTeacherRef(ref: string): {
 export function expandCourseRelations(course: Course): CourseRelation[] {
   const base = {
     course_id: course.id,
+    public_id: course.public_id,
     code: course.code,
     name: course.name,
     category: course.category,

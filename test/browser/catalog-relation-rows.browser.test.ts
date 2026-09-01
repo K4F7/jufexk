@@ -39,8 +39,9 @@ const RELATIONS = [
     dimensionLabels: null,
   },
   {
-    course_id: 11,
-    code: "PE0101",
+    course_id: null,
+    public_id: "pe:篮球:12",
+    code: "",
     name: "篮球",
     category: "sports",
     department: "体育学院",
@@ -247,11 +248,15 @@ test("relation rows show rating, review count, and four-dim labels @mobile-smoke
   await expect(first).toContainText("给分好坏：一般");
   await expect(first).toContainText("收获多少：很多");
 
-  // 零评价课程：灰星 + 暂无评价。
+  // 零评价课程：灰星 + 暂无评价。公共专项没有 course_id，链接走 public_id。
   const pe = page.getByRole("link", { name: /篮球/ });
   await expect(pe).toContainText("篮球（体育教师）");
   await expect(pe).toContainText("暂无评价");
   await expect(pe).not.toContainText("评分统计接入中");
+  await expect(pe).toHaveAttribute(
+    "href",
+    `/courses/${encodeURIComponent("pe:篮球")}?teacher=12`,
+  );
 
   // 无教师课程保留一行，标注教师待补充。
   const noTeacher = page.getByRole("link", { name: /讲座合集/ });

@@ -903,3 +903,36 @@ export async function getCourseRelationSummaries(
   }
   return summaries;
 }
+
+/** PE 公共专项：从来源 Relation 收集非空总结，同一教师取最近更新的一条。 */
+export async function getMappedRelationSummaries(
+  db: D1Database,
+  sources: Array<{ courseId: number; teacherId: number }>,
+): Promise<Record<number, RelationSummaryView>> {
+  if (!sources.length) return {};
+  const placeholders = sources.map(() => "(?,?)").join(",");
+  const { results } = await db
+    .prepare(
+      `SELECT teacher_id,ai_summary,ai_summary_updated_at
+       FROM course_teachers
+       WHERE (course_id,teacher_id) IN (${placeholders})
+         AND trim(ai_summary)<>''
+       ORDER BY datetime(COALESCE(ai_summary_updated_at,'')) DESC,course_id`,
+    )
+    .bind(...sources.flatMap((source) => [source.courseId, source.teacherId]))
+    .all<{
+      teacher_id: number;
+      ai_summary: string;
+      ai_summary_updated_at: string | null;
+    }>();
+  const summaries: Record<number, RelationSummaryView> = {};
+  for (const row of results) {
+    const teacherId = Number(row.teacher_id);
+    if (!Number.isSafeInteger(teacherId) || summaries[teacherId]) continue;
+    summaries[teacherId] = {
+      html: renderSummaryHtml(row.ai_summary),
+      updatedAt: row.ai_summary_updated_at,
+    };
+  }
+  return summaries;
+}

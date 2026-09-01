@@ -83,7 +83,7 @@ type PeMappingRow = {
   review_count: number;
 };
 
-type PeCourseAggregate = PublicPeCourseListRow & {
+export type PeCourseAggregate = PublicPeCourseListRow & {
   specialization: string;
   teacherIds: number[];
   sourceNames: string[];

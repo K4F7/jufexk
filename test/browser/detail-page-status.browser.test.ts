@@ -280,3 +280,54 @@ test("course teacher card keeps an official CTA homepage", async ({ page }) => {
   await expect(homepage).toHaveAttribute("href", officialUrl);
   await expect(homepage).toHaveAttribute("target", "_blank");
 });
+
+test("PE public identity course page matches mapped detail without a numeric id", async ({
+  page,
+}) => {
+  const peCourse = {
+    id: null,
+    public_id: "pe:篮球",
+    code: "",
+    name: "篮球",
+    category: "sports",
+    department: "体育学院",
+    enrollment_category: "",
+    teaching_type: "",
+    course_level: "",
+    teachers: [{ id: 12, name: "体育教师", review_count: 2, rating: 4 }],
+  };
+  const isPeCourse = (pathname: string) => {
+    try {
+      return decodeURIComponent(pathname) === "/api/courses/pe:篮球";
+    } catch {
+      return pathname.endsWith("/api/courses/pe:篮球");
+    }
+  };
+  const isPeReviews = (pathname: string) => {
+    try {
+      return decodeURIComponent(pathname) === "/api/courses/pe:篮球/reviews";
+    } catch {
+      return pathname.includes("/api/courses/pe:") && pathname.endsWith("/reviews");
+    }
+  };
+  await page.route(
+    (url) => isPeCourse(url.pathname),
+    (route) =>
+      route.fulfill({
+        json: { course: peCourse, reviewCount: 2 },
+      }),
+  );
+  await page.route(
+    (url) => isPeReviews(url.pathname),
+    (route) =>
+      route.fulfill({
+        json: { items: [], nextCursor: null, total: 0 },
+      }),
+  );
+  await page.goto(`/courses/${encodeURIComponent("pe:篮球")}?teacher=12`);
+  await expect(
+    page.getByRole("heading", { name: /篮球（体育教师）/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
+});
+

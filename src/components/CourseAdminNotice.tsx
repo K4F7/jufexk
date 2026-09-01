@@ -15,7 +15,7 @@ export function CourseAdminNotice({
   updatedAt,
   onSaved,
 }: {
-  courseId: number;
+  courseId: number | null;
   /** 当前已公开的管理员公告；未设置为空串。 */
   notice: string;
   updatedAt?: string | null;
@@ -42,6 +42,7 @@ export function CourseAdminNotice({
   }, [notice, editing]);
 
   const save = async () => {
+    if (courseId == null) return;
     setPending(true);
     setMessage("");
     setFailed(false);
@@ -63,6 +64,20 @@ export function CourseAdminNotice({
   const hasNotice = Boolean(notice);
 
   // 无公告时对普通访客整块不渲染；管理员仍看到可编辑的空状态框。
+  // 体育公共专项没有课程级数字 ID，不能写管理员公告。
+  if (courseId == null) return hasNotice ? (
+    <Card className="mt-6">
+      <Card.Header>
+        <Card.Title>管理员公告</Card.Title>
+        {updatedAt ? (
+          <Card.Description>更新于 {updatedAt}</Card.Description>
+        ) : null}
+      </Card.Header>
+      <Card.Content className="whitespace-pre-wrap text-sm">
+        {notice}
+      </Card.Content>
+    </Card>
+  ) : null;
   if (!hasNotice && !adminAuthed) return null;
 
   return (
