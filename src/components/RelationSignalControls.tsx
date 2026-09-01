@@ -35,7 +35,7 @@ export type RelationSignals = {
 };
 
 export function useRelationSignals(
-  courseId: number,
+  courseIdentity: string,
   teacher: Teacher | null,
 ): RelationSignals {
   const { viewer, ready, clear } = useViewer();
@@ -77,7 +77,7 @@ export function useRelationSignals(
     kind: Exclude<Pending, null>,
     method: "PUT" | "DELETE",
   ) => {
-    if (pending || !ready || !teacher) return;
+    if (pending || !ready || !teacher || !courseIdentity) return;
     if (!viewer.authenticated) {
       setLoginPrompted(true);
       return;
@@ -98,7 +98,7 @@ export function useRelationSignals(
           : "not-recommend";
     try {
       const result = await api<RelationSignalState>(
-        `/api/courses/${courseId}/teachers/${teacher.id}/${path}`,
+        `/api/courses/${encodeURIComponent(courseIdentity)}/teachers/${teacher.id}/${path}`,
         {
           method,
           headers: { "Idempotency-Key": newIdempotencyKey() },
@@ -112,7 +112,7 @@ export function useRelationSignals(
             ? "down"
             : "none",
       );
-      invalidateCatalogData(`/api/courses/${courseId}`);
+      invalidateCatalogData(`/api/courses/${encodeURIComponent(courseIdentity)}`);
     } catch (cause) {
       setFollow(snapshot.follow);
       setRecommend(snapshot.recommend);

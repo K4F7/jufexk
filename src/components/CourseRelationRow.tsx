@@ -6,24 +6,22 @@
  */
 import { fourDimLineLabels } from "../lib/dimension-labels";
 import { prefetchCourseDetail } from "../lib/catalog-data-cache";
+import {
+  courseDetailHref,
+  publicCoursePageIdentity,
+} from "../lib/public-course-identity";
 import type { CourseRelation } from "../lib/types";
 import { FourDimLine } from "./FourDimLine";
 import { RouterAriaLink } from "./RouterAriaLink";
 import { Stars } from "./Stars";
 
 export function relationDetailHref(
-  relation: Pick<CourseRelation, "course_id" | "teacher_id">,
+  relation: Pick<CourseRelation, "course_id" | "teacher_id" | "public_id">,
   search = "",
 ): string {
-  if (relation.course_id == null) return "/courses";
-  const sp = new URLSearchParams(search);
-  if (relation.teacher_id != null) {
-    sp.set("teacher", String(relation.teacher_id));
-  } else {
-    sp.delete("teacher");
-  }
-  const q = sp.toString();
-  return `/courses/${relation.course_id}${q ? `?${q}` : ""}`;
+  const identity = publicCoursePageIdentity(relation);
+  if (!identity) return "/courses";
+  return courseDetailHref(identity, relation.teacher_id, search);
 }
 
 const relationRowClassName =
@@ -75,14 +73,14 @@ export function CourseRelationRow({
       />
     </>
   );
-  const courseId = relation.course_id;
-  if (courseId == null) {
+  const identity = publicCoursePageIdentity(relation);
+  if (!identity) {
     return <div className={relationRowClassName}>{body}</div>;
   }
   return (
     <RouterAriaLink
-      to={relationDetailHref({ course_id: courseId, teacher_id: relation.teacher_id }, search)}
-      onIntent={() => prefetchCourseDetail(courseId, relation.teacher_id)}
+      to={relationDetailHref(relation, search)}
+      onIntent={() => prefetchCourseDetail(identity, relation.teacher_id)}
       className={relationRowClassName}
     >
       {body}

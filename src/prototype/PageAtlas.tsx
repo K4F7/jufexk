@@ -55,9 +55,11 @@ export function PageAtlas() {
     ])
       .then(([filled, empty, teachers]) => {
         if (cancelled) return;
+        const withId = <T extends { id: number | null }>(items: T[]) =>
+          items.filter((item): item is T & { id: number } => item.id != null);
         const next = resolveAtlasTargets({
-          filledCourses: filled.items,
-          emptyCourses: empty.items,
+          filledCourses: withId(filled.items),
+          emptyCourses: withId(empty.items),
           teachers: teachers.items,
         });
         setTargets(next);

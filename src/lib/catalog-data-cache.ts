@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { courseDetailApiPath } from "./public-course-identity";
 
 type CacheEntry = {
   expiresAt: number;
@@ -84,15 +85,18 @@ export function shouldPrefetchCatalog(): boolean {
 }
 
 /** Prefetch the exact detail and default latest review keys used by the course page. */
-export function prefetchCourseDetail(courseId: number, teacherId?: number | null): void {
+export function prefetchCourseDetail(
+  courseIdentity: string | number,
+  teacherId?: number | null,
+): void {
   if (!shouldPrefetchCatalog()) return;
-  const detailUrl = `/api/courses/${courseId}`;
+  const detailUrl = courseDetailApiPath(String(courseIdentity));
   prefetchCatalogData(detailUrl, () => api(detailUrl));
   if (teacherId == null) return;
   const params = new URLSearchParams({
     teacherId: String(teacherId),
     sort: "latest",
   });
-  const reviewsUrl = `/api/courses/${courseId}/reviews?${params}`;
+  const reviewsUrl = courseDetailApiPath(String(courseIdentity), `/reviews?${params}`);
   prefetchCatalogData(reviewsUrl, () => api(reviewsUrl));
 }

@@ -1,7 +1,10 @@
 export type CourseCategory = "general" | "sports" | "";
 
 export type Course = {
-  id: number;
+  /** Ordinary Course identity; PE public specializations are `null`. */
+  id: number | null;
+  /** `course:<id>` or `pe:<normalizedSpecialization>`. */
+  public_id?: string;
   code: string;
   name: string;
   category: string;

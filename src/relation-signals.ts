@@ -3,6 +3,12 @@ import {
   isVirtualPeSportId,
   virtualPeSportById,
 } from "./lib/public-course-presentation";
+import {
+  normalizePublicPeSpecialization,
+  parsePublicCourseParam,
+  virtualPeAliasSpecialization,
+  virtualPeSportForSpecialization,
+} from "./lib/public-course-identity";
 import { requireOrdinaryWriteUser } from "./ordinary-user-write-authorization";
 
 const fail = (
@@ -107,24 +113,87 @@ async function saveIdempotency(
   return readIdempotency(db, userId, operation, key);
 }
 
-async function loadEligibleRelation(
+async function loadMappedPeWriteRelation(
+  db: D1Database,
+  specialization: string,
+  teacherId: number,
+): Promise<RelationKey | null> {
+  const row = await db
+    .prepare(
+      `SELECT course_id,teacher_id
+       FROM catalog_relation_pe_specializations
+       WHERE normalized_specialization=? AND teacher_id=?
+       ORDER BY course_id,teacher_id
+       LIMIT 1`,
+    )
+    .bind(specialization, teacherId)
+    .first<{ course_id: number; teacher_id: number }>();
+  if (!row) return null;
+  const courseId = Number(row.course_id);
+  const mappedTeacherId = Number(row.teacher_id);
+  if (
+    !Number.isSafeInteger(courseId) ||
+    courseId <= 0 ||
+    mappedTeacherId !== teacherId
+  ) {
+    return null;
+  }
+  return { courseId, teacherId };
+}
+
+async function loadVirtualPeWriteRelation(
   db: D1Database,
   courseId: number,
   teacherId: number,
 ): Promise<RelationKey | null> {
-  if (isVirtualPeSportId(courseId)) {
-    const virtual = virtualPeSportById(courseId);
-    const teacher = await db
-      .prepare("SELECT id,name FROM teachers WHERE id=?")
-      .bind(teacherId)
-      .first<{ id: number; name: string }>();
-    if (
-      !virtual ||
-      !teacher ||
-      !(virtual.teacherNames as readonly string[]).includes(teacher.name)
-    )
-      return null;
-    return { courseId, teacherId };
+  const virtual = virtualPeSportById(courseId);
+  const teacher = await db
+    .prepare("SELECT id,name FROM teachers WHERE id=?")
+    .bind(teacherId)
+    .first<{ id: number; name: string }>();
+  if (
+    !virtual ||
+    !teacher ||
+    !(virtual.teacherNames as readonly string[]).includes(teacher.name)
+  ) {
+    return null;
+  }
+  return { courseId, teacherId };
+}
+
+async function loadEligibleRelation(
+  db: D1Database,
+  courseParam: string,
+  teacherId: number,
+): Promise<RelationKey | null> {
+  const parsed = parsePublicCourseParam(courseParam);
+  if (parsed.kind === "invalid") return null;
+  if (parsed.kind === "pe") {
+    const specialization =
+      normalizePublicPeSpecialization(parsed.specialization) ??
+      parsed.specialization.trim();
+    if (!specialization) return null;
+    const mapped = await loadMappedPeWriteRelation(
+      db,
+      specialization,
+      teacherId,
+    );
+    if (mapped) return mapped;
+    const sport = virtualPeSportForSpecialization(specialization);
+    if (!sport) return null;
+    return loadVirtualPeWriteRelation(db, sport.id, teacherId);
+  }
+  if (isVirtualPeSportId(parsed.id)) {
+    const specialization = virtualPeAliasSpecialization(parsed.id);
+    if (specialization) {
+      const mapped = await loadMappedPeWriteRelation(
+        db,
+        specialization,
+        teacherId,
+      );
+      if (mapped) return mapped;
+    }
+    return loadVirtualPeWriteRelation(db, parsed.id, teacherId);
   }
   const row = await db
     .prepare(
@@ -134,7 +203,7 @@ async function loadEligibleRelation(
        JOIN teachers t ON t.id=ct.teacher_id
        WHERE ct.course_id=? AND ct.teacher_id=?`,
     )
-    .bind(courseId, teacherId)
+    .bind(parsed.id, teacherId)
     .first<{ course_id: number; teacher_id: number }>();
   return row ? { courseId: row.course_id, teacherId: row.teacher_id } : null;
 }
@@ -352,13 +421,14 @@ async function mutateSignal(
     kind === "follow" ? "关注" : kind === "recommend" ? "推荐" : "不推荐";
   const auth = await requireWriteUser(c, action);
   if ("error" in auth) return auth.error;
-  const courseId = parsePositiveId(c.req.param("id"));
+  const courseParam = (c.req.param("id") || "").trim();
   const teacherId = parsePositiveId(c.req.param("teacherId"));
-  if (!courseId || !teacherId) return fail(c, "任课关系不存在", 404);
+  if (!courseParam || !teacherId) return fail(c, "任课关系不存在", 404);
   const idempotencyKey = parseIdempotencyKey(c.req.header("Idempotency-Key"));
   if (!idempotencyKey) return fail(c, "缺少有效的幂等键", 400);
+  const courseIdForDigest = parsePositiveId(courseParam) ?? courseParam;
   const requestDigest = await digest(
-    JSON.stringify({ operation, courseId, teacherId }),
+    JSON.stringify({ operation, courseId: courseIdForDigest, teacherId }),
   );
   const replay = await readIdempotency(
     c.env.DB,
@@ -371,7 +441,7 @@ async function mutateSignal(
       return fail(c, "幂等键与请求不匹配", 409);
     return c.json(JSON.parse(replay.response_json));
   }
-  const relation = await loadEligibleRelation(c.env.DB, courseId, teacherId);
+  const relation = await loadEligibleRelation(c.env.DB, courseParam, teacherId);
   if (!relation) return fail(c, "任课关系不存在", 404);
   await apply(c.env.DB, auth.user.id, relation);
   const body = await loadRelationSignalState(
