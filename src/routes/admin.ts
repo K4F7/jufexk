@@ -1126,7 +1126,7 @@ adminRoutes.post("/api/admin/courses", async (c) => {
   if (isExcludedCourseName(name)) return fail(c, "班会不纳入课程目录");
   let id = b.id;
   const existing = id
-    ? await c.env.DB.prepare("SELECT * FROM courses WHERE id=?")
+    ? await c.env.DB.prepare("SELECT code,category,credits,enrollment_category,teaching_type,course_level FROM courses WHERE id=?")
         .bind(id)
         .first<{
           code: string;
@@ -1430,7 +1430,7 @@ function parseAdminCtaHomepagePatch(body: {
 
 adminRoutes.get("/api/admin/teachers", async (c) =>
   c.json(
-    (await c.env.DB.prepare("SELECT * FROM teachers ORDER BY name").all())
+    (await c.env.DB.prepare("SELECT id,source_teacher_label,name,department,title,bio,created_at,cta_fid,cta_uid,homepage_url,homepage_locked,homepage_match,image_locked,avatar_sha256,cta_synced_at FROM teachers ORDER BY name").all())
       .results,
   ),
 );
