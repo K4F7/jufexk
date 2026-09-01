@@ -163,6 +163,48 @@ describe("approved catalog baseline compiler", () => {
         [APPROVED_RECORD_SCHEMA_VERSION, "teacher"],
         [APPROVED_RECORD_SCHEMA_VERSION, "relation"],
       ]);
+      expect(records[2].value.schemaVersion).toBe("catalog-baseline-relation/v2");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("compiles v3 PE specialization mappings into the approved relation records", async () => {
+    const root = join(tmpdir(), `jufexk-approved-pe-${crypto.randomUUID()}`);
+    const qualityRoot = join(root, "quality");
+    const outputRoot = join(root, "approved");
+    try {
+      await writeQualityPackage(qualityRoot);
+      const peRelation = {
+        schemaVersion: "catalog-baseline-relation/v3",
+        courseCode: "COURSE-1",
+        sourceTeacherLabel: "教师一",
+        provenance: [{ queryId: "query-1", page: 1, row: 1, semester: "2026-1", educationLevel: "undergraduate", grade: "2025" }],
+        peSpecialization: {
+          sourceKind: "direct_skill",
+          normalizedSpecialization: "篮球",
+          displaySemantics: "keep_source_name",
+          evidence: {
+            kind: "catalog_course_name",
+            sourceCourseCode: "COURSE-1",
+            sourceCourseName: "篮球2",
+            sourceTeacherLabel: "教师一",
+            rawSpecializationName: "篮球2",
+          },
+        },
+      };
+      await resignQualityArtifact(qualityRoot, "relations.jsonl", jsonLines([peRelation]));
+      const compiled = await compileApprovedCatalogBaseline(qualityRoot, outputRoot);
+      const records = (await readFile(join(outputRoot, "catalog-baseline.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      expect(compiled.counts.relations).toBe(1);
+      expect(records[2].value).toMatchObject({
+        schemaVersion: "catalog-baseline-relation/v3",
+        peSpecialization: {
+          sourceKind: "direct_skill",
+          normalizedSpecialization: "篮球",
+          displaySemantics: "keep_source_name",
+        },
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

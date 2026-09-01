@@ -3,11 +3,17 @@ import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildPeSpecializationMapping,
+  classifyPeSourceCourseName,
+  normalizeConfirmedPeSpecialization,
+} from "../../src/lib/pe-specialization-mapping";
+import {
   COURSE_SCHEMA_VERSION,
   DERIVATION_SCHEMA_VERSION,
   EXCEPTION_SCHEMA_VERSION,
   INVENTORY_SCHEMA_VERSION,
   RELATION_SCHEMA_VERSION,
+  RELATION_SCHEMA_VERSION_V2,
   TEACHER_SCHEMA_VERSION,
   type CourseRecord,
   type DerivationManifest,
@@ -59,7 +65,7 @@ export interface QualityCourse extends CourseRecord {
 export interface QualityConflict {
   schemaVersion: typeof QUALITY_CONFLICT_SCHEMA_VERSION;
   conflictId: string;
-  code: "SOURCE_DERIVATION_EXCEPTION" | "COURSE_SAME_SEMESTER_NAME_CONFLICT" | "UNIT_DECISION_REQUIRED" | "UNIT_CODE_LABEL_CONFLICT" | "UNIT_EVIDENCE_MISSING" | "LOCATION_EVIDENCE_UNKNOWN" | "TEACHER_PLACEHOLDER_SUSPECTED";
+  code: "SOURCE_DERIVATION_EXCEPTION" | "COURSE_SAME_SEMESTER_NAME_CONFLICT" | "UNIT_DECISION_REQUIRED" | "UNIT_CODE_LABEL_CONFLICT" | "UNIT_EVIDENCE_MISSING" | "LOCATION_EVIDENCE_UNKNOWN" | "TEACHER_PLACEHOLDER_SUSPECTED" | "PE_SPECIALIZATION_MAPPING_REQUIRED";
   status: "pending" | "resolved";
   courseCode?: string;
   detail: string;
@@ -290,10 +296,12 @@ export function evaluateCatalogQuality(input: QualityInput, decisions: QualityDe
     } : undefined);
     if (decision?.decision === "include" && code === "SOURCE_DERIVATION_EXCEPTION") throw new Error(`include is not valid for ${code}`);
     if (decision?.decision === "include" && code === "UNIT_EVIDENCE_MISSING") throw new Error(`include is not valid for ${code}`);
+    if (decision?.decision === "exclude" && code === "PE_SPECIALIZATION_MAPPING_REQUIRED") throw new Error(`exclude is not valid for ${code}`);
     if (decision?.decision === "include" && code === "LOCATION_EVIDENCE_UNKNOWN" && !["mailu", "fenglin", "jiaoquiao", "mooc"].includes(decision.correctedValue ?? "")) throw new Error(`correctedValue required for ${code}`);
-    if (decision?.decision === "coverage_exception" && !["SOURCE_DERIVATION_EXCEPTION", "LOCATION_EVIDENCE_UNKNOWN", "UNIT_EVIDENCE_MISSING"].includes(code)) throw new Error(`coverage_exception is not valid for ${code}`);
+    if (decision?.decision === "coverage_exception" && !["SOURCE_DERIVATION_EXCEPTION", "LOCATION_EVIDENCE_UNKNOWN", "UNIT_EVIDENCE_MISSING", "PE_SPECIALIZATION_MAPPING_REQUIRED"].includes(code)) throw new Error(`coverage_exception is not valid for ${code}`);
     if (decision?.decision === "include" && code === "COURSE_SAME_SEMESTER_NAME_CONFLICT" && !decision.correctedValue?.trim()) throw new Error(`correctedValue required for ${code}`);
     if (decision?.decision === "include" && code === "UNIT_CODE_LABEL_CONFLICT" && !decision.correctedValue?.trim()) throw new Error(`correctedValue required for ${code}`);
+    if (decision?.decision === "include" && code === "PE_SPECIALIZATION_MAPPING_REQUIRED" && !normalizeConfirmedPeSpecialization(decision.correctedValue)) throw new Error(`correctedValue required for ${code}`);
     if (decision?.decision === "coverage_exception") coverageExceptions.push({
       schemaVersion: QUALITY_COVERAGE_EXCEPTION_SCHEMA_VERSION,
       coverageExceptionId: `coverage-exception:${digest(id)}`,
@@ -433,9 +441,69 @@ export function evaluateCatalogQuality(input: QualityInput, decisions: QualityDe
     if (decisionByKey.get(key)?.decision === "exclude") excludedTeachers.add(teacher.sourceTeacherLabel);
   }
   const allowedRelationKeys = new Set(includedInventory.flatMap((record) => record.rawTeacherLabels.map((label) => `${record.courseCode}\u0000${label}`)));
+  const qualityCourseByCode = new Map(qualityCoursesFiltered.map((course) => [course.courseCode, course]));
   const relations = input.relations
     .filter((relation) => !excludedTeachers.has(relation.sourceTeacherLabel) && allowedRelationKeys.has(`${relation.courseCode}\u0000${relation.sourceTeacherLabel}`))
-    .map((relation) => ({ ...relation, provenance: [...relation.provenance].sort((left, right) => compareText(provenanceKey(left), provenanceKey(right))) }))
+    .map((relation) => {
+      const provenance = [...relation.provenance].sort((left, right) => compareText(provenanceKey(left), provenanceKey(right)));
+      const course = qualityCourseByCode.get(relation.courseCode);
+      const classified = classifyPeSourceCourseName(course?.currentName);
+      if (classified.sourceKind === "direct_skill" && course) {
+        return {
+          schemaVersion: RELATION_SCHEMA_VERSION,
+          courseCode: relation.courseCode,
+          sourceTeacherLabel: relation.sourceTeacherLabel,
+          provenance,
+          peSpecialization: buildPeSpecializationMapping({
+            sourceKind: "direct_skill",
+            normalizedSpecialization: classified.normalizedSpecialization,
+            evidenceKind: "catalog_course_name",
+            sourceCourseCode: relation.courseCode,
+            sourceCourseName: course.currentName,
+            sourceTeacherLabel: relation.sourceTeacherLabel,
+            rawSpecializationName: course.currentName,
+          }),
+        } satisfies RelationRecord;
+      }
+      if (classified.sourceKind === "umbrella" && course) {
+        const decision = addConflict(
+          "PE_SPECIALIZATION_MAPPING_REQUIRED",
+          `${relation.courseCode}\u0000${relation.sourceTeacherLabel}`,
+          "Umbrella PE source Relation has no confirmed 具体专项名.",
+          [JSON.stringify({
+            courseCode: relation.courseCode,
+            sourceTeacherLabel: relation.sourceTeacherLabel,
+            sourceCourseName: course.currentName,
+            sourceKind: "umbrella",
+          })],
+          relation.courseCode,
+        );
+        const confirmed = decision?.decision === "include" ? normalizeConfirmedPeSpecialization(decision.correctedValue) : null;
+        return {
+          schemaVersion: RELATION_SCHEMA_VERSION,
+          courseCode: relation.courseCode,
+          sourceTeacherLabel: relation.sourceTeacherLabel,
+          provenance,
+          peSpecialization: confirmed
+            ? buildPeSpecializationMapping({
+                sourceKind: "umbrella",
+                normalizedSpecialization: confirmed,
+                evidenceKind: "human_decision",
+                sourceCourseCode: relation.courseCode,
+                sourceCourseName: course.currentName,
+                sourceTeacherLabel: relation.sourceTeacherLabel,
+                rawSpecializationName: decision!.correctedValue!,
+              })
+            : null,
+        } satisfies RelationRecord;
+      }
+      return {
+        schemaVersion: RELATION_SCHEMA_VERSION,
+        courseCode: relation.courseCode,
+        sourceTeacherLabel: relation.sourceTeacherLabel,
+        provenance,
+      } satisfies RelationRecord;
+    })
     .sort((left, right) => compareText(`${left.courseCode}\u0000${left.sourceTeacherLabel}`, `${right.courseCode}\u0000${right.sourceTeacherLabel}`));
   const includedTeacherLabels = new Set(relations.map((relation) => relation.sourceTeacherLabel));
   const teachers = input.teachers
@@ -579,14 +647,15 @@ async function prepareOutput(root: string) {
   await Promise.all(existing.map((entry) => unlink(join(root, entry.name))));
 }
 
-async function readVerifiedSource<T extends { schemaVersion?: unknown }>(root: string, manifest: DerivationManifest, path: string, expectedSchemaVersion: string): Promise<T[]> {
+async function readVerifiedSource<T extends { schemaVersion?: unknown }>(root: string, manifest: DerivationManifest, path: string, expectedSchemaVersion: string | readonly string[]): Promise<T[]> {
   const declaration = manifest.files.find((file) => file.path === path);
   if (!declaration) throw new Error(`derivation manifest does not declare ${path}`);
   const bytes = await readFile(join(root, path));
   if (bytes.byteLength !== declaration.bytes || sha256(bytes) !== declaration.sha256) throw new Error(`derivation artifact integrity check failed for ${path}`);
   const records = parseJsonLines<T>(bytes);
   if (records.length !== declaration.records) throw new Error(`derivation record count check failed for ${path}`);
-  const invalidIndex = records.findIndex((record) => !record || typeof record !== "object" || record.schemaVersion !== expectedSchemaVersion);
+  const expected = new Set(typeof expectedSchemaVersion === "string" ? [expectedSchemaVersion] : expectedSchemaVersion);
+  const invalidIndex = records.findIndex((record) => !record || typeof record !== "object" || !expected.has(String(record.schemaVersion)));
   if (invalidIndex >= 0) throw new Error(`derivation record schema check failed for ${path} at record ${invalidIndex + 1}`);
   return records;
 }
@@ -606,7 +675,7 @@ export async function runCatalogQuality(derivationDirectory: string, outputDirec
     readVerifiedSource<InventoryRecord>(derivationRoot, sourceManifest, "inventory.jsonl", INVENTORY_SCHEMA_VERSION),
     readVerifiedSource<CourseRecord>(derivationRoot, sourceManifest, "courses.jsonl", COURSE_SCHEMA_VERSION),
     readVerifiedSource<TeacherRecord>(derivationRoot, sourceManifest, "teachers.jsonl", TEACHER_SCHEMA_VERSION),
-    readVerifiedSource<RelationRecord>(derivationRoot, sourceManifest, "relations.jsonl", RELATION_SCHEMA_VERSION),
+    readVerifiedSource<RelationRecord>(derivationRoot, sourceManifest, "relations.jsonl", [RELATION_SCHEMA_VERSION, RELATION_SCHEMA_VERSION_V2]),
     readVerifiedSource<ExceptionRecord>(derivationRoot, sourceManifest, "exceptions.jsonl", EXCEPTION_SCHEMA_VERSION),
   ]);
   const decisionBytes = decisionsPath ? await readFile(resolve(decisionsPath)) : Buffer.alloc(0);

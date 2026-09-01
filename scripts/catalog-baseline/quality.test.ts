@@ -11,7 +11,7 @@ import {
   type QualityDecision,
   type QualityInput,
 } from "./quality";
-import type { CourseRecord, ExceptionRecord, InventoryRecord, RelationRecord, TeacherRecord } from "./derive";
+import { RELATION_SCHEMA_VERSION, type CourseRecord, type ExceptionRecord, type InventoryRecord, type RelationRecord, type TeacherRecord } from "./derive";
 
 function inventory(overrides: Partial<InventoryRecord> = {}): InventoryRecord {
   return {
@@ -54,7 +54,7 @@ function teacher(label = "教师一"): TeacherRecord {
 
 function relation(courseCode = "COURSE-1", label = "教师一"): RelationRecord {
   return {
-    schemaVersion: "catalog-baseline-relation/v2",
+    schemaVersion: RELATION_SCHEMA_VERSION,
     courseCode,
     sourceTeacherLabel: label,
     provenance: [{ queryId: "query-1", page: 1, row: 1, semester: "2026-1", educationLevel: "undergraduate", grade: "2025" }],
@@ -403,6 +403,73 @@ describe("catalog baseline quality gate", () => {
     const key = first.conflicts.find((item) => item.code === "TEACHER_PLACEHOLDER_SUSPECTED")!.conflictId;
     const included = evaluateCatalogQuality(suspected, [decision(key)]);
     expect(included.teachers).toContainEqual(expect.objectContaining({ sourceTeacherLabel: label }));
+  });
+
+  it("maps direct PE skill names, queues umbrella Relations, and does not guess 黄丽萍 as 瑜伽", () => {
+    const records = [
+      inventory({ courseCode: "PE-BASKET2", rawCourseName: "篮球2", normalizedCourseName: "篮球2", rawTeacherLabels: ["教师甲"], normalizedTeacherLabels: ["教师甲"] }),
+      inventory({ recordId: "query-1:0001:0002", courseCode: "PE-BASKET-TH", rawCourseName: "篮球专项理论与实践1", normalizedCourseName: "篮球专项理论与实践1", rawTeacherLabels: ["教师甲"], normalizedTeacherLabels: ["教师甲"], row: 2 }),
+      inventory({ recordId: "query-1:0001:0003", courseCode: "PE-AERO", rawCourseName: "健身教练", normalizedCourseName: "健身教练", rawTeacherLabels: ["教师乙"], normalizedTeacherLabels: ["教师乙"], row: 3 }),
+      inventory({ recordId: "query-1:0001:0004", courseCode: "PE-WUSHU", rawCourseName: "武术", normalizedCourseName: "武术", rawTeacherLabels: ["刘春来"], normalizedTeacherLabels: ["刘春来"], row: 4 }),
+      inventory({ recordId: "query-1:0001:0005", courseCode: "PE-UMBRELLA", rawCourseName: "体育1", normalizedCourseName: "体育1", rawTeacherLabels: ["黄丽萍"], normalizedTeacherLabels: ["黄丽萍"], row: 5 }),
+    ];
+    const peInput = input({
+      inventory: records,
+      courses: [
+        course({ courseCode: "PE-BASKET2", currentName: "篮球2", normalizedCurrentName: "篮球2" }),
+        course({ courseCode: "PE-BASKET-TH", currentName: "篮球专项理论与实践1", normalizedCurrentName: "篮球专项理论与实践1" }),
+        course({ courseCode: "PE-AERO", currentName: "健身教练", normalizedCurrentName: "健身教练" }),
+        course({ courseCode: "PE-WUSHU", currentName: "武术", normalizedCurrentName: "武术" }),
+        course({ courseCode: "PE-UMBRELLA", currentName: "体育1", normalizedCurrentName: "体育1" }),
+      ],
+      teachers: [teacher("教师甲"), teacher("教师乙"), teacher("刘春来"), teacher("黄丽萍")],
+      relations: [
+        relation("PE-BASKET2", "教师甲"),
+        relation("PE-BASKET-TH", "教师甲"),
+        relation("PE-AERO", "教师乙"),
+        relation("PE-WUSHU", "刘春来"),
+        relation("PE-UMBRELLA", "黄丽萍"),
+      ],
+    });
+    const first = evaluateCatalogQuality(peInput, []);
+    const peConflict = first.conflicts.find((item) => item.code === "PE_SPECIALIZATION_MAPPING_REQUIRED")!;
+    expect(first.relations.find((item) => item.courseCode === "PE-BASKET2")?.peSpecialization).toMatchObject({
+      sourceKind: "direct_skill",
+      normalizedSpecialization: "篮球",
+      displaySemantics: "keep_source_name",
+    });
+    expect(first.relations.find((item) => item.courseCode === "PE-BASKET-TH")?.peSpecialization?.normalizedSpecialization).toBe("篮球");
+    expect(first.relations.find((item) => item.courseCode === "PE-AERO")?.peSpecialization).toMatchObject({
+      normalizedSpecialization: "健美操",
+      displaySemantics: "keep_source_name",
+    });
+    expect(first.relations.find((item) => item.courseCode === "PE-WUSHU")?.peSpecialization).toMatchObject({
+      sourceKind: "direct_skill",
+      normalizedSpecialization: "武术",
+      displaySemantics: "keep_source_name",
+    });
+    expect(first.relations.find((item) => item.courseCode === "PE-UMBRELLA")?.peSpecialization).toBeNull();
+    expect(peConflict).toMatchObject({ status: "pending" });
+    expect(JSON.parse(peConflict.evidence[0])).toMatchObject({ sourceTeacherLabel: "黄丽萍", sourceCourseName: "体育1", sourceKind: "umbrella" });
+    expect(first.coverage.status).toBe("review_required");
+
+    expect(() => evaluateCatalogQuality(peInput, [decision(peConflict.conflictId, "exclude")])).toThrow(/PE_SPECIALIZATION_MAPPING_REQUIRED/);
+    expect(() => evaluateCatalogQuality(peInput, [decision(peConflict.conflictId, "include")])).toThrow(/correctedValue/i);
+    expect(() => evaluateCatalogQuality(peInput, [decision(peConflict.conflictId, "include", "体育1")])).toThrow(/correctedValue/i);
+
+    const mapped = evaluateCatalogQuality(peInput, [decision(peConflict.conflictId, "include", "健身教练")]);
+    expect(mapped.relations.find((item) => item.courseCode === "PE-UMBRELLA")?.peSpecialization).toMatchObject({
+      sourceKind: "umbrella",
+      normalizedSpecialization: "健美操",
+      displaySemantics: "umbrella_prefixed",
+      evidence: { kind: "human_decision", rawSpecializationName: "健身教练", sourceTeacherLabel: "黄丽萍" },
+    });
+    expect(mapped.relations.find((item) => item.courseCode === "PE-WUSHU")?.peSpecialization?.displaySemantics).toBe("keep_source_name");
+
+    const acknowledged = evaluateCatalogQuality(peInput, [decision(peConflict.conflictId, "coverage_exception")]);
+    expect(acknowledged.relations.find((item) => item.courseCode === "PE-UMBRELLA")?.peSpecialization).toBeNull();
+    expect(acknowledged.coverageExceptions).toContainEqual(expect.objectContaining({ subjectKey: peConflict.conflictId }));
+    expect(acknowledged.relations.find((item) => item.courseCode === "PE-UMBRELLA")).toMatchObject({ courseCode: "PE-UMBRELLA", sourceTeacherLabel: "黄丽萍" });
   });
 
   it("rejects decisions outside the three terminal values or without audit fields", () => {

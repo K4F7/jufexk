@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import {
   COURSE_SCHEMA_VERSION,
   RELATION_SCHEMA_VERSION,
+  RELATION_SCHEMA_VERSION_V2,
   TEACHER_SCHEMA_VERSION,
   type RelationRecord,
   type TeacherRecord,
@@ -148,7 +149,12 @@ async function readVerifiedQualityPackage(root: string) {
   if (courses.some((item) => item.schemaVersion !== COURSE_SCHEMA_VERSION || !["general", "sports"].includes(item.category))) throw new Error("approved course candidates require a valid review template kind");
   if (courses.some((item) => !Array.isArray(item.sourceCategoryTexts) || item.sourceCategoryTexts.some((text) => typeof text !== "string"))) throw new Error("approved course candidates require explicit source category evidence");
   if (teachers.some((item) => item.schemaVersion !== TEACHER_SCHEMA_VERSION)) throw new Error("invalid teacher candidate schema");
-  if (relations.some((item) => item.schemaVersion !== RELATION_SCHEMA_VERSION || !item.provenance.length)) throw new Error("invalid relation candidate schema or provenance");
+  if (relations.some((item) => (item.schemaVersion !== RELATION_SCHEMA_VERSION && item.schemaVersion !== RELATION_SCHEMA_VERSION_V2) || !item.provenance.length)) throw new Error("invalid relation candidate schema or provenance");
+  if (relations.some((item) => item.peSpecialization != null && (
+    item.peSpecialization.sourceKind !== "umbrella" && item.peSpecialization.sourceKind !== "direct_skill"
+    || !item.peSpecialization.normalizedSpecialization
+    || (item.peSpecialization.sourceKind === "umbrella") !== (item.peSpecialization.displaySemantics === "umbrella_prefixed")
+  ))) throw new Error("invalid relation PE specialization mapping");
   if (coverage.counts.courses !== courses.length || coverage.counts.teachers !== teachers.length || coverage.counts.relations !== relations.length || coverage.counts.conflicts !== conflicts.length || coverage.counts.exclusions !== exclusions.length || coverage.counts.coverageExceptions !== coverageExceptions.length || coverage.counts.goldenSample !== golden.length) throw new Error("quality coverage counts do not match artifacts");
 
   const courseCodes = new Set(courses.map((item) => item.courseCode));

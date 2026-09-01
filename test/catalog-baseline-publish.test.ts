@@ -37,7 +37,7 @@ function approvedPackage() {
 }
 let databaseSequence = 0;
 async function emptyDb() {
-  const databases = [env.BASELINE_PUBLISH_DB_1, env.BASELINE_PUBLISH_DB_2, env.BASELINE_PUBLISH_DB_3, env.BASELINE_PUBLISH_DB_4, env.BASELINE_PUBLISH_DB_5, env.BASELINE_PUBLISH_DB_6, env.BASELINE_PUBLISH_DB_7, env.BASELINE_PUBLISH_DB_8];
+  const databases = [env.BASELINE_PUBLISH_DB_1, env.BASELINE_PUBLISH_DB_2, env.BASELINE_PUBLISH_DB_3, env.BASELINE_PUBLISH_DB_4, env.BASELINE_PUBLISH_DB_5, env.BASELINE_PUBLISH_DB_6, env.BASELINE_PUBLISH_DB_7, env.BASELINE_PUBLISH_DB_8, env.BASELINE_PUBLISH_DB_9, env.BASELINE_PUBLISH_DB_10];
   const db = databases[databaseSequence++];
   if (!db) throw new Error("baseline publish test database pool exhausted");
   await applyD1Migrations(db, TEST_D1_MIGRATIONS);
@@ -159,5 +159,96 @@ describe("catalog baseline staging and one-time publish", { timeout: 15_000 }, (
     expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(1);
     expect(outcomes.filter((item) => item.status === "rejected")).toHaveLength(1);
     expect(await formalCounts(concurrent.db)).toEqual([1, 1, 1, 1]);
+  });
+
+  it("publishes explicit PE mappings, distinguishes umbrella vs direct-name semantics, and queues unmapped umbrella Relations", async () => {
+    const db = await emptyDb();
+    const records = [
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-BASKET2", currentName: "篮球2", normalizedCurrentName: "篮球2", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "篮球2", normalizedName: "篮球2", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-BASKET-TH", currentName: "篮球专项理论与实践1", normalizedCurrentName: "篮球专项理论与实践1", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "篮球专项理论与实践1", normalizedName: "篮球专项理论与实践1", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-WUSHU", currentName: "武术", normalizedCurrentName: "武术", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "武术", normalizedName: "武术", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-1", currentName: "体育1", normalizedCurrentName: "体育1", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "体育1", normalizedName: "体育1", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-2", currentName: "体育2", normalizedCurrentName: "体育2", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "体育2", normalizedName: "体育2", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "teacher", value: { schemaVersion: "catalog-baseline-teacher/v1", sourceTeacherLabel: "教师甲", normalizedTeacherLabel: "教师甲" } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "teacher", value: { schemaVersion: "catalog-baseline-teacher/v1", sourceTeacherLabel: "刘春来", normalizedTeacherLabel: "刘春来" } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "teacher", value: { schemaVersion: "catalog-baseline-teacher/v1", sourceTeacherLabel: "黄丽萍", normalizedTeacherLabel: "黄丽萍" } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v3", courseCode: "PE-BASKET2", sourceTeacherLabel: "教师甲", provenance, peSpecialization: { sourceKind: "direct_skill", normalizedSpecialization: "篮球", displaySemantics: "keep_source_name", evidence: { kind: "catalog_course_name", sourceCourseCode: "PE-BASKET2", sourceCourseName: "篮球2", sourceTeacherLabel: "教师甲", rawSpecializationName: "篮球2" } } } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v3", courseCode: "PE-BASKET-TH", sourceTeacherLabel: "教师甲", provenance, peSpecialization: { sourceKind: "direct_skill", normalizedSpecialization: "篮球", displaySemantics: "keep_source_name", evidence: { kind: "catalog_course_name", sourceCourseCode: "PE-BASKET-TH", sourceCourseName: "篮球专项理论与实践1", sourceTeacherLabel: "教师甲", rawSpecializationName: "篮球专项理论与实践1" } } } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v3", courseCode: "PE-WUSHU", sourceTeacherLabel: "刘春来", provenance, peSpecialization: { sourceKind: "direct_skill", normalizedSpecialization: "武术", displaySemantics: "keep_source_name", evidence: { kind: "catalog_course_name", sourceCourseCode: "PE-WUSHU", sourceCourseName: "武术", sourceTeacherLabel: "刘春来", rawSpecializationName: "武术" } } } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v3", courseCode: "PE-1", sourceTeacherLabel: "黄丽萍", provenance, peSpecialization: { sourceKind: "umbrella", normalizedSpecialization: "瑜伽", displaySemantics: "umbrella_prefixed", evidence: { kind: "human_decision", sourceCourseCode: "PE-1", sourceCourseName: "体育1", sourceTeacherLabel: "黄丽萍", rawSpecializationName: "瑜伽" } } } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v3", courseCode: "PE-2", sourceTeacherLabel: "黄丽萍", provenance, peSpecialization: null } },
+    ];
+    const invalid = records.map((item) => JSON.stringify(item)).join("\n") + "\n";
+    const bad = invalid.replace('"displaySemantics":"umbrella_prefixed"', '"displaySemantics":"keep_source_name"');
+    const artifact = invalid;
+    const content = {
+      schemaVersion: "catalog-baseline-approved-manifest/v1", status: "package_ready",
+      sourceCaptureManifestContentSha256: "a".repeat(64), derivationContentSha256: "b".repeat(64), qualityManifestContentSha256: "c".repeat(64), decisionsSha256: "d".repeat(64), boundaryFixtureContentSha256: "e".repeat(64),
+      counts: { courses: 5, teachers: 3, relations: 5, totalRecords: 13 },
+      artifact: { path: "catalog-baseline.jsonl", records: 13, bytes: Buffer.byteLength(artifact), sha256: sha(artifact) },
+    };
+    const batchId = "pe-mapping-fresh";
+    await createBaselineUpload(db, { batchId, manifest: { ...content, contentSha256: sha(stable(content)) }, chunkCount: 1 });
+    await expect(putBaselineChunk(db, batchId, 0, { chunkId: "bad-pe", records: 13, bytes: Buffer.byteLength(bad), sha256: sha(bad), content: bad })).rejects.toMatchObject({ status: 422 });
+    await uploadChunk(db, batchId, 0, artifact);
+    await finalizeBaselineUpload(db, batchId);
+    await publishBaselineUpload(db, batchId);
+
+    const mappings = (await db.prepare(`
+      SELECT c.code course_code, t.source_teacher_label, m.source_kind, m.normalized_specialization, m.display_semantics
+      FROM catalog_relation_pe_specializations m
+      JOIN courses c ON c.id=m.course_id
+      JOIN teachers t ON t.id=m.teacher_id
+      ORDER BY c.code, t.source_teacher_label
+    `).all()).results;
+    const queue = (await db.prepare(`
+      SELECT course_code, source_teacher_label, reason FROM catalog_pe_specialization_review_queue ORDER BY course_code
+    `).all()).results;
+    expect(mappings).toEqual([
+      { course_code: "PE-1", source_teacher_label: "黄丽萍", source_kind: "umbrella", normalized_specialization: "瑜伽", display_semantics: "umbrella_prefixed" },
+      { course_code: "PE-BASKET-TH", source_teacher_label: "教师甲", source_kind: "direct_skill", normalized_specialization: "篮球", display_semantics: "keep_source_name" },
+      { course_code: "PE-BASKET2", source_teacher_label: "教师甲", source_kind: "direct_skill", normalized_specialization: "篮球", display_semantics: "keep_source_name" },
+      { course_code: "PE-WUSHU", source_teacher_label: "刘春来", source_kind: "direct_skill", normalized_specialization: "武术", display_semantics: "keep_source_name" },
+    ]);
+    expect(queue).toEqual([{ course_code: "PE-2", source_teacher_label: "黄丽萍", reason: "umbrella_unmapped" }]);
+    expect(await db.prepare("SELECT COUNT(*) n FROM catalog_relation_pe_specializations WHERE normalized_specialization='瑜伽' AND source_kind='direct_skill'").first()).toEqual({ n: 0 });
+    expect((await db.prepare("SELECT virtual_course_id FROM virtual_pe_notification_courses ORDER BY virtual_course_id").all()).results).toEqual([{ virtual_course_id: 800001 }, { virtual_course_id: 800002 }]);
+  });
+
+  it("still loads v2 packages, backfills direct skill names, and queues umbrella Relations without guessing", async () => {
+    const db = await emptyDb();
+    const records = [
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-BASKET2", currentName: "篮球2", normalizedCurrentName: "篮球2", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "篮球2", normalizedName: "篮球2", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-AERO", currentName: "健身教练", normalizedCurrentName: "健身教练", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "健身教练", normalizedName: "健身教练", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-1", currentName: "体育1", normalizedCurrentName: "体育1", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "体育1", normalizedName: "体育1", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "teacher", value: { schemaVersion: "catalog-baseline-teacher/v1", sourceTeacherLabel: "教师甲", normalizedTeacherLabel: "教师甲" } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "teacher", value: { schemaVersion: "catalog-baseline-teacher/v1", sourceTeacherLabel: "黄丽萍", normalizedTeacherLabel: "黄丽萍" } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v2", courseCode: "PE-BASKET2", sourceTeacherLabel: "教师甲", provenance } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v2", courseCode: "PE-AERO", sourceTeacherLabel: "教师甲", provenance } },
+      { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "relation", value: { schemaVersion: "catalog-baseline-relation/v2", courseCode: "PE-1", sourceTeacherLabel: "黄丽萍", provenance } },
+    ];
+    const artifact = records.map((item) => JSON.stringify(item)).join("\n") + "\n";
+    const content = {
+      schemaVersion: "catalog-baseline-approved-manifest/v1", status: "package_ready",
+      sourceCaptureManifestContentSha256: "a".repeat(64), derivationContentSha256: "b".repeat(64), qualityManifestContentSha256: "c".repeat(64), decisionsSha256: "d".repeat(64), boundaryFixtureContentSha256: "e".repeat(64),
+      counts: { courses: 3, teachers: 2, relations: 3, totalRecords: 8 },
+      artifact: { path: "catalog-baseline.jsonl", records: 8, bytes: Buffer.byteLength(artifact), sha256: sha(artifact) },
+    };
+    const batchId = "pe-mapping-v2";
+    await createBaselineUpload(db, { batchId, manifest: { ...content, contentSha256: sha(stable(content)) }, chunkCount: 1 });
+    await uploadChunk(db, batchId, 0, artifact);
+    await finalizeBaselineUpload(db, batchId);
+    await publishBaselineUpload(db, batchId);
+    const mappings = (await db.prepare(`
+      SELECT c.name course_name, m.normalized_specialization, m.source_kind, m.display_semantics
+      FROM catalog_relation_pe_specializations m JOIN courses c ON c.id=m.course_id ORDER BY c.code
+    `).all()).results;
+    const queue = (await db.prepare("SELECT course_code, source_teacher_label FROM catalog_pe_specialization_review_queue").all()).results;
+    expect(mappings).toEqual([
+      { course_name: "健身教练", normalized_specialization: "健美操", source_kind: "direct_skill", display_semantics: "keep_source_name" },
+      { course_name: "篮球2", normalized_specialization: "篮球", source_kind: "direct_skill", display_semantics: "keep_source_name" },
+    ]);
+    expect(queue).toEqual([{ course_code: "PE-1", source_teacher_label: "黄丽萍" }]);
+    expect(await db.prepare("SELECT COUNT(*) n FROM catalog_relation_pe_specializations m JOIN teachers t ON t.id=m.teacher_id WHERE t.source_teacher_label='黄丽萍'").first()).toEqual({ n: 0 });
   });
 });
