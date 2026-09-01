@@ -340,7 +340,14 @@ adminRoutes.get("/api/admin/banners", async (c) => {
   });
 });
 adminRoutes.get("/api/admin/sessions", async (c) => {
-  await c.env.DB.batch([
+  const cleanup = await c.env.DB.prepare(`
+    SELECT
+      EXISTS(SELECT 1 FROM admin_sessions WHERE expires_at<datetime('now','-7 days')) AS sessions,
+      EXISTS(SELECT 1 FROM rate_limit_counters WHERE window_start<unixepoch()-86400) AS rates,
+      EXISTS(SELECT 1 FROM review_dedupe WHERE created_at<datetime('now','-30 days')) AS dedupe,
+      EXISTS(SELECT 1 FROM admin_login_attempts WHERE created_at<datetime('now','-30 days')) AS attempts
+  `).first<{ sessions: number; rates: number; dedupe: number; attempts: number }>();
+  const relationStatements: D1PreparedStatement[] = [
     c.env.DB.prepare(
       "DELETE FROM admin_sessions WHERE expires_at<datetime('now','-7 days')",
     ),
@@ -353,7 +360,9 @@ adminRoutes.get("/api/admin/sessions", async (c) => {
     c.env.DB.prepare(
       "DELETE FROM admin_login_attempts WHERE created_at<datetime('now','-30 days')",
     ),
-  ]);
+  ];
+  if (cleanup && (cleanup.sessions || cleanup.rates || cleanup.dedupe || cleanup.attempts))
+    await c.env.DB.batch(relationStatements);
   const sessions = (
     await c.env.DB.prepare(
       `SELECT session_id,created_at,expires_at,revoked_at
@@ -1225,7 +1234,7 @@ adminRoutes.post("/api/admin/courses", async (c) => {
     const statements: D1PreparedStatement[] = [
       scheme.provided
         ? c.env.DB.prepare(
-            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,enrollment_category=?,teaching_type=?,course_level=?,scheme_key=? WHERE id=?",
+            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,enrollment_category=?,teaching_type=?,course_level=?,scheme_key=? WHERE id=? AND (code IS NOT ? OR name IS NOT ? OR category IS NOT ? OR department IS NOT ? OR credits IS NOT ? OR description IS NOT ? OR enrollment_category IS NOT ? OR teaching_type IS NOT ? OR course_level IS NOT ? OR scheme_key IS NOT ?)",
           ).bind(
             code,
             name,
@@ -1237,10 +1246,10 @@ adminRoutes.post("/api/admin/courses", async (c) => {
             nextTeaching,
             nextLevel,
             scheme.value,
-            id,
+            id, code, name, category, department, credits, description, nextEnrollment, nextTeaching, nextLevel, scheme.value,
           )
         : c.env.DB.prepare(
-            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,enrollment_category=?,teaching_type=?,course_level=? WHERE id=?",
+            "UPDATE courses SET code=?,name=?,category=?,department=?,credits=?,description=?,enrollment_category=?,teaching_type=?,course_level=? WHERE id=? AND (code IS NOT ? OR name IS NOT ? OR category IS NOT ? OR department IS NOT ? OR credits IS NOT ? OR description IS NOT ? OR enrollment_category IS NOT ? OR teaching_type IS NOT ? OR course_level IS NOT ?)",
           ).bind(
             code,
             name,
@@ -1251,20 +1260,14 @@ adminRoutes.post("/api/admin/courses", async (c) => {
             nextEnrollment,
             nextTeaching,
             nextLevel,
-            id,
+            id, code, name, category, department, credits, description, nextEnrollment, nextTeaching, nextLevel,
           ),
     ];
     if (teacherIdsProvided) {
-      statements.push(
-        c.env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(
-          id,
-        ),
-        ...teacherIds!.map((teacherId) =>
-          c.env.DB.prepare(
-            "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
-          ).bind(id, teacherId),
-        ),
-      );
+      const removed = currentRelations.filter((teacherId) => !teacherIds!.includes(teacherId));
+      const added = teacherIds!.filter((teacherId) => !currentRelations.includes(teacherId));
+      if (removed.length) statements.push(c.env.DB.prepare(`DELETE FROM course_teachers WHERE course_id=? AND teacher_id IN (${removed.map(() => "?").join(",")})`).bind(id, ...removed));
+      statements.push(...added.map((teacherId) => c.env.DB.prepare("INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)").bind(id, teacherId)));
     }
     if (tags.provided) {
       statements.push(
@@ -1449,10 +1452,10 @@ adminRoutes.post("/api/admin/teachers", async (c) => {
   let id = existingId;
   if (existingId) {
     const existing = await c.env.DB.prepare(
-      "SELECT source_teacher_label FROM teachers WHERE id=?",
+      "SELECT source_teacher_label,name,department,title,bio FROM teachers WHERE id=?",
     )
       .bind(existingId)
-      .first<{ source_teacher_label: string }>();
+      .first<{ source_teacher_label: string; name: string; department: string | null; title: string | null; bio: string | null }>();
     if (!existing) return fail(c, "教师不存在", 404);
     if (
       sourceTeacherLabel &&
@@ -1460,15 +1463,21 @@ adminRoutes.post("/api/admin/teachers", async (c) => {
     )
       return fail(c, "来源教师名是稳定身份，创建后不可修改", 409);
     if (!name) return fail(c, "教师显示名不能为空");
+    const nextTitle = clean(b.title, 80);
+    const nextBio = clean(b.bio, 1000);
     await c.env.DB.prepare(
-      "UPDATE teachers SET name=?,department=?,title=?,bio=? WHERE id=?",
+      "UPDATE teachers SET name=?,department=?,title=?,bio=? WHERE id=? AND (name IS NOT ? OR department IS NOT ? OR title IS NOT ? OR bio IS NOT ?)",
     )
       .bind(
         name,
         department,
-        clean(b.title, 80),
-        clean(b.bio, 1000),
+        nextTitle,
+        nextBio,
         existingId,
+        name,
+        department,
+        nextTitle,
+        nextBio,
       )
       .run();
     const homepagePatch = parseAdminCtaHomepagePatch(b);
@@ -1606,10 +1615,8 @@ adminRoutes.put("/api/admin/courses/:id/teachers", async (c) => {
       return fail(c, "已有评价或开课班依赖该任课关系，不能删除", 409);
   }
   await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM course_teachers WHERE course_id=?").bind(
-      courseId,
-    ),
-    ...ids.map((id) =>
+    ...(removed.length ? [c.env.DB.prepare(`DELETE FROM course_teachers WHERE course_id=? AND teacher_id IN (${removed.map(() => "?").join(",")})`).bind(courseId, ...removed)] : []),
+    ...ids.filter((id) => !currentIds.includes(id)).map((id) =>
       c.env.DB.prepare(
         "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
       ).bind(courseId, id),

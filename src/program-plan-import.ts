@@ -167,7 +167,22 @@ export async function applyProgramPlanImport(
            other_hours=excluded.other_hours,
            weekly_hours=excluded.weekly_hours,
            catalog_course_id=excluded.catalog_course_id,
-           updated_at=CURRENT_TIMESTAMP`,
+           updated_at=CURRENT_TIMESTAMP
+         WHERE department_code IS NOT excluded.department_code
+            OR department_name IS NOT excluded.department_name
+            OR major_name IS NOT excluded.major_name
+            OR course_name IS NOT excluded.course_name
+            OR credits IS NOT excluded.credits
+            OR category_path IS NOT excluded.category_path
+            OR course_standing IS NOT excluded.course_standing
+            OR assessment IS NOT excluded.assessment
+            OR total_hours IS NOT excluded.total_hours
+            OR lecture_hours IS NOT excluded.lecture_hours
+            OR lab_hours IS NOT excluded.lab_hours
+            OR practice_hours IS NOT excluded.practice_hours
+            OR other_hours IS NOT excluded.other_hours
+            OR weekly_hours IS NOT excluded.weekly_hours
+            OR catalog_course_id IS NOT excluded.catalog_course_id`,
       )
       .bind(
         record.grade,

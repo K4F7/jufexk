@@ -251,13 +251,20 @@ async function searchCandidates(
 }
 
 async function clearStoredAvatar(db: D1Database, teacherId: number) {
+  const existing = await db
+    .prepare("SELECT 1 FROM teacher_avatars WHERE teacher_id=? LIMIT 1")
+    .bind(teacherId)
+    .first();
+  if (!existing) {
+    await db
+      .prepare("UPDATE teachers SET avatar_sha256=NULL WHERE id=? AND avatar_sha256 IS NOT NULL")
+      .bind(teacherId)
+      .run();
+    return;
+  }
   await db.batch([
-    db
-      .prepare("DELETE FROM teacher_avatars WHERE teacher_id=?")
-      .bind(teacherId),
-    db
-      .prepare("UPDATE teachers SET avatar_sha256=NULL WHERE id=?")
-      .bind(teacherId),
+    db.prepare("DELETE FROM teacher_avatars WHERE teacher_id=?").bind(teacherId),
+    db.prepare("UPDATE teachers SET avatar_sha256=NULL WHERE id=? AND avatar_sha256 IS NOT NULL").bind(teacherId),
   ]);
 }
 
@@ -277,6 +284,17 @@ async function storeAvatar(
   if (isDefaultCtaAvatarSha256(sha)) {
     await clearStoredAvatar(db, teacherId);
     return { stored: false, skippedDefaultAvatar: true };
+  }
+  const existing = await db
+    .prepare("SELECT content_type,sha256,source_url FROM teacher_avatars WHERE teacher_id=?")
+    .bind(teacherId)
+    .first<{ content_type: string; sha256: string; source_url: string }>();
+  if (
+    existing?.sha256 === sha &&
+    existing.content_type === photo.contentType &&
+    existing.source_url === photo.url
+  ) {
+    return { stored: true, skippedDefaultAvatar: false };
   }
   await db.batch([
     db
@@ -370,9 +388,9 @@ export async function syncTeacherCtaHomepage(
     .prepare(
       `UPDATE teachers
           SET cta_fid=?,cta_uid=?,homepage_url=?,homepage_match=?,cta_synced_at=CURRENT_TIMESTAMP
-        WHERE id=?`,
+        WHERE id=? AND (cta_fid IS NOT ? OR cta_uid IS NOT ? OR homepage_url IS NOT ? OR homepage_match IS NOT ?)`,
     )
-    .bind(fid, uid, homepageUrl, match, teacherId)
+    .bind(fid, uid, homepageUrl, match, teacherId, fid, uid, homepageUrl, match)
     .run();
 
   if (teacher.image_locked === 1) {
