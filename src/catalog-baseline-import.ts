@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { isExcludedCourseName } from "./lib/course-catalog-policy";
+import {
+  isRelationPeSpecializationMapping,
+  peDirectSkillNormalizedSql,
+  peUmbrellaCourseNamePredicate,
+  type RelationPeSpecializationMapping,
+} from "./lib/pe-specialization-mapping";
 
 export const APPROVED_MANIFEST_SCHEMA = "catalog-baseline-approved-manifest/v1";
 export const APPROVED_RECORD_SCHEMA = "catalog-baseline-approved-record/v1";
@@ -32,10 +38,11 @@ export interface ApprovedCourseValue {
 }
 export interface ApprovedTeacherValue { schemaVersion: "catalog-baseline-teacher/v1"; sourceTeacherLabel: string; normalizedTeacherLabel: string }
 export interface ApprovedRelationValue {
-  schemaVersion: "catalog-baseline-relation/v2";
+  schemaVersion: "catalog-baseline-relation/v2" | "catalog-baseline-relation/v3";
   courseCode: string;
   sourceTeacherLabel: string;
   provenance: Array<{ queryId: string; page: number; row: number; semester: string; educationLevel: string; grade: string }>;
+  peSpecialization?: RelationPeSpecializationMapping | null;
 }
 export type ApprovedRecord =
   | { schemaVersion: typeof APPROVED_RECORD_SCHEMA; recordType: "course"; value: ApprovedCourseValue }
@@ -82,6 +89,12 @@ export async function validateApprovedManifest(value: unknown): Promise<Approved
 function validateProvenance(value: unknown): value is ApprovedRelationValue["provenance"] {
   return Array.isArray(value) && value.length > 0 && value.every((item) => isObject(item) && requiredText(item.queryId, 120) && Number.isInteger(item.page) && Number(item.page) >= 1 && Number.isInteger(item.row) && Number(item.row) >= 1 && requiredText(item.semester, 40) && requiredText(item.educationLevel, 80) && requiredText(item.grade, 40));
 }
+function validatePeSpecialization(value: unknown): value is RelationPeSpecializationMapping | null | undefined {
+  return value === undefined || value === null || isRelationPeSpecializationMapping(value);
+}
+function isRelationSchema(value: unknown): value is ApprovedRelationValue["schemaVersion"] {
+  return value === "catalog-baseline-relation/v2" || value === "catalog-baseline-relation/v3";
+}
 
 export function parseApprovedChunk(content: string): ApprovedRecord[] {
   if (new TextEncoder().encode(content).byteLength > MAX_BASELINE_CHUNK_BYTES) throw new Error("分块超过字节上限");
@@ -99,7 +112,7 @@ export function parseApprovedChunk(content: string): ApprovedRecord[] {
       if (isExcludedCourseName(String(value.currentName)) || isExcludedCourseName(String(value.normalizedCurrentName)) || value.nameVariants.some((variant) => isObject(variant) && (isExcludedCourseName(String(variant.rawName)) || isExcludedCourseName(String(variant.normalizedName))))) throw new Error(`分块第 ${index + 1} 行包含已排除课程`);
     } else if (record.recordType === "teacher") {
       if (value.schemaVersion !== "catalog-baseline-teacher/v1" || !requiredText(value.sourceTeacherLabel) || !requiredText(value.normalizedTeacherLabel)) throw new Error(`分块第 ${index + 1} 行教师无效`);
-    } else if (value.schemaVersion !== "catalog-baseline-relation/v2" || !requiredText(value.courseCode, 100) || !requiredText(value.sourceTeacherLabel) || !validateProvenance(value.provenance)) throw new Error(`分块第 ${index + 1} 行关系无效`);
+    } else if (!isRelationSchema(value.schemaVersion) || !requiredText(value.courseCode, 100) || !requiredText(value.sourceTeacherLabel) || !validateProvenance(value.provenance) || !validatePeSpecialization(value.peSpecialization)) throw new Error(`分块第 ${index + 1} 行关系无效`);
     return record as ApprovedRecord;
   });
 }
@@ -371,6 +384,53 @@ export async function publishBaselineUpload(db: D1Database, batchIdInput: string
       SELECT c.id,t.id,json_extract(p.value,'$.queryId'),json_extract(p.value,'$.page'),json_extract(p.value,'$.row'),json_extract(p.value,'$.semester'),json_extract(p.value,'$.educationLevel'),json_extract(p.value,'$.grade')
       FROM catalog_baseline_staged_relations r JOIN courses c ON c.code=r.course_code JOIN teachers t ON t.source_teacher_label=r.source_teacher_label, json_each(r.provenance_json) p
       WHERE r.batch_id=? AND ${markerGate} ORDER BY c.id,t.id,p.key`).bind(batchId, batchId),
+    db.prepare(`INSERT OR IGNORE INTO catalog_relation_pe_specializations(
+      course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json
+    )
+      SELECT c.id,t.id,mapped.source_kind,mapped.normalized_specialization,mapped.display_semantics,mapped.evidence_json
+      FROM (
+        SELECT r.course_code,r.source_teacher_label,
+          COALESCE(json_extract(r.source_json,'$.peSpecialization.sourceKind'),'direct_skill') source_kind,
+          COALESCE(json_extract(r.source_json,'$.peSpecialization.normalizedSpecialization'),${peDirectSkillNormalizedSql("s")}) normalized_specialization,
+          COALESCE(json_extract(r.source_json,'$.peSpecialization.displaySemantics'),'keep_source_name') display_semantics,
+          COALESCE(json(json_extract(r.source_json,'$.peSpecialization.evidence')), json_object(
+            'kind','catalog_course_name',
+            'sourceCourseCode',s.course_code,
+            'sourceCourseName',s.name,
+            'sourceTeacherLabel',r.source_teacher_label,
+            'rawSpecializationName',s.name
+          )) evidence_json
+        FROM catalog_baseline_staged_relations r
+        JOIN catalog_baseline_staged_courses s ON s.batch_id=r.batch_id AND s.course_code=r.course_code
+        WHERE r.batch_id=?
+      ) mapped
+      JOIN courses c ON c.code=mapped.course_code
+      JOIN teachers t ON t.source_teacher_label=mapped.source_teacher_label
+      WHERE ${markerGate} AND mapped.normalized_specialization IS NOT NULL`).bind(batchId, batchId),
+    db.prepare(`INSERT OR IGNORE INTO catalog_pe_specialization_review_queue(
+      course_id,teacher_id,course_code,course_name,source_teacher_label,reason,evidence_json
+    )
+      SELECT c.id,t.id,s.course_code,s.name,r.source_teacher_label,'umbrella_unmapped',
+        json_object(
+          'sourceCourseCode',s.course_code,
+          'sourceCourseName',s.name,
+          'sourceTeacherLabel',r.source_teacher_label,
+          'sourceKind','umbrella'
+        )
+      FROM catalog_baseline_staged_relations r
+      JOIN catalog_baseline_staged_courses s ON s.batch_id=r.batch_id AND s.course_code=r.course_code
+      JOIN courses c ON c.code=r.course_code
+      JOIN teachers t ON t.source_teacher_label=r.source_teacher_label
+      WHERE r.batch_id=? AND ${markerGate}
+        AND json_extract(r.source_json,'$.peSpecialization.normalizedSpecialization') IS NULL
+        AND ${peUmbrellaCourseNamePredicate("s")}`).bind(batchId, batchId),
+    db.prepare(`DELETE FROM catalog_pe_specialization_review_queue
+      WHERE ${markerGate}
+        AND EXISTS(
+          SELECT 1 FROM catalog_relation_pe_specializations mapped
+          WHERE mapped.course_id=catalog_pe_specialization_review_queue.course_id
+            AND mapped.teacher_id=catalog_pe_specialization_review_queue.teacher_id
+        )`).bind(batchId),
     db.prepare(`UPDATE catalog_baseline_uploads SET status='published',published_at=CURRENT_TIMESTAMP WHERE batch_id=? AND status='staged' AND ${markerGate}`).bind(batchId, batchId),
   ];
   let results: D1Result[];

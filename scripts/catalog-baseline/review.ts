@@ -86,6 +86,7 @@ function decisionCells(conflict: QualityConflict): Cell[] {
 
 function allowedFor(conflict: QualityConflict): [string, string] {
   if (conflict.code === "LOCATION_EVIDENCE_UNKNOWN") return ["include|exclude|coverage_exception", "mailu|fenglin|jiaoquiao|mooc (include 时必填)"];
+  if (conflict.code === "PE_SPECIALIZATION_MAPPING_REQUIRED") return ["include|coverage_exception", "具体专项名 (include 时必填)"];
   if (["SOURCE_DERIVATION_EXCEPTION", "UNIT_EVIDENCE_MISSING"].includes(conflict.code)) return ["exclude|coverage_exception", ""];
   return ["include|exclude", ""];
 }

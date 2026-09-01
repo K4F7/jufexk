@@ -268,6 +268,57 @@ describe("catalog baseline deterministic offline derivation", () => {
     expect(exceptions).toContainEqual(expect.objectContaining({ code: "NORMALIZED_TEACHER_COLLISION" }));
   });
 
+  it("stores explicit PE specialization mapping and does not guess umbrella source Relations", async () => {
+    const captureRoot = await tempRoot("pe-mapping-capture");
+    const outputRoot = await tempRoot("pe-mapping-output");
+    await writeCapturePackage(captureRoot, {
+      batchId: "pe-source-mapping",
+      status: "complete",
+      sourceDictionarySha256: sourceDictionary().sha256,
+      sourceDictionary: sourceDictionary(),
+      queries: [query("main-pe", "2026-1", 5)],
+      snapshots: [{
+        queryId: "main-pe",
+        page: 1,
+        bytes: sourceShapedHtml([
+          `<tr>${cells("[PE-BASKET2]篮球2", "教师甲")}</tr>`,
+          `<tr>${cells("[PE-BASKET-TH]篮球专项理论与实践1", "教师甲")}</tr>`,
+          `<tr>${cells("[PE-AERO]健身教练", "教师乙")}</tr>`,
+          `<tr>${cells("[PE-WUSHU]武术", "刘春来")}</tr>`,
+          `<tr>${cells("[PE-UMBRELLA]体育1", "黄丽萍")}</tr>`,
+        ].join("")),
+      }],
+    });
+
+    const manifest = await deriveCatalogBaseline(captureRoot, outputRoot);
+    const relations = await readJsonLines(join(outputRoot, "relations.jsonl"));
+    const byKey = Object.fromEntries(relations.map((relation) => [`${relation.courseCode}\u0000${relation.sourceTeacherLabel}`, relation]));
+
+    expect(manifest.status).toBe("derived");
+    expect(byKey["PE-BASKET2\u0000教师甲"].schemaVersion).toBe("catalog-baseline-relation/v3");
+    expect(byKey["PE-BASKET2\u0000教师甲"].peSpecialization).toMatchObject({
+      sourceKind: "direct_skill",
+      normalizedSpecialization: "篮球",
+      displaySemantics: "keep_source_name",
+      evidence: { kind: "catalog_course_name", sourceCourseName: "篮球2", sourceTeacherLabel: "教师甲" },
+    });
+    expect(byKey["PE-BASKET-TH\u0000教师甲"].peSpecialization.normalizedSpecialization).toBe("篮球");
+    expect(byKey["PE-AERO\u0000教师乙"].peSpecialization).toMatchObject({
+      sourceKind: "direct_skill",
+      normalizedSpecialization: "健美操",
+      displaySemantics: "keep_source_name",
+    });
+    expect(byKey["PE-WUSHU\u0000刘春来"].peSpecialization).toMatchObject({
+      sourceKind: "direct_skill",
+      normalizedSpecialization: "武术",
+      displaySemantics: "keep_source_name",
+    });
+    expect(byKey["PE-UMBRELLA\u0000黄丽萍"].peSpecialization).toBeNull();
+    expect(byKey["PE-UMBRELLA\u0000黄丽萍"]).not.toMatchObject({
+      peSpecialization: expect.objectContaining({ normalizedSpecialization: "瑜伽" }),
+    });
+  });
+
   it("derives course-code, source-teacher, and relation identities through the public seam", async () => {
     const captureRoot = await tempRoot("behavior-capture");
     const outputRoot = await tempRoot("behavior-output");

@@ -5,13 +5,19 @@ import {
   isExcludedCourseName,
   normalizeCourseNameForPolicy,
 } from "../../src/lib/course-catalog-policy";
+import {
+  classifyPeSourceCourseName,
+  mappingFromDirectSkillCourseName,
+  type RelationPeSpecializationMapping,
+} from "../../src/lib/pe-specialization-mapping";
 import { validateCapturePackage, type CaptureManifest, type CaptureQuery } from "./capture-package";
 
 export const DERIVATION_SCHEMA_VERSION = "catalog-baseline-derivation/v1" as const;
 export const INVENTORY_SCHEMA_VERSION = "catalog-baseline-inventory/v3" as const;
 export const COURSE_SCHEMA_VERSION = "catalog-baseline-course/v1" as const;
 export const TEACHER_SCHEMA_VERSION = "catalog-baseline-teacher/v1" as const;
-export const RELATION_SCHEMA_VERSION = "catalog-baseline-relation/v2" as const;
+export const RELATION_SCHEMA_VERSION_V2 = "catalog-baseline-relation/v2" as const;
+export const RELATION_SCHEMA_VERSION = "catalog-baseline-relation/v3" as const;
 export const EXCEPTION_SCHEMA_VERSION = "catalog-baseline-exception/v1" as const;
 
 const artifactNames = ["inventory.jsonl", "courses.jsonl", "teachers.jsonl", "relations.jsonl", "exceptions.jsonl"] as const;
@@ -35,7 +41,13 @@ export interface InventoryRecord extends SourceLocation {
 export interface CourseVariant { rawName: string; normalizedName: string; firstSemester: string; lastSemester: string; occurrences: number }
 export interface CourseRecord { schemaVersion: typeof COURSE_SCHEMA_VERSION; courseCode: string; currentName: string; normalizedCurrentName: string; nameVariants: CourseVariant[] }
 export interface TeacherRecord { schemaVersion: typeof TEACHER_SCHEMA_VERSION; sourceTeacherLabel: string; normalizedTeacherLabel: string }
-export interface RelationRecord { schemaVersion: typeof RELATION_SCHEMA_VERSION; courseCode: string; sourceTeacherLabel: string; provenance: SourceLocation[] }
+export interface RelationRecord {
+  schemaVersion: typeof RELATION_SCHEMA_VERSION | typeof RELATION_SCHEMA_VERSION_V2;
+  courseCode: string;
+  sourceTeacherLabel: string;
+  provenance: SourceLocation[];
+  peSpecialization?: RelationPeSpecializationMapping | null;
+}
 export interface ExceptionRecord {
   schemaVersion: typeof EXCEPTION_SCHEMA_VERSION;
   code: "GBK_DECODE_ERROR" | "UNKNOWN_TABLE_STRUCTURE" | "MISSING_COURSE_CODE" | "UNKNOWN_TEACHER_STRUCTURE" | "PARSED_RECORD_COUNT_MISMATCH" | "NORMALIZED_TEACHER_COLLISION" | "UNKNOWN_HOME_UNIT_LABEL" | "AMBIGUOUS_HOME_UNIT_LABEL";
@@ -359,6 +371,7 @@ export async function deriveCatalogBaseline(captureDirectory: string, outputDire
   }
   exceptions.sort((left, right) => compareText(`${left.queryId}:${String(left.page).padStart(4, "0")}:${String(left.row ?? 0).padStart(4, "0")}:${left.code}`, `${right.queryId}:${String(right.page).padStart(4, "0")}:${String(right.row ?? 0).padStart(4, "0")}:${right.code}`));
 
+  const courseNameByCode = new Map(courses.map((course) => [course.courseCode, course.currentName]));
   const relationsByKey = new Map<string, RelationRecord>();
   for (const record of inventory) {
     for (const sourceTeacherLabel of record.rawTeacherLabels) {
@@ -369,7 +382,17 @@ export async function deriveCatalogBaseline(captureDirectory: string, outputDire
     }
   }
   const relations = [...relationsByKey.values()].sort((left, right) => compareText(`${left.courseCode}\u0000${left.sourceTeacherLabel}`, `${right.courseCode}\u0000${right.sourceTeacherLabel}`));
-  for (const relation of relations) relation.provenance.sort((left, right) => compareText(`${left.queryId}:${String(left.page).padStart(4, "0")}:${String(left.row).padStart(4, "0")}`, `${right.queryId}:${String(right.page).padStart(4, "0")}:${String(right.row).padStart(4, "0")}`));
+  for (const relation of relations) {
+    relation.provenance.sort((left, right) => compareText(`${left.queryId}:${String(left.page).padStart(4, "0")}:${String(left.row).padStart(4, "0")}`, `${right.queryId}:${String(right.page).padStart(4, "0")}:${String(right.row).padStart(4, "0")}`));
+    const courseName = courseNameByCode.get(relation.courseCode) ?? "";
+    const directSkill = mappingFromDirectSkillCourseName({
+      courseCode: relation.courseCode,
+      courseName,
+      sourceTeacherLabel: relation.sourceTeacherLabel,
+    });
+    if (directSkill) relation.peSpecialization = directSkill;
+    else if (classifyPeSourceCourseName(courseName).sourceKind === "umbrella") relation.peSpecialization = null;
+  }
 
   const recordsByName: Record<(typeof artifactNames)[number], unknown[]> = {
     "inventory.jsonl": inventory,

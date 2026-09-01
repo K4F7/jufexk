@@ -28,6 +28,7 @@ async function writeQualityPackage(root: string) {
     { schemaVersion: "catalog-baseline-quality-conflict/v2", conflictId: "conflict:location", code: "LOCATION_EVIDENCE_UNKNOWN", status: "pending", courseCode: "COURSE-1", detail: "location unknown", evidence: [JSON.stringify({ recordId: "query-1:0001:0001", semester: "2026-1", sourceHomeUnit: "本校单位甲" })] },
     { schemaVersion: "catalog-baseline-quality-conflict/v2", conflictId: "conflict:teacher", code: "TEACHER_PLACEHOLDER_SUSPECTED", status: "pending", detail: "teacher suspected", evidence: ["  =HYPERLINK(\"https://invalid.example\")"] },
     { schemaVersion: "catalog-baseline-quality-conflict/v2", conflictId: "conflict:unit", code: "UNIT_DECISION_REQUIRED", status: "pending", detail: "unit scope", evidence: ["UNIT-1", "本校单位甲"] },
+    { schemaVersion: "catalog-baseline-quality-conflict/v2", conflictId: "conflict:pe-mapping", code: "PE_SPECIALIZATION_MAPPING_REQUIRED", status: "pending", courseCode: "COURSE-1", detail: "umbrella PE mapping required", evidence: [JSON.stringify({ courseCode: "COURSE-1", sourceTeacherLabel: "教师一", sourceCourseName: "体育1", sourceKind: "umbrella" })] },
   ];
   const boundaryFixtures = {
     gbk: "gbk.html", pagination: "pagination.html", rowspan: "rowspan.html", "multi-teacher": "multi-teacher.html", "teacher-digit-suffix": "teacher-digit-suffix.html",
@@ -43,7 +44,7 @@ async function writeQualityPackage(root: string) {
   const coverage = {
     schemaVersion: "catalog-baseline-quality-coverage/v2",
     status: "review_required",
-    counts: { inventory: 1, courses: 1, teachers: 1, relations: 1, conflicts: 4, pendingConflicts: 4, exclusions: 0, coverageExceptions: 1, goldenSample: golden.length, goldenRelations: 1, goldenBoundaries: golden.length - 1, goldenUnverified: 1 },
+    counts: { inventory: 1, courses: 1, teachers: 1, relations: 1, conflicts: 5, pendingConflicts: 5, exclusions: 0, coverageExceptions: 1, goldenSample: golden.length, goldenRelations: 1, goldenBoundaries: golden.length - 1, goldenUnverified: 1 },
     categoryCounts: { general: 1, sports: 0 },
     locationEvidence: { mailu: 0, fenglin: 0, jiaoquiao: 0, mooc: 0, unknown: 1 },
     unitEvidence: { codedRows: 1, blankRows: 0, coursesRecoveredFromOtherRows: 0, coursesMissingAllEvidence: 0 },
@@ -99,6 +100,8 @@ describe("catalog review export", () => {
         expect(await readFile(join(first, path))).toEqual(await readFile(join(second, path)));
       }
       expect(await readFile(join(first, "course_conflicts.csv"), "utf8")).toContain('"conflict:course-name"');
+      expect(await readFile(join(first, "course_conflicts.csv"), "utf8")).toContain('"conflict:pe-mapping"');
+      expect(await readFile(join(first, "course_conflicts.csv"), "utf8")).toContain("include|coverage_exception");
       expect(await readFile(join(first, "coverage_exceptions.csv"), "utf8")).toContain('"boundary:rowspan"');
       expect(await readFile(join(first, "golden_sample.csv"), "utf8")).toContain('"golden:relation:1"');
       expect(await readFile(join(first, "teacher_conflicts.csv"), "utf8")).toContain('"\'  =HYPERLINK(""https://invalid.example"")"');

@@ -134,7 +134,7 @@
 - 权威交付：`approved/manifest.json` 与 `approved/catalog-baseline.jsonl`。
 - 所有 JSON/JSONL 契约必须携带 schema 版本；清单记录每个文件的字节数、记录数和 SHA-256。
 
-基础离线派生命令为 `pnpm run catalog-baseline derive <capture-directory> [--output <derivation-directory>]`。未指定输出目录时写入采集目录的同级 `<capture-directory>-derived`；命令先完整验证采集包，再以严格 GBK 解码离线生成 `inventory.jsonl`、`courses.jsonl`、`teachers.jsonl`、`relations.jsonl`、`exceptions.jsonl` 和 `manifest.json`，不发起网络请求。对应 schema 为 `catalog-baseline-inventory/v3`、`catalog-baseline-course/v1`、`catalog-baseline-teacher/v1`、`catalog-baseline-relation/v2`、`catalog-baseline-exception/v1` 与 `catalog-baseline-derivation/v1`。inventory v3 保留来源性质与分类文字、承担单位稳定代码与标签、校区和地点原文；承担单位标签只允许通过采集包内已哈希冻结的字典唯一映射到代码，未知或歧义映射进入异常。relation v2 的 provenance 同时保留培养层次与年级，供覆盖和金标准分层使用。异常派生物仍是可审计中间结果，不是批准包，也不得直接导入数据库。
+基础离线派生命令为 `pnpm run catalog-baseline derive <capture-directory> [--output <derivation-directory>]`。未指定输出目录时写入采集目录的同级 `<capture-directory>-derived`；命令先完整验证采集包，再以严格 GBK 解码离线生成 `inventory.jsonl`、`courses.jsonl`、`teachers.jsonl`、`relations.jsonl`、`exceptions.jsonl` 和 `manifest.json`，不发起网络请求。对应 schema 为 `catalog-baseline-inventory/v3`、`catalog-baseline-course/v1`、`catalog-baseline-teacher/v1`、`catalog-baseline-relation/v3`、`catalog-baseline-exception/v1` 与 `catalog-baseline-derivation/v1`。inventory v3 保留来源性质与分类文字、承担单位稳定代码与标签、校区和地点原文；承担单位标签只允许通过采集包内已哈希冻结的字典唯一映射到代码，未知或歧义映射进入异常。relation v2 的 provenance 同时保留培养层次与年级，供覆盖和金标准分层使用。relation v3 在来源 Relation 上保存体育具体专项映射与证据：伞形课名来源使用 `umbrella` / `umbrella_prefixed`，直接具体课名来源使用 `direct_skill` / `keep_source_name`；同一具体专项名稳定归一化。旧的 relation v2 批准包仍可导入，导入时按课名补齐直接专项映射，伞形且未确认的记录进入人工处理清单，不在查询阶段猜测。异常派生物仍是可审计中间结果，不是批准包，也不得直接导入数据库。
 
 ## 实现顺序
 
