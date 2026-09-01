@@ -24,11 +24,13 @@ export type Course = {
 
 /**
  * 目录页任课关系行（Issue #410）：`GET /api/courses?view=relations`
- * 一行一条课程×教师。无教师课程保留一行，teacher_id/teacher_name 为 null。
+ * 一行一条课程×教师。公共体育专项的 `course_id` 为 null，身份在 `public_id`。
  * 无评价关系 rating=null、dimensionLabels=null。
  */
 export type CourseRelation = {
-  course_id: number;
+  course_id: number | null;
+  /** `relation:<courseId>:<teacherId>` or `pe:<specialization>:<teacherId>`. */
+  public_id?: string;
   code: string;
   name: string;
   category: string;

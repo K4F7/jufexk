@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   publicCourseIdentity,
   publicPeCourseIdentity,
+  publicPeRelationIdentity,
+  publicRelationIdentity,
   resolvePePublicDisplayName,
 } from "../src/lib/public-pe-course-projection";
 
@@ -10,6 +12,11 @@ describe("public PE Course-list identity and display names", () => {
     expect(publicPeCourseIdentity("篮球")).toBe("pe:篮球");
     expect(publicCourseIdentity(18111)).toBe("course:18111");
     expect(publicPeCourseIdentity("篮球")).not.toMatch(/^\d+$/);
+    expect(publicPeRelationIdentity("篮球", 12)).toBe("pe:篮球:12");
+    expect(publicRelationIdentity(18111, 12)).toBe("relation:18111:12");
+    expect(publicPeRelationIdentity("篮球", 12)).not.toBe(
+      publicRelationIdentity(18111, 12),
+    );
   });
 
   it("keeps umbrella-prefixed names and direct catalog names", () => {

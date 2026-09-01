@@ -19,6 +19,7 @@ export type PublicPeCourseListRow = {
 
 export const PUBLIC_COURSE_IDENTITY_PREFIX = "course:";
 export const PUBLIC_PE_COURSE_IDENTITY_PREFIX = "pe:";
+export const PUBLIC_RELATION_IDENTITY_PREFIX = "relation:";
 
 export function publicCourseIdentity(courseId: number): string {
   return `${PUBLIC_COURSE_IDENTITY_PREFIX}${courseId}`;
@@ -26,6 +27,20 @@ export function publicCourseIdentity(courseId: number): string {
 
 export function publicPeCourseIdentity(normalizedSpecialization: string): string {
   return `${PUBLIC_PE_COURSE_IDENTITY_PREFIX}${normalizedSpecialization}`;
+}
+
+export function publicRelationIdentity(
+  courseId: number,
+  teacherId: number | null,
+): string {
+  return `${PUBLIC_RELATION_IDENTITY_PREFIX}${courseId}:${teacherId ?? "none"}`;
+}
+
+export function publicPeRelationIdentity(
+  normalizedSpecialization: string,
+  teacherId: number,
+): string {
+  return `${PUBLIC_PE_COURSE_IDENTITY_PREFIX}${normalizedSpecialization}:${teacherId}`;
 }
 
 export function resolvePePublicDisplayName(input: {
