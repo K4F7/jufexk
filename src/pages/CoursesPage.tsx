@@ -53,9 +53,7 @@ function asRelationRows(
   items: Array<CourseRelation | Course>,
 ): CourseRelation[] {
   return items.flatMap((item) =>
-    "course_id" in item && typeof item.course_id === "number"
-      ? [item]
-      : expandCourseRelations(item as Course),
+    "teacher_id" in item ? [item as CourseRelation] : expandCourseRelations(item as Course),
   );
 }
 

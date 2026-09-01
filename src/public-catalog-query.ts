@@ -33,9 +33,19 @@ import {
   publicCourseIdentity,
   publicPeCourseIdentity,
   publicPeMappedSourceCourseExcludeSql,
+  publicPeRelationIdentity,
+  publicRelationIdentity,
 } from "./lib/public-pe-course-projection";
+import {
+  filterPublicPeRelationItems,
+  loadPublicPeRelationProjection,
+  publicPeMappedSourceRelationExcludeSql,
+} from "./lib/public-pe-relation-projection";
 import { relationDimensionKey } from "./lib/relation-four-dims";
-import { loadRelationDimensionLabels } from "./lib/relation-projections";
+import {
+  loadGroupedRelationDimensionLabels,
+  loadRelationDimensionLabels,
+} from "./lib/relation-projections";
 import type { PublicDimensionLabel } from "./lib/review-schemes";
 import {
   ensurePublicListPrecomputes,
@@ -89,7 +99,10 @@ export type PublicCourseListItem = {
 };
 
 export type PublicRelationListItem = {
-  course_id: number;
+  /** Ordinary Relation identity is `courses.id`; PE public specializations are `null`. */
+  course_id: number | null;
+  /** `relation:<courseId>:<teacherId>` for ordinary rows; `pe:<spec>:<teacherId>` for PE. */
+  public_id: string;
   code: string;
   name: string;
   category: string;
@@ -103,7 +116,8 @@ export type PublicRelationListItem = {
   Partial<RelationSignalViewer>;
 
 type RelationRow = {
-  course_id: number;
+  course_id: number | null;
+  public_id?: string;
   code: string;
   name: string;
   category: string;
@@ -112,6 +126,7 @@ type RelationRow = {
   teacher_name: string | null;
   rating: number | null;
   review_count: number;
+  source_course_ids?: number[];
 };
 type ExactTeacherHits = {
   ids: number[];
@@ -138,15 +153,27 @@ const withPublicCourseItem = <
   };
 };
 
-const withPublicRelationNames = (row: RelationRow): RelationRow => {
+const withPublicRelationNames = (row: RelationRow): RelationRow & { public_id: string } => {
   const rawName = row.name || "";
+  const courseId = row.course_id == null ? null : Number(row.course_id);
+  const teacherId = row.teacher_id == null ? null : Number(row.teacher_id);
+  const pePublic = (row.public_id ?? "").startsWith("pe:");
+  const publicId =
+    row.public_id ||
+    (courseId == null
+      ? publicPeRelationIdentity("", teacherId ?? 0)
+      : publicRelationIdentity(courseId, teacherId));
   return {
     ...row,
-    name: publicCourseDisplayName(rawName),
-    category: publicCourseCategory(rawName, row.category),
+    course_id: courseId,
+    public_id: publicId,
+    name: pePublic ? rawName : publicCourseDisplayName(rawName),
+    category: pePublic
+      ? "sports"
+      : publicCourseCategory(rawName, row.category),
     rating: row.rating == null ? null : Number(row.rating),
     review_count: Number(row.review_count) || 0,
-    teacher_id: row.teacher_id == null ? null : Number(row.teacher_id),
+    teacher_id: teacherId,
   };
 };
 
@@ -290,10 +317,13 @@ async function loadVirtualPeRelations(
   department: string,
   exactTeachers: ExactTeacherHits,
   courseSearchTerms: string[],
+  excludeLabels: ReadonlySet<string> = new Set(),
 ): Promise<RelationRow[]> {
   if (department) return [];
-  const matchingSports = VIRTUAL_PE_SPORTS.filter((sport) =>
-    virtualPeSportMatchesQuery(sport, searchTerms),
+  const matchingSports = VIRTUAL_PE_SPORTS.filter(
+    (sport) =>
+      !excludeLabels.has(sport.label) &&
+      virtualPeSportMatchesQuery(sport, searchTerms),
   );
   const teachersByName = await loadVirtualPeTeachersByName(db, matchingSports);
   const items: RelationRow[] = [];
@@ -319,6 +349,7 @@ async function loadVirtualPeRelations(
     for (const teacher of filtered) {
       items.push({
         course_id: sport.id,
+        public_id: publicPeRelationIdentity(sport.label, teacher.id),
         code: "",
         name: virtualPeSportDisplayName(sport),
         category: "sports",
@@ -357,18 +388,34 @@ function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
   const keyA = publicRelationNameSortKey({
     name: String(a.name ?? ""),
     code: String(a.code ?? ""),
-    course_id: Number(a.course_id ?? 0),
+    course_id: a.course_id == null ? 0 : Number(a.course_id),
     teacher_name: a.teacher_name,
     teacher_id: a.teacher_id,
   });
   const keyB = publicRelationNameSortKey({
     name: String(b.name ?? ""),
     code: String(b.code ?? ""),
-    course_id: Number(b.course_id ?? 0),
+    course_id: b.course_id == null ? 0 : Number(b.course_id),
     teacher_name: b.teacher_name,
     teacher_id: b.teacher_id,
   });
   return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
+}
+
+function byRelationRating(a: RelationRow, b: RelationRow) {
+  const aMissing = a.rating == null ? 1 : 0;
+  const bMissing = b.rating == null ? 1 : 0;
+  if (aMissing !== bMissing) return aMissing - bMissing;
+  if (a.rating != null && b.rating != null && a.rating !== b.rating) {
+    return b.rating - a.rating;
+  }
+  if (a.review_count !== b.review_count) return b.review_count - a.review_count;
+  return byNameCodeTeacher(a, b);
+}
+
+function byRelationReviews(a: RelationRow, b: RelationRow) {
+  if (a.review_count !== b.review_count) return b.review_count - a.review_count;
+  return byNameCodeTeacher(a, b);
 }
 
 function emptyRelationSignals(
@@ -393,33 +440,64 @@ async function attachRelationProjection(
   items: RelationRow[],
   viewerUserId: string | null,
 ): Promise<PublicRelationListItem[]> {
-  const dimMap = await loadRelationDimensionLabels(
-    db,
-    items.map((item) => ({
-      courseId: item.course_id,
-      teacherId: item.teacher_id,
-    })),
+  const ordinary = items.filter(
+    (item): item is RelationRow & { course_id: number } => item.course_id != null,
   );
-  const signalMap = await loadRelationSignalPayloads(
-    db,
-    items
-      .filter(
-        (item): item is RelationRow & { teacher_id: number } =>
-          item.teacher_id != null,
-      )
-      .map((item) => ({ courseId: item.course_id, teacherId: item.teacher_id })),
-    viewerUserId,
+  const peItems = items.filter(
+    (item): item is RelationRow & { public_id: string; teacher_id: number } =>
+      item.course_id == null &&
+      item.teacher_id != null &&
+      Boolean(item.public_id),
   );
+  const [dimMap, peDimMap, signalMap] = await Promise.all([
+    loadRelationDimensionLabels(
+      db,
+      ordinary.map((item) => ({
+        courseId: item.course_id,
+        teacherId: item.teacher_id,
+      })),
+    ),
+    loadGroupedRelationDimensionLabels(
+      db,
+      peItems.map((item) => ({
+        key: item.public_id,
+        sources: (item.source_course_ids ?? []).map((courseId) => ({
+          courseId,
+          teacherId: item.teacher_id,
+        })),
+      })),
+    ),
+    loadRelationSignalPayloads(
+      db,
+      ordinary
+        .filter(
+          (item): item is RelationRow & { course_id: number; teacher_id: number } =>
+            item.teacher_id != null,
+        )
+        .map((item) => ({ courseId: item.course_id, teacherId: item.teacher_id })),
+      viewerUserId,
+    ),
+  ]);
   return items.map((item) => {
+    const { source_course_ids: _sourceCourseIds, ...rest } = item;
+    const publicId =
+      rest.public_id ||
+      (item.course_id == null
+        ? publicPeRelationIdentity("", item.teacher_id ?? 0)
+        : publicRelationIdentity(item.course_id, item.teacher_id));
     const signals =
-      item.teacher_id != null
+      item.course_id != null && item.teacher_id != null
         ? signalMap.get(`${item.course_id}:${item.teacher_id}`)
         : undefined;
+    const dimensionLabels =
+      item.course_id == null
+        ? (peDimMap.get(publicId) ?? null)
+        : (dimMap.get(relationDimensionKey(item.course_id, item.teacher_id)) ??
+          null);
     return {
-      ...item,
-      dimensionLabels:
-        dimMap.get(relationDimensionKey(item.course_id, item.teacher_id)) ??
-        null,
+      ...rest,
+      public_id: publicId,
+      dimensionLabels,
       ...(signals ?? emptyRelationSignals(viewerUserId)),
     };
   });
@@ -654,6 +732,137 @@ export async function queryPublicCourses(
   };
 }
 
+type RelationMergeKind = "name" | "rating" | "reviews";
+
+function extraPublicId(item: RelationRow): string {
+  return item.public_id ?? "";
+}
+
+function relationSortKey(item: RelationRow): string {
+  return publicRelationNameSortKey({
+    name: String(item.name ?? ""),
+    code: String(item.code ?? ""),
+    course_id: item.course_id == null ? 0 : Number(item.course_id),
+    teacher_name: item.teacher_name,
+    teacher_id: item.teacher_id,
+  });
+}
+
+async function planMergedRelationWindow(input: {
+  db: D1Database;
+  relationFrom: string;
+  ratingJoins: string;
+  where: string;
+  args: unknown[];
+  extrasAllUnsorted: RelationRow[];
+  mergeKind: RelationMergeKind;
+  start: number;
+  size: number;
+}): Promise<{
+  extrasAll: RelationRow[];
+  pageExtras: RelationRow[];
+  realOffset: number;
+  realLimit: number;
+}> {
+  const extrasAll = [...input.extrasAllUnsorted].sort(
+    input.mergeKind === "name"
+      ? byNameCodeTeacher
+      : input.mergeKind === "rating"
+        ? byRelationRating
+        : byRelationReviews,
+  );
+  if (!extrasAll.length) {
+    return {
+      extrasAll,
+      pageExtras: [],
+      realOffset: input.start,
+      realLimit: input.size,
+    };
+  }
+  const sortKeySql = publicRelationNameSortKeySql("c", "t");
+  const values = extrasAll
+    .map(() =>
+      input.mergeKind === "name"
+        ? "(?,?)"
+        : input.mergeKind === "rating"
+          ? "(?,?,?,?,?)"
+          : "(?,?,?)",
+    )
+    .join(",");
+  const beforePredicate =
+    input.mergeKind === "name"
+      ? `${sortKeySql} < extras.sort_key`
+      : input.mergeKind === "reviews"
+        ? `(COALESCE(rel_counts.review_count,0) > extras.review_count
+             OR (COALESCE(rel_counts.review_count,0) = extras.review_count
+               AND ${sortKeySql} < extras.sort_key))`
+        : `((CASE WHEN rel_rating.rating IS NULL THEN 1 ELSE 0 END) < extras.rating_missing
+             OR ((CASE WHEN rel_rating.rating IS NULL THEN 1 ELSE 0 END) = extras.rating_missing
+               AND (
+                 (extras.rating_missing = 0 AND rel_rating.rating > extras.rating)
+                 OR (
+                   (extras.rating_missing = 1 OR rel_rating.rating = extras.rating)
+                   AND (
+                     COALESCE(rel_counts.review_count,0) > extras.review_count
+                     OR (
+                       COALESCE(rel_counts.review_count,0) = extras.review_count
+                       AND ${sortKeySql} < extras.sort_key
+                     )
+                   )
+                 )
+               )))`;
+  const extraSelect =
+    input.mergeKind === "name"
+      ? "WITH extras(extra_key,sort_key) AS"
+      : input.mergeKind === "reviews"
+        ? "WITH extras(extra_key,review_count,sort_key) AS"
+        : "WITH extras(extra_key,rating_missing,rating,review_count,sort_key) AS";
+  const extraBinds = extrasAll.flatMap((extra) =>
+    input.mergeKind === "name"
+      ? [extraPublicId(extra), relationSortKey(extra)]
+      : input.mergeKind === "reviews"
+        ? [extraPublicId(extra), extra.review_count, relationSortKey(extra)]
+        : [
+            extraPublicId(extra),
+            extra.rating == null ? 1 : 0,
+            extra.rating ?? 0,
+            extra.review_count,
+            relationSortKey(extra),
+          ],
+  );
+  const ratingJoins =
+    input.mergeKind === "name" ? "" : input.ratingJoins;
+  const { results } = await input.db
+    .prepare(
+      `${extraSelect} (VALUES ${values})
+       SELECT extras.extra_key,COUNT(*) n
+       ${input.relationFrom}
+       ${ratingJoins}
+       JOIN extras ON 1=1
+       WHERE ${input.where}
+         AND ${beforePredicate}
+       GROUP BY extras.extra_key`,
+    )
+    .bind(...extraBinds, ...input.args)
+    .all<{ extra_key: string; n: number }>();
+  const counts = new Map(
+    (results || []).map((row) => [String(row.extra_key), Number(row.n) || 0]),
+  );
+  const realBefore: number[] = extrasAll.map(
+    (extra) => Number(counts.get(extraPublicId(extra))) || 0,
+  );
+  const extraIndexes = extraMergedIndexes(realBefore);
+  const window = mergedNameRealWindow(input.start, input.size, extraIndexes);
+  return {
+    extrasAll,
+    pageExtras: extrasAll.filter((_, index) =>
+      window.extraIndexesOnPage.includes(extraIndexes[index]),
+    ),
+    realOffset: window.offset,
+    realLimit: window.limit,
+  };
+}
+
 export async function queryPublicCourseRelations(
   db: D1Database,
   query: PublicRelationListQuery,
@@ -687,7 +896,7 @@ export async function queryPublicCourseRelations(
     "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
   );
   const rowHit = relationRowHit(courseSearchTerms);
-  const where = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}${rowHit.sql ? ` AND ${rowHit.sql}` : ""}${exactTeacherFilter}`;
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeMappedSourceRelationExcludeSql("c", "ct")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}${rowHit.sql ? ` AND ${rowHit.sql}` : ""}${exactTeacherFilter}`;
   const args = [
     ...categoryFilter.args,
     department,
@@ -697,14 +906,20 @@ export async function queryPublicCourseRelations(
     ...rowHit.args,
     ...exactTeachers.ids,
   ];
+  const relationFrom = `FROM courses c
+      ${publicCourseCanonicalJoin}
+      JOIN course_teachers ct ON ct.course_id=c.id
+      JOIN teachers t ON t.id=ct.teacher_id`;
+  const ratingJoins = `
+      LEFT JOIN public_review_counts rel_counts
+        ON rel_counts.course_id=c.id AND rel_counts.teacher_id=t.id
+      LEFT JOIN public_relation_ratings rel_rating
+        ON rel_rating.course_id=c.id AND rel_rating.teacher_id=t.id`;
   const relationCount = () =>
     db
       .prepare(
         `SELECT COUNT(*) n
-       FROM courses c
-       ${publicCourseCanonicalJoin}
-       LEFT JOIN course_teachers ct ON ct.course_id=c.id
-       LEFT JOIN teachers t ON t.id=ct.teacher_id
+       ${relationFrom}
        WHERE ${where}`,
       )
       .bind(...args)
@@ -731,6 +946,14 @@ export async function queryPublicCourseRelations(
       : sort === "rating"
         ? `(rel_rating.rating IS NULL),rel_rating.rating DESC,review_count DESC,${nameSortSql}`
         : relevanceOrder;
+  const peProjection = await loadPublicPeRelationProjection(db);
+  const peItems = filterPublicPeRelationItems(peProjection.items, {
+    category: query.category,
+    department,
+    teacherId,
+    exactTeacherIds: exactTeachers.active ? exactTeachers.ids : null,
+    courseSearchTerms,
+  });
   const virtualItems =
     !query.category || query.category === "sports"
       ? await loadVirtualPeRelations(
@@ -740,89 +963,48 @@ export async function queryPublicCourseRelations(
           department,
           exactTeachers,
           courseSearchTerms,
+          peProjection.specializations,
         )
       : [];
-  const mergeName = virtualItems.length > 0 && sort === "name";
-  const queryOrderBy = mergeName ? nameSortSql : orderBy;
+  const extrasAllUnsorted = [
+    ...peItems,
+    ...virtualItems.filter(
+      (item) => !peProjection.identities.has(extraPublicId(item)),
+    ),
+  ];
+  const mergeKind: RelationMergeKind | null = !extrasAllUnsorted.length
+    ? null
+    : sort === "name"
+      ? "name"
+      : sort === "rating"
+        ? "rating"
+        : searchTerms.length === 0
+          ? "reviews"
+          : null;
+  const queryOrderBy =
+    mergeKind === "reviews" ? `review_count DESC,${nameSortSql}` : orderBy;
   const start = (page - 1) * size;
-  let extrasAll = virtualItems;
+  let extrasAll = extrasAllUnsorted;
   let pageExtras: RelationRow[] = [];
   let realOffset = start;
   let realLimit = size;
 
-  const relationFrom = `FROM courses c
-      ${publicCourseCanonicalJoin}
-      LEFT JOIN course_teachers ct ON ct.course_id=c.id
-      LEFT JOIN teachers t ON t.id=ct.teacher_id`;
-
-  if (mergeName) {
-    if (virtualItems.length) {
-      const pairSql = virtualItems
-        .map(() => "(c.id=? AND t.id=?)")
-        .join(" OR ");
-      const found = await db
-        .prepare(
-          `SELECT c.id course_id, t.id teacher_id
-         ${relationFrom}
-         WHERE ${where} AND (${pairSql})`,
-        )
-        .bind(
-          ...args,
-          ...virtualItems.flatMap((item) => [item.course_id, item.teacher_id]),
-        )
-        .all();
-      const existing = new Set(
-        (
-          (found.results ?? []) as Array<{
-            course_id: number;
-            teacher_id: number | null;
-          }>
-        ).map((row) => `${row.course_id}:${row.teacher_id}`),
-      );
-      extrasAll = virtualItems.filter(
-        (item) => !existing.has(`${item.course_id}:${item.teacher_id}`),
-      );
-    }
-    extrasAll = [...extrasAll].sort(byNameCodeTeacher);
-    const sortKeySql = publicRelationNameSortKeySql("c", "t");
-    const realBefore = extrasAll.length
-      ? extrasAll.map(() => 0)
-      : [];
-    if (extrasAll.length) {
-      const values = extrasAll.map(() => "(?,?,?)").join(",");
-      const { results } = await db
-        .prepare(
-          `WITH extras(course_id,teacher_id,sort_key) AS (VALUES ${values})
-           SELECT extras.course_id,extras.teacher_id,COUNT(*) n
-           ${relationFrom}
-           JOIN extras ON 1=1
-           WHERE ${where}
-             AND ${sortKeySql} < extras.sort_key
-           GROUP BY extras.course_id,extras.teacher_id`,
-        )
-        .bind(
-          ...extrasAll.flatMap((extra) => [
-            extra.course_id,
-            extra.teacher_id,
-            publicRelationNameSortKey(extra),
-          ]),
-          ...args,
-        )
-        .all<{ course_id: number; teacher_id: number; n: number }>();
-      const counts = new Map(
-        (results || []).map((row) => [`${row.course_id}:${row.teacher_id}`, Number(row.n) || 0]),
-      );
-      extrasAll.forEach((extra, index) => {
-        realBefore[index] = counts.get(`${extra.course_id}:${extra.teacher_id}`) || 0;
-      });
-    }
-    const extraIndexes = extraMergedIndexes(realBefore);
-    const window = mergedNameRealWindow(start, size, extraIndexes);
-    realOffset = window.offset;
-    realLimit = window.limit;
-    pageExtras = extrasAll.filter((_, index) =>
-      window.extraIndexesOnPage.includes(extraIndexes[index]),
-    );
+  if (mergeKind) {
+    const window = await planMergedRelationWindow({
+      db,
+      relationFrom,
+      ratingJoins,
+      where,
+      args,
+      extrasAllUnsorted,
+      mergeKind,
+      start,
+      size,
+    });
+    extrasAll = window.extrasAll;
+    pageExtras = window.pageExtras;
+    realOffset = window.realOffset;
+    realLimit = window.realLimit;
   }
 
   const [pageResult, countResult] = await Promise.all([
@@ -834,21 +1016,17 @@ export async function queryPublicCourseRelations(
        t.id teacher_id,t.name teacher_name,
        rel_rating.rating,
        COALESCE(rel_counts.review_count,0) review_count
-      FROM courses c
-      ${publicCourseCanonicalJoin}
-      LEFT JOIN course_teachers ct ON ct.course_id=c.id
-      LEFT JOIN teachers t ON t.id=ct.teacher_id
-      LEFT JOIN public_review_counts rel_counts
-        ON rel_counts.course_id=c.id AND rel_counts.teacher_id=t.id
-      LEFT JOIN public_relation_ratings rel_rating
-        ON rel_rating.course_id=c.id AND rel_rating.teacher_id=t.id
+      ${relationFrom}
+      ${ratingJoins}
      WHERE ${where}
      ORDER BY ${queryOrderBy}
      LIMIT ? OFFSET ?`,
           )
           .bind(
             ...args,
-            ...(sort === "name" || sort === "rating" ? [] : searchRankArgs),
+            ...(mergeKind === "reviews" || sort === "name" || sort === "rating"
+              ? []
+              : searchRankArgs),
             realLimit + 1,
             realOffset,
           )
@@ -858,23 +1036,23 @@ export async function queryPublicCourseRelations(
 
   const rows = ((pageResult.results || []) as RelationRow[]).slice(0, realLimit);
   const listed = rows.map((row) => withPublicRelationNames(row));
-  const extras = mergeName
+  const extras = mergeKind
     ? pageExtras
-    : virtualItems.filter(
+    : extrasAllUnsorted.filter(
         (item) =>
-          !listed.some(
-            (row) =>
-              row.course_id === item.course_id &&
-              row.teacher_id === item.teacher_id,
-          ),
+          !listed.some((row) => extraPublicId(row) === extraPublicId(item)),
       );
-  const extrasTotal = mergeName ? extrasAll.length : extras.length;
+  const extrasTotal = mergeKind ? extrasAll.length : extras.length;
   const realTotal = Number(countResult) || 0;
   const totalCount = realTotal + extrasTotal;
-  const pages = Math.max(1, Math.ceil(totalCount / size) || 1);
+  const pages = Math.ceil(totalCount / size);
   let items: RelationRow[];
-  if (mergeName) {
+  if (mergeKind === "name") {
     items = [...listed, ...pageExtras].sort(byNameCodeTeacher).slice(0, size);
+  } else if (mergeKind === "rating") {
+    items = [...listed, ...pageExtras].sort(byRelationRating).slice(0, size);
+  } else if (mergeKind === "reviews") {
+    items = [...listed, ...pageExtras].sort(byRelationReviews).slice(0, size);
   } else if (extras.length) {
     items =
       start >= realTotal

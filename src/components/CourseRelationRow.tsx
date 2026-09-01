@@ -15,6 +15,7 @@ export function relationDetailHref(
   relation: Pick<CourseRelation, "course_id" | "teacher_id">,
   search = "",
 ): string {
+  if (relation.course_id == null) return "/courses";
   const sp = new URLSearchParams(search);
   if (relation.teacher_id != null) {
     sp.set("teacher", String(relation.teacher_id));
@@ -25,6 +26,9 @@ export function relationDetailHref(
   return `/courses/${relation.course_id}${q ? `?${q}` : ""}`;
 }
 
+const relationRowClassName =
+  "block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-transparent hover:no-underline! [content-visibility:auto] [contain-intrinsic-size:auto_5.5rem] max-sm:py-2.5 max-sm:[contain-intrinsic-size:auto_6.5rem]";
+
 export function CourseRelationRow({
   relation,
   search = "",
@@ -33,15 +37,10 @@ export function CourseRelationRow({
   /** 当前目录查询串（location.search，可含前导 ?），随链接带入详情页。 */
   search?: string;
 }) {
-  const href = relationDetailHref(relation, search);
   const rating = relation.rating ?? null;
   const reviewCount = relation.review_count ?? relation.course_review_count ?? 0;
-  return (
-    <RouterAriaLink
-      to={href}
-      onIntent={() => prefetchCourseDetail(relation.course_id, relation.teacher_id)}
-      className="block! w-full! rounded-none! border-b border-separator py-3 no-underline last:border-b-0 hover:bg-transparent hover:no-underline! [content-visibility:auto] [contain-intrinsic-size:auto_5.5rem] max-sm:py-2.5 max-sm:[contain-intrinsic-size:auto_6.5rem]"
-    >
+  const body = (
+    <>
       <span className="block min-w-0 text-[1rem] font-medium text-accent max-sm:leading-snug">
         <span className="break-words">{relation.name}</span>
         {relation.teacher_name ? (
@@ -74,6 +73,19 @@ export function CourseRelationRow({
         className="mt-1.5"
         labels={fourDimLineLabels(relation.dimensionLabels)}
       />
+    </>
+  );
+  const courseId = relation.course_id;
+  if (courseId == null) {
+    return <div className={relationRowClassName}>{body}</div>;
+  }
+  return (
+    <RouterAriaLink
+      to={relationDetailHref({ course_id: courseId, teacher_id: relation.teacher_id }, search)}
+      onIntent={() => prefetchCourseDetail(courseId, relation.teacher_id)}
+      className={relationRowClassName}
+    >
+      {body}
     </RouterAriaLink>
   );
 }

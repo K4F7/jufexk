@@ -102,27 +102,39 @@ describe("review template kind API contract", () => {
   });
 
   it("applies the same 通识课 grouping on view=relations", async () => {
-    await env.DB.prepare(
-      `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
-        (33711,'MJ33711','计量经济学','general','经济学院','major'),
-        (33712,'PB33712','公共基础导论','general','教务处','public_basic'),
-        (33713,'MA33713','高等数学A','general','统计学院','math')`,
-    ).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO teachers(id,source_teacher_label,name) VALUES(33711,'通识教师','通识教师')",
+      ),
+      env.DB.prepare(
+        `INSERT INTO courses(id,code,name,category,department,scheme_key) VALUES
+          (33711,'MJ33711','计量经济学','general','经济学院','major'),
+          (33712,'PB33712','公共基础导论','general','教务处','public_basic'),
+          (33713,'MA33713','高等数学A','general','统计学院','math'),
+          (33714,'NT33714','无教师通识课','general','经济学院','major')`,
+      ),
+      env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(33711,33711),(33712,33711),(33713,33711)",
+      ),
+    ]);
 
     const relations = await SELF.fetch(
       `${origin}/api/courses?view=relations&category=general`,
     );
     expect(relations.status).toBe(200);
     const relationNames = (
-      await relations.json<{ items: Array<{ name: string }> }>()
+      await relations.json<{ items: Array<{ name: string; teacher_id: number | null }> }>()
     ).items.map((item) => item.name);
     expect(relationNames).toContain("计量经济学");
     expect(relationNames).toContain("公共基础导论");
     expect(relationNames).not.toContain("高等数学A");
+    expect(relationNames).not.toContain("无教师通识课");
 
-    await env.DB.prepare(
-      "DELETE FROM courses WHERE id BETWEEN 33711 AND 33713",
-    ).run();
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM course_teachers WHERE teacher_id=33711"),
+      env.DB.prepare("DELETE FROM courses WHERE id BETWEEN 33711 AND 33714"),
+      env.DB.prepare("DELETE FROM teachers WHERE id=33711"),
+    ]);
   });
 
   it("groups mooc-tagged courses under 网课 and keeps them out of other chips", async () => {
