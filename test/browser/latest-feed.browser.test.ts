@@ -133,8 +133,8 @@ async function expectStackedAuthorLayout(article: Locator) {
   expect(courseBox).toBeTruthy();
   expect(dateBox).toBeTruthy();
   expect(headlineBox).toBeTruthy();
-  expect(Math.abs((handleBox?.y ?? 0) - (verbBox?.y ?? 0))).toBeLessThan(4);
-  expect(Math.abs((courseBox?.y ?? 0) - (verbBox?.y ?? 0))).toBeLessThan(4);
+  expect(Math.abs((handleBox?.y ?? 0) - (verbBox?.y ?? 0))).toBeLessThan(2);
+  expect(Math.abs((courseBox?.y ?? 0) - (verbBox?.y ?? 0))).toBeLessThan(2);
   expect(headlineBox?.y ?? 0).toBeGreaterThan((authorBox?.y ?? 0) + (authorBox?.height ?? 0) / 2);
   expect(headlineBox?.x ?? 0).toBeLessThanOrEqual((authorBox?.x ?? 0) + 24);
   if (dateBox && courseBox && Math.abs((dateBox.y ?? 0) - (courseBox.y ?? 0)) < 12) {

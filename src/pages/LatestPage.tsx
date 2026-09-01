@@ -254,7 +254,8 @@ function LatestReviewItem({ review }: { review: LatestReview }) {
           <ReviewAuthor
             publicCode={review.author_public_code}
             avatarKey={review.author_avatar_key}
-            className="align-middle leading-6"
+            layout="baseline"
+            className="leading-6"
           />
           <span className="text-muted"> 点评了 </span>
           <RouterAriaLink
