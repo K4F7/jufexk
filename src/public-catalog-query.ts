@@ -27,6 +27,13 @@ import {
   virtualPeSportDisplayName,
   virtualPeSportMatchesQuery,
 } from "./lib/public-course-presentation";
+import {
+  filterPublicPeCourseItems,
+  loadPublicPeCourseProjection,
+  publicCourseIdentity,
+  publicPeCourseIdentity,
+  publicPeMappedSourceCourseExcludeSql,
+} from "./lib/public-pe-course-projection";
 import { relationDimensionKey } from "./lib/relation-four-dims";
 import { loadRelationDimensionLabels } from "./lib/relation-projections";
 import type { PublicDimensionLabel } from "./lib/review-schemes";
@@ -68,7 +75,10 @@ export type PublicCatalogPage<T> = {
 };
 
 export type PublicCourseListItem = {
-  id: number;
+  /** Ordinary Course identity is `courses.id`; PE public specializations are `null`. */
+  id: number | null;
+  /** `course:<id>` for ordinary rows; `pe:<normalizedSpecialization>` for PE public items. */
+  public_id: string;
   code: string;
   name: string;
   category: string;
@@ -110,13 +120,16 @@ type ExactTeacherHits = {
 };
 
 const withPublicCourseItem = <
-  T extends { name?: unknown; category?: unknown },
+  T extends { id?: unknown; name?: unknown; category?: unknown },
 >(
   row: T,
 ) => {
   const rawName = typeof row.name === "string" ? row.name : "";
+  const id = Number(row.id);
   return {
     ...row,
+    id,
+    public_id: publicCourseIdentity(id),
     name: publicCourseDisplayName(rawName),
     category: publicCourseCategory(
       rawName,
@@ -140,11 +153,12 @@ const withPublicRelationNames = (row: RelationRow): RelationRow => {
 const virtualPeSportItem = (
   sport: (typeof VIRTUAL_PE_SPORTS)[number],
   teachers: Array<{ id: number; name: string }>,
-) => ({
+): PublicCourseListItem => ({
   id: sport.id,
+  public_id: publicPeCourseIdentity(sport.label),
   code: "",
   name: virtualPeSportDisplayName(sport),
-  category: "sports" as const,
+  category: "sports",
   department: "",
   teachers: teachers.map((teacher) => teacher.name).join(","),
   teacher_refs: teachers
@@ -176,10 +190,13 @@ const loadVirtualPeSportItems = async (
   searchTerms: string[],
   teacherId: number | null,
   department: string,
+  excludeLabels: ReadonlySet<string> = new Set(),
 ) => {
   if (department) return [];
-  const matchingSports = VIRTUAL_PE_SPORTS.filter((sport) =>
-    virtualPeSportMatchesQuery(sport, searchTerms),
+  const matchingSports = VIRTUAL_PE_SPORTS.filter(
+    (sport) =>
+      !excludeLabels.has(sport.label) &&
+      virtualPeSportMatchesQuery(sport, searchTerms),
   );
   const teachersByName = await loadVirtualPeTeachersByName(db, matchingSports);
   const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
@@ -317,8 +334,8 @@ async function loadVirtualPeRelations(
 }
 
 function byNameCodeId(
-  a: { id?: unknown; code?: unknown; name?: unknown },
-  b: { id?: unknown; code?: unknown; name?: unknown },
+  a: { id?: unknown; code?: unknown; name?: unknown; public_id?: unknown },
+  b: { id?: unknown; code?: unknown; name?: unknown; public_id?: unknown },
 ) {
   const nameA = String(a.name ?? "");
   const nameB = String(b.name ?? "");
@@ -326,7 +343,14 @@ function byNameCodeId(
   const codeA = String(a.code ?? "");
   const codeB = String(b.code ?? "");
   if (codeA !== codeB) return codeA < codeB ? -1 : 1;
-  return Number(a.id ?? 0) - Number(b.id ?? 0);
+  const idA = a.id == null ? Number.POSITIVE_INFINITY : Number(a.id);
+  const idB = b.id == null ? Number.POSITIVE_INFINITY : Number(b.id);
+  if (idA !== idB) return idA - idB;
+  return String(a.public_id ?? "").localeCompare(String(b.public_id ?? ""));
+}
+
+function extraSortId(item: PublicCourseListItem): number {
+  return item.id == null ? 0 : Number(item.id);
 }
 
 function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
@@ -423,7 +447,14 @@ export async function queryPublicCourses(
       ),
     "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
   );
-  const baseWhere = `${publicCourseVisibleSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}`;
+  const peProjection = await loadPublicPeCourseProjection(db);
+  const peItems = filterPublicPeCourseItems(peProjection.items, {
+    searchTerms,
+    category: query.category,
+    department,
+    teacherId,
+  });
+  const baseWhere = `${publicCourseVisibleSql("c")} AND ${publicPeMappedSourceCourseExcludeSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}`;
   const baseArgs = [
     ...categoryFilter.args,
     department,
@@ -486,39 +517,70 @@ export async function queryPublicCourses(
   const searchRankArgs = exactCodeMatched ? [] : sharedRanking.args;
   const virtualItems =
     !query.category || query.category === "sports"
-      ? await loadVirtualPeSportItems(db, searchTerms, teacherId, department)
+      ? await loadVirtualPeSportItems(
+          db,
+          searchTerms,
+          teacherId,
+          department,
+          peProjection.specializations,
+        )
       : [];
-  const mergeName = virtualItems.length > 0 && sort === "name";
-  let extrasAll = virtualItems;
+  const extrasAllUnsorted = [...peItems, ...virtualItems];
+  const mergeName = extrasAllUnsorted.length > 0 && sort === "name";
+  const mergeReviews =
+    extrasAllUnsorted.length > 0 &&
+    sort !== "name" &&
+    (searchTerms.length === 0 || exactCodeMatched);
+  let extrasAll = extrasAllUnsorted;
   let pageExtras: PublicCourseListItem[] = [];
   let realOffset = (page - 1) * size;
   let realLimit = size;
-  if (mergeName) {
-    extrasAll = [...virtualItems].sort(byNameCodeId);
-    const values = extrasAll.map(() => "(?,?,?)").join(",");
+  if (mergeName || mergeReviews) {
+    extrasAll = [...extrasAllUnsorted].sort(
+      mergeName
+        ? byNameCodeId
+        : (left, right) =>
+            right.review_count - left.review_count || byNameCodeId(left, right),
+    );
+    const values = extrasAll.map(() => "(?,?,?,?,?)").join(",");
+    const reviewCountJoin = `LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM public_review_counts GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id`;
+    const beforePredicate = mergeName
+      ? `(c.name < extras.sort_name
+             OR (c.name = extras.sort_name AND c.code < extras.sort_code)
+             OR (c.name = extras.sort_name AND c.code = extras.sort_code AND c.id < extras.sort_id))`
+      : `(COALESCE(course_review_counts.review_count,0) > extras.review_count
+             OR (COALESCE(course_review_counts.review_count,0) = extras.review_count
+               AND (c.name < extras.sort_name
+                 OR (c.name = extras.sort_name AND c.code < extras.sort_code)
+                 OR (c.name = extras.sort_name AND c.code = extras.sort_code AND c.id < extras.sort_id))))`;
     const { results } = await db
       .prepare(
-        `WITH extras(id,sort_name,sort_code) AS (VALUES ${values})
-         SELECT extras.id,COUNT(*) n
+        `WITH extras(extra_key,sort_name,sort_code,sort_id,review_count) AS (VALUES ${values})
+         SELECT extras.extra_key,COUNT(DISTINCT c.id) n
          FROM courses c
          ${countJoins}
+         ${mergeReviews ? reviewCountJoin : ""}
          JOIN extras ON 1=1
          WHERE ${where}
-           AND (c.name < extras.sort_name
-             OR (c.name = extras.sort_name AND c.code < extras.sort_code)
-             OR (c.name = extras.sort_name AND c.code = extras.sort_code AND c.id < extras.id))
-         GROUP BY extras.id`,
+           AND ${beforePredicate}
+         GROUP BY extras.extra_key`,
       )
       .bind(
-        ...extrasAll.flatMap((item) => [item.id, item.name, item.code]),
+        ...extrasAll.flatMap((item) => [
+          item.public_id,
+          item.name,
+          item.code,
+          extraSortId(item),
+          item.review_count,
+        ]),
         ...args,
       )
-      .all<{ id: number; n: number }>();
-    const realBeforeById = new Map(
-      (results || []).map((row) => [Number(row.id), Number(row.n) || 0]),
+      .all<{ extra_key: string; n: number }>();
+    const realBeforeByKey = new Map(
+      (results || []).map((row) => [String(row.extra_key), Number(row.n) || 0]),
     );
-    const realBefore = extrasAll.map(
-      (item) => realBeforeById.get(item.id) || 0,
+    const realBefore: number[] = extrasAll.map(
+      (item) => Number(realBeforeByKey.get(item.public_id) || 0),
     );
     const extraIndexes = extraMergedIndexes(realBefore);
     const window = mergedNameRealWindow(realOffset, size, extraIndexes);
@@ -565,7 +627,7 @@ export async function queryPublicCourses(
     withPublicCourseItem(row as PublicCourseListItem),
   );
   const realTotal = pageRows.total;
-  const extras = mergeName
+  const extras = mergeName || mergeReviews
     ? pageExtras
     : extrasAll.slice(
         Math.max(0, realOffset - realTotal),
@@ -574,6 +636,14 @@ export async function queryPublicCourses(
   const totalCount = realTotal + extrasAll.length;
   const items = mergeName
     ? [...listed, ...pageExtras].sort(byNameCodeId).slice(0, size)
+    : mergeReviews
+      ? [...listed, ...pageExtras]
+          .sort(
+            (left, right) =>
+              right.review_count - left.review_count ||
+              byNameCodeId(left, right),
+          )
+          .slice(0, size)
     : [...listed, ...extras].slice(0, size);
   return {
     items,
