@@ -1,12 +1,6 @@
 import { isAsciiLetterTerm } from "./lib/catalog-pinyin";
 import {
-  extraMergedIndexes,
-  mergedNameRealWindow,
-} from "./lib/catalog-merge-page";
-import {
   andSearchTerms,
-  andSearchTermsWithPinyin,
-  andSearchTermsWithTrigram,
   containsPattern,
   likeSql,
   parseSearchTerms,
@@ -14,8 +8,15 @@ import {
 } from "./lib/catalog-search";
 import { buildCatalogSearchRanking } from "./lib/catalog-search-ranking";
 import {
-  publicBrowseFamilySql,
-  publicCategoryFilterSql,
+  loadPublicCourseListExtras,
+  loadPublicRelationListExtras,
+  planMergedCatalogWindow,
+  publicCatalogCourseRankingFields,
+  publicCatalogIndexedCourseSearch,
+  publicCatalogListScope,
+  publicCatalogPageMeta,
+} from "./lib/public-catalog-list";
+import {
   publicCourseCategory,
   publicCourseDisplayName,
   publicCourseDisplayNameSql,
@@ -23,24 +24,14 @@ import {
   publicRelationNameSortKey,
   publicRelationNameSortKeySql,
   publicRelationNameSortSql,
-  VIRTUAL_PE_SPORTS,
-  virtualPeSportDisplayName,
-  virtualPeSportMatchesQuery,
 } from "./lib/public-course-presentation";
 import {
-  filterPublicPeCourseItems,
-  loadPublicPeCourseProjection,
   publicCourseIdentity,
-  publicPeCourseIdentity,
   publicPeMappedSourceCourseExcludeSql,
   publicPeRelationIdentity,
   publicRelationIdentity,
 } from "./lib/public-pe-course-projection";
-import {
-  filterPublicPeRelationItems,
-  loadPublicPeRelationProjection,
-  publicPeMappedSourceRelationExcludeSql,
-} from "./lib/public-pe-relation-projection";
+import { publicPeMappedSourceRelationExcludeSql } from "./lib/public-pe-relation-projection";
 import { relationDimensionKey } from "./lib/relation-four-dims";
 import {
   loadGroupedRelationDimensionLabels,
@@ -52,7 +43,6 @@ import {
   type PublicPrecomputeReadOptions,
 } from "./public-list-precompute";
 import { publicCourseCanonicalJoin } from "./public-list-projection-plan";
-import { publicReviewBindingSql } from "./public-review-visibility";
 import {
   loadRelationSignalPayloads,
   type RelationSignalCounts,
@@ -177,68 +167,6 @@ const withPublicRelationNames = (row: RelationRow): RelationRow & { public_id: s
   };
 };
 
-const virtualPeSportItem = (
-  sport: (typeof VIRTUAL_PE_SPORTS)[number],
-  teachers: Array<{ id: number; name: string }>,
-): PublicCourseListItem => ({
-  id: sport.id,
-  public_id: publicPeCourseIdentity(sport.label),
-  code: "",
-  name: virtualPeSportDisplayName(sport),
-  category: "sports",
-  department: "",
-  teachers: teachers.map((teacher) => teacher.name).join(","),
-  teacher_refs: teachers
-    .map((teacher) => `${teacher.id}:${teacher.name}`)
-    .join(","),
-  review_count: 0,
-});
-
-const loadVirtualPeTeachersByName = async (
-  db: D1Database,
-  sports: readonly (typeof VIRTUAL_PE_SPORTS)[number][],
-) => {
-  const names = [...new Set(sports.flatMap((sport) => sport.teacherNames))];
-  if (!names.length) return new Map<string, Array<{ id: number; name: string }>>();
-  const placeholders = names.map(() => "?").join(",");
-  const rows = (
-    await db
-      .prepare(`SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`)
-      .bind(...names)
-      .all<{ id: number; name: string }>()
-  ).results;
-  const byName = new Map<string, Array<{ id: number; name: string }>>();
-  for (const row of rows) byName.set(row.name, [...(byName.get(row.name) || []), row]);
-  return byName;
-};
-
-const loadVirtualPeSportItems = async (
-  db: D1Database,
-  searchTerms: string[],
-  teacherId: number | null,
-  department: string,
-  excludeLabels: ReadonlySet<string> = new Set(),
-) => {
-  if (department) return [];
-  const matchingSports = VIRTUAL_PE_SPORTS.filter(
-    (sport) =>
-      !excludeLabels.has(sport.label) &&
-      virtualPeSportMatchesQuery(sport, searchTerms),
-  );
-  const teachersByName = await loadVirtualPeTeachersByName(db, matchingSports);
-  const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
-  for (const sport of matchingSports) {
-    const teachers = sport.teacherNames.flatMap(
-      (name) => teachersByName.get(name) || [],
-    );
-    if (!teachers.length) continue;
-    if (teacherId && !teachers.some((teacher) => teacher.id === teacherId))
-      continue;
-    items.push(virtualPeSportItem(sport, teachers));
-  }
-  return items;
-};
-
 async function loadExactTeacherHits(
   db: D1Database,
   terms: string[],
@@ -310,58 +238,12 @@ function relationRowHit(terms: string[]): SearchFilter {
   };
 }
 
-async function loadVirtualPeRelations(
-  db: D1Database,
-  searchTerms: string[],
-  teacherId: number | null,
-  department: string,
-  exactTeachers: ExactTeacherHits,
-  courseSearchTerms: string[],
-  excludeLabels: ReadonlySet<string> = new Set(),
-): Promise<RelationRow[]> {
-  if (department) return [];
-  const matchingSports = VIRTUAL_PE_SPORTS.filter(
-    (sport) =>
-      !excludeLabels.has(sport.label) &&
-      virtualPeSportMatchesQuery(sport, searchTerms),
-  );
-  const teachersByName = await loadVirtualPeTeachersByName(db, matchingSports);
-  const items: RelationRow[] = [];
-  for (const sport of matchingSports) {
-    const teachers = sport.teacherNames.flatMap(
-      (name) => teachersByName.get(name) || [],
-    );
-    if (!teachers.length) continue;
-    const filtered = teacherId
-      ? teachers.filter((teacher) => teacher.id === teacherId)
-      : exactTeachers.active
-        ? teachers.filter((teacher) => exactTeachers.ids.includes(teacher.id))
-        : courseSearchTerms.length
-          ? teachers.filter((teacher) =>
-              courseSearchTerms.every(
-                (term) =>
-                  sport.label.includes(term) ||
-                  virtualPeSportDisplayName(sport).includes(term) ||
-                  teacher.name.includes(term),
-              ),
-            )
-          : teachers;
-    for (const teacher of filtered) {
-      items.push({
-        course_id: sport.id,
-        public_id: publicPeRelationIdentity(sport.label, teacher.id),
-        code: "",
-        name: virtualPeSportDisplayName(sport),
-        category: "sports",
-        department: "",
-        teacher_id: teacher.id,
-        teacher_name: teacher.name,
-        rating: null,
-        review_count: 0,
-      });
-    }
-  }
-  return items;
+function extraPublicId(item: { public_id?: string }): string {
+  return item.public_id ?? "";
+}
+
+function extraSortId(item: PublicCourseListItem): number {
+  return item.id == null ? 0 : Number(item.id);
 }
 
 function byNameCodeId(
@@ -378,10 +260,6 @@ function byNameCodeId(
   const idB = b.id == null ? Number.POSITIVE_INFINITY : Number(b.id);
   if (idA !== idB) return idA - idB;
   return String(a.public_id ?? "").localeCompare(String(b.public_id ?? ""));
-}
-
-function extraSortId(item: PublicCourseListItem): number {
-  return item.id == null ? 0 : Number(item.id);
 }
 
 function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
@@ -503,42 +381,33 @@ async function attachRelationProjection(
   });
 }
 
+function relationSortKey(item: RelationRow): string {
+  return publicRelationNameSortKey({
+    name: String(item.name ?? ""),
+    code: String(item.code ?? ""),
+    course_id: item.course_id == null ? 0 : Number(item.course_id),
+    teacher_name: item.teacher_name,
+    teacher_id: item.teacher_id,
+  });
+}
+
 export async function queryPublicCourses(
   db: D1Database,
   query: PublicCourseListQuery,
   precompute: PublicPrecomputeReadOptions = {},
 ): Promise<PublicCatalogPage<PublicCourseListItem>> {
   await ensurePublicListPrecomputes(db, precompute);
-  const { page, pageSize: size, department, teacherId, sort } = query;
+  const { page, pageSize: size, teacherId, sort } = query;
   const search = query.q;
   const searchTerms = parseSearchTerms(search);
-  const categoryFilter = publicCategoryFilterSql(query.category, "c", "pcc");
-  const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
-  const indexedSearchGroup = andSearchTermsWithTrigram(
+  const scope = publicCatalogListScope(query);
+  const indexedSearchGroup = publicCatalogIndexedCourseSearch(searchTerms);
+  const extrasAllUnsorted = await loadPublicCourseListExtras(db, {
+    ...query,
     searchTerms,
-    (term) =>
-      andSearchTermsWithPinyin(
-        [term],
-        likeSql("pcc.match_text"),
-        likeSql("pcc.pinyin_text"),
-        isAsciiLetterTerm,
-      ),
-    "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
-  );
-  const peProjection = await loadPublicPeCourseProjection(db);
-  const peItems = filterPublicPeCourseItems(peProjection.items, {
-    searchTerms,
-    category: query.category,
-    department,
-    teacherId,
   });
-  const baseWhere = `${publicCourseVisibleSql("c")} AND ${publicPeMappedSourceCourseExcludeSql("c")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}`;
-  const baseArgs = [
-    ...categoryFilter.args,
-    department,
-    department,
-    ...(teacherId === null ? [] : [teacherId]),
-  ];
+  const baseWhere = `${publicCourseVisibleSql("c")} AND ${publicPeMappedSourceCourseExcludeSql("c")} AND ${scope.sql}`;
+  const baseArgs = scope.args;
   let where = `${baseWhere}${indexedSearchGroup.sql ? ` AND ${indexedSearchGroup.sql}` : ""}`;
   let args = [...baseArgs, ...indexedSearchGroup.args];
 
@@ -578,32 +447,22 @@ export async function queryPublicCourses(
       .first<{ n: number }>()
       .then((row) => row?.n || 0);
   const displayNameSql = publicCourseDisplayNameSql("c");
-  const sharedRanking = buildCatalogSearchRanking(searchTerms, {
-    exact: ["c.name", "c.code", `(${publicBrowseFamilySql("c")})`, `(${displayNameSql})`],
-    exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"],
-    prefix: ["c.name", "c.code", `(${displayNameSql})`],
-    prefixPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE $LITERAL || '%' ESCAPE '\\')"],
-    substring: ["c.name", "c.code", `(${displayNameSql})`],
-    substringPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE '%' || $LITERAL || '%' ESCAPE '\\')"],
-    pinyin: "pcc.pinyin_text",
-    teacher: ["c.department", "pcc.teacher_variant_text"],
-    teacherExactPredicates: ["instr(pcc.teacher_variant_text, char(31) || $TERM || char(31)) > 0"],
-  }, "course", args.length);
+  const sharedRanking = buildCatalogSearchRanking(
+    searchTerms,
+    {
+      ...publicCatalogCourseRankingFields(displayNameSql),
+      teacher: ["c.department", "pcc.teacher_variant_text"],
+      teacherExactPredicates: [
+        "instr(pcc.teacher_variant_text, char(31) || $TERM || char(31)) > 0",
+      ],
+    },
+    "course",
+    args.length,
+  );
   const relevanceOrder = exactCodeMatched
     ? "review_count DESC,c.name,c.code,c.id"
     : `${sharedRanking.sql},review_count DESC,c.name,c.code,c.id`;
   const searchRankArgs = exactCodeMatched ? [] : sharedRanking.args;
-  const virtualItems =
-    !query.category || query.category === "sports"
-      ? await loadVirtualPeSportItems(
-          db,
-          searchTerms,
-          teacherId,
-          department,
-          peProjection.specializations,
-        )
-      : [];
-  const extrasAllUnsorted = [...peItems, ...virtualItems];
   const mergeName = extrasAllUnsorted.length > 0 && sort === "name";
   const mergeReviews =
     extrasAllUnsorted.length > 0 &&
@@ -614,59 +473,45 @@ export async function queryPublicCourses(
   let realOffset = (page - 1) * size;
   let realLimit = size;
   if (mergeName || mergeReviews) {
-    extrasAll = [...extrasAllUnsorted].sort(
-      mergeName
+    const reviewCountJoin = `LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM public_review_counts GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id`;
+    const window = await planMergedCatalogWindow({
+      db,
+      extras: extrasAllUnsorted,
+      compare: mergeName
         ? byNameCodeId
         : (left, right) =>
             right.review_count - left.review_count || byNameCodeId(left, right),
-    );
-    const values = extrasAll.map(() => "(?,?,?,?,?)").join(",");
-    const reviewCountJoin = `LEFT JOIN (SELECT course_id,SUM(review_count) review_count FROM public_review_counts GROUP BY course_id) course_review_counts ON course_review_counts.course_id=c.id`;
-    const beforePredicate = mergeName
-      ? `(c.name < extras.sort_name
+      extraKey: extraPublicId,
+      extraColumnSql: "extra_key,sort_name,sort_code,sort_id,review_count",
+      extraRowSql: "(?,?,?,?,?)",
+      extraBindsFor: (item) => [
+        item.public_id,
+        item.name,
+        item.code,
+        extraSortId(item),
+        item.review_count,
+      ],
+      selectCountSql: "COUNT(DISTINCT c.id)",
+      fromSql: `FROM courses c ${countJoins}`,
+      extraJoins: mergeReviews ? reviewCountJoin : "",
+      where,
+      beforePredicate: mergeName
+        ? `(c.name < extras.sort_name
              OR (c.name = extras.sort_name AND c.code < extras.sort_code)
              OR (c.name = extras.sort_name AND c.code = extras.sort_code AND c.id < extras.sort_id))`
-      : `(COALESCE(course_review_counts.review_count,0) > extras.review_count
+        : `(COALESCE(course_review_counts.review_count,0) > extras.review_count
              OR (COALESCE(course_review_counts.review_count,0) = extras.review_count
                AND (c.name < extras.sort_name
                  OR (c.name = extras.sort_name AND c.code < extras.sort_code)
-                 OR (c.name = extras.sort_name AND c.code = extras.sort_code AND c.id < extras.sort_id))))`;
-    const { results } = await db
-      .prepare(
-        `WITH extras(extra_key,sort_name,sort_code,sort_id,review_count) AS (VALUES ${values})
-         SELECT extras.extra_key,COUNT(DISTINCT c.id) n
-         FROM courses c
-         ${countJoins}
-         ${mergeReviews ? reviewCountJoin : ""}
-         JOIN extras ON 1=1
-         WHERE ${where}
-           AND ${beforePredicate}
-         GROUP BY extras.extra_key`,
-      )
-      .bind(
-        ...extrasAll.flatMap((item) => [
-          item.public_id,
-          item.name,
-          item.code,
-          extraSortId(item),
-          item.review_count,
-        ]),
-        ...args,
-      )
-      .all<{ extra_key: string; n: number }>();
-    const realBeforeByKey = new Map(
-      (results || []).map((row) => [String(row.extra_key), Number(row.n) || 0]),
-    );
-    const realBefore: number[] = extrasAll.map(
-      (item) => Number(realBeforeByKey.get(item.public_id) || 0),
-    );
-    const extraIndexes = extraMergedIndexes(realBefore);
-    const window = mergedNameRealWindow(realOffset, size, extraIndexes);
-    realOffset = window.offset;
-    realLimit = window.limit;
-    pageExtras = extrasAll.filter((_, index) =>
-      window.extraIndexesOnPage.includes(extraIndexes[index]),
-    );
+                 OR (c.name = extras.sort_name AND c.code = extras.sort_code AND c.id < extras.sort_id))))`,
+      args,
+      start: realOffset,
+      size,
+    });
+    extrasAll = window.extrasAll;
+    pageExtras = window.pageExtras;
+    realOffset = window.realOffset;
+    realLimit = window.realLimit;
   }
   const [pageResult, countResult] = await Promise.all([
     realLimit === 0
@@ -687,14 +532,14 @@ export async function queryPublicCourses(
      GROUP BY c.id
      ORDER BY ${sort === "name" ? "c.name,c.code,c.id" : relevanceOrder}
      LIMIT ? OFFSET ?`,
-            )
-            .bind(
-              ...args,
-              ...(sort === "name" || exactCodeMatched ? [] : searchRankArgs),
-              realLimit + 1,
-              realOffset,
-            )
-            .all(),
+          )
+          .bind(
+            ...args,
+            ...(sort === "name" || exactCodeMatched ? [] : searchRankArgs),
+            realLimit + 1,
+            realOffset,
+          )
+          .all(),
     courseCount(),
   ]);
   const pageRows = {
@@ -725,143 +570,11 @@ export async function queryPublicCourses(
     : [...listed, ...extras].slice(0, size);
   return {
     items,
-    page,
-    pageSize: size,
-    total: totalCount,
-    pages: Math.ceil(totalCount / size),
+    ...publicCatalogPageMeta(page, size, totalCount),
   };
 }
 
 type RelationMergeKind = "name" | "rating" | "reviews";
-
-function extraPublicId(item: RelationRow): string {
-  return item.public_id ?? "";
-}
-
-function relationSortKey(item: RelationRow): string {
-  return publicRelationNameSortKey({
-    name: String(item.name ?? ""),
-    code: String(item.code ?? ""),
-    course_id: item.course_id == null ? 0 : Number(item.course_id),
-    teacher_name: item.teacher_name,
-    teacher_id: item.teacher_id,
-  });
-}
-
-async function planMergedRelationWindow(input: {
-  db: D1Database;
-  relationFrom: string;
-  ratingJoins: string;
-  where: string;
-  args: unknown[];
-  extrasAllUnsorted: RelationRow[];
-  mergeKind: RelationMergeKind;
-  start: number;
-  size: number;
-}): Promise<{
-  extrasAll: RelationRow[];
-  pageExtras: RelationRow[];
-  realOffset: number;
-  realLimit: number;
-}> {
-  const extrasAll = [...input.extrasAllUnsorted].sort(
-    input.mergeKind === "name"
-      ? byNameCodeTeacher
-      : input.mergeKind === "rating"
-        ? byRelationRating
-        : byRelationReviews,
-  );
-  if (!extrasAll.length) {
-    return {
-      extrasAll,
-      pageExtras: [],
-      realOffset: input.start,
-      realLimit: input.size,
-    };
-  }
-  const sortKeySql = publicRelationNameSortKeySql("c", "t");
-  const values = extrasAll
-    .map(() =>
-      input.mergeKind === "name"
-        ? "(?,?)"
-        : input.mergeKind === "rating"
-          ? "(?,?,?,?,?)"
-          : "(?,?,?)",
-    )
-    .join(",");
-  const beforePredicate =
-    input.mergeKind === "name"
-      ? `${sortKeySql} < extras.sort_key`
-      : input.mergeKind === "reviews"
-        ? `(COALESCE(rel_counts.review_count,0) > extras.review_count
-             OR (COALESCE(rel_counts.review_count,0) = extras.review_count
-               AND ${sortKeySql} < extras.sort_key))`
-        : `((CASE WHEN rel_rating.rating IS NULL THEN 1 ELSE 0 END) < extras.rating_missing
-             OR ((CASE WHEN rel_rating.rating IS NULL THEN 1 ELSE 0 END) = extras.rating_missing
-               AND (
-                 (extras.rating_missing = 0 AND rel_rating.rating > extras.rating)
-                 OR (
-                   (extras.rating_missing = 1 OR rel_rating.rating = extras.rating)
-                   AND (
-                     COALESCE(rel_counts.review_count,0) > extras.review_count
-                     OR (
-                       COALESCE(rel_counts.review_count,0) = extras.review_count
-                       AND ${sortKeySql} < extras.sort_key
-                     )
-                   )
-                 )
-               )))`;
-  const extraSelect =
-    input.mergeKind === "name"
-      ? "WITH extras(extra_key,sort_key) AS"
-      : input.mergeKind === "reviews"
-        ? "WITH extras(extra_key,review_count,sort_key) AS"
-        : "WITH extras(extra_key,rating_missing,rating,review_count,sort_key) AS";
-  const extraBinds = extrasAll.flatMap((extra) =>
-    input.mergeKind === "name"
-      ? [extraPublicId(extra), relationSortKey(extra)]
-      : input.mergeKind === "reviews"
-        ? [extraPublicId(extra), extra.review_count, relationSortKey(extra)]
-        : [
-            extraPublicId(extra),
-            extra.rating == null ? 1 : 0,
-            extra.rating ?? 0,
-            extra.review_count,
-            relationSortKey(extra),
-          ],
-  );
-  const ratingJoins =
-    input.mergeKind === "name" ? "" : input.ratingJoins;
-  const { results } = await input.db
-    .prepare(
-      `${extraSelect} (VALUES ${values})
-       SELECT extras.extra_key,COUNT(*) n
-       ${input.relationFrom}
-       ${ratingJoins}
-       JOIN extras ON 1=1
-       WHERE ${input.where}
-         AND ${beforePredicate}
-       GROUP BY extras.extra_key`,
-    )
-    .bind(...extraBinds, ...input.args)
-    .all<{ extra_key: string; n: number }>();
-  const counts = new Map(
-    (results || []).map((row) => [String(row.extra_key), Number(row.n) || 0]),
-  );
-  const realBefore: number[] = extrasAll.map(
-    (extra) => Number(counts.get(extraPublicId(extra))) || 0,
-  );
-  const extraIndexes = extraMergedIndexes(realBefore);
-  const window = mergedNameRealWindow(input.start, input.size, extraIndexes);
-  return {
-    extrasAll,
-    pageExtras: extrasAll.filter((_, index) =>
-      window.extraIndexesOnPage.includes(extraIndexes[index]),
-    ),
-    realOffset: window.offset,
-    realLimit: window.limit,
-  };
-}
 
 export async function queryPublicCourseRelations(
   db: D1Database,
@@ -870,11 +583,10 @@ export async function queryPublicCourseRelations(
   precompute: PublicPrecomputeReadOptions = {},
 ): Promise<PublicCatalogPage<PublicRelationListItem>> {
   await ensurePublicListPrecomputes(db, precompute);
-  const { page, pageSize: size, department, teacherId, sort } = query;
+  const { page, pageSize: size, sort } = query;
   const search = query.q;
   const searchTerms = parseSearchTerms(search);
-  const categoryFilter = publicCategoryFilterSql(query.category, "c", "pcc");
-  const teacherFilter = teacherId === null ? "" : " AND ct.teacher_id=?";
+  const scope = publicCatalogListScope(query);
   const exactTeachers = await loadExactTeacherHits(db, searchTerms);
   const exactTeacherFilter = !exactTeachers.active
     ? ""
@@ -884,24 +596,11 @@ export async function queryPublicCourseRelations(
   const courseSearchTerms = searchTerms.filter(
     (term) => !exactTeachers.matchedTerms.has(term),
   );
-  const searchGroup = andSearchTermsWithTrigram(
-    courseSearchTerms,
-    (term) =>
-      andSearchTermsWithPinyin(
-        [term],
-        likeSql("pcc.match_text"),
-        likeSql("pcc.pinyin_text"),
-        isAsciiLetterTerm,
-      ),
-    "pcc.course_id IN (SELECT rowid FROM course_search_fts WHERE course_search_fts MATCH ?)",
-  );
+  const searchGroup = publicCatalogIndexedCourseSearch(courseSearchTerms);
   const rowHit = relationRowHit(courseSearchTerms);
-  const where = `${publicCourseVisibleSql("c")} AND ${publicPeMappedSourceRelationExcludeSql("c", "ct")} AND ${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}${rowHit.sql ? ` AND ${rowHit.sql}` : ""}${exactTeacherFilter}`;
+  const where = `${publicCourseVisibleSql("c")} AND ${publicPeMappedSourceRelationExcludeSql("c", "ct")} AND ${scope.sql}${searchGroup.sql ? ` AND ${searchGroup.sql}` : ""}${rowHit.sql ? ` AND ${rowHit.sql}` : ""}${exactTeacherFilter}`;
   const args = [
-    ...categoryFilter.args,
-    department,
-    department,
-    ...(teacherId === null ? [] : [teacherId]),
+    ...scope.args,
     ...searchGroup.args,
     ...rowHit.args,
     ...exactTeachers.ids,
@@ -928,16 +627,15 @@ export async function queryPublicCourseRelations(
 
   const displayNameSql = publicCourseDisplayNameSql("c");
   const nameSortSql = publicRelationNameSortSql("c", "t");
-  const sharedRanking = buildCatalogSearchRanking(searchTerms, {
-    exact: ["c.name", "c.code", `(${publicBrowseFamilySql("c")})`, `(${displayNameSql})`],
-    exactPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name)=$TERM)"],
-    prefix: ["c.name", "c.code", `(${displayNameSql})`],
-    prefixPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE $LITERAL || '%' ESCAPE '\\')"],
-    substring: ["c.name", "c.code", `(${displayNameSql})`],
-    substringPredicates: ["EXISTS (SELECT 1 FROM course_name_variants cnv WHERE cnv.course_id=c.id AND lower(cnv.name) LIKE '%' || $LITERAL || '%' ESCAPE '\\')"],
-    pinyin: "pcc.pinyin_text",
-    teacher: ["t.name", "t.source_teacher_label", "c.department"],
-  }, "relation", args.length);
+  const sharedRanking = buildCatalogSearchRanking(
+    searchTerms,
+    {
+      ...publicCatalogCourseRankingFields(displayNameSql),
+      teacher: ["t.name", "t.source_teacher_label", "c.department"],
+    },
+    "relation",
+    args.length,
+  );
   const relevanceOrder = `${sharedRanking.sql},review_count DESC,${nameSortSql}`;
   const searchRankArgs = sharedRanking.args;
   const orderBy =
@@ -946,32 +644,12 @@ export async function queryPublicCourseRelations(
       : sort === "rating"
         ? `(rel_rating.rating IS NULL),rel_rating.rating DESC,review_count DESC,${nameSortSql}`
         : relevanceOrder;
-  const peProjection = await loadPublicPeRelationProjection(db);
-  const peItems = filterPublicPeRelationItems(peProjection.items, {
-    category: query.category,
-    department,
-    teacherId,
+  const extrasAllUnsorted = await loadPublicRelationListExtras(db, {
+    ...query,
+    searchTerms,
     exactTeacherIds: exactTeachers.active ? exactTeachers.ids : null,
     courseSearchTerms,
   });
-  const virtualItems =
-    !query.category || query.category === "sports"
-      ? await loadVirtualPeRelations(
-          db,
-          searchTerms,
-          teacherId,
-          department,
-          exactTeachers,
-          courseSearchTerms,
-          peProjection.specializations,
-        )
-      : [];
-  const extrasAllUnsorted = [
-    ...peItems,
-    ...virtualItems.filter(
-      (item) => !peProjection.identities.has(extraPublicId(item)),
-    ),
-  ];
   const mergeKind: RelationMergeKind | null = !extrasAllUnsorted.length
     ? null
     : sort === "name"
@@ -990,14 +668,68 @@ export async function queryPublicCourseRelations(
   let realLimit = size;
 
   if (mergeKind) {
-    const window = await planMergedRelationWindow({
+    const sortKeySql = publicRelationNameSortKeySql("c", "t");
+    const window = await planMergedCatalogWindow({
       db,
-      relationFrom,
-      ratingJoins,
+      extras: extrasAllUnsorted,
+      compare:
+        mergeKind === "name"
+          ? byNameCodeTeacher
+          : mergeKind === "rating"
+            ? byRelationRating
+            : byRelationReviews,
+      extraKey: extraPublicId,
+      extraColumnSql:
+        mergeKind === "name"
+          ? "extra_key,sort_key"
+          : mergeKind === "reviews"
+            ? "extra_key,review_count,sort_key"
+            : "extra_key,rating_missing,rating,review_count,sort_key",
+      extraRowSql:
+        mergeKind === "name"
+          ? "(?,?)"
+          : mergeKind === "rating"
+            ? "(?,?,?,?,?)"
+            : "(?,?,?)",
+      extraBindsFor: (extra) =>
+        mergeKind === "name"
+          ? [extraPublicId(extra), relationSortKey(extra)]
+          : mergeKind === "reviews"
+            ? [extraPublicId(extra), extra.review_count, relationSortKey(extra)]
+            : [
+                extraPublicId(extra),
+                extra.rating == null ? 1 : 0,
+                extra.rating ?? 0,
+                extra.review_count,
+                relationSortKey(extra),
+              ],
+      selectCountSql: "COUNT(*)",
+      fromSql: relationFrom,
+      extraJoins: mergeKind === "name" ? "" : ratingJoins,
       where,
+      beforePredicate:
+        mergeKind === "name"
+          ? `${sortKeySql} < extras.sort_key`
+          : mergeKind === "reviews"
+            ? `(COALESCE(rel_counts.review_count,0) > extras.review_count
+             OR (COALESCE(rel_counts.review_count,0) = extras.review_count
+               AND ${sortKeySql} < extras.sort_key))`
+            : `((CASE WHEN rel_rating.rating IS NULL THEN 1 ELSE 0 END) < extras.rating_missing
+             OR ((CASE WHEN rel_rating.rating IS NULL THEN 1 ELSE 0 END) = extras.rating_missing
+               AND (
+                 (extras.rating_missing = 0 AND rel_rating.rating > extras.rating)
+                 OR (
+                   (extras.rating_missing = 1 OR rel_rating.rating = extras.rating)
+                   AND (
+                     COALESCE(rel_counts.review_count,0) > extras.review_count
+                     OR (
+                       COALESCE(rel_counts.review_count,0) = extras.review_count
+                       AND ${sortKeySql} < extras.sort_key
+                     )
+                   )
+                 )
+               )))`,
       args,
-      extrasAllUnsorted,
-      mergeKind,
       start,
       size,
     });
@@ -1045,7 +777,6 @@ export async function queryPublicCourseRelations(
   const extrasTotal = mergeKind ? extrasAll.length : extras.length;
   const realTotal = Number(countResult) || 0;
   const totalCount = realTotal + extrasTotal;
-  const pages = Math.ceil(totalCount / size);
   let items: RelationRow[];
   if (mergeKind === "name") {
     items = [...listed, ...pageExtras].sort(byNameCodeTeacher).slice(0, size);
@@ -1067,9 +798,6 @@ export async function queryPublicCourseRelations(
 
   return {
     items: await attachRelationProjection(db, items.slice(0, size), viewerUserId),
-    page,
-    pageSize: size,
-    total: totalCount,
-    pages,
+    ...publicCatalogPageMeta(page, size, totalCount),
   };
 }

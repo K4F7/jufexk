@@ -1,5 +1,10 @@
-import { env } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { buildPeSpecializationMapping } from "../src/lib/pe-specialization-mapping";
+import {
+  publicPeCourseIdentity,
+  publicPeRelationIdentity,
+} from "../src/lib/public-pe-course-projection";
 import {
   queryPublicCourseRelations,
   queryPublicCourses,
@@ -10,6 +15,8 @@ import {
   type PublicRelationListQuery,
 } from "../src/public-catalog-query";
 import { CURRENT_SCORES } from "./review-score-fixtures";
+
+const origin = "https://example.com";
 
 const department = "目录查询学院";
 
@@ -338,5 +345,183 @@ describe("公开目录查询 module", () => {
       null,
     );
     expect(rated.items.map((item) => item.course_id)).toEqual([highId, lowId]);
+  });
+
+  it("两个读取入口对搜索、专项、分页与英语真实 Course 保持同一外部行为", async () => {
+    const stamp = `缝双口${Date.now()}`;
+    const localDepartment = `${stamp}院`;
+    const teacher = `${stamp}教师`;
+    const teacherId = await insertTeacher(teacher);
+    const peId = await insertCourse(`${stamp}-PE`, "网球");
+    const ordinaryId = await insertCourse(`${stamp}-ORD`, `${stamp}普通课`);
+    const englishOne = await insertCourse(`${stamp}-E1`, "大学英语1");
+    const englishTwo = await insertCourse(`${stamp}-E2`, "大学英语2");
+    await env.DB.prepare("UPDATE teachers SET department=? WHERE id=?")
+      .bind(localDepartment, teacherId)
+      .run();
+    await env.DB.prepare(
+      "UPDATE courses SET department=? WHERE id IN (?,?,?,?)",
+    )
+      .bind(localDepartment, peId, ordinaryId, englishOne, englishTwo)
+      .run();
+    await env.DB.prepare(
+      "UPDATE courses SET category='sports',scheme_key='pe' WHERE id=?",
+    )
+      .bind(peId)
+      .run();
+    await bindTeacher(peId, teacherId);
+    await bindTeacher(ordinaryId, teacherId);
+    await bindTeacher(englishOne, teacherId);
+    await bindTeacher(englishTwo, teacherId);
+    const mapping = buildPeSpecializationMapping({
+      sourceKind: "direct_skill",
+      normalizedSpecialization: "网球",
+      evidenceKind: "catalog_course_name",
+      sourceCourseCode: `${stamp}-PE`,
+      sourceCourseName: "网球",
+      sourceTeacherLabel: teacher,
+      rawSpecializationName: "网球",
+    });
+    await env.DB.prepare(
+      `INSERT INTO catalog_relation_pe_specializations(
+        course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json
+      ) VALUES(?,?,?,?,?,?)`,
+    )
+      .bind(
+        peId,
+        teacherId,
+        mapping.sourceKind,
+        mapping.normalizedSpecialization,
+        mapping.displaySemantics,
+        JSON.stringify(mapping.evidence),
+      )
+      .run();
+
+    try {
+      const query = `department=${encodeURIComponent(localDepartment)}&pageSize=50`;
+      const coursesResponse = await SELF.fetch(`${origin}/api/courses?${query}`);
+      const relationsResponse = await SELF.fetch(
+        `${origin}/api/courses?view=relations&${query}`,
+      );
+      expect(coursesResponse.status).toBe(200);
+      expect(relationsResponse.status).toBe(200);
+      const courses = await coursesResponse.json<{
+        items: Array<{
+          id: number | null;
+          public_id: string;
+          name: string;
+        }>;
+        total: number;
+        pages: number;
+      }>();
+      const relations = await relationsResponse.json<{
+        items: Array<{
+          course_id: number | null;
+          public_id: string;
+          name: string;
+          teacher_id: number | null;
+        }>;
+        total: number;
+        pages: number;
+      }>();
+
+      expect(courses.total).toBe(4);
+      expect(relations.total).toBe(4);
+      expect(courses.pages).toBe(1);
+      expect(relations.pages).toBe(1);
+
+      const peCourse = courses.items.find(
+        (item) => item.public_id === publicPeCourseIdentity("网球"),
+      );
+      const peRelation = relations.items.find(
+        (item) => item.public_id === publicPeRelationIdentity("网球", teacherId),
+      );
+      expect(peCourse).toMatchObject({
+        id: null,
+        name: "网球",
+      });
+      expect(peRelation).toMatchObject({
+        course_id: null,
+        name: "网球",
+        teacher_id: teacherId,
+      });
+      expect(courses.items.some((item) => item.id === peId)).toBe(false);
+      expect(relations.items.some((item) => item.course_id === peId)).toBe(false);
+
+      const englishCourses = courses.items.filter((item) =>
+        item.name.startsWith("大学英语"),
+      );
+      const englishRelations = relations.items.filter((item) =>
+        item.name.startsWith("大学英语"),
+      );
+      expect(englishCourses.map((item) => item.name).sort()).toEqual([
+        "大学英语1",
+        "大学英语2",
+      ]);
+      expect(englishRelations.map((item) => item.name).sort()).toEqual([
+        "大学英语1",
+        "大学英语2",
+      ]);
+      expect(englishCourses.map((item) => item.id).sort()).toEqual(
+        [englishOne, englishTwo].sort((left, right) => left - right),
+      );
+      expect(englishRelations.map((item) => item.course_id).sort()).toEqual(
+        [englishOne, englishTwo].sort((left, right) => left - right),
+      );
+      expect(englishCourses.map((item) => item.public_id).sort()).toEqual(
+        [`course:${englishOne}`, `course:${englishTwo}`].sort(),
+      );
+      expect(englishRelations.map((item) => item.public_id).sort()).toEqual(
+        [
+          `relation:${englishOne}:${teacherId}`,
+          `relation:${englishTwo}:${teacherId}`,
+        ].sort(),
+      );
+
+      const pagedQuery = `department=${encodeURIComponent(localDepartment)}&sort=name&page=1&pageSize=1`;
+      const byNameCourses = await SELF.fetch(
+        `${origin}/api/courses?${pagedQuery}`,
+      ).then((response) =>
+        response.json<{ items: Array<{ public_id: string }>; pages: number }>(),
+      );
+      const byNameRelations = await SELF.fetch(
+        `${origin}/api/courses?view=relations&${pagedQuery}`,
+      ).then((response) =>
+        response.json<{ items: Array<{ public_id: string }>; pages: number }>(),
+      );
+      expect(byNameCourses.pages).toBe(4);
+      expect(byNameRelations.pages).toBe(4);
+      expect(byNameCourses.items).toHaveLength(1);
+      expect(byNameRelations.items).toHaveLength(1);
+
+      const searchQuery = `q=${encodeURIComponent("网球")}&pageSize=50`;
+      const searchedCourses = await SELF.fetch(
+        `${origin}/api/courses?${searchQuery}`,
+      ).then((response) =>
+        response.json<{ items: Array<{ public_id: string }> }>(),
+      );
+      const searchedRelations = await SELF.fetch(
+        `${origin}/api/courses?view=relations&${searchQuery}`,
+      ).then((response) =>
+        response.json<{ items: Array<{ public_id: string }> }>(),
+      );
+      expect(
+        searchedCourses.items.some(
+          (item) => item.public_id === publicPeCourseIdentity("网球"),
+        ),
+      ).toBe(true);
+      expect(
+        searchedRelations.items.some(
+          (item) =>
+            item.public_id === publicPeRelationIdentity("网球", teacherId),
+        ),
+      ).toBe(true);
+    } finally {
+      await env.DB.prepare(
+        "DELETE FROM catalog_relation_pe_specializations WHERE course_id=?",
+      )
+        .bind(peId)
+        .run();
+    }
   });
 });
