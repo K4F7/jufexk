@@ -15,10 +15,8 @@ import {
   publicCategoryFilterError,
   publicOptionDisplayName,
   publicCourseVisibleSql,
-  VIRTUAL_PE_SPORTS,
   virtualPeSportDisplayName,
   virtualPeSportForTeacherName,
-  virtualPeSportMatchesQuery,
 } from "../lib/public-course-presentation";
 import {
   courseSchemeView,
@@ -180,44 +178,6 @@ const withPublicCourseOption = <
     ),
     ...view,
   };
-};
-const virtualPeSportItem = virtualPeCourseListItem;
-const loadVirtualPeSportItems = async (
-  db: D1Database,
-  searchTerms: string[],
-  teacherId: number | null,
-  department: string,
-) => {
-  if (department) return [];
-  const matchingSports = VIRTUAL_PE_SPORTS.filter((sport) =>
-    virtualPeSportMatchesQuery(sport, searchTerms),
-  );
-  if (!matchingSports.length) return [];
-  const names = [...new Set(matchingSports.flatMap((sport) => sport.teacherNames))];
-  const placeholders = names.map(() => "?").join(",");
-  const teacherRows = (
-    await db
-      .prepare(`SELECT id,name FROM teachers WHERE name IN (${placeholders}) ORDER BY name,id`)
-      .bind(...names)
-      .all<{ id: number; name: string }>()
-  ).results;
-  const teachersByName = new Map<string, Array<{ id: number; name: string }>>();
-  for (const teacher of teacherRows) {
-    const rows = teachersByName.get(teacher.name) || [];
-    rows.push(teacher);
-    teachersByName.set(teacher.name, rows);
-  }
-  const items: Array<ReturnType<typeof virtualPeSportItem>> = [];
-  for (const sport of matchingSports) {
-    const teachers = sport.teacherNames.flatMap(
-      (name) => teachersByName.get(name) || [],
-    );
-    if (!teachers.length) continue;
-    if (teacherId && !teachers.some((teacher) => teacher.id === teacherId))
-      continue;
-    items.push(virtualPeSportItem(sport, teachers));
-  }
-  return items;
 };
 // 任课评价公开可见性规则与全站公开投影共用。
 const publicReviewBinding = publicReviewBindingSql;
@@ -874,7 +834,7 @@ publicCatalogRoutes.get("/api/teachers/:id", async (c) => {
     )
   ) {
     publicCourses.push(
-      virtualPeSportItem(visibleSport, [
+      virtualPeCourseListItem(visibleSport, [
         {
           id: id as number,
           name: teacherName,
