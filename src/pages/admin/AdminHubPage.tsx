@@ -107,6 +107,18 @@ export function AdminHubPage() {
           </Card.Content>
         </Card>
         <HubCard
+          action="打开体育专项队列"
+          description="一次性收口历史未映射体育 Relation：明确映射、暂不公开或标记冲突。队列冻结后只读历史。"
+          title="体育专项收口"
+          to="/admin/pe-queue"
+        />
+        <HubCard
+          action="打开目录补充"
+          description="审核用户补充的课程或教师。体育伞形课必须指定具体专项后再批准。"
+          title="目录补充申请"
+          to="/admin/catalog-requests"
+        />
+        <HubCard
           action="前往课程目录"
           className="sm:col-span-2"
           description="在课程详情页逐条点评上屏蔽 / 解除屏蔽 / 删除 / 查询作者资料；课程头部可设置管理员公告。"

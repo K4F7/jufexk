@@ -27,6 +27,7 @@
     "audit:catalog-pilot": "tsx scripts/catalog-baseline/audit-pilot.ts",
     "audit:catalog-full": "tsx scripts/catalog-baseline/audit-full.ts",
     "audit:pe-mapping": "tsx scripts/pe-mapping-audit/run.ts",
+    "closeout:pe-queue": "tsx scripts/pe-queue-closeout/run.ts",
     "check:pe-alias-equivalence": "tsx scripts/pe-alias-equivalence/run.ts",
     "observe:pe-alias": "tsx scripts/pe-alias-observe/run.ts",
     "catalog-baseline": "tsx scripts/catalog-baseline/cli.ts",

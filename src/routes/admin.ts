@@ -69,11 +69,26 @@ import {
   adminCtaSyncSchema,
   adminTeacherSchema,
   adminUserBlockSchema,
+  catalogRequestModerationSchema,
   moderationSchema,
+  peQueueDispositionBatchSchema,
   siteBannerSchema,
   summaryRecomputeSchema,
   teacherIdsSchema,
 } from "./request-schemas";
+import {
+  applyHistoricalPeQueueCloseout,
+  applyPeQueueDisposition,
+  catalogRequestPeMappingStatement,
+  loadPeQueueCloseoutReport,
+  loadPeQueueRows,
+  loadPeQueueState,
+} from "../pe-queue-admin";
+import {
+  HISTORICAL_CLOSEOUT_ACTOR,
+  formatPeQueueCloseoutMarkdown,
+} from "../lib/pe-queue-closeout";
+import { catalogAdditionPeRequirement } from "../lib/pe-specialization-mapping";
 import {
   ctaHomepageUrl,
   isAllowedCtaHomepageUrl,
@@ -508,9 +523,23 @@ adminRoutes.get("/api/admin/catalog-requests", async (c) => {
     )
       .bind(status, status, size, (page - 1) * size)
       .all()
-  ).results;
+  ).results as Array<{
+    kind: string;
+    course_name: string;
+  }>;
   return c.json({
-    items: results,
+    items: results.map((row) => {
+      const requirement = catalogAdditionPeRequirement({
+        kind: row.kind,
+        courseName: row.course_name,
+      });
+      return {
+        ...row,
+        peSourceKind: requirement.kind,
+        suggestedSpecialization:
+          requirement.kind === "direct_skill" ? requirement.specialization : null,
+      };
+    }),
     total: total?.n || 0,
     page,
     pages: Math.ceil((total?.n || 0) / size),
@@ -518,10 +547,12 @@ adminRoutes.get("/api/admin/catalog-requests", async (c) => {
 });
 adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
   const id = integer(c.req.param("id"));
-  const parsedBody = moderationSchema.safeParse(await c.req.json<unknown>());
+  const parsedBody = catalogRequestModerationSchema.safeParse(
+    await c.req.json<unknown>(),
+  );
   if (!parsedBody.success)
     return fail(c, "审核结果必须是 approved 或 rejected");
-  const { status, note } = parsedBody.data;
+  const { status, note, peSpecialization } = parsedBody.data;
   if (!id) return fail(c, "无效申请 ID");
   if (!["approved", "rejected"].includes(status))
     return fail(c, "审核结果必须是 approved 或 rejected");
@@ -605,6 +636,16 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
            AND EXISTS(SELECT 1 FROM catalog_requests WHERE id=? AND status='pending')`,
       ).bind(request.course_code, request.teacher_source_label, id),
     );
+  const peMapping = catalogRequestPeMappingStatement(c.env.DB, {
+    kind: request.kind,
+    courseCode: request.course_code,
+    courseName: request.course_name,
+    sourceTeacherLabel: request.teacher_source_label,
+    requestId: id,
+    peSpecialization,
+  });
+  if (!peMapping.ok) return fail(c, peMapping.error);
+  if (peMapping.statement) statements.push(peMapping.statement);
   if (createsReview) {
     const stashed = parseStashedReview(request.pending_review_json);
     if (!stashed) return fail(c, "暂存评价数据无效", 409);
@@ -696,6 +737,84 @@ adminRoutes.patch("/api/admin/catalog-requests/:id", async (c) => {
       approved.teacherId,
     );
   return c.json({ ok: true, ...approved });
+});
+adminRoutes.get("/api/admin/pe-specialization-queue", async (c) => {
+  const status = clean(c.req.query("status"), 40) || "open";
+  if (
+    !["open", "mapped", "withheld_permanent_exception", "conflict_recapture", "all"].includes(
+      status,
+    )
+  )
+    return fail(c, "无效队列筛选");
+  const [items, state] = await Promise.all([
+    loadPeQueueRows(c.env.DB, status),
+    loadPeQueueState(c.env.DB),
+  ]);
+  return c.json({
+    items: items.map((row) => ({
+      courseId: row.courseId,
+      teacherId: row.teacherId,
+      courseCode: row.courseCode,
+      courseName: row.courseName,
+      sourceTeacherLabel: row.sourceTeacherLabel,
+      reason: row.reason,
+      disposition: row.disposition,
+      dispositionReason: row.dispositionReason,
+      disposedBy:
+        row.disposedBy === HISTORICAL_CLOSEOUT_ACTOR
+          ? row.disposedBy
+          : row.disposedBy
+            ? "admin"
+            : "",
+      disposedAt: row.disposedAt,
+    })),
+    liveEnqueueEnabled: state.liveEnqueueEnabled,
+    total: items.length,
+  });
+});
+adminRoutes.get("/api/admin/pe-specialization-queue/report", async (c) => {
+  const report = await loadPeQueueCloseoutReport(c.env.DB);
+  return c.json({
+    ...report,
+    markdown: formatPeQueueCloseoutMarkdown(report),
+  });
+});
+adminRoutes.post("/api/admin/pe-specialization-queue/dispositions", async (c) => {
+  const parsedBody = peQueueDispositionBatchSchema.safeParse(
+    await c.req.json<unknown>(),
+  );
+  if (!parsedBody.success) return fail(c, "处置列表无效");
+  const actor = c.get("adminSessionId") || "admin";
+  let applied = 0;
+  for (const item of parsedBody.data.items) {
+    if (!item.courseId || !item.teacherId) return fail(c, "无效任课关系");
+    const result = await applyPeQueueDisposition(c.env.DB, {
+      courseId: item.courseId,
+      teacherId: item.teacherId,
+      disposition: item.disposition,
+      specialization: item.specialization,
+      reason: item.reason,
+      actor,
+    });
+    if ("error" in result) return fail(c, result.error, result.status);
+    applied += 1;
+  }
+  markPublicCatalogCacheChanged(c);
+  const report = await loadPeQueueCloseoutReport(c.env.DB);
+  return c.json({ ok: true, applied, counts: report.counts });
+});
+adminRoutes.post("/api/admin/pe-specialization-queue/closeout", async (c) => {
+  const actor = c.get("adminSessionId") || HISTORICAL_CLOSEOUT_ACTOR;
+  const applied = await applyHistoricalPeQueueCloseout(c.env.DB, actor);
+  markPublicCatalogCacheChanged(c);
+  const report = await loadPeQueueCloseoutReport(c.env.DB);
+  return c.json({
+    ok: true,
+    applied,
+    counts: report.counts,
+    allDisposed: report.allDisposed,
+    liveEnqueueEnabled: report.liveEnqueueEnabled,
+  });
 });
 adminRoutes.get("/api/admin/catalog-requests/:id/events", async (c) => {
   const id = integer(c.req.param("id"));

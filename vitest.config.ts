@@ -26,6 +26,7 @@ export default defineConfig(async () => {
             "BASELINE_PUBLISH_DB_10",
             "COURSE_EXCLUSION_MIGRATION_DB",
             "PE_MAPPING_MIGRATION_DB",
+            "PE_QUEUE_CLOSEOUT_MIGRATION_DB",
             "COURSE_EXCLUSION_CONFLICT_DB",
             "FTS_MIGRATION_DB",
           ],

@@ -109,6 +109,7 @@ export function buildExpectedPeSourceSelectSql(): string {
   CASE WHEN m.course_id IS NOT NULL THEN 1 ELSE 0 END AS is_mapped,
   CASE WHEN q.course_id IS NOT NULL THEN 1 ELSE 0 END AS in_queue,
   q.reason AS queue_reason,
+  q.disposition AS queue_disposition,
   ${virtualPeSportLabelSql("t")} AS virtual_sport_label,
   ${virtualPeSportIdSql("t")} AS virtual_course_id
 FROM course_teachers ct
@@ -129,7 +130,8 @@ export function buildReviewQueueSelectSql(): string {
   q.course_code AS course_code,
   q.course_name AS course_name,
   q.source_teacher_label AS source_teacher_label,
-  q.reason AS reason
+  q.reason AS reason,
+  q.disposition AS disposition
 FROM catalog_pe_specialization_review_queue q
 ORDER BY q.course_code, q.source_teacher_label, q.course_id, q.teacher_id`;
 }

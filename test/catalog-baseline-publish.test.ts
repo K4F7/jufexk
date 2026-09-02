@@ -161,7 +161,7 @@ describe("catalog baseline staging and one-time publish", { timeout: 15_000 }, (
     expect(await formalCounts(concurrent.db)).toEqual([1, 1, 1, 1]);
   });
 
-  it("publishes explicit PE mappings, distinguishes umbrella vs direct-name semantics, and queues unmapped umbrella Relations", async () => {
+  it("publishes explicit PE mappings, distinguishes umbrella vs direct-name semantics, and does not enqueue unmapped umbrellas after queue freeze", async () => {
     const db = await emptyDb();
     const records = [
       { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-BASKET2", currentName: "篮球2", normalizedCurrentName: "篮球2", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "篮球2", normalizedName: "篮球2", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
@@ -210,12 +210,12 @@ describe("catalog baseline staging and one-time publish", { timeout: 15_000 }, (
       { course_code: "PE-BASKET2", source_teacher_label: "教师甲", source_kind: "direct_skill", normalized_specialization: "篮球", display_semantics: "keep_source_name" },
       { course_code: "PE-WUSHU", source_teacher_label: "刘春来", source_kind: "direct_skill", normalized_specialization: "武术", display_semantics: "keep_source_name" },
     ]);
-    expect(queue).toEqual([{ course_code: "PE-2", source_teacher_label: "黄丽萍", reason: "umbrella_unmapped" }]);
+    expect(queue).toEqual([]);
     expect(await db.prepare("SELECT COUNT(*) n FROM catalog_relation_pe_specializations WHERE normalized_specialization='瑜伽' AND source_kind='direct_skill'").first()).toEqual({ n: 0 });
     expect((await db.prepare("SELECT virtual_course_id FROM virtual_pe_notification_courses ORDER BY virtual_course_id").all()).results).toEqual([{ virtual_course_id: 800001 }, { virtual_course_id: 800002 }]);
   });
 
-  it("still loads v2 packages, backfills direct skill names, and queues umbrella Relations without guessing", async () => {
+  it("still loads v2 packages, backfills direct skill names, and does not enqueue unmapped umbrellas after queue freeze", async () => {
     const db = await emptyDb();
     const records = [
       { schemaVersion: "catalog-baseline-approved-record/v1", recordType: "course", value: { schemaVersion: "catalog-baseline-course/v1", courseCode: "PE-BASKET2", currentName: "篮球2", normalizedCurrentName: "篮球2", category: "sports", sourceCategoryTexts: ["体育课"], nameVariants: [{ rawName: "篮球2", normalizedName: "篮球2", firstSemester: "2026-1", lastSemester: "2026-1", occurrences: 1 }] } },
@@ -248,7 +248,7 @@ describe("catalog baseline staging and one-time publish", { timeout: 15_000 }, (
       { course_name: "健身教练", normalized_specialization: "健美操", source_kind: "direct_skill", display_semantics: "keep_source_name" },
       { course_name: "篮球2", normalized_specialization: "篮球", source_kind: "direct_skill", display_semantics: "keep_source_name" },
     ]);
-    expect(queue).toEqual([{ course_code: "PE-1", source_teacher_label: "黄丽萍" }]);
+    expect(queue).toEqual([]);
     expect(await db.prepare("SELECT COUNT(*) n FROM catalog_relation_pe_specializations m JOIN teachers t ON t.id=m.teacher_id WHERE t.source_teacher_label='黄丽萍'").first()).toEqual({ n: 0 });
   });
 });

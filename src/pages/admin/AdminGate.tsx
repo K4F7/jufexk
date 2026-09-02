@@ -16,6 +16,8 @@ const ADMIN_TABS = [
   { id: "banner", href: "/admin/banner", label: "Banner" },
   { id: "admins", href: "/admin/admins", label: "学号" },
   { id: "bi", href: "/admin/bi", label: "数据" },
+  { id: "pe-queue", href: "/admin/pe-queue", label: "体育专项" },
+  { id: "catalog-requests", href: "/admin/catalog-requests", label: "目录补充" },
 ] as const;
 
 /**
@@ -84,6 +86,8 @@ function adminTabKey(pathname: string): string {
   if (pathname === "/admin/bi") return "bi";
   if (pathname === "/admin/banner") return "banner";
   if (pathname === "/admin/admins") return "admins";
+  if (pathname === "/admin/pe-queue") return "pe-queue";
+  if (pathname === "/admin/catalog-requests") return "catalog-requests";
   return "hub";
 }
 

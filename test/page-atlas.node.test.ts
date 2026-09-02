@@ -117,6 +117,8 @@ describe("listAtlasPages", () => {
         "/admin",
         "/admin/banner",
         "/admin/admins",
+        "/admin/pe-queue",
+        "/admin/catalog-requests",
         `/admin/users/${ATLAS_PREVIEW_USER_ID}`,
         "/about",
         "/contact",

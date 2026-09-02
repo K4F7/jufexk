@@ -3,7 +3,6 @@ import { isExcludedCourseName } from "./lib/course-catalog-policy";
 import {
   isRelationPeSpecializationMapping,
   peDirectSkillNormalizedSql,
-  peUmbrellaCourseNamePredicate,
   type RelationPeSpecializationMapping,
 } from "./lib/pe-specialization-mapping";
 
@@ -407,30 +406,6 @@ export async function publishBaselineUpload(db: D1Database, batchIdInput: string
       JOIN courses c ON c.code=mapped.course_code
       JOIN teachers t ON t.source_teacher_label=mapped.source_teacher_label
       WHERE ${markerGate} AND mapped.normalized_specialization IS NOT NULL`).bind(batchId, batchId),
-    db.prepare(`INSERT OR IGNORE INTO catalog_pe_specialization_review_queue(
-      course_id,teacher_id,course_code,course_name,source_teacher_label,reason,evidence_json
-    )
-      SELECT c.id,t.id,s.course_code,s.name,r.source_teacher_label,'umbrella_unmapped',
-        json_object(
-          'sourceCourseCode',s.course_code,
-          'sourceCourseName',s.name,
-          'sourceTeacherLabel',r.source_teacher_label,
-          'sourceKind','umbrella'
-        )
-      FROM catalog_baseline_staged_relations r
-      JOIN catalog_baseline_staged_courses s ON s.batch_id=r.batch_id AND s.course_code=r.course_code
-      JOIN courses c ON c.code=r.course_code
-      JOIN teachers t ON t.source_teacher_label=r.source_teacher_label
-      WHERE r.batch_id=? AND ${markerGate}
-        AND json_extract(r.source_json,'$.peSpecialization.normalizedSpecialization') IS NULL
-        AND ${peUmbrellaCourseNamePredicate("s")}`).bind(batchId, batchId),
-    db.prepare(`DELETE FROM catalog_pe_specialization_review_queue
-      WHERE ${markerGate}
-        AND EXISTS(
-          SELECT 1 FROM catalog_relation_pe_specializations mapped
-          WHERE mapped.course_id=catalog_pe_specialization_review_queue.course_id
-            AND mapped.teacher_id=catalog_pe_specialization_review_queue.teacher_id
-        )`).bind(batchId),
     db.prepare(`UPDATE catalog_baseline_uploads SET status='published',published_at=CURRENT_TIMESTAMP WHERE batch_id=? AND status='staged' AND ${markerGate}`).bind(batchId, batchId),
   ];
   let results: D1Result[];

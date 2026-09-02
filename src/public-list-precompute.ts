@@ -14,6 +14,8 @@ const publicListMutationRoutes: ReadonlyArray<readonly [string, RegExp]> = [
   ["DELETE", /^\/api\/admin\/teachers\/[^/]+$/],
   ["PUT", /^\/api\/admin\/courses\/[^/]+\/teachers$/],
   ["POST", /^\/api\/admin\/catalog-baseline\/uploads\/[^/]+\/publish$/],
+  ["POST", /^\/api\/admin\/pe-specialization-queue\/dispositions$/],
+  ["POST", /^\/api\/admin\/pe-specialization-queue\/closeout$/],
 ];
 
 export function shouldRefreshPublicListPrecomputes(method: string, path: string) {
