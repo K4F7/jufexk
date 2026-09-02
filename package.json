@@ -26,6 +26,7 @@
     "validate:catalog-capture": "tsx scripts/catalog-baseline/validate-capture.ts",
     "audit:catalog-pilot": "tsx scripts/catalog-baseline/audit-pilot.ts",
     "audit:catalog-full": "tsx scripts/catalog-baseline/audit-full.ts",
+    "audit:pe-mapping": "tsx scripts/pe-mapping-audit/run.ts",
     "catalog-baseline": "tsx scripts/catalog-baseline/cli.ts",
     "jwxt-sync": "tsx scripts/jwxt-sync/run.ts",
     "cta-sync": "tsx scripts/cta-sync/run.ts",
