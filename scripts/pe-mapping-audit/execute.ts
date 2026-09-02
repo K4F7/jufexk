@@ -158,6 +158,84 @@ function versionIdFromRecord(record: Record<string, unknown>): string | null {
   return null;
 }
 
+
+const GIT_SHA_RE = /\b([0-9a-f]{40})\b/i;
+
+function stringField(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function shaFromText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (/^[0-9a-f]{40}$/i.test(trimmed)) return trimmed.toLowerCase();
+  const matched = trimmed.match(GIT_SHA_RE);
+  return matched ? matched[1].toLowerCase() : null;
+}
+
+function deployShaFromRecord(record: Record<string, unknown>): string | null {
+  const direct = stringField(record, [
+    "commit",
+    "commit_hash",
+    "commitHash",
+    "git_commit",
+    "gitCommit",
+    "sha",
+    "deploy_sha",
+    "deploySha",
+  ]);
+  const fromDirect = shaFromText(direct);
+  if (fromDirect) return fromDirect;
+
+  const annotations = record.annotations;
+  if (annotations && typeof annotations === "object" && !Array.isArray(annotations)) {
+    const ann = annotations as Record<string, unknown>;
+    for (const key of [
+      "workers/git.commit",
+      "workers/git_commit",
+      "workers/commit",
+      "workers/tag",
+      "workers/message",
+      "git.commit",
+      "commit",
+    ]) {
+      const fromAnn = shaFromText(typeof ann[key] === "string" ? (ann[key] as string) : null);
+      if (fromAnn) return fromAnn;
+    }
+  }
+
+  const nestedVersions = record.versions;
+  if (Array.isArray(nestedVersions)) {
+    for (const item of nestedVersions) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const nested = deployShaFromRecord(item as Record<string, unknown>);
+      if (nested) return nested;
+    }
+  }
+
+  return shaFromText(stringField(record, ["message", "tag"]));
+}
+
+/** Prefer the newest deployment's commit SHA when wrangler metadata includes one. */
+export function parseDeploySha(jsonText: string): string | null {
+  const parsed = extractJsonValue(jsonText);
+  const items = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object" && Array.isArray((parsed as { deployments?: unknown }).deployments)
+      ? (parsed as { deployments: unknown[] }).deployments
+      : [];
+  const records = items.filter(
+    (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+  if (!records.length) return null;
+  const latest = [...records].sort((left, right) => createdOnMs(right) - createdOnMs(left))[0];
+  return deployShaFromRecord(latest);
+}
+
 export function parseWorkerVersionId(jsonText: string): string | null {
   const parsed = extractJsonValue(jsonText);
   const items = Array.isArray(parsed)
