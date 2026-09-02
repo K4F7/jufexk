@@ -7,7 +7,9 @@
  *
  * SELECT first, then write explicit per-row INSERT/UPDATE. Never d1 export.
  */
-import { writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -24,6 +26,7 @@ import {
 } from "../../src/lib/pe-queue-closeout";
 import {
   createWranglerD1ExecuteCommand,
+  createWranglerD1ExecuteFileCommand,
   parseWranglerD1ExecuteJson,
   resultRows,
 } from "../pe-mapping-audit/execute";
@@ -153,6 +156,23 @@ async function executeSql(sql: string, remote: boolean) {
   return parseWranglerD1ExecuteJson(result.stdout || result.stderr || "");
 }
 
+async function executeSqlFile(sql: string, remote: boolean) {
+  const dir = await mkdtemp(join(tmpdir(), "pe-queue-closeout-"));
+  const file = join(dir, "batch.sql");
+  await writeFile(file, `${sql}\n`, "utf8");
+  try {
+    const command = createWranglerD1ExecuteFileCommand({ file, remote });
+    const result = await execFileAsync(command.executable, command.args, {
+      cwd: process.cwd(),
+      timeout: 180_000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return parseWranglerD1ExecuteJson(result.stdout || result.stderr || "");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
   const { values } = parseArgs({
     args: argv,
@@ -196,8 +216,7 @@ export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
   if (values.apply) {
     const writes = buildDispositionWriteSql(proposals, HISTORICAL_CLOSEOUT_ACTOR);
     for (const chunk of chunkStatements(writes)) {
-      await executeSql(chunk, true);
-      applied += 1;
+      await executeSqlFile(chunk, true);
     }
     applied = writes.length;
   }

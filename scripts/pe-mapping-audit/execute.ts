@@ -60,6 +60,30 @@ export function createWranglerD1ExecuteCommand(
   };
 }
 
+export function createWranglerD1ExecuteFileCommand(
+  options: {
+    file: string;
+    remote: boolean;
+  } & WranglerCommandOptions,
+) {
+  const wranglerCli = resolveWranglerCli(options.resolvePackage);
+  return {
+    executable: options.nodeExecutable ?? process.execPath,
+    wranglerCli,
+    args: [
+      wranglerCli,
+      "d1",
+      "execute",
+      "jufexk",
+      options.remote ? "--remote" : "--local",
+      "--json",
+      "-y",
+      "--file",
+      options.file,
+    ],
+  };
+}
+
 export function createPeMappingAuditExecuteCommand(
   options: {
     sql: string;

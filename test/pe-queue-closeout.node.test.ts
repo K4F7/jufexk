@@ -8,6 +8,8 @@ import {
   reportContainsForbiddenPayload,
   type PeQueueRow,
 } from "../src/lib/pe-queue-closeout";
+import { resolve } from "node:path";
+import { createWranglerD1ExecuteFileCommand } from "../scripts/pe-mapping-audit/execute";
 import {
   assertCloseoutSelectSql,
   buildDispositionWriteSql,
@@ -186,5 +188,26 @@ describe("closeout SELECT SQL", () => {
     expect(writes).toHaveLength(1);
     expect(writes[0]).toContain("withheld_permanent_exception");
     expect(writes[0]).toContain("course_id=11");
+  });
+
+  it("applies write batches through wrangler --file, not --command", () => {
+    const command = createWranglerD1ExecuteFileCommand({
+      file: "batch.sql",
+      remote: true,
+      nodeExecutable: "node-for-test",
+      resolvePackage: () => resolve("node_modules/wrangler/package.json"),
+    });
+    expect(command.args).toEqual([
+      resolve("node_modules/wrangler/bin/wrangler.js"),
+      "d1",
+      "execute",
+      "jufexk",
+      "--remote",
+      "--json",
+      "-y",
+      "--file",
+      "batch.sql",
+    ]);
+    expect(command.args).not.toContain("--command");
   });
 });
