@@ -4,6 +4,7 @@ import {
   assertWranglerD1ReadOnly,
   createPeMappingAuditExecuteCommand,
   executePeMappingAuditSql,
+  parseDeploySha,
   parseWorkerVersionId,
   parseWranglerD1ExecuteJson,
 } from "../scripts/pe-mapping-audit/execute";
@@ -13,7 +14,7 @@ import {
   coverageRate,
   formatPeMappingAuditMarkdown,
 } from "../scripts/pe-mapping-audit/report";
-import { reportFromQueryBatches } from "../scripts/pe-mapping-audit/run";
+import { reportFromQueryBatches, resolveDeploySha } from "../scripts/pe-mapping-audit/run";
 import {
   assertReadOnlySelectSql,
   buildPeMappingAuditSql,
@@ -413,6 +414,58 @@ log prefix
       ),
     ).toBe("005aff8c-c4dd-4127-98b2-297116b6fe68");
   });
+
+
+describe("PE mapping audit deploy SHA provenance", () => {
+  const deploymentsWithCommit = JSON.stringify([
+    {
+      id: "old",
+      created_on: "2026-09-01T16:37:08.814844Z",
+      annotations: { "workers/tag": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      versions: [{ version_id: "a0648442-6f38-4546-9d0e-0a7206fb51ee", percentage: 100 }],
+    },
+    {
+      id: "new",
+      created_on: "2026-09-01T22:15:18.498722Z",
+      annotations: {
+        "workers/message": "deploy c08ebe05824c1d4dcf03fa061385c6ea4c6657fe",
+      },
+      versions: [{ version_id: "005aff8c-c4dd-4127-98b2-297116b6fe68", percentage: 100 }],
+    },
+  ]);
+
+  it("lets an explicit --deploy-sha win over deployment metadata", () => {
+    expect(
+      resolveDeploySha({
+        explicit: "1111111111111111111111111111111111111111",
+        deploymentsJson: deploymentsWithCommit,
+      }),
+    ).toBe("1111111111111111111111111111111111111111");
+  });
+
+  it("parses a commit SHA from wrangler deployments list metadata", () => {
+    expect(parseDeploySha(deploymentsWithCommit)).toBe(
+      "c08ebe05824c1d4dcf03fa061385c6ea4c6657fe",
+    );
+    expect(
+      resolveDeploySha({ deploymentsJson: deploymentsWithCommit }),
+    ).toBe("c08ebe05824c1d4dcf03fa061385c6ea4c6657fe");
+  });
+
+  it("fails loudly when SHA is missing and metadata has no commit", () => {
+    const emptyMeta = JSON.stringify([
+      {
+        id: "only-version",
+        created_on: "2026-09-01T22:15:18.498722Z",
+        versions: [{ version_id: "005aff8c-c4dd-4127-98b2-297116b6fe68", percentage: 100 }],
+      },
+    ]);
+    expect(parseDeploySha(emptyMeta)).toBeNull();
+    expect(() => resolveDeploySha({ deploymentsJson: emptyMeta })).toThrow(/--deploy-sha|部署 SHA/);
+    expect(() => resolveDeploySha({ deploymentsJson: null })).toThrow(/--deploy-sha|部署 SHA/);
+    expect(() => resolveDeploySha({})).toThrow(/--deploy-sha|部署 SHA/);
+  });
+});
 
   it("rebuilds the report from three wrangler result sets", () => {
     const report = reportFromQueryBatches(

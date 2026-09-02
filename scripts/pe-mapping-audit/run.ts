@@ -12,6 +12,7 @@ import { parseArgs, promisify } from "node:util";
 import {
   createWranglerJsonCommand,
   executePeMappingAuditSql,
+  parseDeploySha,
   parseWorkerVersionId,
   resultRows,
 } from "./execute";
@@ -35,14 +36,41 @@ function asRecordRows(rows: unknown[]): Array<Record<string, unknown>> {
   });
 }
 
-async function readDeploySha(explicit?: string): Promise<string> {
+export function resolveDeploySha(options: {
+  explicit?: string;
+  deploymentsJson?: string | null;
+}): string {
+  const explicit = options.explicit?.trim();
   if (explicit) return explicit;
-  const result = await execFileAsync("git", ["rev-parse", "origin/main"], {
-    cwd: process.cwd(),
-  });
-  const sha = result.stdout.trim();
-  if (!sha) throw new Error("无法读取 origin/main SHA");
-  return sha;
+  const fromMeta =
+    options.deploymentsJson != null && options.deploymentsJson !== ""
+      ? parseDeploySha(options.deploymentsJson)
+      : null;
+  if (fromMeta) return fromMeta;
+  throw new Error(
+    "缺少真实部署 SHA：请传入 --deploy-sha <commit>，或确保 wrangler deployments list 元数据可解析出 commit（不再回退 origin/main）",
+  );
+}
+
+async function readDeploymentsListJson(): Promise<string | null> {
+  try {
+    const command = createWranglerJsonCommand(["deployments", "list", "--json"]);
+    const result = await execFileAsync(command.executable, command.args, {
+      cwd: process.cwd(),
+      timeout: 60_000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const text = (result.stdout || result.stderr || "").trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+async function readDeploySha(explicit?: string): Promise<string> {
+  if (explicit?.trim()) return explicit.trim();
+  const deploymentsJson = await readDeploymentsListJson();
+  return resolveDeploySha({ explicit, deploymentsJson });
 }
 
 async function readWorkerVersionId(explicit?: string): Promise<string | null> {
