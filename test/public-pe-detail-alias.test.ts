@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { deniedPrivacyKeys } from "../scripts/pe-alias-equivalence/report";
 import { buildPeSpecializationMapping } from "../src/lib/pe-specialization-mapping";
 import {
   publicPeCourseIdentity,
@@ -138,6 +139,10 @@ async function insertApprovedReview(input: {
 
 async function fetchCourse(path: string) {
   return SELF.fetch(`${origin}${path}`);
+}
+
+function expectPublicPrivacy(body: unknown) {
+  expect(deniedPrivacyKeys(body)).toEqual([]);
 }
 
 describe.sequential("体育公共专项详情、评价流与旧虚拟 ID alias", () => {
@@ -403,6 +408,8 @@ describe.sequential("体育公共专项详情、评价流与旧虚拟 ID alias",
       const aliasBody = await aliasYoga.json<CourseDetailBody>();
       const publicBody = await publicYoga.json<CourseDetailBody>();
       expect(aliasBody).toEqual(publicBody);
+      expectPublicPrivacy(aliasBody);
+      expectPublicPrivacy(publicBody);
       expect(aliasBody.course).toMatchObject({
         id: null,
         public_id: publicPeCourseIdentity("瑜伽"),
@@ -419,6 +426,7 @@ describe.sequential("体育公共专项详情、评价流与旧虚拟 ID alias",
       );
       expect(aliasReviews.status).toBe(200);
       const aliasReviewBody = await aliasReviews.json<ReviewPage>();
+      expectPublicPrivacy(aliasReviewBody);
       expect(aliasReviewBody.items.map((item) => item.comment)).toContain(
         `${stamp}瑜伽来源评价正文足够长`,
       );
@@ -433,7 +441,11 @@ describe.sequential("体育公共专项详情、评价流与旧虚拟 ID alias",
       ]);
       expect(aliasWushu.status).toBe(200);
       expect(publicWushu.status).toBe(200);
-      expect(await aliasWushu.json()).toEqual(await publicWushu.json());
+      const aliasWushuBody = await aliasWushu.json();
+      const publicWushuBody = await publicWushu.json();
+      expect(aliasWushuBody).toEqual(publicWushuBody);
+      expectPublicPrivacy(aliasWushuBody);
+      expectPublicPrivacy(publicWushuBody);
 
       const session = await ordinaryWriteSession(`pe-alias-write-${stamp}`);
       const stableUserId = await hmacHex(
@@ -520,6 +532,56 @@ describe.sequential("体育公共专项详情、评价流与旧虚拟 ID alias",
         .bind(yogaSourceId, wushuSourceId)
         .run();
     }
+  });
+
+  it("keeps unmapped 800001/800002 equivalent to pe:瑜伽/pe:武术 virtual fallback", async () => {
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO teachers(source_teacher_label,name,department) VALUES(?,?,?),(?,?,?)",
+    )
+      .bind("黄丽萍", "黄丽萍", "体育学院", "刘春来", "刘春来", "体育学院")
+      .run();
+    const encodedYoga = encodeURIComponent(publicPeCourseIdentity("瑜伽"));
+    const encodedWushu = encodeURIComponent(publicPeCourseIdentity("武术"));
+    const [aliasYoga, publicYoga, aliasWushu, publicWushu] = await Promise.all([
+      fetchCourse("/api/courses/800001"),
+      fetchCourse(`/api/courses/${encodedYoga}`),
+      fetchCourse("/api/courses/800002"),
+      fetchCourse(`/api/courses/${encodedWushu}`),
+    ]);
+    expect(aliasYoga.status).toBe(200);
+    expect(publicYoga.status).toBe(200);
+    expect(aliasWushu.status).toBe(200);
+    expect(publicWushu.status).toBe(200);
+    const aliasYogaBody = await aliasYoga.json<CourseDetailBody>();
+    const publicYogaBody = await publicYoga.json<CourseDetailBody>();
+    const aliasWushuBody = await aliasWushu.json<CourseDetailBody>();
+    const publicWushuBody = await publicWushu.json<CourseDetailBody>();
+    expect(aliasYogaBody).toEqual(publicYogaBody);
+    expect(aliasWushuBody).toEqual(publicWushuBody);
+    expect(aliasYogaBody.course).toMatchObject({
+      id: 800001,
+      public_id: publicPeCourseIdentity("瑜伽"),
+      name: "体育1-4 [瑜伽]",
+    });
+    expect(aliasWushuBody.course).toMatchObject({
+      id: 800002,
+      public_id: publicPeCourseIdentity("武术"),
+      name: "体育1-4 [武术]",
+    });
+    expectPublicPrivacy(aliasYogaBody);
+    expectPublicPrivacy(aliasWushuBody);
+    const [yogaReviews, publicYogaReviews] = await Promise.all([
+      fetchCourse("/api/courses/800001/reviews"),
+      fetchCourse(`/api/courses/${encodedYoga}/reviews`),
+    ]);
+    expect(yogaReviews.status).toBe(200);
+    expect(publicYogaReviews.status).toBe(200);
+    const yogaReviewBody = await yogaReviews.json<ReviewPage>();
+    const publicYogaReviewBody = await publicYogaReviews.json<ReviewPage>();
+    expect(yogaReviewBody.items).toEqual([]);
+    expect(publicYogaReviewBody.items).toEqual([]);
+    expectPublicPrivacy(yogaReviewBody);
+    expectPublicPrivacy(publicYogaReviewBody);
   });
 
   it("keeps relation list public_id usable as a detail identity", async () => {
