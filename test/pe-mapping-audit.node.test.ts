@@ -5,6 +5,7 @@ import {
   createPeMappingAuditExecuteCommand,
   executePeMappingAuditSql,
   parseDeploySha,
+  parseWorkerDeploymentRecords,
   parseWorkerVersionId,
   parseWranglerD1ExecuteJson,
 } from "../scripts/pe-mapping-audit/execute";
@@ -397,22 +398,25 @@ log prefix
         { results: [], success: true, meta: { changes: 1, rows_written: 1 } },
       ]),
     ).toThrow(/写入/);
-    expect(
-      parseWorkerVersionId(
-        JSON.stringify([
-          {
-            id: "6152e69a-566b-4715-ba57-f49d17709a7d",
-            created_on: "2026-09-01T16:37:08.814844Z",
-            versions: [{ version_id: "a0648442-6f38-4546-9d0e-0a7206fb51ee", percentage: 100 }],
-          },
-          {
-            id: "b864f164-8f1e-4e00-84f4-ab47dd39c1dd",
-            created_on: "2026-09-01T22:15:18.498722Z",
-            versions: [{ version_id: "005aff8c-c4dd-4127-98b2-297116b6fe68", percentage: 100 }],
-          },
-        ]),
-      ),
-    ).toBe("005aff8c-c4dd-4127-98b2-297116b6fe68");
+    const deploymentsJson = JSON.stringify([
+      {
+        id: "6152e69a-566b-4715-ba57-f49d17709a7d",
+        created_on: "2026-09-01T16:37:08.814844Z",
+        versions: [{ version_id: "a0648442-6f38-4546-9d0e-0a7206fb51ee", percentage: 100 }],
+      },
+      {
+        id: "b864f164-8f1e-4e00-84f4-ab47dd39c1dd",
+        created_on: "2026-09-01T22:15:18.498722Z",
+        versions: [{ version_id: "005aff8c-c4dd-4127-98b2-297116b6fe68", percentage: 100 }],
+      },
+    ]);
+    expect(parseWorkerVersionId(deploymentsJson)).toBe(
+      "005aff8c-c4dd-4127-98b2-297116b6fe68",
+    );
+    expect(parseWorkerDeploymentRecords(deploymentsJson).map((row) => row.id)).toEqual([
+      "6152e69a-566b-4715-ba57-f49d17709a7d",
+      "b864f164-8f1e-4e00-84f4-ab47dd39c1dd",
+    ]);
   });
 
 

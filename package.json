@@ -28,6 +28,7 @@
     "audit:catalog-full": "tsx scripts/catalog-baseline/audit-full.ts",
     "audit:pe-mapping": "tsx scripts/pe-mapping-audit/run.ts",
     "check:pe-alias-equivalence": "tsx scripts/pe-alias-equivalence/run.ts",
+    "observe:pe-alias": "tsx scripts/pe-alias-observe/run.ts",
     "catalog-baseline": "tsx scripts/catalog-baseline/cli.ts",
     "jwxt-sync": "tsx scripts/jwxt-sync/run.ts",
     "cta-sync": "tsx scripts/cta-sync/run.ts",
