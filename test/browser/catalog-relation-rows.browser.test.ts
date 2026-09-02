@@ -82,6 +82,7 @@ type MockOptions = {
   /** Pages beyond 1 return no rows but keep the total (deep-linked
    *  out-of-range page; the real API does not clamp page). */
   emptyBeyondFirstPage?: boolean;
+  onCoursesRequest?: () => void;
 };
 
 async function expectStarsAlignedWithCount(row: Locator, countText: string) {
@@ -111,6 +112,7 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
         json: { authenticated: false, loginPath: "/login", logoutPath: "/logout" },
       });
     if (url.pathname === "/api/courses") {
+      options.onCoursesRequest?.();
       const category = url.searchParams.get("category") || "";
       const query = url.searchParams.get("q") || "";
       const sort = url.searchParams.get("sort") || "";
@@ -154,7 +156,11 @@ test("filter box shows the category row and rating sort", async ({
     page.getByRole("heading", { name: "课程列表" }),
   ).toBeVisible();
   const filterBox = page.getByRole("region", { name: "课程类别与排序" });
-  await expect(filterBox.getByText("课程类别：")).toBeVisible();
+  // Desktop browse box labels the two rows; the narrow layout is pills only.
+  if ((page.viewportSize()?.width ?? 1280) >= 640) {
+    await expect(filterBox.getByText("课程类别：")).toBeVisible();
+    await expect(filterBox.getByText("排序方式：")).toBeVisible();
+  }
   for (const label of [
     "全部",
     "通识",
@@ -167,7 +173,6 @@ test("filter box shows the category row and rating sort", async ({
       filterBox.getByRole("radio", { name: label, exact: true }),
     ).toBeVisible();
   }
-  await expect(filterBox.getByText("排序方式：")).toBeVisible();
   await expect(
     filterBox.getByRole("radio", { name: "评价数量", exact: true }),
   ).toBeVisible();
@@ -344,6 +349,81 @@ test("search-miss empty names the query and clears it", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }).first(),
   ).toBeVisible();
+});
+
+test("category switch keeps the current list and shows a refresh spinner", async ({
+  page,
+}) => {
+  await mockCatalogApi(page);
+  await page.goto("/courses");
+  await expect(
+    page.getByRole("link", { name: /中国传统文化导论/ }).first(),
+  ).toBeVisible();
+
+  await mockCatalogApi(page, { delayMs: 2000 });
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
+  await filterBox.getByRole("radio", { name: "体育" }).click();
+
+  await expect(page.getByText("正在更新课程目录…")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /中国传统文化导论/ }).first(),
+  ).toBeVisible();
+  await expect(page.locator("[data-catalog-skeleton-row]")).toHaveCount(0);
+
+  await expect(page.getByRole("link", { name: /篮球/ })).toBeVisible();
+  await expect(page.getByText("正在更新课程目录…")).toHaveCount(0);
+});
+
+test("switching back to a loaded sort reuses the catalog cache", async ({
+  page,
+}) => {
+  let courseRequests = 0;
+  await mockCatalogApi(page, {
+    onCoursesRequest: () => {
+      courseRequests += 1;
+    },
+  });
+  await page.goto("/courses");
+  await expect(
+    page.getByRole("link", { name: /中国传统文化导论/ }).first(),
+  ).toBeVisible();
+
+  const filterBox = page.getByRole("region", { name: "课程类别与排序" });
+  const ratingLoaded = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/api/courses" &&
+      url.searchParams.get("sort") === "rating"
+    );
+  });
+  await filterBox.getByRole("radio", { name: "课程评分", exact: true }).click();
+  await ratingLoaded;
+  await expect(page).toHaveURL(/[?&]sort=rating(?:&|$)/);
+  const afterRating = courseRequests;
+
+  const extraDefaultFetch = page
+    .waitForRequest(
+      (request) => {
+        const url = new URL(request.url());
+        return (
+          url.pathname === "/api/courses" &&
+          url.searchParams.get("view") === "relations" &&
+          !url.searchParams.get("sort")
+        );
+      },
+      { timeout: 1000 },
+    )
+    .then(() => "fetched")
+    .catch(() => "cached");
+
+  await filterBox.getByRole("radio", { name: "评价数量", exact: true }).click();
+  await expect(page).not.toHaveURL(/[?&]sort=/);
+  await expect(
+    page.getByRole("link", { name: /中国传统文化导论/ }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("正在更新课程目录…")).toHaveCount(0);
+  expect(await extraDefaultFetch).toBe("cached");
+  expect(courseRequests).toBe(afterRating);
 });
 
 test("first load shows skeleton rows and keeps the pager count @mobile-smoke", async ({

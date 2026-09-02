@@ -43,6 +43,17 @@ export function getCatalogData<T>(
   return promise;
 }
 
+/** Synchronous cache lookup. Does not fetch, refresh TTL, or return in-flight work. */
+export function peekCatalogData<T>(url: string): T | undefined {
+  const key = catalogDataCacheKey(url);
+  const now = Date.now();
+  const current = entries.get(key);
+  if (current?.value !== undefined && current.expiresAt > now) {
+    return current.value as T;
+  }
+  return undefined;
+}
+
 /** Fire-and-forget intent prefetch. A failed prefetch must never surface in UI. */
 export function prefetchCatalogData<T>(
   url: string,

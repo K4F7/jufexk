@@ -19,7 +19,7 @@ import {
   Typography,
   type Key,
 } from "@heroui/react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import {
   CatalogResultsStates,
@@ -27,6 +27,11 @@ import {
 } from "../components/CatalogResultsStates";
 import { CourseRelationRow } from "../components/CourseRelationRow";
 import { api } from "../lib/api";
+import {
+  getCatalogData,
+  invalidateCatalogData,
+  peekCatalogData,
+} from "../lib/catalog-data-cache";
 import {
   emptyCatalogPage,
   previewFilledCourseRelations,
@@ -78,6 +83,7 @@ function categoryToggleKey(category: string): string {
 
 const RELATION_CATALOG_COPY: CatalogResultsCopy = {
   errorTitle: "课程目录加载失败",
+  refreshingLabel: "正在更新课程目录…",
   emptyFilteredTitle: (query) =>
     query ? `没有找到匹配「${query}」的课程` : "没有找到匹配的课程",
   emptyFilteredDesc: "试试换个关键词。",
@@ -116,6 +122,7 @@ export function CoursesPage() {
   const [loading, setLoading] = useState(true);
   /** Bumps to re-fetch the current catalog query (retry / force-reload). */
   const [reloadToken, setReloadToken] = useState(0);
+  const reloadTokenSeenRef = useRef(reloadToken);
 
   // Stale bookmarks may still carry pe/required/elective; those 400 on the API.
   // general / major / public_basic 都是通识课，保留深链。
@@ -156,14 +163,23 @@ export function CoursesPage() {
       return;
     }
 
-    const controller = new AbortController();
-    let cancelled = false;
+    const url = `/api/courses?${queryString}`;
+    const forceReload = reloadTokenSeenRef.current !== reloadToken;
+    reloadTokenSeenRef.current = reloadToken;
+    if (forceReload) invalidateCatalogData(url);
 
+    const cached = peekCatalogData<Paginated<CourseRelation>>(url);
+    if (cached) {
+      setData(cached);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
     setLoading(true);
     setError("");
-    api<Paginated<CourseRelation>>(`/api/courses?${queryString}`, {
-      signal: controller.signal,
-    })
+    getCatalogData(url, () => api<Paginated<CourseRelation>>(url))
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -178,7 +194,6 @@ export function CoursesPage() {
 
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, [queryString, reloadToken, preview]);
 
