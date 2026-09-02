@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  FAMILY_EXPANSION_CLOSEOUT_ACTOR,
   HISTORICAL_WITHHOLD_REASON,
+  UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_REASON,
   buildPeQueueCloseoutReport,
   catalogAdditionMapping,
   formatPeQueueCloseoutMarkdown,
+  isNoOpCloseoutProposal,
   proposeHistoricalDisposition,
   reportContainsForbiddenPayload,
   type PeQueueRow,
@@ -12,6 +15,7 @@ import { resolve } from "node:path";
 import { createWranglerD1ExecuteFileCommand } from "../scripts/pe-mapping-audit/execute";
 import {
   assertCloseoutSelectSql,
+  buildDirectSkillMappingWriteSql,
   buildDispositionWriteSql,
   buildPeQueueCloseoutSelectSql,
 } from "../scripts/pe-queue-closeout/sql";
@@ -58,6 +62,104 @@ describe("historical PE queue closeout proposals", () => {
       reason: HISTORICAL_WITHHOLD_REASON,
       mapping: null,
     });
+  });
+
+  it("maps unique 跆拳道 siblings and conflicts 游泳+跆拳道", () => {
+    const taekwondo = proposeHistoricalDisposition({
+      row: { ...row("肖舒鹏"), disposition: "withheld_permanent_exception" },
+      evidence: [
+        {
+          kind: "catalog_course_name",
+          specialization: "跆拳道",
+          sourceCourseCode: "PE-TKD2",
+          sourceCourseName: "跆拳道2",
+          sourceTeacherLabel: "肖舒鹏",
+        },
+      ],
+    });
+    expect(taekwondo).toMatchObject({
+      disposition: "mapped",
+      specialization: "跆拳道",
+    });
+
+    const conflict = proposeHistoricalDisposition({
+      row: { ...row("谢辉"), disposition: "withheld_permanent_exception" },
+      evidence: [
+        {
+          kind: "catalog_course_name",
+          specialization: "游泳",
+          sourceCourseCode: "PE-SWIM",
+          sourceCourseName: "游泳",
+          sourceTeacherLabel: "谢辉",
+        },
+        {
+          kind: "catalog_course_name",
+          specialization: "跆拳道",
+          sourceCourseCode: "PE-TKD",
+          sourceCourseName: "跆拳道",
+          sourceTeacherLabel: "谢辉",
+        },
+      ],
+    });
+    expect(conflict.disposition).toBe("conflict_recapture");
+    expect(conflict.specialization).toBeNull();
+  });
+
+  it("conflicts 游泳+田径 without guessing", () => {
+    const track = proposeHistoricalDisposition({
+      row: { ...row("赵翔"), disposition: "withheld_permanent_exception" },
+      evidence: [
+        {
+          kind: "catalog_course_name",
+          specialization: "游泳",
+          sourceCourseCode: "PE-SWIM",
+          sourceCourseName: "游泳",
+          sourceTeacherLabel: "赵翔",
+        },
+        {
+          kind: "catalog_course_name",
+          specialization: "田径",
+          sourceCourseCode: "PE-TRACK",
+          sourceCourseName: "田径1（体适能为主）",
+          sourceTeacherLabel: "赵翔",
+        },
+      ],
+    });
+    expect(track.disposition).toBe("conflict_recapture");
+    expect(track.reason).toContain("游泳");
+    expect(track.reason).toContain("田径");
+  });
+
+  it("withholds 张晓英 umbrellas instead of guessing 篮球 or 排球", () => {
+    const withheld = proposeHistoricalDisposition({
+      row: {
+        ...row("张晓英"),
+        disposition: "conflict_recapture",
+        dispositionReason: "conflicting specialization evidence: 篮球、排球",
+      },
+      evidence: [
+        {
+          kind: "catalog_course_name",
+          specialization: "篮球",
+          sourceCourseCode: "PE-B",
+          sourceCourseName: "篮球",
+          sourceTeacherLabel: "张晓英",
+        },
+        {
+          kind: "catalog_course_name",
+          specialization: "排球",
+          sourceCourseCode: "PE-V",
+          sourceCourseName: "排球",
+          sourceTeacherLabel: "张晓英",
+        },
+      ],
+    });
+    expect(withheld.disposition).toBe("withheld_permanent_exception");
+    expect(withheld.specialization).toBeNull();
+    expect(withheld.mapping).toBeNull();
+    expect(withheld.reason).toContain(UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_REASON);
+    expect(withheld.reason).toContain("篮球");
+    expect(withheld.reason).toContain("排球");
   });
 
   it("marks conflicting evidence without guessing", () => {
@@ -127,6 +229,34 @@ describe("catalog addition PE requirement", () => {
     expect(
       catalogAdditionMapping({
         kind: "course",
+        courseCode: "PE-TKD2",
+        courseName: "跆拳道2",
+        sourceTeacherLabel: "教师甲",
+      }),
+    ).toMatchObject({
+      ok: true,
+      mapping: {
+        sourceKind: "direct_skill",
+        normalizedSpecialization: "跆拳道",
+      },
+    });
+    expect(
+      catalogAdditionMapping({
+        kind: "course",
+        courseCode: "PE-SWIM",
+        courseName: "游泳",
+        sourceTeacherLabel: "教师甲",
+      }),
+    ).toMatchObject({
+      ok: true,
+      mapping: {
+        sourceKind: "direct_skill",
+        normalizedSpecialization: "游泳",
+      },
+    });
+    expect(
+      catalogAdditionMapping({
+        kind: "course",
         courseCode: "GEN-1",
         courseName: "高等数学",
         sourceTeacherLabel: "教师甲",
@@ -177,6 +307,8 @@ describe("closeout SELECT SQL", () => {
     const sql = buildPeQueueCloseoutSelectSql();
     expect(() => assertCloseoutSelectSql(sql)).not.toThrow();
     expect(sql).toContain("catalog_pe_specialization_review_queue");
+    expect(sql).toContain("disposition_reason");
+    expect(sql).toContain("course_teachers");
     expect(sql).not.toMatch(/\bcomment\b/);
     expect(sql).not.toMatch(/\breviews\b/);
     expect(() =>
@@ -188,6 +320,50 @@ describe("closeout SELECT SQL", () => {
     expect(writes).toHaveLength(1);
     expect(writes[0]).toContain("withheld_permanent_exception");
     expect(writes[0]).toContain("course_id=11");
+    expect(writes[0]).toContain("withheld_permanent_exception");
+    expect(writes[0]).toContain("conflict_recapture");
+    expect(writes[0]).not.toContain("AND disposition IS NULL");
+    expect(writes[0]).toContain(FAMILY_EXPANSION_CLOSEOUT_ACTOR);
+
+    const unchanged = proposeHistoricalDisposition({
+      row: {
+        ...row("未知教师"),
+        disposition: "withheld_permanent_exception",
+        dispositionReason: HISTORICAL_WITHHOLD_REASON,
+      },
+      evidence: [],
+    });
+    expect(isNoOpCloseoutProposal(unchanged)).toBe(true);
+    expect(buildDispositionWriteSql([unchanged])).toEqual([]);
+
+    const mappedRow = proposeHistoricalDisposition({
+      row: { ...row("黄丽萍"), disposition: "mapped", dispositionReason: "virtual_pe_sports:瑜伽" },
+      evidence: [
+        {
+          kind: "virtual_pe_sports",
+          specialization: "瑜伽",
+          sourceCourseCode: "PE-1",
+          sourceCourseName: "体育1",
+          sourceTeacherLabel: "黄丽萍",
+        },
+      ],
+    });
+    expect(isNoOpCloseoutProposal(mappedRow)).toBe(true);
+    expect(buildDispositionWriteSql([mappedRow])).toEqual([]);
+
+    const skillWrites = buildDirectSkillMappingWriteSql([
+      {
+        courseId: 101,
+        teacherId: 201,
+        courseCode: "PE-TKD2",
+        courseName: "跆拳道2",
+        sourceTeacherLabel: "肖舒鹏",
+      },
+    ]);
+    expect(skillWrites).toHaveLength(1);
+    expect(skillWrites[0]).toContain("INSERT OR IGNORE");
+    expect(skillWrites[0]).toContain("'跆拳道'");
+    expect(skillWrites[0]).toContain("'direct_skill'");
   });
 
   it("applies write batches through wrangler --file, not --command", () => {

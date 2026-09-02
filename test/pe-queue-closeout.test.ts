@@ -28,7 +28,9 @@ async function insertUmbrella(input: {
   code: string;
   name: string;
   teacher: string;
+  department?: string;
 }) {
+  const department = input.department ?? `${input.code}院`;
   const existingTeacher = await env.DB.prepare(
     "SELECT id FROM teachers WHERE source_teacher_label=?",
   )
@@ -41,14 +43,14 @@ async function insertUmbrella(input: {
           await env.DB.prepare(
             "INSERT INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
           )
-            .bind(input.teacher, input.teacher, `${input.code}院`)
+            .bind(input.teacher, input.teacher, department)
             .run()
         ).meta.last_row_id,
       );
   const course = await env.DB.prepare(
     "INSERT INTO courses(code,name,category,department,scheme_key) VALUES(?,?,?,?,?)",
   )
-    .bind(input.code, input.name, "sports", `${input.code}院`, "pe")
+    .bind(input.code, input.name, "sports", department, "pe")
     .run();
   const courseId = Number(course.meta.last_row_id);
   await env.DB.prepare(
@@ -152,7 +154,7 @@ describe("admin PE queue dispositions", () => {
     const again = await SELF.fetch(
       `${origin}/api/admin/pe-specialization-queue/dispositions`,
       {
-        method: "POST",
+        method: "PATCH",
         headers,
         body: JSON.stringify({
           items: [
@@ -161,12 +163,39 @@ describe("admin PE queue dispositions", () => {
               teacherId: withheld.teacherId,
               disposition: "mapped",
               specialization: "乒乓球",
+              reason: "admin remap withheld row",
             },
           ],
         }),
       },
     );
-    expect(again.status).toBe(409);
+    expect(again.status).toBe(200);
+    expect(
+      await env.DB.prepare(
+        "SELECT normalized_specialization FROM catalog_relation_pe_specializations WHERE course_id=? AND teacher_id=?",
+      )
+        .bind(withheld.courseId, withheld.teacherId)
+        .first(),
+    ).toEqual({ normalized_specialization: "乒乓球" });
+
+    const mappedLocked = await SELF.fetch(
+      `${origin}/api/admin/pe-specialization-queue/dispositions`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          items: [
+            {
+              courseId: mapped.courseId,
+              teacherId: mapped.teacherId,
+              disposition: "withheld_permanent_exception",
+              reason: "should not rewrite mapped",
+            },
+          ],
+        }),
+      },
+    );
+    expect(mappedLocked.status).toBe(409);
 
     const mapping = await env.DB.prepare(
       "SELECT normalized_specialization,source_kind FROM catalog_relation_pe_specializations WHERE course_id=? AND teacher_id=?",
@@ -177,13 +206,6 @@ describe("admin PE queue dispositions", () => {
       normalized_specialization: "瑜伽",
       source_kind: "umbrella",
     });
-    expect(
-      await env.DB.prepare(
-        "SELECT 1 ok FROM catalog_relation_pe_specializations WHERE course_id=? AND teacher_id=?",
-      )
-        .bind(withheld.courseId, withheld.teacherId)
-        .first(),
-    ).toBeNull();
 
     const report = await SELF.fetch(
       `${origin}/api/admin/pe-specialization-queue/report`,
@@ -275,6 +297,178 @@ describe("admin PE queue dispositions", () => {
     ).first<{ dirty: number; refresh_token: string | null }>();
     expect(state?.dirty).toBe(1);
     expect(state?.refresh_token).toBeNull();
+  });
+
+  it("re-disposes withheld/conflict from sibling skills and hides withheld umbrellas", async () => {
+    const stamp = `PE860${Date.now()}`;
+    const department = `${stamp}院`;
+    const taekwondo = await insertUmbrella({
+      code: `${stamp}-T`,
+      name: "体育1",
+      teacher: `${stamp}肖舒鹏`,
+      department,
+    });
+    const mixed = await insertUmbrella({
+      code: `${stamp}-X`,
+      name: "体育2",
+      teacher: `${stamp}谢辉`,
+      department,
+    });
+    const zhang1 = await insertUmbrella({
+      code: `${stamp}-Z1`,
+      name: "体育1",
+      teacher: "张晓英",
+      department,
+    });
+    const zhang2 = await insertUmbrella({
+      code: `${stamp}-Z2`,
+      name: "体育2",
+      teacher: "张晓英",
+      department,
+    });
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE catalog_pe_specialization_review_queue
+         SET disposition='withheld_permanent_exception', disposition_reason=?
+         WHERE course_id=? AND teacher_id=?`,
+      ).bind(HISTORICAL_WITHHOLD_REASON, taekwondo.courseId, taekwondo.teacherId),
+      env.DB.prepare(
+        `UPDATE catalog_pe_specialization_review_queue
+         SET disposition='withheld_permanent_exception', disposition_reason=?
+         WHERE course_id=? AND teacher_id=?`,
+      ).bind(HISTORICAL_WITHHOLD_REASON, mixed.courseId, mixed.teacherId),
+      env.DB.prepare(
+        `UPDATE catalog_pe_specialization_review_queue
+         SET disposition='conflict_recapture',
+             disposition_reason='conflicting specialization evidence: 篮球、排球'
+         WHERE course_id=? AND teacher_id=?`,
+      ).bind(zhang1.courseId, zhang1.teacherId),
+      env.DB.prepare(
+        `UPDATE catalog_pe_specialization_review_queue
+         SET disposition='conflict_recapture',
+             disposition_reason='conflicting specialization evidence: 篮球、排球'
+         WHERE course_id=? AND teacher_id=?`,
+      ).bind(zhang2.courseId, zhang2.teacherId),
+    ]);
+
+    const insertSkill = async (
+      code: string,
+      name: string,
+      teacherId: number,
+      teacherLabel: string,
+    ) => {
+      const course = await env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department,scheme_key) VALUES(?,?,?,?,?)",
+      )
+        .bind(code, name, "sports", department, "pe")
+        .run();
+      const courseId = Number(course.meta.last_row_id);
+      await env.DB.prepare(
+        "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+      )
+        .bind(courseId, teacherId)
+        .run();
+      return { courseId, teacherId, teacherLabel, name };
+    };
+    await insertSkill(`${stamp}-TKD2`, "跆拳道2", taekwondo.teacherId, `${stamp}肖舒鹏`);
+    await insertSkill(`${stamp}-SWIM`, "游泳", mixed.teacherId, `${stamp}谢辉`);
+    await insertSkill(`${stamp}-TKD`, "跆拳道", mixed.teacherId, `${stamp}谢辉`);
+    const basketball = await insertSkill(
+      `${stamp}-BASKET`,
+      "篮球",
+      zhang1.teacherId,
+      "张晓英",
+    );
+    const volleyball = await insertSkill(
+      `${stamp}-VOLLEY`,
+      "排球",
+      zhang1.teacherId,
+      "张晓英",
+    );
+
+    const headers = adminHeaders(await login());
+    const response = await SELF.fetch(
+      `${origin}/api/admin/pe-specialization-queue/closeout`,
+      { method: "POST", headers },
+    );
+    expect(response.status).toBe(200);
+
+    expect(
+      await env.DB.prepare(
+        "SELECT normalized_specialization,source_kind FROM catalog_relation_pe_specializations WHERE course_id=? AND teacher_id=?",
+      )
+        .bind(taekwondo.courseId, taekwondo.teacherId)
+        .first(),
+    ).toEqual({ normalized_specialization: "跆拳道", source_kind: "umbrella" });
+    expect(
+      await env.DB.prepare(
+        "SELECT disposition FROM catalog_pe_specialization_review_queue WHERE course_id=? AND teacher_id=?",
+      )
+        .bind(mixed.courseId, mixed.teacherId)
+        .first(),
+    ).toEqual({ disposition: "conflict_recapture" });
+    expect(
+      await env.DB.prepare(
+        "SELECT disposition FROM catalog_pe_specialization_review_queue WHERE course_id=? AND teacher_id=?",
+      )
+        .bind(zhang1.courseId, zhang1.teacherId)
+        .first(),
+    ).toEqual({ disposition: "withheld_permanent_exception" });
+    expect(
+      await env.DB.prepare(
+        "SELECT disposition FROM catalog_pe_specialization_review_queue WHERE course_id=? AND teacher_id=?",
+      )
+        .bind(zhang2.courseId, zhang2.teacherId)
+        .first(),
+    ).toEqual({ disposition: "withheld_permanent_exception" });
+    expect(
+      await env.DB.prepare(
+        "SELECT 1 ok FROM catalog_relation_pe_specializations WHERE course_id=? AND teacher_id=?",
+      )
+        .bind(zhang1.courseId, zhang1.teacherId)
+        .first(),
+    ).toBeNull();
+    expect(
+      await env.DB.prepare(
+        "SELECT normalized_specialization,display_semantics FROM catalog_relation_pe_specializations WHERE course_id=? AND teacher_id=?",
+      )
+        .bind(basketball.courseId, basketball.teacherId)
+        .first(),
+    ).toEqual({
+      normalized_specialization: "篮球",
+      display_semantics: "keep_source_name",
+    });
+
+    const courses = await SELF.fetch(
+      `${origin}/api/courses?department=${encodeURIComponent(department)}&pageSize=50`,
+    );
+    const courseBody = await courses.json<{
+      items: Array<{ name: string; public_id?: string }>;
+    }>();
+    const names = courseBody.items.map((item) => item.name);
+    expect(names).not.toContain("体育1");
+    expect(names).not.toContain("体育2");
+    expect(names).toEqual(expect.arrayContaining(["篮球", "排球", "跆拳道", "游泳"]));
+
+    const patch = await SELF.fetch(
+      `${origin}/api/admin/pe-specialization-queue/dispositions`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          items: [
+            {
+              courseId: mixed.courseId,
+              teacherId: mixed.teacherId,
+              disposition: "conflict_recapture",
+              reason: "admin confirmed swimming and taekwondo conflict",
+            },
+          ],
+        }),
+      },
+    );
+    expect(patch.status).toBe(200);
+    expect(volleyball.name).toBe("排球");
   });
 });
 

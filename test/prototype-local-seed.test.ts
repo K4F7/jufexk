@@ -262,7 +262,7 @@ describe("pnpm db:seed-preview 灌进公开目录", () => {
       (response) => response.json<{ items: Array<{ name: string }> }>(),
     );
     expect(sports.items.map((item) => item.name)).toEqual(
-      expect.arrayContaining(["体育1-4 [羽毛球]", "体育1-4 [乒乓球]", "游泳"]),
+      expect.arrayContaining(["体育1-4 [羽毛球]", "体育1-4 [乒乓球]", "体育1-4 [游泳]"]),
     );
 
     const empty = await SELF.fetch(

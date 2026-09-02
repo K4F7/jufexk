@@ -15,13 +15,14 @@ import { parseArgs } from "node:util";
 import {
   collectRowEvidence,
   formatPeQueueCloseoutMarkdown,
+  isRedisposablePeQueueDisposition,
   parsePeQueueDisposition,
   proposeHistoricalDisposition,
   publicPeSkillLabel,
   type PeCloseoutEvidenceItem,
   type PeQueueRow,
   type ProposedPeDisposition,
-  HISTORICAL_CLOSEOUT_ACTOR,
+  FAMILY_EXPANSION_CLOSEOUT_ACTOR,
   PE_QUEUE_CLOSEOUT_REPORT_SCHEMA,
 } from "../../src/lib/pe-queue-closeout";
 import {
@@ -35,6 +36,7 @@ import { promisify } from "node:util";
 import { chunkStatements } from "../cta-sync/apply-remote";
 import {
   assertCloseoutSelectSql,
+  buildDirectSkillMappingWriteSql,
   buildDispositionWriteSql,
   buildPeQueueCloseoutSelectSql,
 } from "./sql";
@@ -80,7 +82,7 @@ function parseQueueRow(row: Record<string, unknown>): PeQueueRow {
     sourceTeacherLabel: asString(row.source_teacher_label, "source_teacher_label"),
     reason: asString(row.reason, "reason"),
     disposition: parsePeQueueDisposition(row.disposition),
-    dispositionReason: "",
+    dispositionReason: asText(row.disposition_reason),
     disposedBy: "",
     disposedAt: null,
   };
@@ -104,10 +106,56 @@ function skillItem(
   };
 }
 
+export function catalogSkillRowsFromBatch(
+  batch: { results?: unknown[] } | undefined,
+): Array<{
+  courseId: number;
+  teacherId: number;
+  courseCode: string;
+  courseName: string;
+  sourceTeacherLabel: string;
+}> {
+  return asRecordRows(resultRows(batch)).flatMap((row) => {
+    const courseName = asText(row.course_name);
+    const teacher = asText(row.source_teacher_label).trim();
+    if (!publicPeSkillLabel(courseName) || !teacher) return [];
+    return [
+      {
+        courseId: asInt(row.course_id, "course_id"),
+        teacherId: asInt(row.teacher_id, "teacher_id"),
+        courseCode: asText(row.course_code),
+        courseName,
+        sourceTeacherLabel: teacher,
+      },
+    ];
+  });
+}
+
+export function missingDirectSkillRows(
+  catalogRows: Array<{
+    courseId: number;
+    teacherId: number;
+    courseCode: string;
+    courseName: string;
+    sourceTeacherLabel: string;
+  }>,
+  mappings: Array<Record<string, unknown>>,
+) {
+  const mapped = new Set(
+    mappings.map(
+      (mapping) =>
+        `${asInt(mapping.course_id, "course_id")}:${asInt(mapping.teacher_id, "teacher_id")}`,
+    ),
+  );
+  return catalogRows.filter(
+    (row) => !mapped.has(`${row.courseId}:${row.teacherId}`),
+  );
+}
+
 export function proposalsFromQueryBatches(
   batches: Array<{ results?: unknown[] }>,
 ): ProposedPeDisposition[] {
-  if (batches.length < 4) throw new Error(`收口查询应返回至少 4 组结果，实际 ${batches.length}`);
+  if (batches.length < 5) throw new Error(`收口查询应返回至少 5 组结果，实际 ${batches.length}`);
   const queueRows = asRecordRows(resultRows(batches[0])).map(parseQueueRow);
   const mappings = asRecordRows(resultRows(batches[1]));
   const historical = asRecordRows(resultRows(batches[2]))
@@ -116,8 +164,19 @@ export function proposalsFromQueryBatches(
   const offerings = asRecordRows(resultRows(batches[3]))
     .map((row) => skillItem("offering_skill_name", row))
     .filter((item): item is PeCloseoutEvidenceItem => item != null);
-  const openRows = queueRows.filter((row) => !row.disposition);
-  return openRows.map((row) => {
+  const catalogSkills = catalogSkillRowsFromBatch(batches[4])
+    .map((row) =>
+      skillItem("catalog_course_name", {
+        course_code: row.courseCode,
+        course_name: row.courseName,
+        source_teacher_label: row.sourceTeacherLabel,
+      }),
+    )
+    .filter((item): item is PeCloseoutEvidenceItem => item != null);
+  const targetRows = queueRows.filter((row) =>
+    isRedisposablePeQueueDisposition(row.disposition),
+  );
+  return targetRows.map((row) => {
     const own = mappings.filter(
       (mapping) =>
         asInt(mapping.course_id, "course_id") === row.courseId &&
@@ -136,9 +195,12 @@ export function proposalsFromQueryBatches(
         existingMappings: own
           .map((mapping) => skillItem("existing_mapping", mapping, asString(mapping.normalized_specialization, "normalized_specialization")))
           .filter((item): item is PeCloseoutEvidenceItem => item != null),
-        siblingMappings: siblings
-          .map((mapping) => skillItem("catalog_course_name", mapping, asString(mapping.normalized_specialization, "normalized_specialization")))
-          .filter((item): item is PeCloseoutEvidenceItem => item != null),
+        siblingMappings: [
+          ...siblings
+            .map((mapping) => skillItem("catalog_course_name", mapping, asString(mapping.normalized_specialization, "normalized_specialization")))
+            .filter((item): item is PeCloseoutEvidenceItem => item != null),
+          ...catalogSkills,
+        ],
         historicalBindings: historical,
         offeringSkills: offerings,
       }),
@@ -190,6 +252,11 @@ export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
     return { sql, printed: sql };
   }
   const batches = await executeSql(sql, true);
+  const mappings = asRecordRows(resultRows(batches[1]));
+  const missingSkills = missingDirectSkillRows(
+    catalogSkillRowsFromBatch(batches[4]),
+    mappings,
+  );
   const proposals = proposalsFromQueryBatches(batches);
   const report = {
     schemaVersion: PE_QUEUE_CLOSEOUT_REPORT_SCHEMA,
@@ -213,16 +280,32 @@ export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
   };
   const markdown = formatPeQueueCloseoutMarkdown(report);
   let applied = 0;
+  const writes = [
+    ...buildDirectSkillMappingWriteSql(missingSkills),
+    ...buildDispositionWriteSql(proposals, FAMILY_EXPANSION_CLOSEOUT_ACTOR),
+  ];
   if (values.apply) {
-    const writes = buildDispositionWriteSql(proposals, HISTORICAL_CLOSEOUT_ACTOR);
     for (const chunk of chunkStatements(writes)) {
       await executeSqlFile(chunk, true);
     }
     applied = writes.length;
   }
-  const printed = `${JSON.stringify({ report, applied, apply: Boolean(values.apply) }, null, 2)}\n\n${markdown}`;
+  const printed = `${JSON.stringify(
+    {
+      report,
+      applied,
+      apply: Boolean(values.apply),
+      directSkillInserts: missingSkills.map((row) => ({
+        courseCode: row.courseCode,
+        courseName: row.courseName,
+        sourceTeacherLabel: row.sourceTeacherLabel,
+      })),
+    },
+    null,
+    2,
+  )}\n\n${markdown}`;
   if (values.output) await writeFile(values.output, printed, "utf8");
-  return { sql, proposals, report, printed, applied };
+  return { sql, proposals, report, printed, applied, writes };
 }
 
 async function main() {

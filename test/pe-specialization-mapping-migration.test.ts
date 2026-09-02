@@ -6,18 +6,20 @@ declare const TEST_D1_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
 const takePeMappingMigration = () => {
   const migrations = [...TEST_D1_MIGRATIONS];
   const later = migrations.filter((migration) =>
-    migration.name.includes("0057_pe_specialization_queue_closeout.sql"),
+    migration.name.includes("0057_pe_specialization_queue_closeout.sql") ||
+    migration.name.includes("0058_pe_direct_skill_family_backfill.sql"),
   );
   const rest = migrations.filter(
     (migration) =>
       !migration.name.includes("0056_catalog_relation_pe_specializations.sql") &&
-      !migration.name.includes("0057_pe_specialization_queue_closeout.sql"),
+      !migration.name.includes("0057_pe_specialization_queue_closeout.sql") &&
+      !migration.name.includes("0058_pe_direct_skill_family_backfill.sql"),
   );
   const migration = migrations.find((item) =>
     item.name.includes("0056_catalog_relation_pe_specializations.sql"),
   );
   expect(migration?.name).toContain("0056_catalog_relation_pe_specializations.sql");
-  expect(later).toHaveLength(1);
+  expect(later).toHaveLength(2);
   return { migrations: rest, migration: migration! };
 };
 
