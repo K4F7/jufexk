@@ -317,6 +317,47 @@ describe.sequential("体育公共专项 Relation 读取投影", () => {
     }
   });
 
+  it("lists relations by review count when many PE extras would exceed D1 bind limits", async () => {
+    const stamp = `PEBIND${Date.now()}`;
+    const department = `${stamp}院`;
+    const courseId = await insertCourse(`${stamp}-B`, "篮球", department);
+    const teacherIds: number[] = [];
+    try {
+      for (let index = 0; index < 40; index += 1) {
+        const teacher = `${stamp}师${index}`;
+        const teacherId = await insertTeacher(teacher, department);
+        teacherIds.push(teacherId);
+        await bindTeacher(courseId, teacherId);
+        await insertPeMapping({
+          courseId,
+          teacherId,
+          sourceKind: "direct_skill",
+          specialization: "篮球",
+          courseCode: `${stamp}-B`,
+          courseName: "篮球",
+          sourceTeacherLabel: teacher,
+        });
+      }
+      const listed = await fetchRelations(
+        `department=${encodeURIComponent(department)}&sort=reviews&pageSize=20`,
+      );
+      expect(listed.total).toBeGreaterThanOrEqual(40);
+      expect(
+        listed.items.every((item) => item.public_id?.startsWith("pe:篮球:")),
+      ).toBe(true);
+      const rated = await fetchRelations(
+        `department=${encodeURIComponent(department)}&sort=rating&pageSize=20`,
+      );
+      expect(rated.total).toBeGreaterThanOrEqual(40);
+    } finally {
+      await env.DB.prepare(
+        "DELETE FROM catalog_relation_pe_specializations WHERE course_id=?",
+      )
+        .bind(courseId)
+        .run();
+    }
+  });
+
   it("does not list unmapped umbrella Relations and ignores no-teacher rows in total", async () => {
     const stamp = `PE834U${Date.now()}`;
     const department = `${stamp}院`;
