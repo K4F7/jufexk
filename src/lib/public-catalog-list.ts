@@ -307,6 +307,23 @@ export async function loadPublicRelationListExtras(
   return [...peItems, ...virtualItems];
 }
 
+/** D1 rejects a statement with more than 100 bound parameters. */
+export const D1_MAX_BOUND_PARAMETERS = 100;
+
+export function extraMergeChunkSize(
+  extraCount: number,
+  extraBindCount: number,
+  argCount: number,
+): number {
+  if (extraCount <= 0) return 0;
+  const bindsPerExtra = extraBindCount / extraCount;
+  if (!Number.isInteger(bindsPerExtra) || bindsPerExtra <= 0) {
+    throw new Error("PE extras bind 长度必须能被 extras 条数整除");
+  }
+  const budget = D1_MAX_BOUND_PARAMETERS - argCount;
+  return Math.max(1, Math.floor(budget / bindsPerExtra));
+}
+
 async function countRealsBeforeExtras(input: {
   db: D1Database;
   extraColumnSql: string;
@@ -321,13 +338,25 @@ async function countRealsBeforeExtras(input: {
   args: unknown[];
 }): Promise<Map<string, number>> {
   if (input.extraCount === 0) return new Map();
-  const values = Array.from(
-    { length: input.extraCount },
-    () => input.extraRowSql,
-  ).join(",");
-  const { results } = await input.db
-    .prepare(
-      `WITH extras(${input.extraColumnSql}) AS (VALUES ${values})
+  const bindsPerExtra = input.extraBinds.length / input.extraCount;
+  const chunkSize = extraMergeChunkSize(
+    input.extraCount,
+    input.extraBinds.length,
+    input.args.length,
+  );
+  const merged = new Map<string, number>();
+  for (let start = 0; start < input.extraCount; start += chunkSize) {
+    const count = Math.min(chunkSize, input.extraCount - start);
+    const values = Array.from({ length: count }, () => input.extraRowSql).join(
+      ",",
+    );
+    const extraBinds = input.extraBinds.slice(
+      start * bindsPerExtra,
+      (start + count) * bindsPerExtra,
+    );
+    const { results } = await input.db
+      .prepare(
+        `WITH extras(${input.extraColumnSql}) AS (VALUES ${values})
        SELECT extras.extra_key,${input.selectCountSql} n
        ${input.fromSql}
        ${input.extraJoins ?? ""}
@@ -335,12 +364,14 @@ async function countRealsBeforeExtras(input: {
        WHERE ${input.where}
          AND ${input.beforePredicate}
        GROUP BY extras.extra_key`,
-    )
-    .bind(...input.extraBinds, ...input.args)
-    .all<{ extra_key: string; n: number }>();
-  return new Map(
-    (results || []).map((row) => [String(row.extra_key), Number(row.n) || 0]),
-  );
+      )
+      .bind(...extraBinds, ...input.args)
+      .all<{ extra_key: string; n: number }>();
+    for (const row of results || []) {
+      merged.set(String(row.extra_key), Number(row.n) || 0);
+    }
+  }
+  return merged;
 }
 
 function placeMergedExtras<T>(
