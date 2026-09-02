@@ -4,7 +4,7 @@
  * - First load: 20 skeleton rows + pagination reserve, matching the public
  *   catalog pageSize so the list height does not jump (Issue #205). Course
  *   pending uses CourseRelationRow-shaped Skeleton rows (Issue #418).
- * - Refresh with data: keep the current list; no Spinner
+ * - Refresh with data: compact Spinner line above the results
  * - Error: official Alert + 重试
  * - Empty: official Card; search-miss vs true empty catalog
  * - Pagination: official Pagination + 共 N {unit}
@@ -17,6 +17,7 @@ import {
   Card,
   Pagination,
   Skeleton,
+  Spinner,
 } from "@heroui/react";
 import type { ReactNode } from "react";
 import { REVIEW_DIMENSIONS } from "../lib/review-dimensions";
@@ -24,6 +25,8 @@ import { REVIEW_DIMENSIONS } from "../lib/review-dimensions";
 export type CatalogResultsCopy = {
   /** e.g. 课程目录加载失败 */
   errorTitle: string;
+  /** e.g. 正在更新课程目录… */
+  refreshingLabel: string;
   /** Search-miss title; receives the active query when present */
   emptyFilteredTitle: (query?: string) => string;
   emptyFilteredDesc: string;
@@ -37,6 +40,7 @@ export type CatalogResultsCopy = {
 
 export const COURSE_CATALOG_COPY: CatalogResultsCopy = {
   errorTitle: "课程目录加载失败",
+  refreshingLabel: "正在更新课程目录…",
   emptyFilteredTitle: (query) =>
     query ? `没有找到匹配「${query}」的课程` : "没有找到匹配的课程",
   emptyFilteredDesc: "试试换个关键词。",
@@ -372,6 +376,16 @@ export function CatalogResultsStates({
 
   return (
     <div aria-busy={loading}>
+      {loading ? (
+        <div
+          className="mb-2 flex items-center gap-2 text-sm text-muted"
+          role="status"
+          aria-live="polite"
+        >
+          <Spinner size="sm" />
+          {copy.refreshingLabel}
+        </div>
+      ) : null}
       {error ? (
         <Alert className="mb-2" status="danger">
           <Alert.Indicator />

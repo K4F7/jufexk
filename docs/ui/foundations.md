@@ -48,7 +48,7 @@
 - 类别、排序和页码保存在 URL；进入详情再返回时恢复目录状态。
 - 分页与状态见 `CatalogResultsStates`：官方 `Pagination`（上一页 / 页码 / 下一页 · 共 N 条）。
 - **空态**：只有顶栏 `q` 算搜索未命中（「没有找到匹配…」+ 清空搜索）。类别无结果与真·无目录数据都用「目录暂无课程数据」。
-- **加载**：首次进入用与关系行同形的骨架（20 行 + 分页占位），`aria-label="加载中…"`。已有数据再刷新时保持当前列表，不再出现「正在更新课程目录」或表上 Spinner。
+- **加载**：首次进入用与关系行同形的骨架（20 行 + 分页占位），`aria-label="加载中…"`。已有数据再刷新时保持当前列表，并在列表上方显示官方 Spinner 行「正在更新课程目录…」。切回已加载过的类别、排序或分页时，若内存缓存仍有效则立刻还原，不转圈、不重拉。
 - **收藏 / 本专业（历史决策 · Issue #73，承接 #63）**：2026-08-17 用户在已删除的 DEV 原型里选过条件密度方案 C。生产从未实现，对应 Gallery 模块与变体文件已删除。确认进入生产后另建 frontend / backend Issue。
 
 ### 教师目录
@@ -74,7 +74,7 @@
 
 ## 页面状态与生产质量
 
-- 课程目录状态由 `src/components/CatalogResultsStates.tsx` 实现：首次加载为关系行骨架（Issue #205 / #418）；已有数据刷新时保持列表、无 Spinner；错误用官方 Alert + 重试；空态只把顶栏 `q` 当搜索未命中，其余空结果用「目录暂无课程数据」；分页为上一页 / 页码 / 下一页并显示「共 N 条」。
+- 课程目录状态由 `src/components/CatalogResultsStates.tsx` 实现：首次加载为关系行骨架（Issue #205 / #418）；已有数据刷新时保持列表，并在列表上方显示官方 Spinner 行「正在更新课程目录…」；错误用官方 Alert + 重试；空态只把顶栏 `q` 当搜索未命中，其余空结果用「目录暂无课程数据」；分页为上一页 / 页码 / 下一页并显示「共 N 条」。
 - 请求失败提供重试操作。
 - 搜索未命中提供清空搜索。
 - 生产完成状态要求键盘可以完成导航、浏览切换和分页，焦点清晰，读屏可以识别列表、加载、错误、当前导航和行内链接。
@@ -182,7 +182,7 @@ UI 以模块为单位逐步推进。一个模块在真实页面上下文中完�
 | 目录标题与搜索 | 生产完成 | 页内标题「课程列表」+「共 N 条」；搜索在顶栏。`CatalogSearchHeader` 只留给 DEV `global-search` A | 生产默认不再用页内同行搜索头 | 生产：`AppShell` `ShellCourseSearch` · `CoursesPage` 标题行 · DEV：`?module=global-search` · Issue #303 |
 | 目录浏览框 | 生产完成 | 类别 pills + 排序 pills，写在 `CoursesPage`。院系 / 教师工具条已删除 | #402 起目录按关系行浏览，不再用旧筛选工具条 | 生产：`src/pages/CoursesPage.tsx` |
 | 课程目录结果 | 生产完成 | **关系行**：`CourseRelationRow`（课名（老师） / 星级+评价 / 四维）。评分绑定课程×教师 | 四列折叠表与七列粗扫都已从生产与 Gallery 删除 | 生产：`src/components/CourseRelationRow.tsx` · `GET /api/courses?view=relations` |
-| 分页及加载、错误、空状态 | 生产完成 | 精简页脚 + 首次骨架；刷新不转圈；空态只把顶栏 `q` 当搜索未命中 | 用户确认过精简页脚；#205/#418 把首次 Spinner 换成关系行骨架；「正在更新课程目录」已下线 | 生产：`src/components/CatalogResultsStates.tsx` |
+| 分页及加载、错误、空状态 | 生产完成 | 精简页脚 + 首次骨架；已有数据刷新时列表上方紧凑 Spinner「正在更新课程目录…」；空态只把顶栏 `q` 当搜索未命中 | 用户确认过精简页脚；#205/#418 把首次 Spinner 换成关系行骨架；#855 恢复已有数据刷新时的紧凑 Spinner | 生产：`src/components/CatalogResultsStates.tsx` |
 | 课程目录整页 | 生产完成 | 顶栏搜索 · 标题+计数 · 浏览框 · 关系行 · `CatalogResultsStates` | 旧冻结栈（搜索 C · 筛选 D · 四列表 B）已不描述现行 `/courses` | 生产：`src/pages/CoursesPage.tsx` |
 | 教师目录适配 | 已下线 | `/teachers` 重定向到 `/courses`。旧四列表与 `TeachersPage` 不再是公开入口 | 公开面只保留课程目录 + 教师详情 | 路由：`TeachersListRedirect` · 详情：`TeacherDetailPage` |
 | 课程详情摘要 | 视觉冻结 | **B — 左身份 / 右评价数**：类别 Chip + 课程名 + 课号/院系 · 右 Surface 仅显示公开评价数；未选教师下接「任课教师」关系表，选中后只显示该教师评价流（#252），摘要补当前老师姓名链接与院系，评价数改为该课程×教师（#289） | 评价必须绑定课程+任课教师（见 CONTEXT）；#115 落地生产；#140 课程界面不出现评分；#239 密表；#252 教师表与评价流互斥；#289 互斥后摘要仍要有当前老师 | 生产：`CourseDetailPage.tsx` · `DetailSummary.tsx` · `CourseTeacherTable.tsx` · Issue #60 → #115 → #140 → #239 → #252 → #289 |
