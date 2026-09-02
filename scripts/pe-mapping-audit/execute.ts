@@ -36,13 +36,12 @@ export function resolveWranglerCli(
   return resolve(dirname(resolvePackage("wrangler/package.json")), "bin/wrangler.js");
 }
 
-export function createPeMappingAuditExecuteCommand(
+export function createWranglerD1ExecuteCommand(
   options: {
     sql: string;
     remote: boolean;
   } & WranglerCommandOptions,
 ) {
-  assertReadOnlySelectSql(options.sql);
   const wranglerCli = resolveWranglerCli(options.resolvePackage);
   return {
     executable: options.nodeExecutable ?? process.execPath,
@@ -59,6 +58,16 @@ export function createPeMappingAuditExecuteCommand(
       options.sql,
     ],
   };
+}
+
+export function createPeMappingAuditExecuteCommand(
+  options: {
+    sql: string;
+    remote: boolean;
+  } & WranglerCommandOptions,
+) {
+  assertReadOnlySelectSql(options.sql);
+  return createWranglerD1ExecuteCommand(options);
 }
 
 export function createWranglerJsonCommand(
@@ -120,14 +129,17 @@ export function resultRows(batch: WranglerD1ExecuteBatch | undefined): unknown[]
   return rows;
 }
 
-export async function executePeMappingAuditSql(options: {
-  sql: string;
-  remote: boolean;
-  execFile?: ExecFileImpl;
-  cwd?: string;
-} & WranglerCommandOptions): Promise<WranglerD1ExecuteBatch[]> {
-  assertReadOnlySelectSql(options.sql);
-  const command = createPeMappingAuditExecuteCommand(options);
+export async function executeReadOnlyD1Sql(
+  options: {
+    sql: string;
+    remote: boolean;
+    assertSql?: (sql: string) => void;
+    execFile?: ExecFileImpl;
+    cwd?: string;
+  } & WranglerCommandOptions,
+): Promise<WranglerD1ExecuteBatch[]> {
+  (options.assertSql ?? assertReadOnlySelectSql)(options.sql);
+  const command = createWranglerD1ExecuteCommand(options);
   const execFile = options.execFile ?? execFileAsync;
   const result = await execFile(command.executable, command.args, {
     cwd: options.cwd ?? process.cwd(),
@@ -137,6 +149,15 @@ export async function executePeMappingAuditSql(options: {
   const batches = parseWranglerD1ExecuteJson(result.stdout || result.stderr);
   assertWranglerD1ReadOnly(batches);
   return batches;
+}
+
+export async function executePeMappingAuditSql(options: {
+  sql: string;
+  remote: boolean;
+  execFile?: ExecFileImpl;
+  cwd?: string;
+} & WranglerCommandOptions): Promise<WranglerD1ExecuteBatch[]> {
+  return executeReadOnlyD1Sql(options);
 }
 
 function createdOnMs(record: Record<string, unknown>): number {
@@ -157,7 +178,6 @@ function versionIdFromRecord(record: Record<string, unknown>): string | null {
   }
   return null;
 }
-
 
 const GIT_SHA_RE = /\b([0-9a-f]{40})\b/i;
 
@@ -220,33 +240,69 @@ function deployShaFromRecord(record: Record<string, unknown>): string | null {
   return shaFromText(stringField(record, ["message", "tag"]));
 }
 
-/** Prefer the newest deployment's commit SHA when wrangler metadata includes one. */
-export function parseDeploySha(jsonText: string): string | null {
-  const parsed = extractJsonValue(jsonText);
+function deploymentItems(parsed: unknown): Record<string, unknown>[] {
   const items = Array.isArray(parsed)
     ? parsed
     : parsed && typeof parsed === "object" && Array.isArray((parsed as { deployments?: unknown }).deployments)
       ? (parsed as { deployments: unknown[] }).deployments
       : [];
-  const records = items.filter(
+  return items.filter(
     (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item),
   );
+}
+
+/** Prefer the newest deployment's commit SHA when wrangler metadata includes one. */
+export function parseDeploySha(jsonText: string): string | null {
+  const records = deploymentItems(extractJsonValue(jsonText));
   if (!records.length) return null;
   const latest = [...records].sort((left, right) => createdOnMs(right) - createdOnMs(left))[0];
   return deployShaFromRecord(latest);
 }
 
+export type WorkerDeploymentRecord = {
+  id: string | null;
+  versionId: string | null;
+  createdOn: string | null;
+  createdOnMs: number;
+  percentage: number | null;
+};
+
+function asOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+function asOptionalNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function parseWorkerDeploymentRecords(jsonText: string): WorkerDeploymentRecord[] {
+  const records = deploymentItems(extractJsonValue(jsonText));
+  return records
+    .map((record) => {
+      const nested = record.versions;
+      let versionId: string | null = null;
+      let percentage: number | null = null;
+      if (Array.isArray(nested) && nested[0] && typeof nested[0] === "object") {
+        const version = nested[0] as Record<string, unknown>;
+        versionId = asOptionalString(version.version_id) ?? asOptionalString(version.versionId);
+        percentage = asOptionalNumber(version.percentage);
+      }
+      return {
+        id: asOptionalString(record.id) ?? asOptionalString(record.deployment_id),
+        versionId: versionId ?? versionIdFromRecord(record),
+        createdOn:
+          asOptionalString(record.created_on) ??
+          asOptionalString(record.createdOn) ??
+          asOptionalString(record.created_at),
+        createdOnMs: createdOnMs(record),
+        percentage,
+      };
+    })
+    .sort((left, right) => left.createdOnMs - right.createdOnMs);
+}
+
 export function parseWorkerVersionId(jsonText: string): string | null {
-  const parsed = extractJsonValue(jsonText);
-  const items = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === "object" && Array.isArray((parsed as { deployments?: unknown }).deployments)
-      ? (parsed as { deployments: unknown[] }).deployments
-      : [];
-  const records = items.filter(
-    (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item),
-  );
-  if (!records.length) return null;
-  const latest = [...records].sort((left, right) => createdOnMs(right) - createdOnMs(left))[0];
-  return versionIdFromRecord(latest);
+  const deployments = parseWorkerDeploymentRecords(jsonText);
+  return deployments.at(-1)?.versionId ?? null;
 }
