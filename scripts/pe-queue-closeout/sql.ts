@@ -149,21 +149,49 @@ export function buildDirectSkillMappingWriteSql(
   return statements;
 }
 
+export type DispositionWriteOptions = {
+  rewriteMappedUmbrellas?: boolean;
+};
+
+function umbrellaMappingUpsertSql(proposal: ProposedPeDisposition): string {
+  const mapping = proposal.mapping;
+  if (!mapping) throw new Error("mapped umbrella write requires mapping");
+  const evidence = sqlString(JSON.stringify(mapping.evidence));
+  return `INSERT INTO catalog_relation_pe_specializations(course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json) VALUES(${proposal.courseId},${proposal.teacherId},${sqlString(mapping.sourceKind)},${sqlString(mapping.normalizedSpecialization)},${sqlString(mapping.displaySemantics)},${evidence}) ON CONFLICT(course_id,teacher_id) DO UPDATE SET source_kind=excluded.source_kind,normalized_specialization=excluded.normalized_specialization,display_semantics=excluded.display_semantics,evidence_json=excluded.evidence_json WHERE catalog_relation_pe_specializations.source_kind='umbrella'`;
+}
+
 export function buildDispositionWriteSql(
   proposals: ProposedPeDisposition[],
   actor = FAMILY_EXPANSION_CLOSEOUT_ACTOR,
+  options: DispositionWriteOptions = {},
 ): string[] {
   const statements: string[] = [];
+  const rewriteMapped = Boolean(options.rewriteMappedUmbrellas);
   for (const proposal of proposals) {
-    if (isNoOpCloseoutProposal(proposal)) continue;
+    if (isNoOpCloseoutProposal(proposal, options)) continue;
     if (proposal.disposition === "mapped" && proposal.mapping) {
-      const evidence = JSON.stringify(proposal.mapping.evidence);
+      if (rewriteMapped) {
+        statements.push(umbrellaMappingUpsertSql(proposal));
+      } else {
+        const evidence = JSON.stringify(proposal.mapping.evidence);
+        statements.push(
+          `INSERT OR IGNORE INTO catalog_relation_pe_specializations(course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json) VALUES(${proposal.courseId},${proposal.teacherId},${sqlString(proposal.mapping.sourceKind)},${sqlString(proposal.mapping.normalizedSpecialization)},${sqlString(proposal.mapping.displaySemantics)},${sqlString(evidence)})`,
+        );
+      }
+    } else if (
+      rewriteMapped &&
+      proposal.currentDisposition === "mapped" &&
+      proposal.disposition !== "mapped"
+    ) {
       statements.push(
-        `INSERT OR IGNORE INTO catalog_relation_pe_specializations(course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json) VALUES(${proposal.courseId},${proposal.teacherId},${sqlString(proposal.mapping.sourceKind)},${sqlString(proposal.mapping.normalizedSpecialization)},${sqlString(proposal.mapping.displaySemantics)},${sqlString(evidence)})`,
+        `DELETE FROM catalog_relation_pe_specializations WHERE course_id=${proposal.courseId} AND teacher_id=${proposal.teacherId} AND source_kind='umbrella'`,
       );
     }
+    const predicate = rewriteMapped
+      ? `course_id=${proposal.courseId} AND teacher_id=${proposal.teacherId}`
+      : `course_id=${proposal.courseId} AND teacher_id=${proposal.teacherId} AND ${peQueueRedisposePredicate()}`;
     statements.push(
-      `UPDATE catalog_pe_specialization_review_queue SET disposition=${sqlString(proposal.disposition)},disposition_reason=${sqlString(proposal.reason)},disposition_evidence_json=${sqlString(JSON.stringify(proposal.evidence))},disposed_by=${sqlString(actor)},disposed_at=CURRENT_TIMESTAMP WHERE course_id=${proposal.courseId} AND teacher_id=${proposal.teacherId} AND ${peQueueRedisposePredicate()}`,
+      `UPDATE catalog_pe_specialization_review_queue SET disposition=${sqlString(proposal.disposition)},disposition_reason=${sqlString(proposal.reason)},disposition_evidence_json=${sqlString(JSON.stringify(proposal.evidence))},disposed_by=${sqlString(actor)},disposed_at=CURRENT_TIMESTAMP WHERE ${predicate}`,
     );
   }
   return statements;
