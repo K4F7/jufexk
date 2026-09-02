@@ -6,10 +6,12 @@
  *   pnpm closeout:pe-queue -- --remote --apply
  *
  * SELECT first, then write explicit per-row INSERT/UPDATE. Never d1 export.
+ * Umbrella 体育1–4 dispositions use catalog-baseline inventory venues when the
+ * local capture file exists; named direct_skill mappings are not rewritten.
  */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -24,7 +26,16 @@ import {
   type ProposedPeDisposition,
   FAMILY_EXPANSION_CLOSEOUT_ACTOR,
   PE_QUEUE_CLOSEOUT_REPORT_SCHEMA,
+  VENUE_EVIDENCE_CLOSEOUT_ACTOR,
 } from "../../src/lib/pe-queue-closeout";
+import {
+  aggregateUmbrellaVenueSkills,
+  DEFAULT_CATALOG_INVENTORY_PATH,
+  parseInventoryJsonl,
+  venueCountsFor,
+  type UmbrellaVenueSkillStats,
+} from "../../src/lib/pe-venue-evidence";
+import { isUmbrellaPeCourseName } from "../../src/lib/public-course-presentation";
 import {
   createWranglerD1ExecuteCommand,
   createWranglerD1ExecuteFileCommand,
@@ -154,6 +165,9 @@ export function missingDirectSkillRows(
 
 export function proposalsFromQueryBatches(
   batches: Array<{ results?: unknown[] }>,
+  options: {
+    venueStats?: Map<string, UmbrellaVenueSkillStats>;
+  } = {},
 ): ProposedPeDisposition[] {
   if (batches.length < 5) throw new Error(`收口查询应返回至少 5 组结果，实际 ${batches.length}`);
   const queueRows = asRecordRows(resultRows(batches[0])).map(parseQueueRow);
@@ -173,15 +187,19 @@ export function proposalsFromQueryBatches(
       }),
     )
     .filter((item): item is PeCloseoutEvidenceItem => item != null);
-  const targetRows = queueRows.filter((row) =>
-    isRedisposablePeQueueDisposition(row.disposition),
-  );
+  const venueStats = options.venueStats;
+  const targetRows = venueStats
+    ? queueRows.filter((row) => isUmbrellaPeCourseName(row.courseName))
+    : queueRows.filter((row) => isRedisposablePeQueueDisposition(row.disposition));
   return targetRows.map((row) => {
     const own = mappings.filter(
       (mapping) =>
         asInt(mapping.course_id, "course_id") === row.courseId &&
         asInt(mapping.teacher_id, "teacher_id") === row.teacherId,
     );
+    const currentSpecialization = own.length
+      ? asString(own[0].normalized_specialization, "normalized_specialization")
+      : null;
     const siblings = mappings.filter(
       (mapping) =>
         asInt(mapping.teacher_id, "teacher_id") === row.teacherId &&
@@ -190,22 +208,44 @@ export function proposalsFromQueryBatches(
     );
     return proposeHistoricalDisposition({
       row,
-      evidence: collectRowEvidence({
-        row,
-        existingMappings: own
-          .map((mapping) => skillItem("existing_mapping", mapping, asString(mapping.normalized_specialization, "normalized_specialization")))
-          .filter((item): item is PeCloseoutEvidenceItem => item != null),
-        siblingMappings: [
-          ...siblings
-            .map((mapping) => skillItem("catalog_course_name", mapping, asString(mapping.normalized_specialization, "normalized_specialization")))
-            .filter((item): item is PeCloseoutEvidenceItem => item != null),
-          ...catalogSkills,
-        ],
-        historicalBindings: historical,
-        offeringSkills: offerings,
-      }),
+      currentSpecialization,
+      venueSkillCounts: venueStats
+        ? venueCountsFor(venueStats, row.sourceTeacherLabel, row.courseName)
+        : undefined,
+      evidence: venueStats
+        ? []
+        : collectRowEvidence({
+            row,
+            existingMappings: own
+              .map((mapping) => skillItem("existing_mapping", mapping, asString(mapping.normalized_specialization, "normalized_specialization")))
+              .filter((item): item is PeCloseoutEvidenceItem => item != null),
+            siblingMappings: [
+              ...siblings
+                .map((mapping) => skillItem("catalog_course_name", mapping, asString(mapping.normalized_specialization, "normalized_specialization")))
+                .filter((item): item is PeCloseoutEvidenceItem => item != null),
+              ...catalogSkills,
+            ],
+            historicalBindings: historical,
+            offeringSkills: offerings,
+          }),
     });
   });
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function loadUmbrellaVenueStats(
+  inventoryPath: string,
+): Promise<Map<string, UmbrellaVenueSkillStats>> {
+  const text = await readFile(inventoryPath, "utf8");
+  return aggregateUmbrellaVenueSkills(parseInventoryJsonl(text));
 }
 
 async function executeSql(sql: string, remote: boolean) {
@@ -243,6 +283,7 @@ export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
       apply: { type: "boolean", default: false },
       "print-sql": { type: "boolean", default: false },
       output: { type: "string" },
+      inventory: { type: "string" },
     },
   });
   const sql = buildPeQueueCloseoutSelectSql();
@@ -251,13 +292,26 @@ export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
     if (values.output) await writeFile(values.output, `${sql}\n`, "utf8");
     return { sql, printed: sql };
   }
+  const inventoryPath = resolve(values.inventory || DEFAULT_CATALOG_INVENTORY_PATH);
+  const hasInventory = await fileExists(inventoryPath);
+  if (values.apply && !hasInventory) {
+    throw new Error(`伞形场地收口写入需要 inventory.jsonl: ${inventoryPath}`);
+  }
+  const venueStats = hasInventory ? await loadUmbrellaVenueStats(inventoryPath) : undefined;
+  if (values.apply && (!venueStats || venueStats.size === 0)) {
+    throw new Error(`inventory 没有伞形场地专项计数，拒绝写入: ${inventoryPath}`);
+  }
   const batches = await executeSql(sql, true);
   const mappings = asRecordRows(resultRows(batches[1]));
   const missingSkills = missingDirectSkillRows(
     catalogSkillRowsFromBatch(batches[4]),
     mappings,
   );
-  const proposals = proposalsFromQueryBatches(batches);
+  const proposals = proposalsFromQueryBatches(batches, { venueStats });
+  const rewriteMappedUmbrellas = Boolean(venueStats);
+  const actor = rewriteMappedUmbrellas
+    ? VENUE_EVIDENCE_CLOSEOUT_ACTOR
+    : FAMILY_EXPANSION_CLOSEOUT_ACTOR;
   const report = {
     schemaVersion: PE_QUEUE_CLOSEOUT_REPORT_SCHEMA,
     generatedAt: new Date().toISOString(),
@@ -282,7 +336,7 @@ export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
   let applied = 0;
   const writes = [
     ...buildDirectSkillMappingWriteSql(missingSkills),
-    ...buildDispositionWriteSql(proposals, FAMILY_EXPANSION_CLOSEOUT_ACTOR),
+    ...buildDispositionWriteSql(proposals, actor, { rewriteMappedUmbrellas }),
   ];
   if (values.apply) {
     for (const chunk of chunkStatements(writes)) {
@@ -295,6 +349,8 @@ export async function runPeQueueCloseout(argv = process.argv.slice(2)) {
       report,
       applied,
       apply: Boolean(values.apply),
+      inventoryPath: hasInventory ? inventoryPath : null,
+      actor,
       directSkillInserts: missingSkills.map((row) => ({
         courseCode: row.courseCode,
         courseName: row.courseName,

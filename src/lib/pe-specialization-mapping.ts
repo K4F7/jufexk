@@ -14,6 +14,7 @@ export const RELATION_PE_EVIDENCE_KINDS = [
   "virtual_pe_sports",
   "historical_visible_binding",
   "offering_skill_name",
+  "inventory_venue",
 ] as const;
 
 export type RelationPeSourceKind = (typeof RELATION_PE_SOURCE_KINDS)[number];

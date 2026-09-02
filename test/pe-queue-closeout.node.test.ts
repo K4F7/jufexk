@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   FAMILY_EXPANSION_CLOSEOUT_ACTOR,
   HISTORICAL_WITHHOLD_REASON,
   UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_REASON,
+  VENUE_EVIDENCE_CLOSEOUT_ACTOR,
   buildPeQueueCloseoutReport,
   catalogAdditionMapping,
   formatPeQueueCloseoutMarkdown,
@@ -11,7 +15,11 @@ import {
   reportContainsForbiddenPayload,
   type PeQueueRow,
 } from "../src/lib/pe-queue-closeout";
-import { resolve } from "node:path";
+import {
+  aggregateUmbrellaVenueSkills,
+  parseInventoryJsonl,
+  venueSkillFromLocation,
+} from "../src/lib/pe-venue-evidence";
 import { createWranglerD1ExecuteFileCommand } from "../scripts/pe-mapping-audit/execute";
 import {
   assertCloseoutSelectSql,
@@ -19,6 +27,7 @@ import {
   buildDispositionWriteSql,
   buildPeQueueCloseoutSelectSql,
 } from "../scripts/pe-queue-closeout/sql";
+import { proposalsFromQueryBatches } from "../scripts/pe-queue-closeout/run";
 
 const row = (label: string, courseCode = "PE-1"): PeQueueRow => ({
   courseId: 11,
@@ -385,5 +394,164 @@ describe("closeout SELECT SQL", () => {
       "batch.sql",
     ]);
     expect(command.args).not.toContain("--command");
+  });
+
+  it("rewrites mapped umbrella rows from venue evidence without touching direct_skill SQL", () => {
+    const pingpong = proposeHistoricalDisposition({
+      row: {
+        ...row("曹永臻"),
+        disposition: "mapped",
+        dispositionReason: "catalog_course_name:游泳",
+      },
+      evidence: [
+        {
+          kind: "catalog_course_name",
+          specialization: "游泳",
+          sourceCourseCode: "PE-SWIM",
+          sourceCourseName: "游泳",
+          sourceTeacherLabel: "曹永臻",
+        },
+      ],
+      currentSpecialization: "游泳",
+      venueSkillCounts: { 乒乓球: 8 },
+    });
+    expect(isNoOpCloseoutProposal(pingpong)).toBe(true);
+    expect(isNoOpCloseoutProposal(pingpong, { rewriteMappedUmbrellas: true })).toBe(false);
+    const writes = buildDispositionWriteSql(
+      [pingpong],
+      VENUE_EVIDENCE_CLOSEOUT_ACTOR,
+      { rewriteMappedUmbrellas: true },
+    );
+    expect(writes).toHaveLength(2);
+    expect(writes[0]).toContain("ON CONFLICT(course_id,teacher_id) DO UPDATE");
+    expect(writes[0]).toContain("'乒乓球'");
+    expect(writes[0]).toContain('"kind":"inventory_venue"');
+    expect(writes[0]).toContain("source_kind='umbrella'");
+    expect(writes[1]).toContain(VENUE_EVIDENCE_CLOSEOUT_ACTOR);
+    expect(writes[1]).not.toContain("disposition IS NULL");
+    expect(writes[1]).not.toContain("withheld_permanent_exception");
+    expect(writes.join("\n")).not.toMatch(/\bcomment\b/);
+
+    const same = proposeHistoricalDisposition({
+      row: {
+        ...row("肖舒鹏"),
+        disposition: "mapped",
+        dispositionReason: "catalog_course_name:跆拳道",
+      },
+      evidence: [],
+      currentSpecialization: "跆拳道",
+      venueSkillCounts: { 跆拳道: 10 },
+    });
+    expect(isNoOpCloseoutProposal(same, { rewriteMappedUmbrellas: true })).toBe(true);
+    expect(
+      buildDispositionWriteSql([same], VENUE_EVIDENCE_CLOSEOUT_ACTOR, {
+        rewriteMappedUmbrellas: true,
+      }),
+    ).toEqual([]);
+
+    const withheld = proposeHistoricalDisposition({
+      row: {
+        ...row("张晓英"),
+        disposition: "mapped",
+        dispositionReason: "catalog_course_name:篮球",
+      },
+      evidence: [],
+      currentSpecialization: "篮球",
+      venueSkillCounts: { 篮球: 24, 排球: 24 },
+    });
+    const withheldWrites = buildDispositionWriteSql(
+      [withheld],
+      VENUE_EVIDENCE_CLOSEOUT_ACTOR,
+      { rewriteMappedUmbrellas: true },
+    );
+    expect(withheldWrites[0]).toContain("DELETE FROM catalog_relation_pe_specializations");
+    expect(withheldWrites[0]).toContain("source_kind='umbrella'");
+    expect(withheldWrites[1]).toContain("withheld_permanent_exception");
+  });
+});
+
+describe("inventory venue jsonl fixture", () => {
+  it("parses only umbrella venue skills from the small fixture", () => {
+    const text = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "fixtures/pe-venue-inventory.jsonl"),
+      "utf8",
+    );
+    const stats = aggregateUmbrellaVenueSkills(parseInventoryJsonl(text));
+    expect(venueSkillFromLocation("蛟散打室T025(蛟桥园校区)")).toBe("散打");
+    expect(venueSkillFromLocation("麦武术室T037(麦庐园校区)")).toBe("武术");
+    expect(stats.get("张晓英\t体育1")?.counts).toEqual({ 篮球: 2, 排球: 2 });
+    expect(stats.get("谢辉\t体育1")?.counts).toEqual({ 跆拳道: 4, 散打: 1 });
+    expect(stats.get("曹永臻\t体育1")?.counts).toEqual({ 乒乓球: 1 });
+    expect(stats.has("谢辉\t游泳")).toBe(false);
+    expect(stats.has("周进\t运动生理学")).toBe(false);
+  });
+
+  it("proposes umbrella venue remaps from SELECT batches without rewriting named skills", () => {
+    const batches = [
+      {
+        results: [
+          {
+            course_id: 1,
+            teacher_id: 2,
+            course_code: "PE-1",
+            course_name: "体育1",
+            source_teacher_label: "曹永臻",
+            reason: "umbrella_unmapped",
+            disposition: "mapped",
+            disposition_reason: "catalog_course_name:游泳",
+          },
+        ],
+      },
+      {
+        results: [
+          {
+            course_id: 1,
+            teacher_id: 2,
+            course_code: "PE-1",
+            course_name: "体育1",
+            source_teacher_label: "曹永臻",
+            source_kind: "umbrella",
+            normalized_specialization: "游泳",
+          },
+          {
+            course_id: 9,
+            teacher_id: 2,
+            course_code: "PE-SWIM",
+            course_name: "游泳",
+            source_teacher_label: "曹永臻",
+            source_kind: "direct_skill",
+            normalized_specialization: "游泳",
+          },
+        ],
+      },
+      { results: [] },
+      { results: [] },
+      {
+        results: [
+          {
+            course_id: 9,
+            teacher_id: 2,
+            course_code: "PE-SWIM",
+            course_name: "游泳",
+            source_teacher_label: "曹永臻",
+          },
+        ],
+      },
+    ];
+    const withoutVenue = proposalsFromQueryBatches(batches);
+    expect(withoutVenue).toEqual([]);
+    const withVenue = proposalsFromQueryBatches(batches, {
+      venueStats: aggregateUmbrellaVenueSkills(
+        parseInventoryJsonl(
+          '{"normalizedCourseName":"体育1","normalizedTeacherLabels":["曹永臻"],"sourceLocation":"麦乒乓球场T020(麦庐园校区)"}\n',
+        ),
+      ),
+    });
+    expect(withVenue).toHaveLength(1);
+    expect(withVenue[0]).toMatchObject({
+      specialization: "乒乓球",
+      currentSpecialization: "游泳",
+      disposition: "mapped",
+    });
   });
 });

@@ -6,6 +6,11 @@ import {
   type RelationPeSpecializationMapping,
 } from "./pe-specialization-mapping";
 import {
+  formatVenueSkillCounts,
+  majorityVenueSkill,
+  VENUE_SKILL_MAJORITY_THRESHOLD,
+} from "./pe-venue-evidence";
+import {
   isUmbrellaPeCourseName,
   publicPeSkillLabel,
   VIRTUAL_PE_SPORTS,
@@ -23,6 +28,12 @@ export const HISTORICAL_WITHHOLD_REASON =
 export const HISTORICAL_CLOSEOUT_ACTOR = "historical-closeout-#852";
 
 export const FAMILY_EXPANSION_CLOSEOUT_ACTOR = "historical-closeout-#860";
+
+export const VENUE_EVIDENCE_CLOSEOUT_ACTOR = "historical-closeout-#862";
+
+export const MIXED_VENUE_WITHHOLD_REASON = `umbrella venues below ${Math.round(VENUE_SKILL_MAJORITY_THRESHOLD * 100)}% unique skill`;
+
+export const NO_VENUE_SKILL_WITHHOLD_REASON = "no unique venue skill evidence";
 
 /** Named skill courses stay public; these umbrellas cannot be attributed. */
 export const UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_TEACHERS = ["张晓英"] as const;
@@ -70,6 +81,7 @@ export type ProposedPeDisposition = {
   disposition: PeQueueDisposition;
   currentDisposition: PeQueueDisposition | null;
   currentReason: string;
+  currentSpecialization: string | null;
   specialization: string | null;
   reason: string;
   evidence: PeCloseoutEvidenceItem[];
@@ -156,6 +168,7 @@ function mappingEvidenceKind(
   if (kind === "virtual_pe_sports") return "virtual_pe_sports";
   if (kind === "historical_visible_binding") return "historical_visible_binding";
   if (kind === "offering_skill_name") return "offering_skill_name";
+  if (kind === "inventory_venue") return "inventory_venue";
   return "human_decision";
 }
 
@@ -181,6 +194,7 @@ export function mappingFromCloseoutEvidence(input: {
 
 function proposedBase(
   row: PeQueueRow,
+  currentSpecialization: string | null = null,
 ): Pick<
   ProposedPeDisposition,
   | "courseId"
@@ -190,6 +204,7 @@ function proposedBase(
   | "sourceTeacherLabel"
   | "currentDisposition"
   | "currentReason"
+  | "currentSpecialization"
 > {
   return {
     courseId: row.courseId,
@@ -199,20 +214,82 @@ function proposedBase(
     sourceTeacherLabel: row.sourceTeacherLabel,
     currentDisposition: row.disposition,
     currentReason: row.dispositionReason,
+    currentSpecialization,
+  };
+}
+
+function proposeUmbrellaVenueDisposition(input: {
+  row: PeQueueRow;
+  venueSkillCounts: Record<string, number>;
+  currentSpecialization?: string | null;
+}): ProposedPeDisposition {
+  const base = proposedBase(input.row, input.currentSpecialization ?? null);
+  const majority = majorityVenueSkill(input.venueSkillCounts);
+  if (majority) {
+    const evidence: PeCloseoutEvidenceItem = {
+      kind: "inventory_venue",
+      specialization: majority.skill,
+      sourceCourseCode: input.row.courseCode,
+      sourceCourseName: input.row.courseName,
+      sourceTeacherLabel: input.row.sourceTeacherLabel,
+    };
+    return {
+      ...base,
+      disposition: "mapped",
+      specialization: majority.skill,
+      reason: `inventory_venue:${majority.skill} (${majority.count}/${majority.total})`,
+      evidence: [evidence],
+      mapping: mappingFromCloseoutEvidence({
+        row: input.row,
+        specialization: majority.skill,
+        evidence,
+      }),
+    };
+  }
+  const counts = formatVenueSkillCounts(input.venueSkillCounts);
+  return {
+    ...base,
+    disposition: "withheld_permanent_exception",
+    specialization: null,
+    reason: counts
+      ? `${MIXED_VENUE_WITHHOLD_REASON}: ${counts}`
+      : NO_VENUE_SKILL_WITHHOLD_REASON,
+    evidence: [
+      {
+        kind: "no_explicit_specialization_evidence",
+        specialization: "",
+        sourceCourseCode: input.row.courseCode,
+        sourceCourseName: input.row.courseName,
+        sourceTeacherLabel: input.row.sourceTeacherLabel,
+      },
+    ],
+    mapping: null,
   };
 }
 
 export function proposeHistoricalDisposition(input: {
   row: PeQueueRow;
   evidence: PeCloseoutEvidenceItem[];
+  venueSkillCounts?: Record<string, number>;
+  currentSpecialization?: string | null;
 }): ProposedPeDisposition {
+  if (
+    isUmbrellaPeCourseName(input.row.courseName) &&
+    input.venueSkillCounts !== undefined
+  ) {
+    return proposeUmbrellaVenueDisposition({
+      row: input.row,
+      venueSkillCounts: input.venueSkillCounts,
+      currentSpecialization: input.currentSpecialization,
+    });
+  }
   const existing = input.evidence.filter(
     (item) => item.kind === "existing_mapping",
   );
   const rest = input.evidence.filter((item) => item.kind !== "existing_mapping");
   const chosen = existing.length ? existing : rest;
   const specializations = uniqueSpecializations(chosen);
-  const base = proposedBase(input.row);
+  const base = proposedBase(input.row, input.currentSpecialization ?? null);
   if (
     isUmbrellaPeCourseName(input.row.courseName) &&
     isUmbrellaUnattributableMultiSkillTeacher(input.row.sourceTeacherLabel)
@@ -272,8 +349,21 @@ export function proposeHistoricalDisposition(input: {
   };
 }
 
-export function isNoOpCloseoutProposal(proposal: ProposedPeDisposition): boolean {
-  if (proposal.currentDisposition === "mapped") return true;
+export function isNoOpCloseoutProposal(
+  proposal: ProposedPeDisposition,
+  options?: { rewriteMappedUmbrellas?: boolean },
+): boolean {
+  if (proposal.currentDisposition === "mapped" && !options?.rewriteMappedUmbrellas) {
+    return true;
+  }
+  if (
+    options?.rewriteMappedUmbrellas &&
+    proposal.currentDisposition === "mapped" &&
+    proposal.disposition === "mapped" &&
+    proposal.currentSpecialization === proposal.specialization
+  ) {
+    return true;
+  }
   return (
     proposal.currentDisposition === proposal.disposition &&
     proposal.currentReason === proposal.reason
