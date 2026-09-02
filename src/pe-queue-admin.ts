@@ -2,7 +2,9 @@ import {
   catalogAdditionMapping,
   collectRowEvidence,
   countCloseoutRows,
+  isNoOpCloseoutProposal,
   isPeQueueDisposition,
+  isRedisposablePeQueueDisposition,
   mappingFromCloseoutEvidence,
   parsePeQueueDisposition,
   proposeHistoricalDisposition,
@@ -16,6 +18,7 @@ import {
   PE_QUEUE_CLOSEOUT_REPORT_SCHEMA,
 } from "./lib/pe-queue-closeout";
 import {
+  buildDirectSkillMappingBackfillSql,
   normalizeConfirmedPeSpecialization,
   type RelationPeSpecializationMapping,
 } from "./lib/pe-specialization-mapping";
@@ -170,6 +173,22 @@ async function loadOfferingSkillEvidence(
     .filter((item): item is PeCloseoutEvidenceItem => item != null);
 }
 
+async function loadCatalogSkillEvidence(
+  db: D1Database,
+): Promise<PeCloseoutEvidenceItem[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ct.teacher_id,t.source_teacher_label,c.code course_code,c.name course_name
+       FROM course_teachers ct
+       JOIN courses c ON c.id=ct.course_id
+       JOIN teachers t ON t.id=ct.teacher_id`,
+    )
+    .all<SkillNameRow>();
+  return (results ?? [])
+    .map((row) => skillEvidence("catalog_course_name", row))
+    .filter((item): item is PeCloseoutEvidenceItem => item != null);
+}
+
 function mappingEvidenceItems(
   rows: MappingSqlRow[],
   kind: "existing_mapping" | "catalog_course_name",
@@ -186,13 +205,17 @@ function mappingEvidenceItems(
 export async function proposeHistoricalCloseout(
   db: D1Database,
 ): Promise<ProposedPeDisposition[]> {
-  const [openRows, mappings, historical, offerings] = await Promise.all([
-    loadPeQueueRows(db, "open"),
+  const [allRows, mappings, historical, offerings, catalogSkills] = await Promise.all([
+    loadPeQueueRows(db, "all"),
     loadMappingEvidence(db),
     loadHistoricalSkillBindings(db),
     loadOfferingSkillEvidence(db),
+    loadCatalogSkillEvidence(db),
   ]);
-  return openRows.map((row) => {
+  const targetRows = allRows.filter((row) =>
+    isRedisposablePeQueueDisposition(row.disposition),
+  );
+  return targetRows.map((row) => {
     const own = mappings.filter(
       (mapping) =>
         mapping.course_id === row.courseId && mapping.teacher_id === row.teacherId,
@@ -208,7 +231,10 @@ export async function proposeHistoricalCloseout(
       evidence: collectRowEvidence({
         row,
         existingMappings: mappingEvidenceItems(own, "existing_mapping"),
-        siblingMappings: mappingEvidenceItems(siblings, "catalog_course_name"),
+        siblingMappings: [
+          ...mappingEvidenceItems(siblings, "catalog_course_name"),
+          ...catalogSkills,
+        ],
         historicalBindings: historical,
         offeringSkills: offerings,
       }),
@@ -257,7 +283,8 @@ function queueUpdateStatement(
       `UPDATE catalog_pe_specialization_review_queue
        SET disposition=?,disposition_reason=?,disposition_evidence_json=?,
            disposed_by=?,disposed_at=CURRENT_TIMESTAMP
-       WHERE course_id=? AND teacher_id=? AND disposition IS NULL`,
+       WHERE course_id=? AND teacher_id=?
+         AND (disposition IS NULL OR disposition IN ('withheld_permanent_exception','conflict_recapture'))`,
     )
     .bind(
       input.disposition,
@@ -299,7 +326,9 @@ export async function applyPeQueueDisposition(
   );
   if (!row) return { error: "队列记录不存在", status: 404 };
   const current = asQueueRow(row);
-  if (current.disposition) return { error: "该记录已处置，不能重复处理", status: 409 };
+  if (current.disposition === "mapped") {
+    return { error: "已映射记录不能直接改写", status: 409 };
+  }
 
   let mapping: RelationPeSpecializationMapping | null = null;
   let specialization: string | null = null;
@@ -366,7 +395,7 @@ export async function applyPeQueueDisposition(
   );
   const results = await db.batch(statements);
   const updated = results.at(-1)?.meta.changes || 0;
-  if (!updated) return { error: "该记录已处置，不能重复处理", status: 409 };
+  if (!updated) return { error: "已映射记录不能直接改写", status: 409 };
   return { ok: true, disposition: input.disposition };
 }
 
@@ -379,12 +408,17 @@ export async function applyHistoricalPeQueueCloseout(
   conflict: number;
   skipped: number;
 }> {
+  await db.prepare(buildDirectSkillMappingBackfillSql()).run();
   const proposals = await proposeHistoricalCloseout(db);
   let mapped = 0;
   let withheld = 0;
   let conflict = 0;
   let skipped = 0;
   for (const proposal of proposals) {
+    if (isNoOpCloseoutProposal(proposal)) {
+      skipped += 1;
+      continue;
+    }
     const result = await applyPeQueueDisposition(db, {
       courseId: proposal.courseId,
       teacherId: proposal.teacherId,

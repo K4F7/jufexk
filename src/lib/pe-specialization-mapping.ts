@@ -146,6 +146,40 @@ export function peDirectSkillNormalizedSql(alias = "c"): string {
   return publicPeSkillFamilySql(alias);
 }
 
+/** Upgrade-safe INSERT OR IGNORE for catalog direct-skill Relations. */
+export function buildDirectSkillMappingBackfillSql(): string {
+  const family = peDirectSkillNormalizedSql("c");
+  return `INSERT OR IGNORE INTO catalog_relation_pe_specializations(
+  course_id, teacher_id, source_kind, normalized_specialization, display_semantics, evidence_json
+)
+SELECT
+  mapped.course_id,
+  mapped.teacher_id,
+  'direct_skill',
+  mapped.normalized_specialization,
+  'keep_source_name',
+  json_object(
+    'kind', 'catalog_course_name',
+    'sourceCourseCode', mapped.course_code,
+    'sourceCourseName', mapped.course_name,
+    'sourceTeacherLabel', mapped.source_teacher_label,
+    'rawSpecializationName', mapped.course_name
+  )
+FROM (
+  SELECT
+    ct.course_id,
+    ct.teacher_id,
+    c.code AS course_code,
+    c.name AS course_name,
+    t.source_teacher_label,
+    (${family}) AS normalized_specialization
+  FROM course_teachers ct
+  JOIN courses c ON c.id = ct.course_id
+  JOIN teachers t ON t.id = ct.teacher_id
+) mapped
+WHERE mapped.normalized_specialization IS NOT NULL`;
+}
+
 export function peUmbrellaCourseNamePredicate(alias = "c"): string {
   const names = UMBRELLA_PE_COURSE_NAMES.map(sqlStringLiteral).join(",");
   return `${alias}.name IN (${names})`;

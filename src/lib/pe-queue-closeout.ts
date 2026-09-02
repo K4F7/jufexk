@@ -6,6 +6,7 @@ import {
   type RelationPeSpecializationMapping,
 } from "./pe-specialization-mapping";
 import {
+  isUmbrellaPeCourseName,
   publicPeSkillLabel,
   VIRTUAL_PE_SPORTS,
 } from "./public-course-presentation";
@@ -20,6 +21,14 @@ export const HISTORICAL_WITHHOLD_REASON =
   "no explicit specialization evidence at historical closeout";
 
 export const HISTORICAL_CLOSEOUT_ACTOR = "historical-closeout-#852";
+
+export const FAMILY_EXPANSION_CLOSEOUT_ACTOR = "historical-closeout-#860";
+
+/** Named skill courses stay public; these umbrellas cannot be attributed. */
+export const UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_TEACHERS = ["张晓英"] as const;
+
+export const UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_REASON =
+  "umbrella offerings cannot be attributed when the teacher has two skill courses";
 
 export const PE_QUEUE_CLOSEOUT_REPORT_SCHEMA = "pe-queue-closeout-report/v1" as const;
 
@@ -59,6 +68,8 @@ export type ProposedPeDisposition = {
   courseName: string;
   sourceTeacherLabel: string;
   disposition: PeQueueDisposition;
+  currentDisposition: PeQueueDisposition | null;
+  currentReason: string;
   specialization: string | null;
   reason: string;
   evidence: PeCloseoutEvidenceItem[];
@@ -100,6 +111,28 @@ export function isPeQueueDisposition(value: unknown): value is PeQueueDispositio
 export function parsePeQueueDisposition(value: unknown): PeQueueDisposition | null {
   if (value == null || value === "") return null;
   return isPeQueueDisposition(value) ? value : null;
+}
+
+export function isRedisposablePeQueueDisposition(
+  value: PeQueueDisposition | null,
+): boolean {
+  return value !== "mapped";
+}
+
+export function isUmbrellaUnattributableMultiSkillTeacher(
+  label?: string | null,
+): boolean {
+  const trimmed = label?.trim() ?? "";
+  return (UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_TEACHERS as readonly string[]).includes(
+    trimmed,
+  );
+}
+
+export function umbrellaUnattributableReason(skills: string[]): string {
+  const labels = [...new Set(skills.filter(Boolean))];
+  return labels.length
+    ? `${UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_REASON}: ${labels.join("、")}`
+    : UMBRELLA_UNATTRIBUTABLE_MULTI_SKILL_REASON;
 }
 
 export function virtualPeSportForTeacherLabel(label?: string | null) {
@@ -146,6 +179,29 @@ export function mappingFromCloseoutEvidence(input: {
   });
 }
 
+function proposedBase(
+  row: PeQueueRow,
+): Pick<
+  ProposedPeDisposition,
+  | "courseId"
+  | "teacherId"
+  | "courseCode"
+  | "courseName"
+  | "sourceTeacherLabel"
+  | "currentDisposition"
+  | "currentReason"
+> {
+  return {
+    courseId: row.courseId,
+    teacherId: row.teacherId,
+    courseCode: row.courseCode,
+    courseName: row.courseName,
+    sourceTeacherLabel: row.sourceTeacherLabel,
+    currentDisposition: row.disposition,
+    currentReason: row.dispositionReason,
+  };
+}
+
 export function proposeHistoricalDisposition(input: {
   row: PeQueueRow;
   evidence: PeCloseoutEvidenceItem[];
@@ -156,16 +212,27 @@ export function proposeHistoricalDisposition(input: {
   const rest = input.evidence.filter((item) => item.kind !== "existing_mapping");
   const chosen = existing.length ? existing : rest;
   const specializations = uniqueSpecializations(chosen);
+  const base = proposedBase(input.row);
+  if (
+    isUmbrellaPeCourseName(input.row.courseName) &&
+    isUmbrellaUnattributableMultiSkillTeacher(input.row.sourceTeacherLabel)
+  ) {
+    const skills = uniqueSpecializations(rest.length ? rest : chosen);
+    return {
+      ...base,
+      disposition: "withheld_permanent_exception",
+      specialization: null,
+      reason: umbrellaUnattributableReason(skills),
+      evidence: chosen.length ? chosen : rest,
+      mapping: null,
+    };
+  }
   if (specializations.length === 1) {
     const specialization = specializations[0];
     const evidence = chosen.filter((item) => item.specialization === specialization);
     const primary = evidence[0];
     return {
-      courseId: input.row.courseId,
-      teacherId: input.row.teacherId,
-      courseCode: input.row.courseCode,
-      courseName: input.row.courseName,
-      sourceTeacherLabel: input.row.sourceTeacherLabel,
+      ...base,
       disposition: "mapped",
       specialization,
       reason: `${primary.kind}:${specialization}`,
@@ -179,11 +246,7 @@ export function proposeHistoricalDisposition(input: {
   }
   if (specializations.length > 1) {
     return {
-      courseId: input.row.courseId,
-      teacherId: input.row.teacherId,
-      courseCode: input.row.courseCode,
-      courseName: input.row.courseName,
-      sourceTeacherLabel: input.row.sourceTeacherLabel,
+      ...base,
       disposition: "conflict_recapture",
       specialization: null,
       reason: `conflicting specialization evidence: ${specializations.join("、")}`,
@@ -192,11 +255,7 @@ export function proposeHistoricalDisposition(input: {
     };
   }
   return {
-    courseId: input.row.courseId,
-    teacherId: input.row.teacherId,
-    courseCode: input.row.courseCode,
-    courseName: input.row.courseName,
-    sourceTeacherLabel: input.row.sourceTeacherLabel,
+    ...base,
     disposition: "withheld_permanent_exception",
     specialization: null,
     reason: HISTORICAL_WITHHOLD_REASON,
@@ -211,6 +270,14 @@ export function proposeHistoricalDisposition(input: {
     ],
     mapping: null,
   };
+}
+
+export function isNoOpCloseoutProposal(proposal: ProposedPeDisposition): boolean {
+  if (proposal.currentDisposition === "mapped") return true;
+  return (
+    proposal.currentDisposition === proposal.disposition &&
+    proposal.currentReason === proposal.reason
+  );
 }
 
 export function collectRowEvidence(input: {

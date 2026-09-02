@@ -49,6 +49,10 @@ describe("public PE course presentation", () => {
     expect(isPublicSportsSkillName("健美操")).toBe(true);
     expect(isPublicSportsSkillName("瑜伽")).toBe(true);
     expect(isPublicSportsSkillName("武术")).toBe(true);
+    expect(isPublicSportsSkillName("跆拳道2")).toBe(true);
+    expect(isPublicSportsSkillName("游泳")).toBe(true);
+    expect(isPublicSportsSkillName("田径1（体适能为主）")).toBe(true);
+    expect(isPublicSportsSkillName("国际标准舞")).toBe(false);
     expect(isPublicSportsSkillName("体育1")).toBe(false);
     expect(isPublicSportsSkillName("竞技网球发展概论")).toBe(false);
     expect(publicCourseCategory("网球", "general")).toBe("sports");
@@ -67,6 +71,15 @@ describe("public PE course presentation", () => {
     expect(publicPeSkillLabel("羽毛球1")).toBe("羽毛球");
     expect(publicPeSkillLabel("健身教练")).toBe("健美操");
     expect(publicPeSkillLabel("健身教练2")).toBe("健美操");
+    expect(publicPeSkillLabel("跆拳道")).toBe("跆拳道");
+    expect(publicPeSkillLabel("跆拳道2")).toBe("跆拳道");
+    expect(publicPeSkillLabel("游泳")).toBe("游泳");
+    expect(publicPeSkillLabel("田径1（体适能为主）")).toBe("田径");
+    expect(publicPeSkillLabel("田径2（体适能为主）")).toBe("田径");
+    expect(publicPeSkillLabel("田径运动")).toBe(null);
+    expect(publicPeSkillLabel("国际标准舞")).toBe(null);
+    expect(publicPeSkillLabel("国际标准舞I")).toBe(null);
+    expect(publicPeSkillLabel("国际标准舞VI")).toBe(null);
     expect(publicPeSkillLabel("竞技网球发展概论")).toBe(null);
     expect(publicPeSkillDisplayName("击剑专项理论与实践1")).toBe(
       "体育1-4 [击剑]",

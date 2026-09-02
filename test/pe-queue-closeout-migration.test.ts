@@ -5,10 +5,17 @@ declare const TEST_D1_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
 
 it("adds disposition columns, freezes live enqueue, and does not insert new queue rows", async () => {
   const migrations = [...TEST_D1_MIGRATIONS];
+  const later = migrations.filter((migration) =>
+    migration.name.includes("0058_pe_direct_skill_family_backfill.sql"),
+  );
   const index = migrations.findIndex((migration) =>
     migration.name.includes("0057_pe_specialization_queue_closeout.sql"),
   );
   const [migration] = migrations.splice(index, 1);
+  for (const extra of later) {
+    const extraIndex = migrations.findIndex((item) => item.name === extra.name);
+    if (extraIndex >= 0) migrations.splice(extraIndex, 1);
+  }
   expect(migration?.name).toContain("0057_pe_specialization_queue_closeout.sql");
   const db = (env as unknown as { PE_QUEUE_CLOSEOUT_MIGRATION_DB: D1Database })
     .PE_QUEUE_CLOSEOUT_MIGRATION_DB;

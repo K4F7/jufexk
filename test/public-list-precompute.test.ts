@@ -35,6 +35,7 @@ describe("public list refresh coordination", () => {
     ["PUT", "/api/admin/courses/42/teachers"],
     ["POST", "/api/admin/catalog-baseline/uploads/batch-42/publish"],
     ["POST", "/api/admin/pe-specialization-queue/dispositions"],
+    ["PATCH", "/api/admin/pe-specialization-queue/dispositions"],
     ["POST", "/api/admin/pe-specialization-queue/closeout"],
   ])("refreshes after %s %s", (method, path) => {
     expect(shouldRefreshPublicListPrecomputes(method, path)).toBe(true);

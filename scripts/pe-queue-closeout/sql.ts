@@ -1,5 +1,7 @@
+import { mappingFromDirectSkillCourseName } from "../../src/lib/pe-specialization-mapping";
 import {
-  HISTORICAL_CLOSEOUT_ACTOR,
+  FAMILY_EXPANSION_CLOSEOUT_ACTOR,
+  isNoOpCloseoutProposal,
   type ProposedPeDisposition,
 } from "../../src/lib/pe-queue-closeout";
 
@@ -59,6 +61,19 @@ export function assertCloseoutSelectSql(sql: string): void {
   }
 }
 
+export function buildCatalogSkillRelationSelectSql(): string {
+  return `SELECT
+  ct.course_id AS course_id,
+  ct.teacher_id AS teacher_id,
+  c.code AS course_code,
+  c.name AS course_name,
+  t.source_teacher_label AS source_teacher_label
+FROM course_teachers ct
+JOIN courses c ON c.id = ct.course_id
+JOIN teachers t ON t.id = ct.teacher_id
+ORDER BY c.code, t.source_teacher_label, ct.course_id, ct.teacher_id`;
+}
+
 export function buildPeQueueCloseoutSelectSql(): string {
   const sql = `SELECT
   q.course_id AS course_id,
@@ -67,7 +82,8 @@ export function buildPeQueueCloseoutSelectSql(): string {
   q.course_name AS course_name,
   q.source_teacher_label AS source_teacher_label,
   q.reason AS reason,
-  q.disposition AS disposition
+  q.disposition AS disposition,
+  q.disposition_reason AS disposition_reason
 FROM catalog_pe_specialization_review_queue q
 ORDER BY q.course_code, q.source_teacher_label, q.course_id, q.teacher_id;
 SELECT
@@ -97,6 +113,7 @@ SELECT
   o.course_name AS course_name
 FROM jwxt_sync_offerings o
 WHERE o.status = 'active';
+${buildCatalogSkillRelationSelectSql()};
 SELECT live_enqueue_enabled AS live_enqueue_enabled
 FROM catalog_pe_specialization_queue_state
 WHERE singleton = 1`;
@@ -104,12 +121,41 @@ WHERE singleton = 1`;
   return sql;
 }
 
+export function peQueueRedisposePredicate(): string {
+  return "(disposition IS NULL OR disposition IN ('withheld_permanent_exception','conflict_recapture'))";
+}
+
+export function buildDirectSkillMappingWriteSql(
+  rows: Array<{
+    courseId: number;
+    teacherId: number;
+    courseCode: string;
+    courseName: string;
+    sourceTeacherLabel: string;
+  }>,
+): string[] {
+  const statements: string[] = [];
+  for (const row of rows) {
+    const mapping = mappingFromDirectSkillCourseName({
+      courseCode: row.courseCode,
+      courseName: row.courseName,
+      sourceTeacherLabel: row.sourceTeacherLabel,
+    });
+    if (!mapping) continue;
+    statements.push(
+      `INSERT OR IGNORE INTO catalog_relation_pe_specializations(course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json) VALUES(${row.courseId},${row.teacherId},${sqlString(mapping.sourceKind)},${sqlString(mapping.normalizedSpecialization)},${sqlString(mapping.displaySemantics)},${sqlString(JSON.stringify(mapping.evidence))})`,
+    );
+  }
+  return statements;
+}
+
 export function buildDispositionWriteSql(
   proposals: ProposedPeDisposition[],
-  actor = HISTORICAL_CLOSEOUT_ACTOR,
+  actor = FAMILY_EXPANSION_CLOSEOUT_ACTOR,
 ): string[] {
   const statements: string[] = [];
   for (const proposal of proposals) {
+    if (isNoOpCloseoutProposal(proposal)) continue;
     if (proposal.disposition === "mapped" && proposal.mapping) {
       const evidence = JSON.stringify(proposal.mapping.evidence);
       statements.push(
@@ -117,7 +163,7 @@ export function buildDispositionWriteSql(
       );
     }
     statements.push(
-      `UPDATE catalog_pe_specialization_review_queue SET disposition=${sqlString(proposal.disposition)},disposition_reason=${sqlString(proposal.reason)},disposition_evidence_json=${sqlString(JSON.stringify(proposal.evidence))},disposed_by=${sqlString(actor)},disposed_at=CURRENT_TIMESTAMP WHERE course_id=${proposal.courseId} AND teacher_id=${proposal.teacherId} AND disposition IS NULL`,
+      `UPDATE catalog_pe_specialization_review_queue SET disposition=${sqlString(proposal.disposition)},disposition_reason=${sqlString(proposal.reason)},disposition_evidence_json=${sqlString(JSON.stringify(proposal.evidence))},disposed_by=${sqlString(actor)},disposed_at=CURRENT_TIMESTAMP WHERE course_id=${proposal.courseId} AND teacher_id=${proposal.teacherId} AND ${peQueueRedisposePredicate()}`,
     );
   }
   return statements;

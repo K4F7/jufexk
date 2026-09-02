@@ -85,6 +85,7 @@ import {
   loadPeQueueState,
 } from "../pe-queue-admin";
 import {
+  FAMILY_EXPANSION_CLOSEOUT_ACTOR,
   HISTORICAL_CLOSEOUT_ACTOR,
   formatPeQueueCloseoutMarkdown,
 } from "../lib/pe-queue-closeout";
@@ -761,7 +762,8 @@ adminRoutes.get("/api/admin/pe-specialization-queue", async (c) => {
       disposition: row.disposition,
       dispositionReason: row.dispositionReason,
       disposedBy:
-        row.disposedBy === HISTORICAL_CLOSEOUT_ACTOR
+        row.disposedBy === HISTORICAL_CLOSEOUT_ACTOR ||
+        row.disposedBy === FAMILY_EXPANSION_CLOSEOUT_ACTOR
           ? row.disposedBy
           : row.disposedBy
             ? "admin"
@@ -779,7 +781,7 @@ adminRoutes.get("/api/admin/pe-specialization-queue/report", async (c) => {
     markdown: formatPeQueueCloseoutMarkdown(report),
   });
 });
-adminRoutes.post("/api/admin/pe-specialization-queue/dispositions", async (c) => {
+async function applyPeQueueDispositionBatch(c: AppContext) {
   const parsedBody = peQueueDispositionBatchSchema.safeParse(
     await c.req.json<unknown>(),
   );
@@ -802,9 +804,17 @@ adminRoutes.post("/api/admin/pe-specialization-queue/dispositions", async (c) =>
   markPublicCatalogCacheChanged(c);
   const report = await loadPeQueueCloseoutReport(c.env.DB);
   return c.json({ ok: true, applied, counts: report.counts });
-});
+}
+adminRoutes.post(
+  "/api/admin/pe-specialization-queue/dispositions",
+  applyPeQueueDispositionBatch,
+);
+adminRoutes.patch(
+  "/api/admin/pe-specialization-queue/dispositions",
+  applyPeQueueDispositionBatch,
+);
 adminRoutes.post("/api/admin/pe-specialization-queue/closeout", async (c) => {
-  const actor = c.get("adminSessionId") || HISTORICAL_CLOSEOUT_ACTOR;
+  const actor = c.get("adminSessionId") || FAMILY_EXPANSION_CLOSEOUT_ACTOR;
   const applied = await applyHistoricalPeQueueCloseout(c.env.DB, actor);
   markPublicCatalogCacheChanged(c);
   const report = await loadPeQueueCloseoutReport(c.env.DB);

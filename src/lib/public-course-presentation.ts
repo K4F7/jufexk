@@ -88,6 +88,9 @@ export const PE_SKILL_FAMILIES = [
   { label: "体育舞蹈", keys: ["体育舞蹈"] },
   { label: "轮滑", keys: ["轮滑"] },
   { label: "散打", keys: ["散打"] },
+  { label: "跆拳道", keys: ["跆拳道"] },
+  { label: "游泳", keys: ["游泳"] },
+  { label: "田径", keys: ["田径"] },
 ] as const;
 
 /**
@@ -146,7 +149,8 @@ export const PUBLIC_SPORTS_NAME_PREFIXES = [
   ...new Set(PE_SKILL_FAMILIES.flatMap((family) => family.keys)),
 ] as const;
 
-const SKILL_NAME_REST = /^(专项理论与实践)?\d*$/;
+/** Numbered / 专项理论与实践 siblings, plus 田径1（体适能为主）. */
+const SKILL_NAME_REST = /^(专项理论与实践)?\d*(（体适能为主）)?$/;
 
 function sqlStringLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
@@ -285,12 +289,12 @@ export function publicEnglishLevelOrderSql(alias = "c"): string {
 
 export function publicCourseDisplayNameSql(alias = "c"): string {
   const family = publicPeSkillFamilySql(alias);
-  return `CASE WHEN (${family}) IS NOT NULL THEN ${sqlStringLiteral(`${PE_PUBLIC_DISPLAY_PREFIX} [`)} || (${family}) || ']' ELSE ${alias}.name END`;
+  return `COALESCE(${sqlStringLiteral(`${PE_PUBLIC_DISPLAY_PREFIX} [`)} || (${family}) || ']',${alias}.name)`;
 }
 
 export function publicPeDisplaySearchSql(alias = "c"): string {
   const family = publicPeSkillFamilySql(alias);
-  return `CASE WHEN (${family}) IS NOT NULL THEN ${sqlStringLiteral(`${PE_PUBLIC_DISPLAY_PREFIX} [`)} || (${family}) || '] ' || ${sqlStringLiteral(PE_PUBLIC_DISPLAY_PREFIX)} ELSE '' END`;
+  return `COALESCE(${sqlStringLiteral(`${PE_PUBLIC_DISPLAY_PREFIX} [`)} || (${family}) || ${sqlStringLiteral(`] ${PE_PUBLIC_DISPLAY_PREFIX}`)},'')`;
 }
 
 export function publicRelationNameSortSql(

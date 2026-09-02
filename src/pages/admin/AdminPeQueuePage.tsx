@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState, type Key } from "react";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { api } from "../../lib/api";
 import type { PeQueueCloseoutCounts, PeQueueRow } from "../../lib/types";
+import { HISTORICAL_WITHHOLD_REASON } from "../../lib/pe-queue-closeout";
 import { PE_SKILL_FAMILIES } from "../../lib/public-course-presentation";
 import { AdminLayout } from "./AdminGate";
 
@@ -82,7 +83,7 @@ export function AdminPeQueuePage() {
   return (
     <AdminLayout
       title="体育专项收口"
-      description="历史未映射伞形课一次性处置：明确映射、暂不公开永久例外，或标记冲突。处置后队列只读，不再接收常规入队。"
+      description="历史未映射伞形课一次性处置：明确映射、暂不公开永久例外，或标记冲突。暂不公开与冲突可再次处置；已映射不直接改写。"
     >
       <PeQueueEditor />
     </AdminLayout>
@@ -128,10 +129,11 @@ function PeQueueEditor() {
   const draftKey = (row: PeQueueRow) => `${row.courseId}:${row.teacherId}`;
   const draftOf = (row: PeQueueRow) =>
     drafts[draftKey(row)] ?? {
-      disposition: "withheld_permanent_exception",
+      disposition: row.disposition ?? "withheld_permanent_exception",
       specialization: "",
-      reason: "no explicit specialization evidence at historical closeout",
+      reason: row.dispositionReason || HISTORICAL_WITHHOLD_REASON,
     };
+  const canRedispose = (row: PeQueueRow) => row.disposition !== "mapped";
 
   const applyOne = async (row: PeQueueRow) => {
     const draft = draftOf(row);
@@ -140,7 +142,7 @@ function PeQueueEditor() {
     setPending(true);
     try {
       await api("/api/admin/pe-specialization-queue/dispositions", {
-        method: "POST",
+        method: row.disposition ? "PATCH" : "POST",
         body: JSON.stringify({
           items: [
             {
@@ -280,9 +282,7 @@ function PeQueueEditor() {
                         {row.dispositionReason ? ` · ${row.dispositionReason}` : ""}
                       </Table.Cell>
                       <Table.Cell>
-                        {row.disposition ? (
-                          row.disposedAt || "—"
-                        ) : (
+                        {canRedispose(row) ? (
                           <Form
                             className="flex flex-col gap-2"
                             onSubmit={(event) => {
@@ -347,12 +347,16 @@ function PeQueueEditor() {
                             >
                               <Label>原因</Label>
                               <Input />
-                              <Description>冲突与暂不公开会写入处置记录。</Description>
+                              <Description>
+                                暂不公开与冲突可再次写入；已映射记录不能从本页直接改写。
+                              </Description>
                             </TextField>
                             <Button isPending={pending} type="submit" variant="secondary">
                               写入
                             </Button>
                           </Form>
+                        ) : (
+                          row.disposedAt || "—"
                         )}
                       </Table.Cell>
                     </Table.Row>
