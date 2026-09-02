@@ -11,6 +11,7 @@ const sourceTables = [
   "public_historical_reviews",
   "offerings",
   "offering_teachers",
+  "catalog_relation_pe_specializations",
 ] as const;
 
 const triggerNames = sourceTables
@@ -231,8 +232,33 @@ it("marks public projections dirty for raw source-table inserts, updates and del
         "DELETE FROM offering_teachers WHERE offering_id=355008 AND teacher_id=355008",
       ),
     );
+
+    await expectWriteToMarkDirty(
+      "catalog_relation_pe_specializations INSERT",
+      env.DB.prepare(
+        `INSERT INTO catalog_relation_pe_specializations(
+           course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json
+         ) VALUES(
+           1,1,'direct_skill','篮球','keep_source_name',
+           '{"kind":"catalog_course_name","sourceCourseCode":"TEST101","sourceCourseName":"测试课程","sourceTeacherLabel":"测试教师","rawSpecializationName":"篮球"}'
+         )`,
+      ),
+    );
+    await expectWriteToMarkDirty(
+      "catalog_relation_pe_specializations UPDATE",
+      env.DB.prepare(
+        "UPDATE catalog_relation_pe_specializations SET normalized_specialization='武术' WHERE course_id=1 AND teacher_id=1",
+      ),
+    );
+    await expectWriteToMarkDirty(
+      "catalog_relation_pe_specializations DELETE",
+      env.DB.prepare(
+        "DELETE FROM catalog_relation_pe_specializations WHERE course_id=1 AND teacher_id=1",
+      ),
+    );
   } finally {
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM catalog_relation_pe_specializations WHERE course_id=1 AND teacher_id=1"),
       env.DB.prepare("DELETE FROM public_historical_reviews WHERE id='trigger-355'"),
       env.DB.prepare("DELETE FROM reviews WHERE id=355005"),
       env.DB.prepare("DELETE FROM offerings WHERE id IN (355007,355008)"),

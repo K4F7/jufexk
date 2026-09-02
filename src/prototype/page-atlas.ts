@@ -515,7 +515,7 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
         {
           id: "admin-hub",
           title: "管理首页",
-          description: "Banner、学号绑定、禁言入口",
+          description: "Banner、学号绑定、体育专项收口、目录补充、禁言入口",
           href: "/admin",
           access: "admin",
         },
@@ -531,6 +531,20 @@ export function listAtlasGroups(targets: AtlasTargets = emptyTargets): AtlasGrou
           title: "管理员学号",
           description: "绑定校园登录学号",
           href: "/admin/admins",
+          access: "admin",
+        },
+        {
+          id: "admin-pe-queue",
+          title: "体育专项收口",
+          description: "历史未映射伞形课处置队列",
+          href: "/admin/pe-queue",
+          access: "admin",
+        },
+        {
+          id: "admin-catalog-requests",
+          title: "目录补充申请",
+          description: "审核课程/教师补充；体育课指定专项",
+          href: "/admin/catalog-requests",
           access: "admin",
         },
         {

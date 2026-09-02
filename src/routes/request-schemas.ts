@@ -103,6 +103,30 @@ export const moderationSchema = z
   })
   .passthrough();
 
+export const catalogRequestModerationSchema = z
+  .object({
+    status: cleanedField(20),
+    note: cleanedField(500),
+    peSpecialization: cleanedField(80),
+  })
+  .passthrough();
+
+export const peQueueDispositionSchema = z
+  .object({
+    courseId: integerField,
+    teacherId: integerField,
+    disposition: cleanedField(40),
+    specialization: cleanedField(80),
+    reason: cleanedField(500),
+  })
+  .passthrough();
+
+export const peQueueDispositionBatchSchema = z
+  .object({
+    items: z.array(peQueueDispositionSchema).max(400),
+  })
+  .passthrough();
+
 export const adminOfferingSchema = z
   .object({
     id: integerField,

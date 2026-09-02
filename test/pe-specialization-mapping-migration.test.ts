@@ -5,12 +5,20 @@ declare const TEST_D1_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
 
 const takePeMappingMigration = () => {
   const migrations = [...TEST_D1_MIGRATIONS];
-  const index = migrations.findIndex((migration) =>
-    migration.name.includes("0056_catalog_relation_pe_specializations.sql"),
+  const later = migrations.filter((migration) =>
+    migration.name.includes("0057_pe_specialization_queue_closeout.sql"),
   );
-  const [migration] = migrations.splice(index, 1);
+  const rest = migrations.filter(
+    (migration) =>
+      !migration.name.includes("0056_catalog_relation_pe_specializations.sql") &&
+      !migration.name.includes("0057_pe_specialization_queue_closeout.sql"),
+  );
+  const migration = migrations.find((item) =>
+    item.name.includes("0056_catalog_relation_pe_specializations.sql"),
+  );
   expect(migration?.name).toContain("0056_catalog_relation_pe_specializations.sql");
-  return { migrations, migration: migration! };
+  expect(later).toHaveLength(1);
+  return { migrations: rest, migration: migration! };
 };
 
 it("backfills direct PE skill mappings on upgrade and queues umbrella Relations without guessing", async () => {

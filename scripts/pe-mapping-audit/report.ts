@@ -12,7 +12,7 @@ export const PE_MAPPING_AUDIT_COVERAGE_DEFINITION =
   "分子：预期体育来源 Relation 中已有 catalog_relation_pe_specializations 行的数量。分母：course_teachers 中课名分类为 umbrella 或 direct_skill 的数量。";
 
 export const PE_MAPPING_AUDIT_QUEUE_DEFINITION =
-  "catalog_pe_specialization_review_queue 无 processed 标记；表中现存行即为未处理记录。staleMapped 为同时存在映射的队列行。";
+  "catalog_pe_specialization_review_queue 的 disposition 为空表示未处置。staleMapped 为同时存在映射的未处置队列行。Q40 100% 已处置 = 明确映射或 withheld_permanent_exception / conflict_recapture。";
 
 export type PeMappingAuditSourceKind = "umbrella" | "direct_skill";
 
@@ -32,6 +32,7 @@ export type PeMappingAuditExpectedRow = PeMappingAuditRelationRef & {
   isMapped: boolean;
   inQueue: boolean;
   queueReason: string | null;
+  queueDisposition: string | null;
   virtualSportLabel: string | null;
   virtualCourseId: number | null;
 };
@@ -43,6 +44,7 @@ export type PeMappingAuditQueueRow = {
   courseName: string;
   sourceTeacherLabel: string;
   reason: string;
+  disposition: string | null;
 };
 
 export type PeMappingAuditSpecializationCount = {
@@ -92,12 +94,16 @@ export type PeMappingAuditReport = {
   queue: {
     total: number;
     unprocessed: number;
+    mapped: number;
+    withheld: number;
+    conflict: number;
     staleMapped: number;
     orphanNotExpected: number;
     definition: string;
   };
   status: {
     allExpectedMapped: boolean;
+    allExpectedDisposed: boolean;
     unmappedUmbrellaAllQueued: boolean;
     noUntrackedGaps: boolean;
     queueEmpty: boolean;
@@ -203,6 +209,7 @@ export function parseExpectedPeSourceRow(
     isMapped: asFlag(row.is_mapped),
     inQueue: asFlag(row.in_queue),
     queueReason: asNullableString(row.queue_reason),
+    queueDisposition: asNullableString(row.queue_disposition),
     virtualSportLabel: asNullableString(row.virtual_sport_label),
     virtualCourseId:
       virtualCourseIdRaw == null || virtualCourseIdRaw === ""
@@ -221,6 +228,7 @@ export function parseReviewQueueRow(
     courseName: asString(row.course_name, "course_name"),
     sourceTeacherLabel: asString(row.source_teacher_label, "source_teacher_label"),
     reason: asString(row.reason, "reason"),
+    disposition: asNullableString(row.disposition),
   };
 }
 
@@ -312,7 +320,8 @@ export function buildPeMappingAuditReport(input: {
     mappedExpected.length,
     expectedRows.length,
   );
-  const staleMapped = queueRows.filter((row) => {
+  const openQueue = queueRows.filter((row) => !row.disposition);
+  const staleMapped = openQueue.filter((row) => {
     const expected = expectedRows.find(
       (item) => item.courseId === row.courseId && item.teacherId === row.teacherId,
     );
@@ -321,6 +330,16 @@ export function buildPeMappingAuditReport(input: {
   const orphanNotExpected = queueRows.filter(
     (row) => !expectedKeys.has(relationKey(row)),
   ).length;
+  const queueByKey = new Map(queueRows.map((row) => [relationKey(row), row]));
+  const disposedExpected = expectedRows.filter((row) => {
+    if (row.isMapped) return true;
+    const queued = queueByKey.get(relationKey(row));
+    return (
+      queued?.disposition === "withheld_permanent_exception" ||
+      queued?.disposition === "conflict_recapture" ||
+      queued?.disposition === "mapped"
+    );
+  });
   const unmappedUmbrellaMissingQueue = unmappedExpected.filter(
     (row) => row.sourceKind === "umbrella" && !row.inQueue,
   );
@@ -350,16 +369,20 @@ export function buildPeMappingAuditReport(input: {
     wushu: buildFocus("武术", expectedRows),
     queue: {
       total: queueRows.length,
-      unprocessed: queueRows.length,
+      unprocessed: openQueue.length,
+      mapped: queueRows.filter((row) => row.disposition === "mapped").length,
+      withheld: queueRows.filter((row) => row.disposition === "withheld_permanent_exception").length,
+      conflict: queueRows.filter((row) => row.disposition === "conflict_recapture").length,
       staleMapped,
       orphanNotExpected,
       definition: PE_MAPPING_AUDIT_QUEUE_DEFINITION,
     },
     status: {
       allExpectedMapped: mappedExpected.length === expectedRows.length,
+      allExpectedDisposed: disposedExpected.length === expectedRows.length,
       unmappedUmbrellaAllQueued: unmappedUmbrellaMissingQueue.length === 0,
       noUntrackedGaps: gapsNeitherMappingNorQueue.length === 0,
-      queueEmpty: queueRows.length === 0,
+      queueEmpty: openQueue.length === 0,
     },
     unmappedExpectedSources: sortRefs(unmappedExpected.map(toRef)),
     unmappedUmbrellaMissingQueue: sortRefs(unmappedUmbrellaMissingQueue.map(toRef)),
@@ -454,10 +477,14 @@ export function formatPeMappingAuditMarkdown(report: PeMappingAuditReport): stri
     "## 人工复核队列",
     "",
     `- 队列总行数: ${report.queue.total}`,
-    `- 未处理: ${report.queue.unprocessed}`,
-    `- 已映射仍在队列: ${report.queue.staleMapped}`,
+    `- 未处置: ${report.queue.unprocessed}`,
+    `- 已映射: ${report.queue.mapped}`,
+    `- 暂不公开: ${report.queue.withheld}`,
+    `- 冲突: ${report.queue.conflict}`,
+    `- 已映射仍在未处置队列: ${report.queue.staleMapped}`,
     `- 非预期来源队列行: ${report.queue.orphanNotExpected}`,
-    `- 队列为空: ${report.status.queueEmpty ? "是" : "否"}`,
+    `- 未处置队列为空: ${report.status.queueEmpty ? "是" : "否"}`,
+    `- 预期来源 100% 已处置: ${report.status.allExpectedDisposed ? "是" : "否"}`,
     "",
     report.queue.definition,
     "",

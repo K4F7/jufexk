@@ -241,6 +241,7 @@ describe("PE mapping audit coverage arithmetic", () => {
     });
     expect(report.status).toEqual({
       allExpectedMapped: false,
+      allExpectedDisposed: false,
       unmappedUmbrellaAllQueued: false,
       noUntrackedGaps: false,
       queueEmpty: false,
@@ -345,7 +346,7 @@ describe("PE mapping audit coverage arithmetic", () => {
     expect(markdown).toContain("33.33%");
     expect(markdown).toContain("## 瑜伽");
     expect(markdown).toContain("## 武术");
-    expect(markdown).toContain("未处理: 3");
+    expect(markdown).toContain("未处置: 3");
     expect(markdown).toContain("c08ebe05824c1d4dcf03fa061385c6ea4c6657fe");
     expect(markdown).not.toMatch(/CASTGC|JSESSIONID|Set-Cookie/i);
   });

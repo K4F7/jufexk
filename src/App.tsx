@@ -79,6 +79,14 @@ const AdminStudentBindingsPage = lazy(() =>
 const AdminUserBlockPage = lazy(() =>
   import("./pages/admin/AdminUserBlockPage").then((m) => ({ default: m.AdminUserBlockPage })),
 );
+const AdminPeQueuePage = lazy(() =>
+  import("./pages/admin/AdminPeQueuePage").then((m) => ({ default: m.AdminPeQueuePage })),
+);
+const AdminCatalogRequestsPage = lazy(() =>
+  import("./pages/admin/AdminCatalogRequestsPage").then((m) => ({
+    default: m.AdminCatalogRequestsPage,
+  })),
+);
 const CourseDetailPage = lazy(() =>
   import("./pages/CourseDetailPage").then((m) => ({ default: m.CourseDetailPage })),
 );
@@ -332,6 +340,11 @@ export function App() {
               <Route path="/admin/admins" element={<AdminStudentBindingsPage />} />
               <Route path="/admin/banner" element={<AdminBannerPage />} />
               <Route path="/admin/users/:id" element={<AdminUserBlockPage />} />
+              <Route path="/admin/pe-queue" element={<AdminPeQueuePage />} />
+              <Route
+                path="/admin/catalog-requests"
+                element={<AdminCatalogRequestsPage />}
+              />
               {PrototypeGalleryPage ? (
                 <Route
                   path="/prototype"

@@ -21,9 +21,15 @@ export function AdminCatalogRequests() {
   }, [status]);
 
   async function approve(id: number) {
+    const request = data?.items.find((item) => item.id === id);
+    const peSpecialization =
+      request?.peSourceKind === "umbrella"
+        ? window.prompt("体育伞形课请填写具体专项名", request.suggestedSpecialization || "")
+        : request?.suggestedSpecialization || "";
+    if (request?.peSourceKind === "umbrella" && !peSpecialization) return;
     await api(`/api/admin/catalog-requests/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ status: "approved" }),
+      body: JSON.stringify({ status: "approved", peSpecialization }),
     });
     await load();
   }

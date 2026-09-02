@@ -8,7 +8,13 @@ import {
 
 export const RELATION_PE_SOURCE_KINDS = ["umbrella", "direct_skill"] as const;
 export const RELATION_PE_DISPLAY_SEMANTICS = ["umbrella_prefixed", "keep_source_name"] as const;
-export const RELATION_PE_EVIDENCE_KINDS = ["catalog_course_name", "human_decision"] as const;
+export const RELATION_PE_EVIDENCE_KINDS = [
+  "catalog_course_name",
+  "human_decision",
+  "virtual_pe_sports",
+  "historical_visible_binding",
+  "offering_skill_name",
+] as const;
 
 export type RelationPeSourceKind = (typeof RELATION_PE_SOURCE_KINDS)[number];
 export type RelationPeDisplaySemantics = (typeof RELATION_PE_DISPLAY_SEMANTICS)[number];
@@ -78,6 +84,28 @@ export function buildPeSpecializationMapping(input: {
       rawSpecializationName: input.rawSpecializationName,
     },
   };
+}
+
+export type CatalogAdditionPeRequirement =
+  | { kind: "none" }
+  | { kind: "direct_skill"; specialization: string }
+  | { kind: "umbrella" };
+
+/** Catalog-addition admin review: PE umbrellas need an explicit 具体专项. */
+export function catalogAdditionPeRequirement(input: {
+  kind?: string | null;
+  courseName?: string | null;
+}): CatalogAdditionPeRequirement {
+  if (input.kind !== "course") return { kind: "none" };
+  const classified = classifyPeSourceCourseName(input.courseName);
+  if (classified.sourceKind === "direct_skill") {
+    return {
+      kind: "direct_skill",
+      specialization: classified.normalizedSpecialization,
+    };
+  }
+  if (classified.sourceKind === "umbrella") return { kind: "umbrella" };
+  return { kind: "none" };
 }
 
 export function mappingFromDirectSkillCourseName(input: {

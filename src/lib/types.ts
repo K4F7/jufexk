@@ -396,9 +396,37 @@ export type CatalogRequest = {
   category?: string;
   department?: string;
   teacher_name?: string;
+  teacher_source_label?: string;
   note?: string;
   has_review?: number | boolean;
   status: string;
   moderator_note?: string;
   created_at?: string;
+  peSourceKind?: "none" | "direct_skill" | "umbrella";
+  suggestedSpecialization?: string | null;
+};
+
+export type PeQueueDispositionStatus =
+  | "mapped"
+  | "withheld_permanent_exception"
+  | "conflict_recapture";
+
+export type PeQueueRow = {
+  courseId: number;
+  teacherId: number;
+  courseCode: string;
+  courseName: string;
+  sourceTeacherLabel: string;
+  reason: string;
+  disposition: PeQueueDispositionStatus | null;
+  dispositionReason: string;
+  disposedBy?: string;
+  disposedAt: string | null;
+};
+
+export type PeQueueCloseoutCounts = {
+  mapped: number;
+  withheld: number;
+  conflict: number;
+  open: number;
 };

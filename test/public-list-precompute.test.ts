@@ -34,6 +34,8 @@ describe("public list refresh coordination", () => {
     ["DELETE", "/api/admin/teachers/42"],
     ["PUT", "/api/admin/courses/42/teachers"],
     ["POST", "/api/admin/catalog-baseline/uploads/batch-42/publish"],
+    ["POST", "/api/admin/pe-specialization-queue/dispositions"],
+    ["POST", "/api/admin/pe-specialization-queue/closeout"],
   ])("refreshes after %s %s", (method, path) => {
     expect(shouldRefreshPublicListPrecomputes(method, path)).toBe(true);
   });
@@ -55,6 +57,7 @@ describe("public list refresh coordination", () => {
     ["POST", "/api/admin/catalog-baseline/uploads"],
     ["PUT", "/api/admin/catalog-baseline/uploads/batch-42/chunks/0"],
     ["POST", "/api/admin/catalog-baseline/uploads/batch-42/finalize"],
+    ["GET", "/api/admin/pe-specialization-queue"],
     ["GET", "/api/courses"],
     ["POST", "/api/admin/import/program-plan"],
     ["GET", "/api/program-plan"],
