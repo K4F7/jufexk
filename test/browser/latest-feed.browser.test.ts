@@ -644,3 +644,26 @@ test("latest feed column aligns with the course catalog @mobile-smoke", async ({
     expect(Math.abs(latestCenter - coursesCenter)).toBeLessThan(2);
   }
 });
+
+test("latest feed shows a back-to-top button after scrolling @mobile-smoke", async ({
+  page,
+}) => {
+  await mockShellApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/latest", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "最新课评" })).toBeVisible();
+
+  const backToTop = page.getByRole("button", { name: "回到顶部" });
+  await expect(backToTop).toHaveCount(0);
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(
+    await page.evaluate(() => window.innerHeight - 1),
+  );
+  await expect(backToTop).toBeVisible();
+  await expect(backToTop).toHaveCSS("position", "fixed");
+
+  await backToTop.click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(8);
+  await expect(backToTop).toHaveCount(0);
+});

@@ -9,6 +9,7 @@ import { ReviewAuthor } from "../components/ReviewAuthor";
 import { DetailErrorAlert } from "../components/DetailErrorAlert";
 import { ReviewNoteContent } from "../components/ReviewNoteContent";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { ScrollToTopButton } from "../components/ScrollToTopButton";
 import { useLoadMoreOnVisible } from "../hooks/useLoadMoreOnVisible";
 import { api } from "../lib/api";
 import { previewFilledLatestReviews, readDevPreviewOrFilled } from "../lib/dev-preview";
@@ -159,6 +160,7 @@ export function LatestPage() {
   });
 
   return (
+    <>
     <section
       aria-label="最新课评"
       className={latestFeedColumnClass(
@@ -232,6 +234,8 @@ export function LatestPage() {
         </div>
       )}
     </section>
+    <ScrollToTopButton />
+    </>
   );
 }
 

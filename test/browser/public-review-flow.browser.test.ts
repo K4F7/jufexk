@@ -966,3 +966,25 @@ test("four-tier snapshot reviews show FourDimLine text and no average", async ({
   await expect(legacy.getByText("很推荐")).toHaveCount(0);
   await expect(legacy.getByText("课程难度")).toHaveCount(0);
 });
+
+test("course review page shows a back-to-top button after scrolling @mobile-smoke", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/courses/8?teacher=9");
+  await expect(reviewItems(page)).toHaveCount(20);
+
+  const backToTop = page.getByRole("button", { name: "回到顶部" });
+  await expect(backToTop).toHaveCount(0);
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(
+    await page.evaluate(() => window.innerHeight - 1),
+  );
+  await expect(backToTop).toBeVisible();
+  await expect(backToTop).toHaveCSS("position", "fixed");
+
+  await backToTop.click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(8);
+  await expect(backToTop).toHaveCount(0);
+});
