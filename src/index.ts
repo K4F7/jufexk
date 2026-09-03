@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import type { AppEnv } from "./app-env";
 import {
+  fingerprintedAssetMissingResponse,
+  rejectSpaHtmlForFingerprintedAsset,
+} from "./lib/fingerprinted-asset-response";
+import {
   DEFAULT_API_CACHE_CONTROL,
   purgePublicCatalogCache,
 } from "./lib/public-catalog-cache";
@@ -21,6 +25,15 @@ import scheduleOfferingRoutes from "./routes/schedule-offerings";
 import { fail } from "./routes/support";
 
 const app = new Hono<AppEnv>();
+
+app.all("/assets/*", async (c) => {
+  const assets = c.env.ASSETS;
+  if (typeof assets?.fetch !== "function") {
+    return fingerprintedAssetMissingResponse();
+  }
+  const assetResponse = await assets.fetch(c.req.raw);
+  return rejectSpaHtmlForFingerprintedAsset(c.req.path, assetResponse);
+});
 
 app.use("/api/*", async (c, next) => {
   const startedAt = performance.now();

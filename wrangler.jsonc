@@ -9,7 +9,9 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
+    // /assets/* must hit the Worker: SPA fallback of a missing hashed JS
+    // would inherit the immutable /assets/* cache and white-screen lazy routes.
+    "run_worker_first": ["/api/*", "/assets/*"],
   },
   "d1_databases": [
     {
