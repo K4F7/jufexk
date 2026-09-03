@@ -332,13 +332,17 @@ async function loadPrecomputedRelationTotal(
   db: D1Database,
   category: string,
 ): Promise<number | null> {
-  const row = await db
-    .prepare(
-      `SELECT n FROM public_relation_list_totals WHERE category=?`,
-    )
-    .bind(category || "all")
-    .first<{ n: number }>();
-  return row ? Number(row.n) : null;
+  try {
+    const row = await db
+      .prepare(
+        `SELECT n FROM public_relation_list_totals WHERE category=?`,
+      )
+      .bind(category || "all")
+      .first<{ n: number }>();
+    return row ? Number(row.n) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function loadRelationBrowseFromAggregate(
@@ -748,48 +752,59 @@ export async function queryPublicCourseRelations(
         });
   const start = (page - 1) * size;
   if (canUseRelationBrowseFastPath(query, searchTerms)) {
-    const realTotal =
-      (await loadPrecomputedRelationTotal(db, query.category)) ??
-      (await relationCount());
-    const extrasTotal = extrasAllUnsorted.length;
-    const totalCount = realTotal + extrasTotal;
-    const withinFastWindow = start + size <= RELATION_BROWSE_FAST_OFFSET_LIMIT;
-    if (withinFastWindow || extrasTotal === 0) {
-      const take =
-        extrasTotal === 0
-          ? size + 1
-          : Math.min(
-              RELATION_BROWSE_REAL_FETCH_CAP,
-              Math.max(start + size + extrasTotal + 16, size + 1),
-            );
-      const fastRows = await loadRelationBrowseFromAggregate(db, {
-        sort,
-        where,
-        args,
-        limit: take,
-        offset: extrasTotal === 0 ? start : 0,
-      });
-      const listed = fastRows.map((row) => withPublicRelationNames(row));
-      const merged =
-        extrasTotal === 0
-          ? listed
-          : [...listed, ...extrasAllUnsorted].sort(
-              sort === "rating" ? byRelationRating : byRelationReviews,
-            );
-      const items =
-        extrasTotal === 0
-          ? listed.slice(0, size)
-          : merged.slice(start, start + size);
-      const pageComplete =
-        items.length === size || start + items.length >= totalCount;
-      const consumedReviewed =
-        extrasTotal > 0 && fastRows.length < take;
-      if (pageComplete || consumedReviewed) {
-        return {
-          items: await attachRelationProjection(db, items, viewerUserId),
-          ...publicCatalogPageMeta(page, size, totalCount),
-        };
+    try {
+      const realTotal =
+        (await loadPrecomputedRelationTotal(db, query.category)) ??
+        (await relationCount());
+      const extrasTotal = extrasAllUnsorted.length;
+      const totalCount = realTotal + extrasTotal;
+      const withinFastWindow = start + size <= RELATION_BROWSE_FAST_OFFSET_LIMIT;
+      if (withinFastWindow || extrasTotal === 0) {
+        const take =
+          extrasTotal === 0
+            ? size + 1
+            : Math.min(
+                RELATION_BROWSE_REAL_FETCH_CAP,
+                Math.max(start + size + extrasTotal + 16, size + 1),
+              );
+        const fastRows = await loadRelationBrowseFromAggregate(db, {
+          sort,
+          where,
+          args,
+          limit: take,
+          offset: extrasTotal === 0 ? start : 0,
+        });
+        const listed = fastRows.map((row) => withPublicRelationNames(row));
+        const merged =
+          extrasTotal === 0
+            ? listed
+            : [...listed, ...extrasAllUnsorted].sort(
+                sort === "rating" ? byRelationRating : byRelationReviews,
+              );
+        const items =
+          extrasTotal === 0
+            ? listed.slice(0, size)
+            : merged.slice(start, start + size);
+        const pageComplete =
+          items.length === size || start + items.length >= totalCount;
+        const consumedReviewed =
+          extrasTotal > 0 && fastRows.length < take;
+        if (pageComplete || consumedReviewed) {
+          return {
+            items: await attachRelationProjection(db, items, viewerUserId),
+            ...publicCatalogPageMeta(page, size, totalCount),
+          };
+        }
       }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "relation_browse_fast_path_failed",
+          sort,
+          category: query.category,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
     }
   }
   const mergeKind: RelationMergeKind | null = !extrasAllUnsorted.length

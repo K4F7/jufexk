@@ -657,10 +657,11 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
       viewerId,
       publicPrecomputeReadOptions(c, cacheable),
     );
-    markServerTiming(c, "query", performance.now() - queryStarted);
+    const queryMs = performance.now() - queryStarted;
+    markServerTiming(c, "query", queryMs);
     if (cacheable) setPublicCatalogCacheHeaders(c, "list");
     const response = c.json(result);
-    if (useCacheApi) {
+    if (useCacheApi && queryMs < 2000) {
       c.executionCtx.waitUntil(putPublicCatalogCache(c.req.url, response.clone()));
     }
     return response;
@@ -676,10 +677,11 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
     query,
     publicPrecomputeReadOptions(c, cacheable),
   );
-  markServerTiming(c, "query", performance.now() - queryStarted);
+  const queryMs = performance.now() - queryStarted;
+  markServerTiming(c, "query", queryMs);
   if (cacheable) setPublicCatalogCacheHeaders(c, "list");
   const response = c.json(result);
-  if (useCacheApi) {
+  if (useCacheApi && queryMs < 2000) {
     c.executionCtx.waitUntil(putPublicCatalogCache(c.req.url, response.clone()));
   }
   return response;

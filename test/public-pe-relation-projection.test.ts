@@ -320,23 +320,29 @@ describe.sequential("体育公共专项 Relation 读取投影", () => {
   it("lists relations by review count when many PE extras would exceed D1 bind limits", async () => {
     const stamp = `PEBIND${Date.now()}`;
     const department = `${stamp}院`;
-    const courseId = await insertCourse(`${stamp}-B`, "篮球", department);
+    const courseIds = [
+      await insertCourse(`${stamp}-B0`, "篮球0", department),
+      await insertCourse(`${stamp}-B1`, "篮球1", department),
+      await insertCourse(`${stamp}-B2`, "篮球2", department),
+    ];
     const teacherIds: number[] = [];
     try {
       for (let index = 0; index < 40; index += 1) {
         const teacher = `${stamp}师${index}`;
         const teacherId = await insertTeacher(teacher, department);
         teacherIds.push(teacherId);
-        await bindTeacher(courseId, teacherId);
-        await insertPeMapping({
-          courseId,
-          teacherId,
-          sourceKind: "direct_skill",
-          specialization: "篮球",
-          courseCode: `${stamp}-B`,
-          courseName: "篮球",
-          sourceTeacherLabel: teacher,
-        });
+        for (const [source, courseId] of courseIds.entries()) {
+          await bindTeacher(courseId, teacherId);
+          await insertPeMapping({
+            courseId,
+            teacherId,
+            sourceKind: "direct_skill",
+            specialization: "篮球",
+            courseCode: `${stamp}-B${source}`,
+            courseName: `篮球${source}`,
+            sourceTeacherLabel: teacher,
+          });
+        }
       }
       const listed = await fetchRelations(
         `department=${encodeURIComponent(department)}&sort=reviews&pageSize=20`,
@@ -351,9 +357,9 @@ describe.sequential("体育公共专项 Relation 读取投影", () => {
       expect(rated.total).toBeGreaterThanOrEqual(40);
     } finally {
       await env.DB.prepare(
-        "DELETE FROM catalog_relation_pe_specializations WHERE course_id=?",
+        `DELETE FROM catalog_relation_pe_specializations WHERE course_id IN (${courseIds.map(() => "?").join(",")})`,
       )
-        .bind(courseId)
+        .bind(...courseIds)
         .run();
     }
   });
