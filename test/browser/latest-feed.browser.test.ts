@@ -501,6 +501,8 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
   expect(requests.some((url) => url.includes("purify"))).toBe(false);
   expect(requests.some((url) => url.includes("search-field-"))).toBe(false);
   expect(requests.some((url) => url.includes("ShellCourseSearch-"))).toBe(false);
+  await expect(page.locator("header .search-field__group")).toBeVisible();
+  await expect(page.locator('header [data-slot="search-field"]')).toHaveCount(0);
   const latestRequests = requests.filter(
     (url) => new URL(url).pathname === "/api/reviews/latest",
   );
@@ -520,6 +522,7 @@ test("latest does not load the table chunk or eagerly load the status iframe", a
 
   await page.getByRole("searchbox", { name: "搜索课程" }).focus();
   await expect(page.locator("header .search-field__group")).toBeVisible();
+  await expect(page.locator('header [data-slot="search-field"]')).toBeAttached();
 });
 
 test("latest reuses the HTML-bootstrap banner request", async ({ page }) => {

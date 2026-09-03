@@ -34,11 +34,13 @@ function ShellCourseSearchPlaceholder({
   onQueryChange: (value: string) => void;
 }) {
   const navigate = useNavigate();
+  const empty = !query;
 
   return (
     <form
       aria-label="搜索课程"
-      className="flex h-10 w-full items-center gap-2 rounded-md border border-default bg-surface px-3 text-sm text-muted shadow-xs focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-focus"
+      className="search-field search-field--secondary search-field--full-width w-full"
+      data-empty={empty ? "true" : undefined}
       role="search"
       onSubmit={(event) => {
         event.preventDefault();
@@ -46,18 +48,48 @@ function ShellCourseSearchPlaceholder({
         navigate(trimmed ? `/courses?q=${encodeURIComponent(trimmed)}` : "/courses");
       }}
     >
-      <span aria-hidden>⌕</span>
-      <input
-        aria-label="搜索课程"
-        className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted"
-        name="shell-course-search"
-        placeholder="搜索课程、老师"
-        role="searchbox"
-        value={query}
-        onChange={(event) => onQueryChange(event.target.value)}
-        onFocus={onActivate}
-        onPointerDown={onActivate}
-      />
+      <div
+        className="search-field__group search-field__group--full-width"
+        data-slot="search-field-group"
+      >
+        <svg
+          aria-hidden="true"
+          className="search-field__search-icon"
+          data-slot="search-field-search-icon"
+          fill="none"
+          height={16}
+          role="presentation"
+          viewBox="0 0 16 16"
+          width={16}
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            clipRule="evenodd"
+            d="M11.5 7a4.5 4.5 0 1 1-9 0a4.5 4.5 0 0 1 9 0m-.82 4.74a6 6 0 1 1 1.06-1.06l2.79 2.79a.75.75 0 1 1-1.06 1.06z"
+            fill="currentColor"
+            fillRule="evenodd"
+          />
+        </svg>
+        <input
+          aria-label="搜索课程"
+          className="search-field__input w-full"
+          data-slot="search-field-input"
+          name="shell-course-search"
+          placeholder="搜索课程、老师"
+          role="searchbox"
+          type="search"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          onFocus={onActivate}
+          onPointerDown={onActivate}
+        />
+        <span
+          aria-hidden
+          className="close-button close-button--default search-field__clear-button pointer-events-none opacity-0"
+          data-slot="search-field-clear-button"
+          slot="clear"
+        />
+      </div>
     </form>
   );
 }
