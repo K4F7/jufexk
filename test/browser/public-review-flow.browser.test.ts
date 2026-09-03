@@ -9,6 +9,7 @@
  * 旧快照显示维度均分 Chip；有 overall 时星级旁侧用投稿页 overallCaption。
  */
 import { expect, test, type Page } from "@playwright/test";
+import { collectModuleLoadFailures } from "./module-load-failures";
 
 const teacherNineReviews = Array.from({ length: 21 }, (_, index) => ({
   id: `historical:review-${String(index + 1).padStart(2, "0")}`,
@@ -820,18 +821,25 @@ test("teacher detail omits the review stream", async ({ page }) => {
 test("empty and mobile states remain accessible without overflow @mobile-smoke", async ({
   page,
 }) => {
+  const moduleFailures = collectModuleLoadFailures(page);
   await page.goto("/courses/10");
   await expect(
     page.getByRole("status").filter({ hasText: "暂无评价" }),
   ).toBeVisible();
 
   await page.goto("/courses/8?teacher=9");
+  await expect(
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "点评" })).toBeVisible();
   await expect(reviewItems(page)).toHaveCount(20);
+  await expect(reviewItems(page).first()).toContainText("匿名评价 1");
   const layout = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
   }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport);
+  expect(moduleFailures()).toEqual([]);
 });
 
 test("review items render grade and FourDimLine without a title line", async ({

@@ -7,6 +7,7 @@
  * GET /api/courses?view=relations。
  */
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { collectModuleLoadFailures } from "./module-load-failures";
 
 const RELATIONS = [
   {
@@ -166,6 +167,87 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
   });
 }
 
+const CATALOG_DETAIL_REVIEW =
+  "匿名评价正文，用于确认点进详情后能看到课评内容。";
+
+async function mockCourseDetailFromCatalog(page: Page) {
+  await page.route(
+    (url) => url.pathname === "/api/courses/8",
+    (route) =>
+      route.fulfill({
+        json: {
+          course: {
+            id: 8,
+            code: "GEN0108",
+            name: "中国传统文化导论",
+            category: "general",
+            department: "人文学院",
+            credits: 3,
+            teachers: [
+              {
+                id: 9,
+                name: "测试教师",
+                department: "人文学院",
+                review_count: 23,
+                rating: 4.6,
+                dimensionLabels: RELATIONS[0].dimensionLabels,
+                follow_count: 0,
+                recommend_count: 0,
+                not_recommend_count: 0,
+              },
+              {
+                id: 10,
+                name: "另一位教师",
+                department: "信息学院",
+                review_count: 2,
+                rating: 3.8,
+                dimensionLabels: null,
+                follow_count: 0,
+                recommend_count: 0,
+                not_recommend_count: 0,
+              },
+            ],
+          },
+          reviewCount: 23,
+        },
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/courses/8/reviews",
+    (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: "review:catalog-smoke",
+              course_id: 8,
+              teacher_id: 9,
+              comment: CATALOG_DETAIL_REVIEW,
+              overall: 5,
+              created_at: "2026-08-11 02:00:00",
+              endorsement_count: 0,
+              endorsable: true,
+            },
+          ],
+          nextCursor: null,
+          total: 1,
+        },
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/teachers/9",
+    (route) =>
+      route.fulfill({
+        json: {
+          teacher: { id: 9, name: "测试教师", department: "人文学院" },
+          courses: [],
+          reviews: [],
+          reviewCount: 23,
+        },
+      }),
+  );
+}
+
 test("filter box shows the category row and rating sort", async ({
   page,
 }) => {
@@ -252,7 +334,9 @@ test("search query relabels the default sort as 相关度", async ({ page }) => 
 test("relation rows show rating, review count, and four-dim labels @mobile-smoke", async ({
   page,
 }) => {
+  const moduleFailures = collectModuleLoadFailures(page);
   await mockCatalogApi(page);
+  await mockCourseDetailFromCatalog(page);
   await page.goto("/courses");
 
   // 一门课两名教师 → 两行关系条目。
@@ -300,6 +384,12 @@ test("relation rows show rating, review count, and four-dim labels @mobile-smoke
 
   await first.click();
   await expect(page).toHaveURL(/\/courses\/8\?teacher=9$/);
+  await expect(
+    page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "点评" })).toBeVisible();
+  await expect(page.getByText(CATALOG_DETAIL_REVIEW)).toBeVisible();
+  expect(moduleFailures()).toEqual([]);
 });
 
 test("category row filters the relation list", async ({ page }) => {
