@@ -41,6 +41,8 @@ export function DetailLoadingStatus({ label }: { label: string }) {
 
 /** First-paint placeholder that matches 摘要 B + the official dense table. */
 export const DETAIL_SKELETON_ROWS = 12;
+/** Survives minify so Vite retires the HTML-poisoned hashed filename (#885). */
+export const DETAIL_FEEDBACK_ASSET_EPOCH = "881";
 
 export type DetailSkeletonKind = "course" | "course-reviews" | "teacher";
 
@@ -85,7 +87,12 @@ export function DetailPageSkeleton({
 }) {
   const reviews = kind === "course-reviews";
   return (
-    <div role="status" aria-label={label} aria-live="polite">
+    <div
+      role="status"
+      aria-label={label}
+      aria-live="polite"
+      data-asset-epoch={DETAIL_FEEDBACK_ASSET_EPOCH}
+    >
       <span className="sr-only">{label}</span>
       {kind === "teacher" ? (
         <TeacherDetailSkeleton />
