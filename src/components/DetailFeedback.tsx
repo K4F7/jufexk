@@ -1,3 +1,8 @@
+/**
+ * Detail-page loading / skeleton feedback.
+ * Issue #881: keep this module's hashed filename distinct from any
+ * previously immutable-cached SPA HTML fallback.
+ */
 import { Alert, Skeleton, Spinner, Surface, Table } from "@heroui/react";
 
 /** Official danger Alert for page / review-feed failures (Issue #244). */
