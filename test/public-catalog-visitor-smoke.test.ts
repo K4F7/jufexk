@@ -6,6 +6,8 @@ import { publicPeCourseIdentity } from "../src/lib/public-pe-course-projection";
 const origin = "https://example.com";
 /** Same shape as #853: 40 spec×teacher extras × 3 reviews-sort binds + 2 scope args exceeds D1's 100-parameter cap without chunking. */
 const PE_EXTRA_COUNT = 40;
+/** Production sports extras each carry several source courses. 20 listed extras × 3 sources = 120 pair binds, over D1's 100 cap. */
+const PE_SOURCE_COURSE_COUNT = 3;
 const YOGA_IDENTITY = publicPeCourseIdentity("瑜伽");
 const YOGA_PATH = `/api/courses/${encodeURIComponent(YOGA_IDENTITY)}`;
 const HEADER_SEARCH_PATH =
@@ -38,6 +40,14 @@ const SMOKES: Array<{ path: string; kind: SmokeKind }> = [
   { path: "/api/courses?view=relations&sort=rating", kind: "list" },
   { path: "/api/courses?category=sports", kind: "list" },
   { path: "/api/courses?view=relations&category=sports", kind: "list" },
+  {
+    path: "/api/courses?view=relations&category=sports&sort=rating",
+    kind: "list",
+  },
+  {
+    path: `/api/courses?view=relations&q=${encodeURIComponent("线性代数")}`,
+    kind: "list",
+  },
   { path: "/api/courses/departments", kind: "items" },
   { path: "/api/courses/options", kind: "list" },
   { path: "/api/teachers", kind: "list" },
@@ -102,15 +112,21 @@ function courseIdentity(body: unknown): { id?: unknown; public_id?: unknown } {
 }
 
 describe.sequential("visitor public catalog API smoke", () => {
+  let peDepartment = "";
+
   beforeAll(async () => {
     const stamp = `PESMOKE${Date.now()}`;
     const department = `${stamp}院`;
-    const course = await env.DB.prepare(
-      "INSERT INTO courses(code,name,category,department,scheme_key) VALUES(?,?,?,?,?)",
-    )
-      .bind(`${stamp}-B`, "篮球", "sports", department, "pe")
-      .run();
-    const courseId = Number(course.meta.last_row_id);
+    peDepartment = department;
+    const courseIds: number[] = [];
+    for (let source = 0; source < PE_SOURCE_COURSE_COUNT; source += 1) {
+      const course = await env.DB.prepare(
+        "INSERT INTO courses(code,name,category,department,scheme_key) VALUES(?,?,?,?,?)",
+      )
+        .bind(`${stamp}-B${source}`, `篮球${source}`, "sports", department, "pe")
+        .run();
+      courseIds.push(Number(course.meta.last_row_id));
+    }
     await env.DB.batch(
       Array.from({ length: PE_EXTRA_COUNT }, (_, index) =>
         env.DB.prepare(
@@ -129,42 +145,62 @@ describe.sequential("visitor public catalog API smoke", () => {
       PE_EXTRA_COUNT,
     );
     await env.DB.batch(
-      teachers.map((row) =>
-        env.DB.prepare(
-          "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
-        ).bind(courseId, row.id),
+      teachers.flatMap((row) =>
+        courseIds.map((courseId) =>
+          env.DB.prepare(
+            "INSERT INTO course_teachers(course_id,teacher_id) VALUES(?,?)",
+          ).bind(courseId, row.id),
+        ),
       ),
     );
     await env.DB.batch(
-      teachers.map((row) => {
-        const mapping = buildPeSpecializationMapping({
-          sourceKind: "direct_skill",
-          normalizedSpecialization: "篮球",
-          evidenceKind: "catalog_course_name",
-          sourceCourseCode: `${stamp}-B`,
-          sourceCourseName: "篮球",
-          sourceTeacherLabel: row.name,
-          rawSpecializationName: "篮球",
-        });
-        return env.DB.prepare(
-          `INSERT INTO catalog_relation_pe_specializations(
-            course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json
-          ) VALUES(?,?,?,?,?,?)`,
-        ).bind(
-          courseId,
-          row.id,
-          mapping.sourceKind,
-          mapping.normalizedSpecialization,
-          mapping.displaySemantics,
-          JSON.stringify(mapping.evidence),
-        );
-      }),
+      teachers.flatMap((row) =>
+        courseIds.map((courseId, source) => {
+          const mapping = buildPeSpecializationMapping({
+            sourceKind: "direct_skill",
+            normalizedSpecialization: "篮球",
+            evidenceKind: "catalog_course_name",
+            sourceCourseCode: `${stamp}-B${source}`,
+            sourceCourseName: `篮球${source}`,
+            sourceTeacherLabel: row.name,
+            rawSpecializationName: "篮球",
+          });
+          return env.DB.prepare(
+            `INSERT INTO catalog_relation_pe_specializations(
+              course_id,teacher_id,source_kind,normalized_specialization,display_semantics,evidence_json
+            ) VALUES(?,?,?,?,?,?)`,
+          ).bind(
+            courseId,
+            row.id,
+            mapping.sourceKind,
+            mapping.normalizedSpecialization,
+            mapping.displaySemantics,
+            JSON.stringify(mapping.evidence),
+          );
+        }),
+      ),
     );
     await env.DB.prepare(
       "INSERT OR IGNORE INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
     )
       .bind("黄丽萍", "黄丽萍", "体育学院")
       .run();
+  });
+
+  it("keeps sports/rating lists 200 when PE extras expand past the D1 pair-bind cap", async () => {
+    const query = `view=relations&category=sports&department=${encodeURIComponent(peDepartment)}&pageSize=20`;
+    for (const path of [
+      `/api/courses?${query}`,
+      `/api/courses?${query}&sort=rating`,
+    ]) {
+      const body = await smokeFetch(path);
+      const list = assertCatalogList(path, body);
+      expect(
+        list.total,
+        `GET ${path} returned 200 but total=${list.total} < ${PE_EXTRA_COUNT} PE extras`,
+      ).toBeGreaterThanOrEqual(PE_EXTRA_COUNT);
+      expect(list.items.length).toBeGreaterThan(0);
+    }
   });
 
   it.each(SMOKES)("GET $path returns 200", async ({ path, kind }) => {

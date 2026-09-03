@@ -7,6 +7,10 @@ import {
 } from "../src/lib/public-pe-course-projection";
 import { publicCatalogListScope } from "../src/lib/public-catalog-list";
 import {
+  loadGroupedRelationDimensionLabels,
+  loadRelationDimensionLabels,
+} from "../src/lib/relation-projections";
+import {
   queryPublicCourseRelations,
   queryPublicCourses,
   type PublicCatalogPage,
@@ -588,5 +592,20 @@ describe("公开目录查询 module", () => {
       expect(item.rating).toBeLessThanOrEqual(previousRating);
       previousRating = item.rating;
     }
+  });
+
+  it("chunks dimension-label pair binds under the D1 parameter limit", async () => {
+    const pairs = Array.from({ length: 60 }, (_, index) => ({
+      courseId: 1,
+      teacherId: index + 1,
+    }));
+    await expect(
+      loadRelationDimensionLabels(env.DB, pairs),
+    ).resolves.toBeInstanceOf(Map);
+    await expect(
+      loadGroupedRelationDimensionLabels(env.DB, [
+        { key: "pe-over-cap", sources: pairs },
+      ]),
+    ).resolves.toBeInstanceOf(Map);
   });
 });

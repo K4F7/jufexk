@@ -1,3 +1,4 @@
+import { D1_MAX_BOUND_PARAMETERS } from "./public-catalog-list";
 import {
   aggregateRelationDimensionLabels,
   relationDimensionKey,
@@ -5,6 +6,12 @@ import {
 } from "./relation-four-dims";
 import type { PublicDimensionLabel } from "./review-schemes";
 import { publicReviewBindingSql } from "../public-review-visibility";
+
+const DIMENSION_PAIR_BINDS = 2;
+const DIMENSION_PAIR_CHUNK = Math.max(
+  1,
+  Math.min(40, Math.floor(D1_MAX_BOUND_PARAMETERS / DIMENSION_PAIR_BINDS)),
+);
 
 export type RelationKey = { courseId: number; teacherId: number | null };
 
@@ -20,20 +27,30 @@ async function loadPublicDimensionSnapshots(
   db: D1Database,
   relations: Array<{ courseId: number; teacherId: number }>,
 ): Promise<DimensionReviewRow[]> {
-  if (!relations.length) return [];
-  const placeholders = relations.map(() => "(?,?)").join(",");
-  const { results } = await db
-    .prepare(
-      `SELECT r.course_id,r.teacher_id,r.scheme_key,r.scheme_version,r.scores
-       FROM reviews r
-       WHERE r.status='approved'${publicReviewBindingSql}
-         AND (r.course_id, r.teacher_id) IN (${placeholders})`,
-    )
-    .bind(
-      ...relations.flatMap((item) => [item.courseId, item.teacherId]),
-    )
-    .all<DimensionReviewRow>();
-  return results ?? [];
+  const pairs = relations.filter(
+    (item) =>
+      Number.isSafeInteger(item.courseId) &&
+      item.courseId > 0 &&
+      Number.isSafeInteger(item.teacherId) &&
+      item.teacherId > 0,
+  );
+  if (!pairs.length) return [];
+  const rows: DimensionReviewRow[] = [];
+  for (let offset = 0; offset < pairs.length; offset += DIMENSION_PAIR_CHUNK) {
+    const chunk = pairs.slice(offset, offset + DIMENSION_PAIR_CHUNK);
+    const placeholders = chunk.map(() => "(?,?)").join(",");
+    const { results } = await db
+      .prepare(
+        `SELECT r.course_id,r.teacher_id,r.scheme_key,r.scheme_version,r.scores
+         FROM reviews r
+         WHERE r.status='approved'${publicReviewBindingSql}
+           AND (r.course_id, r.teacher_id) IN (${placeholders})`,
+      )
+      .bind(...chunk.flatMap((item) => [item.courseId, item.teacherId]))
+      .all<DimensionReviewRow>();
+    rows.push(...(results ?? []));
+  }
+  return rows;
 }
 
 function snapshotFromRow(row: DimensionReviewRow): FourDimSnapshot {
@@ -51,7 +68,10 @@ export async function loadRelationDimensionLabels(
   const map = new Map<string, PublicDimensionLabel[]>();
   const withTeacher = relations.filter(
     (item): item is { courseId: number; teacherId: number } =>
-      item.teacherId != null,
+      item.courseId != null &&
+      item.courseId > 0 &&
+      item.teacherId != null &&
+      item.teacherId > 0,
   );
   if (!withTeacher.length) return map;
   const results = await loadPublicDimensionSnapshots(db, withTeacher);
