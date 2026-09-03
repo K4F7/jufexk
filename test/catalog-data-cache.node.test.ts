@@ -4,6 +4,7 @@ import {
   getCatalogData,
   invalidateCatalogData,
   peekCatalogData,
+  prefetchCourseCatalogBrowse,
 } from "../src/lib/catalog-data-cache";
 
 afterEach(() => {
@@ -63,5 +64,12 @@ describe("peekCatalogData", () => {
       }),
     ).rejects.toThrow("network");
     expect(peekCatalogData(url)).toBeUndefined();
+  });
+});
+
+describe("prefetchCourseCatalogBrowse", () => {
+  it("is a no-op without navigator so Node tests never hit the network", () => {
+    expect(() => prefetchCourseCatalogBrowse()).not.toThrow();
+    expect(peekCatalogData("/api/courses?view=relations&page=1")).toBeUndefined();
   });
 });

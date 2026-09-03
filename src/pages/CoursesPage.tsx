@@ -31,6 +31,7 @@ import {
   getCatalogData,
   invalidateCatalogData,
   peekCatalogData,
+  prefetchCourseCatalogBrowse,
 } from "../lib/catalog-data-cache";
 import {
   emptyCatalogPage,
@@ -123,6 +124,7 @@ export function CoursesPage() {
   /** Bumps to re-fetch the current catalog query (retry / force-reload). */
   const [reloadToken, setReloadToken] = useState(0);
   const reloadTokenSeenRef = useRef(reloadToken);
+  const catalogPrefetchStartedRef = useRef(false);
 
   // Stale bookmarks may still carry pe/required/elective; those 400 on the API.
   // general / major / public_basic 都是通识课，保留深链。
@@ -196,6 +198,12 @@ export function CoursesPage() {
       cancelled = true;
     };
   }, [queryString, reloadToken, preview]);
+
+  useEffect(() => {
+    if (!data || q || catalogPrefetchStartedRef.current) return;
+    catalogPrefetchStartedRef.current = true;
+    prefetchCourseCatalogBrowse();
+  }, [data, q]);
 
   function update(next: Record<string, string>, replace = false) {
     const sp = new URLSearchParams(params);

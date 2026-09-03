@@ -61,14 +61,17 @@ export function publicCatalogListScope(query: PublicCatalogScopeQuery): {
   args: unknown[];
 } {
   const categoryFilter = publicCategoryFilterSql(query.category, "c", "pcc");
+  const department = query.department.trim();
+  const departmentFilter = department
+    ? { sql: "trim(c.department)=trim(?)", args: [department] }
+    : { sql: "1=1", args: [] as string[] };
   const teacherFilter =
     query.teacherId === null ? "" : " AND ct.teacher_id=?";
   return {
-    sql: `${categoryFilter.sql} AND (?='' OR trim(c.department)=trim(?))${teacherFilter}`,
+    sql: `${categoryFilter.sql} AND ${departmentFilter.sql}${teacherFilter}`,
     args: [
       ...categoryFilter.args,
-      query.department,
-      query.department,
+      ...departmentFilter.args,
       ...(query.teacherId === null ? [] : [query.teacherId]),
     ],
   };

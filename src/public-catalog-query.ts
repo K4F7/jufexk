@@ -280,6 +280,22 @@ function byNameCodeTeacher(a: RelationRow, b: RelationRow) {
   return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
 }
 
+function byRelationBrowseTiebreak(a: RelationRow, b: RelationRow) {
+  const nameA = String(a.name ?? "");
+  const nameB = String(b.name ?? "");
+  if (nameA !== nameB) return nameA < nameB ? -1 : 1;
+  const codeA = String(a.code ?? "");
+  const codeB = String(b.code ?? "");
+  if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+  const courseA = a.course_id == null ? 0 : Number(a.course_id);
+  const courseB = b.course_id == null ? 0 : Number(b.course_id);
+  if (courseA !== courseB) return courseA - courseB;
+  const teacherA = String(a.teacher_name ?? "");
+  const teacherB = String(b.teacher_name ?? "");
+  if (teacherA !== teacherB) return teacherA < teacherB ? -1 : 1;
+  return (a.teacher_id ?? 0) - (b.teacher_id ?? 0);
+}
+
 function byRelationRating(a: RelationRow, b: RelationRow) {
   const aMissing = a.rating == null ? 1 : 0;
   const bMissing = b.rating == null ? 1 : 0;
@@ -288,12 +304,89 @@ function byRelationRating(a: RelationRow, b: RelationRow) {
     return b.rating - a.rating;
   }
   if (a.review_count !== b.review_count) return b.review_count - a.review_count;
-  return byNameCodeTeacher(a, b);
+  return byRelationBrowseTiebreak(a, b);
 }
 
 function byRelationReviews(a: RelationRow, b: RelationRow) {
   if (a.review_count !== b.review_count) return b.review_count - a.review_count;
-  return byNameCodeTeacher(a, b);
+  return byRelationBrowseTiebreak(a, b);
+}
+
+/** First 10 pages at the default pageSize; deeper pages keep the generic merge. */
+const RELATION_BROWSE_FAST_OFFSET_LIMIT = 200;
+const RELATION_BROWSE_REAL_FETCH_CAP = 1000;
+
+function canUseRelationBrowseFastPath(
+  query: PublicRelationListQuery,
+  searchTerms: string[],
+): boolean {
+  return (
+    searchTerms.length === 0 &&
+    !query.department &&
+    query.teacherId == null &&
+    (query.sort === "reviews" || query.sort === "rating")
+  );
+}
+
+async function loadPrecomputedRelationTotal(
+  db: D1Database,
+  category: string,
+): Promise<number | null> {
+  const row = await db
+    .prepare(
+      `SELECT n FROM public_relation_list_totals WHERE category=?`,
+    )
+    .bind(category || "all")
+    .first<{ n: number }>();
+  return row ? Number(row.n) : null;
+}
+
+async function loadRelationBrowseFromAggregate(
+  db: D1Database,
+  input: {
+    sort: PublicRelationListSort;
+    where: string;
+    args: unknown[];
+    limit: number;
+    offset: number;
+  },
+): Promise<RelationRow[]> {
+  const fromSql =
+    input.sort === "rating"
+      ? `FROM public_relation_ratings rel_rating
+      JOIN courses c ON c.id=rel_rating.course_id
+      ${publicCourseCanonicalJoin}
+      JOIN course_teachers ct
+        ON ct.course_id=c.id AND ct.teacher_id=rel_rating.teacher_id
+      JOIN teachers t ON t.id=rel_rating.teacher_id
+      LEFT JOIN public_review_counts rel_counts
+        ON rel_counts.course_id=c.id AND rel_counts.teacher_id=t.id`
+      : `FROM public_review_counts rel_counts
+      JOIN courses c ON c.id=rel_counts.course_id
+      ${publicCourseCanonicalJoin}
+      JOIN course_teachers ct
+        ON ct.course_id=c.id AND ct.teacher_id=rel_counts.teacher_id
+      JOIN teachers t ON t.id=rel_counts.teacher_id
+      LEFT JOIN public_relation_ratings rel_rating
+        ON rel_rating.course_id=c.id AND rel_rating.teacher_id=t.id`;
+  const orderBy =
+    input.sort === "rating"
+      ? "rel_rating.rating DESC,rel_rating.course_id,rel_rating.teacher_id"
+      : "rel_counts.review_count DESC,rel_counts.course_id,rel_counts.teacher_id";
+  const { results } = await db
+    .prepare(
+      `SELECT c.id course_id,c.code,c.name,c.category,c.department,
+       t.id teacher_id,t.name teacher_name,
+       rel_rating.rating,
+       COALESCE(rel_counts.review_count,0) review_count
+      ${fromSql}
+     WHERE ${input.where}
+     ORDER BY ${orderBy}
+     LIMIT ? OFFSET ?`,
+    )
+    .bind(...input.args, input.limit, input.offset)
+    .all<RelationRow>();
+  return results ?? [];
 }
 
 function emptyRelationSignals(
@@ -644,12 +737,61 @@ export async function queryPublicCourseRelations(
       : sort === "rating"
         ? `(rel_rating.rating IS NULL),rel_rating.rating DESC,review_count DESC,${nameSortSql}`
         : relevanceOrder;
-  const extrasAllUnsorted = await loadPublicRelationListExtras(db, {
-    ...query,
-    searchTerms,
-    exactTeacherIds: exactTeachers.active ? exactTeachers.ids : null,
-    courseSearchTerms,
-  });
+  const extrasAllUnsorted =
+    query.category && query.category !== "sports"
+      ? []
+      : await loadPublicRelationListExtras(db, {
+          ...query,
+          searchTerms,
+          exactTeacherIds: exactTeachers.active ? exactTeachers.ids : null,
+          courseSearchTerms,
+        });
+  const start = (page - 1) * size;
+  if (canUseRelationBrowseFastPath(query, searchTerms)) {
+    const realTotal =
+      (await loadPrecomputedRelationTotal(db, query.category)) ??
+      (await relationCount());
+    const extrasTotal = extrasAllUnsorted.length;
+    const totalCount = realTotal + extrasTotal;
+    const withinFastWindow = start + size <= RELATION_BROWSE_FAST_OFFSET_LIMIT;
+    if (withinFastWindow || extrasTotal === 0) {
+      const take =
+        extrasTotal === 0
+          ? size + 1
+          : Math.min(
+              RELATION_BROWSE_REAL_FETCH_CAP,
+              Math.max(start + size + extrasTotal + 16, size + 1),
+            );
+      const fastRows = await loadRelationBrowseFromAggregate(db, {
+        sort,
+        where,
+        args,
+        limit: take,
+        offset: extrasTotal === 0 ? start : 0,
+      });
+      const listed = fastRows.map((row) => withPublicRelationNames(row));
+      const merged =
+        extrasTotal === 0
+          ? listed
+          : [...listed, ...extrasAllUnsorted].sort(
+              sort === "rating" ? byRelationRating : byRelationReviews,
+            );
+      const items =
+        extrasTotal === 0
+          ? listed.slice(0, size)
+          : merged.slice(start, start + size);
+      const pageComplete =
+        items.length === size || start + items.length >= totalCount;
+      const consumedReviewed =
+        extrasTotal > 0 && fastRows.length < take;
+      if (pageComplete || consumedReviewed) {
+        return {
+          items: await attachRelationProjection(db, items, viewerUserId),
+          ...publicCatalogPageMeta(page, size, totalCount),
+        };
+      }
+    }
+  }
   const mergeKind: RelationMergeKind | null = !extrasAllUnsorted.length
     ? null
     : sort === "name"
@@ -661,7 +803,6 @@ export async function queryPublicCourseRelations(
           : null;
   const queryOrderBy =
     mergeKind === "reviews" ? `review_count DESC,${nameSortSql}` : orderBy;
-  const start = (page - 1) * size;
   let extrasAll = extrasAllUnsorted;
   let pageExtras: RelationRow[] = [];
   let realOffset = start;
@@ -763,7 +904,11 @@ export async function queryPublicCourseRelations(
             realOffset,
           )
           .all(),
-    relationCount(),
+    canUseRelationBrowseFastPath(query, searchTerms)
+      ? loadPrecomputedRelationTotal(db, query.category).then(
+          (n) => n ?? relationCount(),
+        )
+      : relationCount(),
   ]);
 
   const rows = ((pageResult.results || []) as RelationRow[]).slice(0, realLimit);

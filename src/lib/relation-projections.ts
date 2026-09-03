@@ -18,18 +18,20 @@ type DimensionReviewRow = {
 
 async function loadPublicDimensionSnapshots(
   db: D1Database,
-  courseIds: number[],
+  relations: Array<{ courseId: number; teacherId: number }>,
 ): Promise<DimensionReviewRow[]> {
-  if (!courseIds.length) return [];
-  const placeholders = courseIds.map(() => "?").join(",");
+  if (!relations.length) return [];
+  const placeholders = relations.map(() => "(?,?)").join(",");
   const { results } = await db
     .prepare(
       `SELECT r.course_id,r.teacher_id,r.scheme_key,r.scheme_version,r.scores
        FROM reviews r
        WHERE r.status='approved'${publicReviewBindingSql}
-         AND r.course_id IN (${placeholders})`,
+         AND (r.course_id, r.teacher_id) IN (${placeholders})`,
     )
-    .bind(...courseIds)
+    .bind(
+      ...relations.flatMap((item) => [item.courseId, item.teacherId]),
+    )
     .all<DimensionReviewRow>();
   return results ?? [];
 }
@@ -52,10 +54,7 @@ export async function loadRelationDimensionLabels(
       item.teacherId != null,
   );
   if (!withTeacher.length) return map;
-  const results = await loadPublicDimensionSnapshots(
-    db,
-    [...new Set(withTeacher.map((item) => item.courseId))],
-  );
+  const results = await loadPublicDimensionSnapshots(db, withTeacher);
   const allowed = new Set(
     withTeacher.map((item) => relationDimensionKey(item.courseId, item.teacherId)),
   );
@@ -84,10 +83,7 @@ export async function loadGroupedRelationDimensionLabels(
   const map = new Map<string, PublicDimensionLabel[]>();
   const sources = groups.flatMap((group) => group.sources);
   if (!sources.length) return map;
-  const results = await loadPublicDimensionSnapshots(
-    db,
-    [...new Set(sources.map((item) => item.courseId))],
-  );
+  const results = await loadPublicDimensionSnapshots(db, sources);
   const snapshotsBySource = new Map<string, FourDimSnapshot[]>();
   for (const row of results) {
     const key = relationDimensionKey(row.course_id, row.teacher_id);

@@ -1,7 +1,9 @@
 import { catalogPinyinText } from "./lib/catalog-pinyin";
 import {
   PE_SKILL_FAMILIES,
+  PUBLIC_CATEGORY_FILTERS,
   publicBrowseFamilySql,
+  publicCategoryFilterSql,
   publicCourseDisplayName,
   publicPeDisplaySearchSql,
   publicPeHasTextReviewSql,
@@ -9,6 +11,7 @@ import {
   publicSportsMatchSql,
   publicHasMoocTagSql,
 } from "./lib/public-course-presentation";
+import { publicPeMappedSourceRelationExcludeSql } from "./lib/public-pe-relation-projection";
 import {
   guestReviewBindingSql,
   historicalPublicVisibleSql,
@@ -42,6 +45,7 @@ type ProjectionTables = {
   teacherCourseCounts: string;
   teacherSearch: string;
   relationRatings: string;
+  relationTotals: string;
 };
 
 const projectionTables = (target: PublicProjectionTarget): ProjectionTables =>
@@ -52,6 +56,7 @@ const projectionTables = (target: PublicProjectionTarget): ProjectionTables =>
         teacherCourseCounts: "public_teacher_course_counts_staging",
         teacherSearch: "public_teacher_search_staging",
         relationRatings: "public_relation_ratings_staging",
+        relationTotals: "public_relation_list_totals_staging",
       }
     : {
         canonicals: "public_course_canonicals",
@@ -59,7 +64,36 @@ const projectionTables = (target: PublicProjectionTarget): ProjectionTables =>
         teacherCourseCounts: "public_teacher_course_counts",
         teacherSearch: "public_teacher_search",
         relationRatings: "public_relation_ratings",
+        relationTotals: "public_relation_list_totals",
       };
+
+const RELATION_TOTAL_CATEGORIES = ["all", ...PUBLIC_CATEGORY_FILTERS] as const;
+
+const relationListFromSql = (canonicals: string) =>
+  `FROM courses c
+   JOIN ${canonicals} pcc ON pcc.course_id=c.id AND pcc.canonical_course_id=c.id
+   JOIN course_teachers ct ON ct.course_id=c.id
+   JOIN teachers t ON t.id=ct.teacher_id`;
+
+const relationTotalInsert = (tables: ProjectionTables, category: string) => {
+  const filter = publicCategoryFilterSql(
+    category === "all" ? "" : category,
+    "c",
+    "pcc",
+  );
+  return {
+    sql: `INSERT INTO ${tables.relationTotals}(category, n)
+      SELECT category, n FROM (
+        SELECT ? category, COUNT(*) n
+        ${relationListFromSql(tables.canonicals)}
+        WHERE ${publicCourseVisibleSql("c")}
+          AND ${publicPeMappedSourceRelationExcludeSql("c", "ct")}
+          AND ${filter.sql}
+      ) counted
+      WHERE ${refreshLeaseGuard}`,
+    args: [category, ...filter.args] as unknown[],
+  };
+};
 
 const canonicalInsert = (tables: ProjectionTables) => `
   WITH classified AS (
@@ -290,11 +324,16 @@ export async function rebuildPublicListProjection({
     db.prepare(`DELETE FROM ${staging.teacherCourseCounts}`),
     db.prepare(`DELETE FROM ${staging.teacherSearch}`),
     db.prepare(`DELETE FROM ${staging.relationRatings}`),
+    db.prepare(`DELETE FROM ${staging.relationTotals}`),
     db.prepare(canonicalInsert(staging)).bind(generation, token),
     db.prepare(aggregateInsert(staging)).bind(generation, token),
     db.prepare(teacherCourseCountInsert(staging)).bind(generation, token),
     db.prepare(teacherSearchInsert(staging)).bind(generation, token),
     db.prepare(relationRatingInsert(staging)).bind(generation, token),
+    ...RELATION_TOTAL_CATEGORIES.map((category) => {
+      const insert = relationTotalInsert(staging, category);
+      return db.prepare(insert.sql).bind(...insert.args, generation, token);
+    }),
   ]);
   await refreshCatalogPinyinTexts(db, generation, token, renewLease, staging);
   await renewLease();
@@ -332,6 +371,12 @@ export async function rebuildPublicListProjection({
     db.prepare(
       `INSERT INTO ${active.relationRatings}(course_id,teacher_id,rating)
        SELECT course_id,teacher_id,rating FROM ${staging.relationRatings}
+       WHERE ${refreshLeaseGuard}`,
+    ).bind(generation, token),
+    db.prepare(guardedProjectionDelete(active.relationTotals)).bind(generation, token),
+    db.prepare(
+      `INSERT INTO ${active.relationTotals}(category, n)
+       SELECT category, n FROM ${staging.relationTotals}
        WHERE ${refreshLeaseGuard}`,
     ).bind(generation, token),
   ]);

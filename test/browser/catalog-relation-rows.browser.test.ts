@@ -354,13 +354,14 @@ test("search-miss empty names the query and clears it", async ({ page }) => {
 test("category switch keeps the current list and shows a refresh spinner", async ({
   page,
 }) => {
-  await mockCatalogApi(page);
+  // Delay from the first request so idle prefetch of 体育 is still in-flight
+  // when the pill is clicked; peekCatalogData ignores in-flight work.
+  await mockCatalogApi(page, { delayMs: 2000 });
   await page.goto("/courses");
   await expect(
     page.getByRole("link", { name: /中国传统文化导论/ }).first(),
   ).toBeVisible();
 
-  await mockCatalogApi(page, { delayMs: 2000 });
   const filterBox = page.getByRole("region", { name: "课程类别与排序" });
   await filterBox.getByRole("radio", { name: "体育" }).click();
 
@@ -389,16 +390,11 @@ test("switching back to a loaded sort reuses the catalog cache", async ({
   ).toBeVisible();
 
   const filterBox = page.getByRole("region", { name: "课程类别与排序" });
-  const ratingLoaded = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return (
-      url.pathname === "/api/courses" &&
-      url.searchParams.get("sort") === "rating"
-    );
-  });
   await filterBox.getByRole("radio", { name: "课程评分", exact: true }).click();
-  await ratingLoaded;
   await expect(page).toHaveURL(/[?&]sort=rating(?:&|$)/);
+  await expect(
+    page.getByRole("link", { name: /中国传统文化导论/ }).first(),
+  ).toBeVisible();
   const afterRating = courseRequests;
 
   const extraDefaultFetch = page
