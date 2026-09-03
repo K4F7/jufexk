@@ -83,6 +83,8 @@ type MockOptions = {
    *  out-of-range page; the real API does not clamp page). */
   emptyBeyondFirstPage?: boolean;
   onCoursesRequest?: () => void;
+  /** Generate this many unique rows so the catalog has multiple pages. */
+  pagedItemCount?: number;
 };
 
 async function expectStarsAlignedWithCount(row: Locator, countText: string) {
@@ -117,7 +119,7 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
       const query = url.searchParams.get("q") || "";
       const sort = url.searchParams.get("sort") || "";
       const pageNum = Number(url.searchParams.get("page") || "1");
-      const items = RELATIONS.filter(
+      const filtered = RELATIONS.filter(
         (item) =>
           (!category || item.category === category) &&
           (!query || item.name.includes(query)),
@@ -126,16 +128,34 @@ async function mockCatalogApi(page: Page, options: MockOptions = {}) {
           ? (b.rating ?? -1) - (a.rating ?? -1)
           : 0,
       );
+      const items = options.pagedItemCount
+        ? Array.from({ length: options.pagedItemCount }, (_, index) => ({
+            ...RELATIONS[0],
+            course_id: 1000 + index,
+            name: `分页课程 ${index + 1}`,
+            teacher_id: 2000 + index,
+            teacher_name: `分页教师 ${index + 1}`,
+          }))
+        : filtered;
+      const pageSize = 20;
       const total = items.length;
+      const pages = Math.max(1, Math.ceil(total / pageSize));
       if (options.emptyBeyondFirstPage && pageNum > 1) {
         return route.fulfill({
-          json: { items: [], page: pageNum, pageSize: 20, total, pages: 1 },
+          json: { items: [], page: pageNum, pageSize, total, pages: 1 },
         });
       }
       if (options.delayMs)
         await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+      const start = (pageNum - 1) * pageSize;
       return route.fulfill({
-        json: { items, page: pageNum, pageSize: 20, total, pages: 1 },
+        json: {
+          items: items.slice(start, start + pageSize),
+          page: pageNum,
+          pageSize,
+          total,
+          pages,
+        },
       });
     }
     if (url.pathname === "/api/teachers")
@@ -464,4 +484,28 @@ test("out-of-range deep-linked page keeps the browse box usable as a way back", 
   await expect(page).toHaveURL(/category=sports/);
   await expect(page).not.toHaveURL(/page=2/);
   await expect(page.getByRole("link", { name: /篮球/ })).toBeVisible();
+});
+
+test("clicking the next catalog page scrolls back to the top @mobile-smoke", async ({
+  page,
+}) => {
+  await mockCatalogApi(page, { pagedItemCount: 40 });
+  await page.goto("/courses");
+  await expect(
+    page.getByRole("link", { name: /分页课程 1（分页教师 1）/ }),
+  ).toBeVisible();
+
+  const next = page
+    .getByLabel("分页")
+    .getByRole("button", { name: "下一页" })
+    .locator("visible=true");
+  await next.scrollIntoViewIfNeeded();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  await next.click();
+  await expect(page).toHaveURL(/[?&]page=2(?:&|$)/);
+  await expect(
+    page.getByRole("link", { name: /分页课程 21（分页教师 21）/ }),
+  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(8);
 });

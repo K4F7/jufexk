@@ -232,6 +232,11 @@ function PaginationFooter({
 }) {
   const pages = Math.max(totalPages, 1);
   const selectedPage = Math.min(Math.max(currentPage, 1), pages);
+  function goToPage(nextPage: number) {
+    if (nextPage === selectedPage) return;
+    onPageChange(nextPage);
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }
   return (
     <Pagination
       aria-label="分页"
@@ -245,7 +250,7 @@ function PaginationFooter({
         <Pagination.Item>
           <Pagination.Previous
             isDisabled={disabled || selectedPage <= 1}
-            onPress={() => onPageChange(Math.max(1, selectedPage - 1))}
+            onPress={() => goToPage(Math.max(1, selectedPage - 1))}
           >
             <Pagination.PreviousIcon />
             <span className="sr-only">上一页</span>
@@ -261,7 +266,7 @@ function PaginationFooter({
               <Pagination.Link
                 isActive={page === selectedPage}
                 isDisabled={disabled}
-                onPress={() => onPageChange(page)}
+                onPress={() => goToPage(page)}
               >
                 {page}
               </Pagination.Link>
@@ -271,7 +276,7 @@ function PaginationFooter({
         <Pagination.Item>
           <Pagination.Next
             isDisabled={disabled || selectedPage >= pages}
-            onPress={() => onPageChange(Math.min(pages, selectedPage + 1))}
+            onPress={() => goToPage(Math.min(pages, selectedPage + 1))}
           >
             <span className="sr-only">下一页</span>
             <Pagination.NextIcon />
@@ -282,7 +287,7 @@ function PaginationFooter({
         <Pagination.Item>
           <Pagination.Previous
             isDisabled={disabled || selectedPage <= 1}
-            onPress={() => onPageChange(Math.max(1, selectedPage - 1))}
+            onPress={() => goToPage(Math.max(1, selectedPage - 1))}
           >
             <Pagination.PreviousIcon />
             <span>上一页</span>
@@ -298,7 +303,7 @@ function PaginationFooter({
               <Pagination.Link
                 isActive={page === selectedPage}
                 isDisabled={disabled}
-                onPress={() => onPageChange(page)}
+                onPress={() => goToPage(page)}
               >
                 {page}
               </Pagination.Link>
@@ -308,7 +313,7 @@ function PaginationFooter({
         <Pagination.Item>
           <Pagination.Next
             isDisabled={disabled || selectedPage >= pages}
-            onPress={() => onPageChange(Math.min(pages, selectedPage + 1))}
+            onPress={() => goToPage(Math.min(pages, selectedPage + 1))}
           >
             <span>下一页</span>
             <Pagination.NextIcon />

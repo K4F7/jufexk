@@ -52,6 +52,7 @@ import {
   useRelationSignals,
 } from "../components/RelationSignalControls";
 import { RouterAriaLink } from "../components/RouterAriaLink";
+import { ScrollToTopButton } from "../components/ScrollToTopButton";
 import { Stars } from "../components/Stars";
 import { usePublicReviewPagination } from "../hooks/usePublicReviewPagination";
 import { useReviewBi } from "../hooks/useReviewBi";
@@ -652,6 +653,7 @@ export function CourseDetailPage() {
     Boolean(recognitionVariant) && Boolean(ReviewRecognitionPrototypeLazy);
 
   return (
+    <>
     <div className="mx-auto grid w-full min-w-0 max-w-[1360px] grid-cols-1 gap-5 overflow-x-clip sm:gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0">
         <nav aria-label="面包屑" className="max-lg:hidden">
@@ -906,5 +908,7 @@ export function CourseDetailPage() {
         </RouterAriaLink>
       </aside>
     </div>
+    <ScrollToTopButton />
+    </>
   );
 }
