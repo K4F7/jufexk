@@ -10,7 +10,10 @@ import {
   PUBLIC_DETAIL_CACHE_TAG,
   purgePublicCatalogCache,
   isPublicCourseListCacheableRequest,
+  matchPublicCatalogCache,
+  putPublicCatalogCache,
   setPublicCatalogCacheHeaders,
+  shouldUsePublicCatalogCacheApi,
 } from "../src/lib/public-catalog-cache";
 
 const origin = "https://example.com";
@@ -173,5 +176,30 @@ describe("public catalog cache helpers", () => {
       }),
     ).resolves.toBeUndefined();
     await expect(purgePublicCatalogCache({})).resolves.toBeUndefined();
+  });
+
+  it("matches a URL-only Cache API key even if the browser sent cookies", async () => {
+    const store = new Map<string, Response>();
+    const cache = {
+      match: async (request: RequestInfo | URL) =>
+        store.get(new Request(request).url),
+      put: async (request: RequestInfo | URL, response: Response) => {
+        store.set(new Request(request).url, response);
+      },
+    };
+    const url = "https://example.com/api/courses?view=relations&page=1";
+    await putPublicCatalogCache(
+      url,
+      new Response('{"total":1}', {
+        headers: { "Cache-Control": PUBLIC_CATALOG_CACHE_CONTROL },
+      }),
+      cache,
+    );
+    const hit = await matchPublicCatalogCache(url, cache);
+    expect(await hit?.text()).toBe('{"total":1}');
+    expect(shouldUsePublicCatalogCacheApi({ ORDINARY_USER_TEST_AUTH_SECRET: "x" })).toBe(
+      false,
+    );
+    expect(shouldUsePublicCatalogCacheApi({})).toBe(true);
   });
 });

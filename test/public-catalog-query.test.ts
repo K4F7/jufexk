@@ -5,6 +5,7 @@ import {
   publicPeCourseIdentity,
   publicPeRelationIdentity,
 } from "../src/lib/public-pe-course-projection";
+import { publicCatalogListScope } from "../src/lib/public-catalog-list";
 import {
   queryPublicCourseRelations,
   queryPublicCourses,
@@ -522,6 +523,70 @@ describe("公开目录查询 module", () => {
       )
         .bind(peId)
         .run();
+    }
+  });
+
+  it("omits the empty-department tautology from the list scope", () => {
+    const empty = publicCatalogListScope({
+      category: "",
+      department: "",
+      teacherId: null,
+    });
+    expect(empty.sql).not.toContain("?=''");
+    expect(empty.args).toEqual([]);
+
+    const scoped = publicCatalogListScope({
+      category: "math",
+      department: "数学学院",
+      teacherId: 4,
+    });
+    expect(scoped.sql).toContain("trim(c.department)=trim(?)");
+    expect(scoped.args).toEqual(["math", "数学学院", 4]);
+  });
+
+  it("unfiltered browse ranks by review_count and uses precomputed totals", async () => {
+    const page = await queryPublicCourseRelations(
+      env.DB,
+      relationQuery({ pageSize: 20 }),
+      null,
+    );
+    expect(page.items.length).toBeGreaterThan(0);
+    for (let index = 1; index < page.items.length; index += 1) {
+      expect(page.items[index - 1].review_count).toBeGreaterThanOrEqual(
+        page.items[index].review_count,
+      );
+    }
+    const stored = await env.DB.prepare(
+      "SELECT n FROM public_relation_list_totals WHERE category='all'",
+    ).first<{ n: number }>();
+    expect(Number(stored?.n) || 0).toBeGreaterThan(0);
+    expect(page.total).toBeGreaterThanOrEqual(Number(stored?.n) || 0);
+
+    const math = await queryPublicCourseRelations(
+      env.DB,
+      relationQuery({ category: "math", pageSize: 5 }),
+      null,
+    );
+    const mathTotal = await env.DB.prepare(
+      "SELECT n FROM public_relation_list_totals WHERE category='math'",
+    ).first<{ n: number }>();
+    expect(math.total).toBe(Number(mathTotal?.n) || math.total);
+
+    const rated = await queryPublicCourseRelations(
+      env.DB,
+      relationQuery({ sort: "rating", pageSize: 20 }),
+      null,
+    );
+    let seenUnrated = false;
+    let previousRating = Number.POSITIVE_INFINITY;
+    for (const item of rated.items) {
+      if (item.rating == null) {
+        seenUnrated = true;
+        continue;
+      }
+      expect(seenUnrated).toBe(false);
+      expect(item.rating).toBeLessThanOrEqual(previousRating);
+      previousRating = item.rating;
     }
   });
 });

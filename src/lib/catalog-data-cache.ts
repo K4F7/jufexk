@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { PUBLIC_CATEGORY_OPTIONS } from "./public-categories";
 import { courseDetailApiPath } from "./public-course-identity";
 
 type CacheEntry = {
@@ -93,6 +94,32 @@ export function shouldPrefetchCatalog(): boolean {
   ).connection;
   if (connection?.saveData) return false;
   return !["slow-2g", "2g"].includes(connection?.effectiveType || "");
+}
+
+const COURSE_CATALOG_PREFETCH_SORTS = ["", "rating"] as const;
+
+function prefetchCourseCatalogBrowseNow(): void {
+  for (const option of PUBLIC_CATEGORY_OPTIONS) {
+    for (const sort of COURSE_CATALOG_PREFETCH_SORTS) {
+      const params = new URLSearchParams();
+      if (option.id) params.set("category", option.id);
+      if (sort) params.set("sort", sort);
+      params.set("view", "relations");
+      params.set("page", "1");
+      const url = `/api/courses?${params}`;
+      prefetchCatalogData(url, () => api(url));
+    }
+  }
+}
+
+/** Idle prefetch for the category pills × two sorts on page 1. */
+export function prefetchCourseCatalogBrowse(): void {
+  if (!shouldPrefetchCatalog()) return;
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(() => prefetchCourseCatalogBrowseNow(), { timeout: 2000 });
+    return;
+  }
+  setTimeout(prefetchCourseCatalogBrowseNow, 0);
 }
 
 /** Prefetch the exact detail and default latest review keys used by the course page. */

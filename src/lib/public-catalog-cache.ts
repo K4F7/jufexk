@@ -20,13 +20,14 @@ const PUBLIC_CACHE_CREDENTIAL_COOKIES = [
 ] as const;
 
 /**
- * Public catalog list GETs use Workers Caching via Cache-Control / Cache-Tag.
- * Cookie is not in that cache key and is not an automatic bypass, so ordinary
- * browser cookies do not require a Cache API + URL-only-key fallback.
+ * Public catalog list GETs advertise Cache-Control / Cache-Tag for the CDN.
+ * Browser requests still send cookies (`jufexk_voter`, `__cf_bm`, …) and the
+ * CDN BYPASSes those, so shared list responses also go through Cache API with
+ * a URL-only key.
  */
 
 export const PUBLIC_CATALOG_CACHE_CONTROL =
-  "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+  "public, max-age=0, s-maxage=300, stale-while-revalidate=300";
 export const PUBLIC_CATALOG_CACHE_TAG = "public-catalog";
 export const PUBLIC_DETAIL_CACHE_TAG = "public-detail";
 export const PUBLIC_CONFIG_CACHE_TAG = "public-config";
@@ -137,4 +138,43 @@ export function isPublicLatestReviewsCacheableRequest(c: {
   };
 }) {
   return isPublicRequestCacheable(c, ["jufexk_voter", "jufexk_user_csrf"]);
+}
+
+export function shouldUsePublicCatalogCacheApi(env: {
+  ORDINARY_USER_TEST_AUTH_SECRET?: string;
+}): boolean {
+  return !env.ORDINARY_USER_TEST_AUTH_SECRET;
+}
+
+export function publicCatalogCacheKey(url: string): Request {
+  return new Request(url, { method: "GET" });
+}
+
+type PublicCatalogCacheStore = Pick<Cache, "match" | "put">;
+
+function publicCatalogCacheStore(): PublicCatalogCacheStore {
+  return (caches as CacheStorage & { default: Cache }).default;
+}
+
+export async function matchPublicCatalogCache(
+  url: string,
+  cache: Pick<Cache, "match"> = publicCatalogCacheStore(),
+): Promise<Response | undefined> {
+  try {
+    return (await cache.match(publicCatalogCacheKey(url))) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function putPublicCatalogCache(
+  url: string,
+  response: Response,
+  cache: Pick<Cache, "put"> = publicCatalogCacheStore(),
+): Promise<void> {
+  try {
+    await cache.put(publicCatalogCacheKey(url), response);
+  } catch {
+    // Best-effort: origin response is still returned to the client.
+  }
 }

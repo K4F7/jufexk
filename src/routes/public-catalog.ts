@@ -29,7 +29,10 @@ import {
   isPublicCatalogCacheableRequest,
   isPublicCourseListCacheableRequest,
   isPublicLatestReviewsCacheableRequest,
+  matchPublicCatalogCache,
+  putPublicCatalogCache,
   setPublicCatalogCacheHeaders,
+  shouldUsePublicCatalogCacheApi,
 } from "../lib/public-catalog-cache";
 import {
   ensurePublicListPrecomputes,
@@ -614,9 +617,16 @@ publicCatalogRoutes.get("/api/search/candidates", async (c) => {
 });
 publicCatalogRoutes.get("/api/courses", async (c) => {
   const relations = clean(c.req.query("view"), 20) === "relations";
-  const cacheable = relations
-    ? isPublicCourseListCacheableRequest(c)
-    : isPublicCourseListCacheableRequest(c);
+  const cacheable = isPublicCourseListCacheableRequest(c);
+  const useCacheApi =
+    cacheable && shouldUsePublicCatalogCacheApi(c.env);
+  if (useCacheApi) {
+    const cached = await matchPublicCatalogCache(c.req.url);
+    if (cached) {
+      markServerTiming(c, "cache", 0);
+      return cached;
+    }
+  }
   const { page, size } = pageArgs(c);
   const search = clean(c.req.query("q"), 80);
   const cat = clean(c.req.query("category"), 20);
@@ -649,7 +659,11 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
     );
     markServerTiming(c, "query", performance.now() - queryStarted);
     if (cacheable) setPublicCatalogCacheHeaders(c, "list");
-    return c.json(result);
+    const response = c.json(result);
+    if (useCacheApi) {
+      c.executionCtx.waitUntil(putPublicCatalogCache(c.req.url, response.clone()));
+    }
+    return response;
   }
   // 排序：默认投稿数优先（含搜索相关度），sort=name 按课名（Issue #203）。
   const query: PublicCourseListQuery = {
@@ -664,7 +678,11 @@ publicCatalogRoutes.get("/api/courses", async (c) => {
   );
   markServerTiming(c, "query", performance.now() - queryStarted);
   if (cacheable) setPublicCatalogCacheHeaders(c, "list");
-  return c.json(result);
+  const response = c.json(result);
+  if (useCacheApi) {
+    c.executionCtx.waitUntil(putPublicCatalogCache(c.req.url, response.clone()));
+  }
+  return response;
 });
 publicCatalogRoutes.get("/api/teachers", async (c) => {
   const cacheable = isPublicCatalogCacheableRequest(c);
