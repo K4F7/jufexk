@@ -5,6 +5,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveAdminSession } from "../secrets/inventory";
 import { parseV5ImportArguments } from "./v5-arguments";
+import { jsonErrorMessage } from "../json-error";
+import type { HistoricalBatchImportResult } from "../../src/historical-batch-imports";
 import { createProductionD1ExportCommand } from "./production-wrangler";
 
 const exec = promisify(execFile);
@@ -90,7 +92,27 @@ function remember(headers: Headers) {
     if (match) cookies.set(match[1], match[2]);
   }
 }
-async function api(path: string, init: RequestInit = {}) {
+type CatalogCounts = {
+  courses: number;
+  teachers: number;
+  relations: number;
+};
+
+type CatalogMarker = {
+  approved_manifest_content_sha256: string;
+  artifact_sha256: string;
+  courses: number;
+  teachers: number;
+  relations: number;
+};
+
+type HistoricalReviewStatus = {
+  marker: CatalogMarker | null;
+  catalog: CatalogCounts;
+  historicalReviews: number;
+};
+
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
   headers.set("Origin", baseUrl);
@@ -103,10 +125,10 @@ async function api(path: string, init: RequestInit = {}) {
     headers.set("X-CSRF-Token", csrf);
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   remember(response.headers);
-  const body: any = await response.json().catch(() => ({}));
+  const body: unknown = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new Error(`${init.method || "GET"} ${path}: ${body.error || response.status}`);
-  return body;
+    throw new Error(`${init.method || "GET"} ${path}: ${jsonErrorMessage(body, response.status)}`);
+  return body as T;
 }
 
 for (const part of adminSession.cookie.split(";")) {
@@ -114,7 +136,7 @@ for (const part of adminSession.cookie.split(";")) {
   if (match) cookies.set(match[1], match[2]);
 }
 csrf = adminSession.csrf;
-const before = await api("/api/admin/historical-review-status");
+const before = await api<HistoricalReviewStatus>("/api/admin/historical-review-status");
 if (
   !before.marker ||
   before.marker.approved_manifest_content_sha256 !== expectedCatalog ||
@@ -165,7 +187,7 @@ for (let offset = 0; offset < rows.length; offset += 50)
   });
 let replayExisting = 0;
 for (let offset = 0; offset < rows.length; offset += 50) {
-  const replay = await api("/api/admin/historical-review-v5-imports", {
+  const replay = await api<HistoricalBatchImportResult>("/api/admin/historical-review-v5-imports", {
     method: "POST",
     body: JSON.stringify({
       manifest: manifestText,
@@ -175,7 +197,7 @@ for (let offset = 0; offset < rows.length; offset += 50) {
   });
   replayExisting += Number(replay.existing || 0);
 }
-const after = await api("/api/admin/historical-review-status");
+const after = await api<HistoricalReviewStatus>("/api/admin/historical-review-status");
 if (
   after.historicalReviews !== expectedAfterReviews ||
   replayExisting !== expectedImportable ||
