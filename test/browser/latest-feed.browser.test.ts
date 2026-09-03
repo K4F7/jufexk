@@ -6,6 +6,7 @@ import {
   REVIEW_FOLD_LABEL,
   REVIEW_PUBLIC_FOLD_EXPAND_LABEL,
 } from "../../src/lib/recognition";
+import { collectModuleLoadFailures } from "./module-load-failures";
 
 const LATEST = [
   {
@@ -164,9 +165,10 @@ async function expectFooterOutOfInitialViewport(page: Page) {
   expect(box?.y ?? 0).toBeGreaterThanOrEqual(viewport?.height ?? 0);
 }
 
-test("latest page lists newest public reviews and deep-links to the course", async ({
+test("latest page lists newest public reviews and deep-links to the course @mobile-smoke", async ({
   page,
 }) => {
+  const moduleFailures = collectModuleLoadFailures(page);
   const feedRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/reviews/latest")
@@ -208,6 +210,11 @@ test("latest page lists newest public reviews and deep-links to the course", asy
   await expect(
     page.getByRole("heading", { name: /中国传统文化导论（测试教师）/ }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "点评" })).toBeVisible();
+  await expect(
+    page.getByText("这门课讲得很清楚，作业量适中。"),
+  ).toBeVisible();
+  expect(moduleFailures()).toEqual([]);
 });
 
 test("latest author and date share a header row on desktop and mobile", async ({
