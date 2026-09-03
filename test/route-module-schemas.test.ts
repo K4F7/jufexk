@@ -37,7 +37,7 @@ describe("domain route composition", () => {
       importRoutes,
     ].flatMap((router) => router.routes.map(routeKey));
 
-    expect(appKeys).toEqual(["ALL /api/*", ...domainRoutes]);
+    expect(appKeys).toEqual(["ALL /assets/*", "ALL /api/*", ...domainRoutes]);
     const adminGuard = appKeys.indexOf("ALL /api/admin/*");
     expect(adminGuard).toBeGreaterThan(-1);
     for (const route of importRoutes.routes) {
