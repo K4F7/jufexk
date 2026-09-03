@@ -28,7 +28,20 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = any>(
+function apiErrorMessage(data: unknown): string {
+  if (
+    data !== null &&
+    typeof data === "object" &&
+    "error" in data &&
+    typeof data.error === "string" &&
+    data.error
+  ) {
+    return data.error;
+  }
+  return "请求失败";
+}
+
+export async function api<T = unknown>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
@@ -43,14 +56,14 @@ export async function api<T = any>(
     headers.set("X-CSRF-Token", scopedCsrf);
   }
   const response = await fetch(path, { ...options, headers });
-  let data: any = null;
+  let data: unknown = null;
   try {
     data = await response.json();
   } catch {
     data = null;
   }
   if (!response.ok) {
-    throw new ApiError(data?.error || "请求失败", response.status, data);
+    throw new ApiError(apiErrorMessage(data), response.status, data);
   }
   if ((options.method || "GET").toUpperCase() !== "GET") {
     // Mutations can change any public projection; invalidate in-memory intent

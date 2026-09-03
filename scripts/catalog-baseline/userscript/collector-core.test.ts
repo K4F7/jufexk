@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CollectorEngine, DirectoryUnavailableError, assertSnapshotSafe, buildFormBody, buildPageRequest, createCollectorState, type CollectorDependencies, type CollectorQuery, type PageResponse } from "./collector-core";
+import { CollectorEngine, DirectoryUnavailableError, assertSnapshotSafe, buildFormBody, buildPageRequest, createCollectorState, type CollectorDependencies, type CollectorQuery, type CollectorState, type PageResponse } from "./collector-core";
 
 function page(current: number, total: number, records = total * 100, status = 200, url = "https://jwxt.jxufe.edu.cn/taglib/DataTable.jsp", rowCount = records === 0 ? 0 : current < total ? 100 : Math.max(0, records - 100 * (total - 1))): PageResponse {
   const rows=Array.from({length:rowCount},()=>"<tr><td>record</td></tr>").join("");
@@ -11,7 +11,7 @@ function query(): CollectorQuery {
 }
 
 function harness(responses: Array<PageResponse | Error>) {
-  const writes:string[]=[]; const resets:string[]=[]; const checkpoints:any[]=[]; const sleeps:number[]=[]; let index=0;
+  const writes:string[]=[]; const resets:string[]=[]; const checkpoints:CollectorState[]=[]; const sleeps:number[]=[]; let index=0;
   const dependencies:CollectorDependencies={
     request:async()=>{const value=responses[index++]; if(value instanceof Error) throw value; return value;},
     writeSnapshot:async(id,p)=>{writes.push(`${id}:${p}`);},
@@ -19,7 +19,7 @@ function harness(responses: Array<PageResponse | Error>) {
     saveCheckpoint:async(state)=>{checkpoints.push(structuredClone(state));},
     sleep:async(ms)=>{sleeps.push(ms);}, now:()=>"2026-07-28T00:00:00.000Z", random:()=>0,
   };
-  return {engine:new CollectorEngine(dependencies),writes,resets,checkpoints,sleeps};
+  return {engine:new CollectorEngine(dependencies),dependencies,writes,resets,checkpoints,sleeps};
 }
 
 describe("collector engine",()=>{
@@ -83,7 +83,7 @@ describe("collector engine",()=>{
   });
 
   it("keeps the page pending when directory permission is lost",async()=>{
-    const h=harness([page(1,1)]); h.engine = new CollectorEngine({...((h.engine as any).dependencies), writeSnapshot:async()=>{throw new DirectoryUnavailableError("permission lost");}});
+    const h=harness([page(1,1)]); h.engine = new CollectorEngine({...h.dependencies, writeSnapshot:async()=>{throw new DirectoryUnavailableError("permission lost");}});
     const state=createCollectorState("pilot",[query()]); await h.engine.run(state); expect(state.phase).toBe("directory_unavailable"); expect(state.queries[0].nextPage).toBe(1);
     const resumed=harness([page(1,1)]);await resumed.engine.run(state);
     expect(resumed.writes).toEqual(["main-2026-0-05-2025:1"]);expect(state.phase).toBe("complete");
@@ -100,7 +100,7 @@ describe("collector engine",()=>{
 
   it("continues after a browser restart without requesting a completed page",async()=>{
     const state=createCollectorState("pilot",[query()]);state.phase="running";state.queries[0].pageCount=2;state.queries[0].declaredRecordCount=150;state.queries[0].capturedRecordCount=100;state.queries[0].nextPage=2;
-    const requested:number[]=[];const h=harness([page(2,2,150)]);(h.engine as any).dependencies.request=async(_query:CollectorQuery,pageNumber:number)=>{requested.push(pageNumber);return page(2,2,150);};
+    const requested:number[]=[];const h=harness([page(2,2,150)]);h.engine = new CollectorEngine({...h.dependencies, request:async(_query:CollectorQuery,pageNumber:number)=>{requested.push(pageNumber);return page(2,2,150);}});
     await h.engine.run(state);expect(requested).toEqual([2]);expect(h.writes).toEqual(["main-2026-0-05-2025:2"]);expect(state.phase).toBe("complete");
   });
 

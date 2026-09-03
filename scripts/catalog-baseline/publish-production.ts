@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolveAdminSession } from "../secrets/inventory";
+import { jsonErrorMessage } from "../json-error";
 
 const approvedRoot = resolve(process.argv[2] || "scripts/catalog-baseline/captures/full-approved-v1");
 const shouldPublish = process.argv.includes("--publish");
@@ -41,7 +42,7 @@ function rememberCookies(headers: Headers) {
     if (match) cookies.set(match[1], match[2]);
   }
 }
-async function api(path: string, init: RequestInit = {}) {
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
   headers.set("Origin", origin);
@@ -50,11 +51,24 @@ async function api(path: string, init: RequestInit = {}) {
   const response = await fetch(`${origin}${path}`, { ...init, headers });
   rememberCookies(response.headers);
   const text = await response.text();
-  let body: any;
+  let body: unknown;
   try { body = text ? JSON.parse(text) : {} } catch { body = { error: text } }
-  if (!response.ok) throw new Error(`${init.method || "GET"} ${path}: ${body.error || response.status}`);
-  return body;
+  if (!response.ok) throw new Error(`${init.method || "GET"} ${path}: ${jsonErrorMessage(body, response.status)}`);
+  return body as T;
 }
+
+type BaselineStatus = { published: boolean };
+type UploadStatus = { status: string; missingChunks: number[] };
+type PreviewPage = { total: number };
+type PublishResult = {
+  marker: {
+    approved_manifest_content_sha256: string;
+    artifact_sha256: string;
+    courses: number;
+    teachers: number;
+    relations: number;
+  } | null;
+};
 
 const batchId = `baseline-${String(manifest.contentSha256).slice(0, 24)}`;
 let loggedIn = false;
@@ -65,14 +79,14 @@ try {
   }
   csrf = adminSession.csrf;
   loggedIn = true;
-  const baseline = await api("/api/admin/catalog-baseline/status");
+  const baseline = await api<BaselineStatus>("/api/admin/catalog-baseline/status");
   if (baseline.published) throw new Error("生产目录基线已发布，入口已关闭");
 
-  const status = await api("/api/admin/catalog-baseline/uploads", {
+  const status = await api<UploadStatus>("/api/admin/catalog-baseline/uploads", {
     method: "POST",
     body: JSON.stringify({ batchId, manifest, chunkCount: chunks.length }),
   });
-  const missing = status.missingChunks as number[];
+  const missing = status.missingChunks;
   console.log(JSON.stringify({ phase: "upload", batchId, chunks: chunks.length, missing: missing.length }));
   let uploaded = 0;
   for (const index of missing) {
@@ -93,20 +107,20 @@ try {
     if (uploaded % 10 === 0 || uploaded === missing.length) console.log(JSON.stringify({ phase: "upload", uploaded, total: missing.length }));
   }
 
-  const finalized = await api(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(batchId)}/finalize`, { method: "POST", body: "{}" });
+  const finalized = await api<UploadStatus>(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(batchId)}/finalize`, { method: "POST", body: "{}" });
   if (finalized.status !== "staged" || finalized.missingChunks.length) throw new Error("生产 staging 状态异常");
   const previewCounts: Record<string, number> = {};
   for (const type of ["courses", "teachers", "relations"]) {
-    const preview = await api(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(batchId)}/preview?type=${type}&page=1&pageSize=1`);
+    const preview = await api<PreviewPage>(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(batchId)}/preview?type=${type}&page=1&pageSize=1`);
     previewCounts[type] = preview.total;
   }
   if (previewCounts.courses !== manifest.counts.courses || previewCounts.teachers !== manifest.counts.teachers || previewCounts.relations !== manifest.counts.relations) throw new Error("生产 staging 类型计数与 manifest 不一致");
   console.log(JSON.stringify({ phase: "staged", batchId, counts: previewCounts }));
   if (!shouldPublish) process.exitCode = 2;
   else {
-    const published = await api(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(batchId)}/publish`, { method: "POST", body: "{}" });
+    const published = await api<PublishResult>(`/api/admin/catalog-baseline/uploads/${encodeURIComponent(batchId)}/publish`, { method: "POST", body: "{}" });
     const marker = published.marker;
-    if (marker.approved_manifest_content_sha256 !== manifest.contentSha256 || marker.artifact_sha256 !== manifest.artifact.sha256) throw new Error("生产 marker 与批准包不一致");
+    if (!marker || marker.approved_manifest_content_sha256 !== manifest.contentSha256 || marker.artifact_sha256 !== manifest.artifact.sha256) throw new Error("生产 marker 与批准包不一致");
     console.log(JSON.stringify({ phase: "published", batchId, counts: { courses: marker.courses, teachers: marker.teachers, relations: marker.relations } }));
   }
 } finally {
