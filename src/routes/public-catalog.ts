@@ -40,7 +40,6 @@ import {
 } from "../public-list-precompute";
 import {
   publicCourseCanonicalJoin,
-  publicCourseOptionJoin,
   publicTeacherSearchJoin,
 } from "../public-list-projection-plan";
 import { deriveCourseCatalogMeta } from "../lib/course-metadata";
@@ -966,7 +965,7 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
   );
   const optionCount = () =>
     c.env.DB.prepare(
-      `SELECT COUNT(*) n FROM courses c ${publicCourseOptionJoin} WHERE ${where}`,
+      `SELECT COUNT(*) n FROM courses c ${publicCourseCanonicalJoin} WHERE ${where}`,
     )
       .bind(...args)
       .first<{ n: number }>()
@@ -976,7 +975,7 @@ publicCatalogRoutes.get("/api/courses/options", async (c) => {
        (SELECT GROUP_CONCAT(tag) FROM course_tags WHERE course_id=c.id) tag_csv,
        GROUP_CONCAT(DISTINCT t.name) teachers,
        COUNT(*) OVER() window_total
-     FROM courses c ${publicCourseOptionJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
+     FROM courses c ${publicCourseCanonicalJoin} LEFT JOIN course_teachers ct ON ct.course_id=c.id LEFT JOIN teachers t ON t.id=ct.teacher_id
      WHERE ${where} GROUP BY c.id ORDER BY ${searchTerms.length ? `${optionRanking.sql},` : ""}c.name,c.id LIMIT ? OFFSET ?`,
   )
     .bind(...args, ...(searchTerms.length ? optionRanking.args : []), size, (page - 1) * size)

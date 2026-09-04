@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   publicCourseCanonicalJoin,
   publicCourseMatchJoin,
-  publicCourseOptionJoin,
   publicTeacherSearchJoin,
   rebuildPublicListProjection,
 } from "../src/public-list-projection-plan";
@@ -136,7 +135,7 @@ describe("public list projection plan", () => {
     try {
       await rebuildWithLease();
       const options = await env.DB.prepare(
-        `SELECT c.id,c.name FROM courses c ${publicCourseOptionJoin}
+        `SELECT c.id,c.name FROM courses c ${publicCourseCanonicalJoin}
          WHERE c.id IN (57411,57412,57413,57414)
          ORDER BY c.id`,
       ).all<{ id: number; name: string }>();

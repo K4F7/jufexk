@@ -3,26 +3,7 @@
  * Issue #881: keep this module's hashed filename distinct from any
  * previously immutable-cached SPA HTML fallback.
  */
-import { Alert, Skeleton, Spinner, Surface, Table } from "@heroui/react";
-
-/** Official danger Alert for page / review-feed failures (Issue #244). */
-export function DetailErrorAlert({
-  title,
-  message,
-}: {
-  title: string;
-  message: string;
-}) {
-  return (
-    <Alert role="alert" status="danger">
-      <Alert.Indicator />
-      <Alert.Content>
-        <Alert.Title>{title}</Alert.Title>
-        <Alert.Description>{message}</Alert.Description>
-      </Alert.Content>
-    </Alert>
-  );
-}
+import { Skeleton, Spinner, Surface, Table } from "@heroui/react";
 
 /** Official Spinner + muted copy for in-page waits (Issue #244). */
 export function DetailLoadingStatus({ label }: { label: string }) {

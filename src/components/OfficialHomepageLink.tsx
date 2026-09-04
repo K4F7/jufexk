@@ -8,9 +8,10 @@ export function OfficialHomepageLink({
   href,
   displayHref,
 }: {
-  href: string;
+  href?: string | null;
   displayHref?: string;
 }) {
+  if (!href) return null;
   const urlText = displayHref ?? href;
   const urlClassName =
     "card__description m-0 min-w-0 max-w-full truncate p-0 font-normal text-accent";
@@ -42,14 +43,4 @@ export function OfficialHomepageLink({
       </Link>
     </Card.Description>
   );
-}
-
-/** 院系下方那一行：只有真实 CTA 主页才显示，不回退到本站 /teachers。 */
-export function TeacherHomepageLine({
-  officialUrl,
-}: {
-  officialUrl?: string | null;
-}) {
-  if (!officialUrl) return null;
-  return <OfficialHomepageLink href={officialUrl} />;
 }

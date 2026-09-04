@@ -23,6 +23,10 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 
 如果同步、安装依赖、本地检查、本地 `$code-review`、必需 CI、分支保护或合并权限造成阻塞，应保留 worktree 和分支并报告当前状态；只有 PR 合入后才能执行清理步骤。
 
+### Cloudflare 类型生成顺序
+
+涉及 Workers 代码、`wrangler.jsonc`、绑定或新 worktree 的 TypeScript 检查，先运行 `pnpm run types` 生成最新的 `worker-configuration.d.ts`，再运行 `pnpm exec tsc --noEmit` 或其它独立 TypeScript 检查。绑定类型未生成时的裸 `tsc` 结果无效；修改绑定配置后必须重新运行 `pnpm run types`。
+
 ### Triage labels
 
 沿用五个规范角色的默认标签字符串。见 `docs/agents/triage-labels.md`。
