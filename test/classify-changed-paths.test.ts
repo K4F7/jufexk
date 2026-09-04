@@ -96,11 +96,22 @@ describe("classifyChangedPaths", () => {
     expect(deployWorkflow).not.toContain("migrations apply");
   });
 
+  it("serializes production deploys and D1 migrations", () => {
+    expect(deployWorkflow).toContain("group: production-release");
+    expect(migrateWorkflow).toContain("group: production-release");
+    expect(deployWorkflow).toContain("cancel-in-progress: false");
+    expect(migrateWorkflow).toContain("cancel-in-progress: false");
+  });
+
+  it("validates workflow syntax inside the existing static runner", () => {
+    expect(ciWorkflow).toContain("uses: docker://rhysd/actionlint:");
+  });
+
   it("applies remote D1 migrations from a separate workflow, not deploy", () => {
     expect(migrateWorkflow).toContain("workflow_dispatch");
     expect(migrateWorkflow).toContain("push:");
     expect(migrateWorkflow).toContain("migrations/**");
-    expect(migrateWorkflow).toContain("production-d1-migrate");
+    expect(migrateWorkflow).toContain("production-release");
     expect(migrateWorkflow).toContain("wrangler d1 migrations list jufexk --remote");
     expect(migrateWorkflow).toContain("wrangler d1 migrations apply jufexk --remote");
     expect(migrateWorkflow).toContain(
