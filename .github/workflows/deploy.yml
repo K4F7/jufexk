@@ -9,7 +9,7 @@ on:
       - ".grok/**"
   workflow_dispatch:
 concurrency:
-  group: production-release
+  group: production-deploy
   cancel-in-progress: false
 permissions:
   contents: read

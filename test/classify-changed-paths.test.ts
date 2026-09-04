@@ -96,9 +96,13 @@ describe("classifyChangedPaths", () => {
     expect(deployWorkflow).not.toContain("migrations apply");
   });
 
-  it("serializes production deploys and D1 migrations", () => {
-    expect(deployWorkflow).toContain("group: production-release");
-    expect(migrateWorkflow).toContain("group: production-release");
+  it("queues production deploys and D1 migrations in separate concurrency groups", () => {
+    expect(deployWorkflow).toContain("group: production-deploy");
+    expect(migrateWorkflow).toContain("group: production-migrate");
+    expect(deployWorkflow).not.toContain("group: production-migrate");
+    expect(migrateWorkflow).not.toContain("group: production-deploy");
+    expect(deployWorkflow).not.toContain("production-release");
+    expect(migrateWorkflow).not.toContain("production-release");
     expect(deployWorkflow).toContain("cancel-in-progress: false");
     expect(migrateWorkflow).toContain("cancel-in-progress: false");
   });
@@ -111,7 +115,7 @@ describe("classifyChangedPaths", () => {
     expect(migrateWorkflow).toContain("workflow_dispatch");
     expect(migrateWorkflow).toContain("push:");
     expect(migrateWorkflow).toContain("migrations/**");
-    expect(migrateWorkflow).toContain("production-release");
+    expect(migrateWorkflow).toContain("group: production-migrate");
     expect(migrateWorkflow).toContain("wrangler d1 migrations list jufexk --remote");
     expect(migrateWorkflow).toContain("wrangler d1 migrations apply jufexk --remote");
     expect(migrateWorkflow).toContain(

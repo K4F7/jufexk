@@ -6,7 +6,7 @@ on:
     paths:
       - "migrations/**"
 concurrency:
-  group: production-release
+  group: production-migrate
   cancel-in-progress: false
 permissions:
   contents: read

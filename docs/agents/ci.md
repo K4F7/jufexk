@@ -2,7 +2,7 @@
 
 本文档是 PR / merge queue CI 拓扑、准入与扩展规则的唯一权威来源。部署、D1 迁移和生产运维 workflow 不属于本规范的主验证矩阵。
 
-生产部署与 D1 迁移共享 `production-release` concurrency group，避免两条 workflow 并行执行；两者均保留正在执行的发布，不以新任务取消旧任务。该设置只保证互斥，不保证迁移先于部署；若需要严格顺序，必须另行设计发布编排。
+生产部署与 D1 迁移分别使用 `production-deploy` 与 `production-migrate` concurrency group，各自排队，互不挤占。GitHub 每个 group 只保留一个 running 和一个 pending，后到的 pending 会顶掉同组未开始的任务；分开排队是为了避免后续 deploy 把排队中的 migrate 挤出队列，不再用同一 concurrency group 做互斥。同一 push 仍可能让两条 workflow 并行，因此 schema 变更应采用 expand/contract，使迁移与部署可独立推进。两者均保留正在执行的任务（`cancel-in-progress: false`），不以新任务取消旧任务。该设置不保证迁移先于部署；需要严格顺序时必须另行编排。
 
 ## Required gate 与当前拓扑
 
