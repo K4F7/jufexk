@@ -594,6 +594,51 @@ describe("公开目录查询 module", () => {
     }
   });
 
+  it("rating browse later pages keep item counts aligned with total/pages", async () => {
+    const stamp = `缝评分页${Date.now()}`;
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO teachers(source_teacher_label,name,department) VALUES(?,?,?)",
+    )
+      .bind("黄丽萍", "黄丽萍", department)
+      .run();
+    const teacherId = await insertTeacher(`${stamp}教师`);
+    const ratedId = await insertCourse(`PCQ-RT-${stamp}`, `${stamp}已评分`);
+    await bindTeacher(ratedId, teacherId);
+    await insertApprovedReview({
+      courseId: ratedId,
+      teacherId,
+      comment: `${stamp}评分页评价正文足够长`,
+      overall: 4,
+    });
+    for (let index = 0; index < 24; index += 1) {
+      const courseId = await insertCourse(
+        `PCQ-UR-${stamp}-${index}`,
+        `${stamp}未评分${index}`,
+      );
+      await bindTeacher(courseId, teacherId);
+    }
+
+    const pageSize = 5;
+    const first = await queryPublicCourseRelations(
+      env.DB,
+      relationQuery({ sort: "rating", pageSize }),
+      null,
+    );
+    expect(first.total).toBeGreaterThan(pageSize);
+    expect(first.pages).toBeGreaterThan(1);
+    expect(first.items).toHaveLength(pageSize);
+
+    const laterPage = first.pages;
+    const later = await queryPublicCourseRelations(
+      env.DB,
+      relationQuery({ sort: "rating", pageSize, page: laterPage }),
+      null,
+    );
+    expect(later.total).toBe(first.total);
+    expect(later.pages).toBe(first.pages);
+    expect(later.items).toHaveLength(first.total - (laterPage - 1) * pageSize);
+  });
+
   it("chunks dimension-label pair binds under the D1 parameter limit", async () => {
     const pairs = Array.from({ length: 60 }, (_, index) => ({
       courseId: 1,

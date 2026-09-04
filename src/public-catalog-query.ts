@@ -787,9 +787,7 @@ export async function queryPublicCourseRelations(
             : merged.slice(start, start + size);
         const pageComplete =
           items.length === size || start + items.length >= totalCount;
-        const consumedReviewed =
-          extrasTotal > 0 && fastRows.length < take;
-        if (pageComplete || consumedReviewed) {
+        if (pageComplete) {
           return {
             items: await attachRelationProjection(db, items, viewerUserId),
             ...publicCatalogPageMeta(page, size, totalCount),
