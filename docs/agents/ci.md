@@ -2,6 +2,8 @@
 
 本文档是 PR / merge queue CI 拓扑、准入与扩展规则的唯一权威来源。部署、D1 迁移和生产运维 workflow 不属于本规范的主验证矩阵。
 
+生产部署与 D1 迁移共享 `production-release` concurrency group，避免两条 workflow 并行执行；两者均保留正在执行的发布，不以新任务取消旧任务。该设置只保证互斥，不保证迁移先于部署；若需要严格顺序，必须另行设计发布编排。
+
 ## Required gate 与当前拓扑
 
 `CI / check` 是仓库唯一的 required gate。所有主验证子 job 必须列入它的 `needs` 并接受严格聚合：需要验证的变更只接受全部成功，文档类路径跳过时只接受全部跳过；取消、失败或意外缺失都不能被当成成功。
@@ -14,7 +16,9 @@
 
 桌面 Chromium 承担完整浏览器功能覆盖；移动 CI 只承担响应式布局与移动交互 smoke。本地 `pnpm check` 继续运行完整 Workers、静态检查、完整桌面和完整移动端浏览器测试。
 
-现有文档类路径跳过规则保持不变。目录或工具专用检查必须按相关路径触发，不能默认加入所有 PR。
+现有文档类路径跳过规则保持不变。目录或工具专用检查必须按相关路径触发，不能默认加入所有 PR。Workflow YAML 与表达式复用 `web_static` runner 内的 actionlint 校验，不新增 runner。
+
+Better Uptime（Better Stack）监控属于仓库外部配置。Issue #876 记录了 7 个 keyword monitor（5 秒超时、30 秒频率）；token 不入库，CI 不复制外部探针。收到告警时先在 Better Uptime 控制台核对监控 URL、状态码、超时与响应体；公开状态页异常不等同于应用请求错误。
 
 ## 新检查的准入规则
 

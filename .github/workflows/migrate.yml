@@ -6,7 +6,7 @@ on:
     paths:
       - "migrations/**"
 concurrency:
-  group: production-d1-migrate
+  group: production-release
   cancel-in-progress: false
 permissions:
   contents: read
