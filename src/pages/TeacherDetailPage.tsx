@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
-import { TeacherHomepageLine } from "../components/OfficialHomepageLink";
+import { OfficialHomepageLink } from "../components/OfficialHomepageLink";
 import {
   DetailPageSkeleton,
 } from "../components/DetailFeedback";
@@ -90,7 +90,7 @@ function TeacherIdentityCard({
           <Card.Description className="min-w-0 break-words">
             {teacher.department || "院系未标注"}
           </Card.Description>
-          <TeacherHomepageLine officialUrl={teacher.official_homepage_url} />
+          <OfficialHomepageLink href={teacher.official_homepage_url} />
         </div>
       </Card.Header>
       <Card.Content>

@@ -2,7 +2,6 @@ import { SELF, env } from "cloudflare:test";
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import app from "../src/index";
-import { EHALL_SESSION_COOKIE } from "../src/ehall-session";
 import {
   AUTH_PROVIDER_CAS,
   CAS_IDENTITY_ISSUER,
@@ -11,6 +10,7 @@ import {
   EMAIL_LOGIN_COOKIE,
   hmacHex,
 } from "../src/ordinary-user-authentication";
+import { EHALL_SESSION_COOKIE } from "../src/ordinary-user-session";
 import { ORDINARY_USER_CSRF_COOKIE } from "../src/ordinary-user-write-authorization";
 import {
   CAS_MFA_CONSUMED_LOGIN_FAILED,

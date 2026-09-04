@@ -212,9 +212,6 @@ export const publicCourseCanonicalJoin =
 export const publicCourseMatchJoin =
   "JOIN public_course_canonicals pcc ON pcc.course_id=c.id";
 
-// 大学英语 I–IV 各是独立公开展示课名，投稿选项与浏览共用 canonical 行。
-export const publicCourseOptionJoin = publicCourseCanonicalJoin;
-
 export const publicTeacherSearchJoin =
   "JOIN public_teacher_search pts ON pts.teacher_id=t.id";
 

@@ -34,7 +34,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { AnonymousAvatar } from "../components/AnonymousAvatar";
-import { TeacherHomepageLine } from "../components/OfficialHomepageLink";
+import { OfficialHomepageLink } from "../components/OfficialHomepageLink";
 import { CourseAdminNotice } from "../components/CourseAdminNotice";
 import { CourseAiSummary } from "../components/CourseAiSummary";
 import {
@@ -845,9 +845,7 @@ export function CourseDetailPage() {
               <Card.Description>
                 {selectedTeacher.department || "院系未标注"}
               </Card.Description>
-              <TeacherHomepageLine
-                officialUrl={selectedTeacher.official_homepage_url}
-              />
+              <OfficialHomepageLink href={selectedTeacher.official_homepage_url} />
             </Card.Header>
           </Card>
         ) : null}

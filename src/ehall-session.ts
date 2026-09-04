@@ -26,7 +26,6 @@ import {
 import type { CasSsoGrant } from "./lib/jxufe-cas";
 import { readSecret } from "./secrets";
 
-export { EHALL_SESSION_COOKIE } from "./ordinary-user-session";
 export const EHALL_SESSION_PATH = "/api/ehall/session";
 export const EHALL_LAUNCH_PATH = "/api/ehall/launch";
 const EHALL_LAUNCH_BODY_MAX_BYTES = 1_024;
