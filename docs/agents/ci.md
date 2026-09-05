@@ -20,7 +20,7 @@
 
 Browser job 使用 Playwright 官方 Noble 容器，镜像版本必须与 `pnpm-lock.yaml` 中实际解析的 `@playwright/test` 一致；升级 Playwright 时同步更新镜像。镜像预装浏览器与系统依赖，job 不再运行 `playwright install`。项目 npm 依赖仍须安装，Chromium 使用 `--ipc=host`。
 
-PR 与 `merge_group` 目前保持相同测试覆盖。2026-09-05 核查 main 规则未启用 merge queue，因此不能仅凭 workflow 声明了 `merge_group` 就把 PR 全量测试降为 smoke；必须先确保每次合并都会经过完整检查。路径分类维持保守兜底：前后端共享类型、API 载荷和构建依赖未形成可靠影响映射前，不按目录猜测可以跳过浏览器。
+普通 PR 的桌面浏览器 job 运行带 `@pr-smoke` 的核心路径，移动 job 继续运行 `@mobile-smoke`；`merge_group` 运行完整桌面覆盖与移动 smoke。主分支规则已启用 required `check`，但当前仓库尚未启用 merge queue；若没有 merge_group 事件，完整浏览器覆盖需通过受保护分支策略或手动 full workflow 补跑。路径分类维持保守兜底：前后端共享类型、API 载荷和构建依赖未形成可靠影响映射前，不按目录猜测可以跳过浏览器。
 
 现有文档类路径跳过规则保持不变。目录或工具专用检查必须按相关路径触发，不能默认加入所有 PR。Workflow YAML 与表达式复用 `web_static` runner 内的 actionlint 校验，不新增 runner。
 

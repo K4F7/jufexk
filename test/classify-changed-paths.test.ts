@@ -61,6 +61,10 @@ describe("classifyChangedPaths", () => {
       "pnpm exec playwright test --project=chromium --shard=${{ matrix.shard }}",
     );
     expect(ciWorkflow).toContain(
+      "pnpm exec playwright test --project=chromium --grep @pr-smoke --shard=${{ matrix.shard }}",
+    );
+    expect(ciWorkflow).toContain('"${{ github.event_name }}" == "merge_group"');
+    expect(ciWorkflow).toContain(
       "pnpm exec playwright test --project=mobile-chromium --grep @mobile-smoke --shard=${{ matrix.shard }}",
     );
     expect(ciWorkflow).not.toContain("matrix.project");

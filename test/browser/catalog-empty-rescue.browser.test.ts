@@ -39,7 +39,7 @@ async function mockEmptyCourses(page: Page) {
   });
 }
 
-test("courses empty query does not hint at a teacher catalog", async ({
+test("courses empty query does not hint at a teacher catalog @pr-smoke", async ({
   page,
 }) => {
   await mockEmptyCourses(page);

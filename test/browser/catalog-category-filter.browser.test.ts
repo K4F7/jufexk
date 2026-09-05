@@ -158,7 +158,7 @@ async function mockCatalogApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockCatalogApi(page));
 
-test("sort controls stay horizontal on narrow and wide viewports", async ({
+test("sort controls stay horizontal on narrow and wide viewports @pr-smoke", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 720 });
@@ -170,7 +170,7 @@ test("sort controls stay horizontal on narrow and wide viewports", async ({
   await expect(sortGroup).toHaveAttribute("aria-orientation", "horizontal");
 });
 
-test("search results keep the relevance sort label", async ({ page }) => {
+test("search results keep the relevance sort label @pr-smoke", async ({ page }) => {
   await page.goto("/courses?q=传统");
   const sortGroup = page.getByRole("radiogroup", { name: "排序方式" });
   await expect(sortGroup.getByRole("radio", { name: "相关度" })).toBeVisible();
