@@ -61,7 +61,3 @@ Issue 与 PRD 以 GitHub Issues 形式存放在 `K4F7/jufexk`，统一走 `gh` C
 5. **路由适配用官方 `render`/`href`**：例如 `Tabs.Tab` 的 `render` 接到 React Router `NavLink`，不要为了路由自建一套 tab 样式。
 6. **Prototype 同样遵守**：变体之间应比较「不同官方组件或官方 variant 的组合」，而不是三套自定义 CSS 皮肤。
 7. **禁止**：HeroUI v2 API；为了「更像设计稿」绕过官方组件；在未确认前把原型私货直接当生产默认。
-
-### 排课模拟：电脑端
-
-`/schedule` 只做电脑端布局。窄屏进入弹一次告示，不要再为它做手机 UI。见 `docs/adr/0030-schedule-desktop-only.md`。
