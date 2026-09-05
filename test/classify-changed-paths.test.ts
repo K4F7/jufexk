@@ -9,6 +9,7 @@ import playwrightConfig from "../playwright.config.ts?raw";
 import deployWorkflow from "../.github/workflows/deploy.yml?raw";
 import migrateWorkflow from "../.github/workflows/migrate.yml?raw";
 import packageJsonRaw from "../package.json?raw";
+import pnpmLock from "../pnpm-lock.yaml?raw";
 
 const packageScripts = (JSON.parse(packageJsonRaw) as { scripts: Record<string, string> }).scripts;
 
@@ -76,6 +77,15 @@ describe("classifyChangedPaths", () => {
     expect(ciWorkflow).toContain('expected="skipped"');
     expect(ciWorkflow).toMatch(/elif \[\[ "\$web_required" == "false" \]\][\s\S]*else\s+exit 1/);
     expect(ciWorkflow).toContain('if [[ "$result" != "$expected" ]]');
+  });
+
+  it("uses a preinstalled browser matching the locked Playwright package", () => {
+    const image = ciWorkflow.match(/image: mcr\.microsoft\.com\/playwright:v([\d.]+)-noble/);
+    const lockedVersion = pnpmLock.match(/'@playwright\/test':\s+specifier: [^\n]+\s+version: ([\d.]+)/);
+    expect(image).not.toBeNull();
+    expect(lockedVersion).not.toBeNull();
+    expect(image?.[1]).toBe(lockedVersion?.[1]);
+    expect(ciWorkflow).not.toMatch(/playwright install/);
   });
 
   it("keeps deploy gated on web changes and ignores offline trees", () => {

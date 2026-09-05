@@ -1,0 +1,22 @@
+# Temporary comparison for #893. Remove before marking the PR ready.
+name: CI browser benchmark
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: browser-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser_single:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright test --project=chromium
+      - run: pnpm exec playwright test --project=mobile-chromium --grep @mobile-smoke
