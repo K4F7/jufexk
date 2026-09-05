@@ -21,17 +21,19 @@ export function useCatalogSuggestions<T>(
     }
 
     const controller = new AbortController();
+    let cancelled = false;
     setItems([]);
     setReady(false);
     const timer = window.setTimeout(() => {
       load(draft.trim(), controller.signal)
         .then((next) => {
+          if (cancelled) return;
           setItems(next);
           setFailed(false);
           setReady(true);
         })
         .catch((error: { name?: string }) => {
-          if (error?.name === "AbortError") return;
+          if (cancelled || error?.name === "AbortError") return;
           setItems([]);
           setFailed(true);
           setReady(false);
@@ -39,6 +41,7 @@ export function useCatalogSuggestions<T>(
     }, CATALOG_SUGGEST_DELAY);
 
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       controller.abort();
     };

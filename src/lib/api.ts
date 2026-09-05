@@ -68,9 +68,9 @@ export async function api<T = unknown>(
   if ((options.method || "GET").toUpperCase() !== "GET") {
     // Mutations can change any public projection; invalidate in-memory intent
     // prefetched data without coupling the low-level API helper statically.
-    void import("./catalog-data-cache").then(({ clearCatalogDataCache }) =>
-      clearCatalogDataCache(),
-    );
+    void import("./catalog-data-cache")
+      .then(({ clearCatalogDataCache }) => clearCatalogDataCache())
+      .catch(() => undefined);
   }
   return data as T;
 }

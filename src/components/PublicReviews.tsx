@@ -91,7 +91,7 @@ export function PublicReviews({
           </div>
           {hasMore ? (
             <div className="flex justify-center border-t border-border pt-4">
-              <Button variant="secondary" isPending={isLoadingMore} onPress={onLoadMore}>
+              <Button variant="secondary" isPending={isLoadingMore} isDisabled={isLoadingMore} onPress={onLoadMore}>
                 {({ isPending }) => (
                   <>
                     {isPending ? <Spinner color="current" size="sm" /> : null}
@@ -107,6 +107,9 @@ export function PublicReviews({
               <Alert.Content>
                 <Alert.Title>继续加载失败</Alert.Title>
                 <Alert.Description>{loadMoreError}</Alert.Description>
+                <Button className="mt-2" size="sm" variant="secondary" isDisabled={isLoadingMore} onPress={onLoadMore}>
+                  重试
+                </Button>
               </Alert.Content>
             </Alert>
           ) : null}

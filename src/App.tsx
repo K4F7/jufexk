@@ -11,6 +11,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { RouteChunkErrorBoundary } from "./components/RouteChunkErrorBoundary";
 import { AdminSessionProvider } from "./hooks/useAdminSession";
 import { ViewerProvider } from "./hooks/useViewer";
 import { api } from "./lib/api";
@@ -51,7 +52,7 @@ if (
   typeof window !== "undefined" &&
   (window.location.pathname === "/" || window.location.pathname === "/latest")
 ) {
-  void loadLatestPage();
+  void loadLatestPage().catch(() => undefined);
 }
 
 let initialSiteBannerRequest = window.__jufexkSiteBannerRequest ?? null;
@@ -192,7 +193,7 @@ function DevPrototypeMount() {
     let cancelled = false;
     import("./prototype/DevPrototypeChrome").then((m) => {
       if (!cancelled) setChrome(<m.DevPrototypeChrome />);
-    });
+    }).catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -312,50 +313,49 @@ export function App() {
       <RacClientNavigation>
         <ViewerProvider>
           <AdminSessionProvider>
-            <AppShell
-              banner={banner ?? null}
-              bannerLoading={banner === undefined}
-              config={config}
-            >
-              <Suspense fallback={<RouteFallback />}>
-              <Routes>
-              <Route path="/" element={<Navigate to="/latest" replace />} />
-              <Route path="/courses" element={<CoursesPage />} />
-              <Route path="/courses/:id" element={<CourseDetailPage />} />
-              <Route path="/latest" element={<LatestPage />} />
-              <Route path="/schedule" element={<SchedulePage />} />
-              <Route path="/teachers" element={<TeachersListRedirect />} />
-              <Route path="/teachers/:id" element={<TeacherDetailPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/account" element={<AccountPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/u/:code" element={<PublicUserPage />} />
-              <Route path="/submit" element={<SubmitPage config={config} />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/contact" element={<ContactPage />} />
-              <Route path="/resources" element={<ResourcesPage />} />
-              <Route path="/terms" element={<TermsPage />} />
-              <Route path="/admin" element={<AdminHubPage />} />
-              <Route path="/admin/bi" element={<AdminBiPage />} />
-              <Route path="/admin/admins" element={<AdminStudentBindingsPage />} />
-              <Route path="/admin/banner" element={<AdminBannerPage />} />
-              <Route path="/admin/users/:id" element={<AdminUserBlockPage />} />
-              <Route path="/admin/pe-queue" element={<AdminPeQueuePage />} />
-              <Route
-                path="/admin/catalog-requests"
-                element={<AdminCatalogRequestsPage />}
-              />
-              {PrototypeGalleryPage ? (
-                <Route
-                  path="/prototype"
-                  element={<PrototypeGalleryPage />}
-                />
-              ) : null}
-              <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-              </Suspense>
-              {import.meta.env.DEV ? <DevPrototypeMount /> : null}
-            </AppShell>
+            <RouteChunkErrorBoundary>
+              <AppShell
+                banner={banner ?? null}
+                bannerLoading={banner === undefined}
+                config={config}
+              >
+                <Suspense fallback={<RouteFallback />}>
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/latest" replace />} />
+                    <Route path="/courses" element={<CoursesPage />} />
+                    <Route path="/courses/:id" element={<CourseDetailPage />} />
+                    <Route path="/latest" element={<LatestPage />} />
+                    <Route path="/schedule" element={<SchedulePage />} />
+                    <Route path="/teachers" element={<TeachersListRedirect />} />
+                    <Route path="/teachers/:id" element={<TeacherDetailPage />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/account" element={<AccountPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/u/:code" element={<PublicUserPage />} />
+                    <Route path="/submit" element={<SubmitPage config={config} />} />
+                    <Route path="/about" element={<AboutPage />} />
+                    <Route path="/contact" element={<ContactPage />} />
+                    <Route path="/resources" element={<ResourcesPage />} />
+                    <Route path="/terms" element={<TermsPage />} />
+                    <Route path="/admin" element={<AdminHubPage />} />
+                    <Route path="/admin/bi" element={<AdminBiPage />} />
+                    <Route path="/admin/admins" element={<AdminStudentBindingsPage />} />
+                    <Route path="/admin/banner" element={<AdminBannerPage />} />
+                    <Route path="/admin/users/:id" element={<AdminUserBlockPage />} />
+                    <Route path="/admin/pe-queue" element={<AdminPeQueuePage />} />
+                    <Route
+                      path="/admin/catalog-requests"
+                      element={<AdminCatalogRequestsPage />}
+                    />
+                    {PrototypeGalleryPage ? (
+                      <Route path="/prototype" element={<PrototypeGalleryPage />} />
+                    ) : null}
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
+                </Suspense>
+                {import.meta.env.DEV ? <DevPrototypeMount /> : null}
+              </AppShell>
+            </RouteChunkErrorBoundary>
           </AdminSessionProvider>
         </ViewerProvider>
       </RacClientNavigation>

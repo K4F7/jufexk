@@ -9,7 +9,7 @@ import {
   Label,
   TextField,
 } from "@heroui/react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { api } from "../../lib/api";
@@ -42,15 +42,18 @@ function UserBlockPanel({ userRef }: { userRef: string }) {
   const [days, setDays] = useState("7");
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
+  const loadRequest = useRef(0);
 
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
     const d = await api<AdminUserBlockStatus>(
       `/api/admin/users/${encodeURIComponent(userRef)}`,
     );
-    setStatus(d);
+    if (request === loadRequest.current) setStatus(d);
   }, [userRef]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!userRef) {
       setLoading(false);
       setError("缺少站内用户 ID。");
@@ -58,8 +61,15 @@ function UserBlockPanel({ userRef }: { userRef: string }) {
     }
     setLoading(true);
     load()
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (!cancelled) setError((e as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [load, userRef]);
 
   const run = async (fn: () => Promise<unknown>) => {

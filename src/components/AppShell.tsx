@@ -27,7 +27,7 @@ const AccountNavControlLazy = lazy(() =>
 
 function loadDeferredHeroUiStyles(pathname: string) {
   if (pathname === "/" || pathname === "/latest") return;
-  void import("../styles/heroui-deferred.css");
+  void import("../styles/heroui-deferred.css").catch(() => undefined);
 }
 
 // Direct visits to non-latest routes should begin loading their component
@@ -305,6 +305,10 @@ function DefaultShell({
 }) {
   const location = useLocation();
   const [params] = useSearchParams();
+
+  // Start deferred HeroUI styles before this render commits on route changes.
+  // The import is cached, so repeated renders are effectively free.
+  loadDeferredHeroUiStyles(location.pathname);
 
   useEffect(() => {
     loadDeferredHeroUiStyles(location.pathname);

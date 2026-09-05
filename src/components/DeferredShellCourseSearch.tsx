@@ -1,9 +1,13 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 const ShellCourseSearch = lazy(() =>
   import("./ShellCourseSearch").then((module) => ({ default: module.ShellCourseSearch })),
 );
+
+const prefetchShellCourseSearch = () => {
+  void import("./ShellCourseSearch").catch(() => undefined);
+};
 
 /** Keep the shell search slot stable without loading its HeroUI tree up front. */
 export function DeferredShellCourseSearch() {
@@ -14,6 +18,21 @@ export function DeferredShellCourseSearch() {
   const [params] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const activate = () => setActivated(true);
+
+  useEffect(() => {
+    if (!defer) return;
+    let idle: number | undefined;
+    let timeout: number | undefined;
+    if (window.requestIdleCallback) {
+      idle = window.requestIdleCallback(prefetchShellCourseSearch);
+    } else {
+      timeout = window.setTimeout(prefetchShellCourseSearch, 1200);
+    }
+    return () => {
+      if (idle !== undefined) window.cancelIdleCallback?.(idle);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [defer]);
 
   return active ? (
     <Suspense fallback={<ShellCourseSearchPlaceholder onActivate={activate} query={query} onQueryChange={setQuery} />}>

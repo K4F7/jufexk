@@ -1,4 +1,4 @@
-import { Button, Card, ComboBox, Input, Label, ListBox, Modal, Select, Table, Tabs, Typography } from "@heroui/react";
+import { Alert, Button, Card, ComboBox, Input, Label, ListBox, Modal, Select, Table, Tabs, Typography } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { relationDetailHref } from "./CourseRelationRow";
 import { RouterAriaLink } from "./RouterAriaLink";
@@ -153,6 +153,11 @@ function CoursePickTable({
         <p className="text-sm text-muted" role="status">
           暂无数据
         </p>
+      ) : visibleOfferings.length === 0 ? (
+        <div className="flex items-center gap-2" role="status">
+          <p className="text-sm text-muted">当前来源类别没有匹配课程。</p>
+          <Button size="sm" variant="secondary" onPress={() => setSourceCategory("")}>清除筛选</Button>
+        </div>
       ) : (
     <Table>
       <Table.ScrollContainer>
@@ -225,14 +230,35 @@ function SectionTable({
   termId,
   planItems,
   emptyHint,
+  loading,
+  error,
+  onRetry,
   onJoin,
 }: {
   offerings: JwxtOffering[];
   termId: string;
   planItems: PlannedItem[];
   emptyHint: string;
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
   onJoin: (offering: JwxtOffering) => void;
 }) {
+  if (loading) {
+    return <p className="text-sm text-muted" role="status">开课班加载中…</p>;
+  }
+  if (error) {
+    return (
+      <Alert role="alert" status="danger">
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Title>开课班加载失败</Alert.Title>
+          <Alert.Description>{error}</Alert.Description>
+          <Button className="mt-2" size="sm" variant="secondary" onPress={onRetry}>重试</Button>
+        </Alert.Content>
+      </Alert>
+    );
+  }
   if (offerings.length === 0) {
     return (
       <p className="text-sm text-muted" role="status">
@@ -311,30 +337,45 @@ export function JwxtCourseBrowser({
   planItems,
   courseOfferings,
   candidatesReady,
+  candidatesLoading = false,
+  candidatesError = "",
+  courseOfferingsLoading = false,
+  courseOfferingsError = "",
   onFilters,
   onSelectedCourseChange,
+  onRetryCourseOfferings,
+  onRetryCandidates,
   onStage,
   onJoin,
   onToggle,
   onRemove,
   onSave,
+  savePending = false,
 }: {
   snapshot: JwxtSnapshotV1;
   planItems: PlannedItem[];
   courseOfferings: JwxtOffering[];
   candidatesReady?: boolean;
+  candidatesLoading?: boolean;
+  candidatesError?: string;
+  courseOfferingsLoading?: boolean;
+  courseOfferingsError?: string;
   onFilters: (patch: Partial<Pick<JwxtSnapshotV1, "term" | "educationLevel" | "grade" | "major">>) => void;
   onSelectedCourseChange?: (courseCode: string) => void;
+  onRetryCourseOfferings?: () => void;
+  onRetryCandidates?: () => void;
   onStage: (offering: JwxtOffering, origin: "planned" | "public") => void;
   onJoin: (offering: JwxtOffering, origin: "planned" | "public") => void;
   onToggle: (item: PlannedItem, included: boolean) => void;
   onRemove: (item: PlannedItem) => void;
   onSave: () => void;
+  savePending?: boolean;
 }) {
   const termId = snapshot.term.id;
   const gradeReady = snapshot.grades.length === 0 || isJwxtFilterSelected(snapshot.grade);
   const canBrowseCandidates = candidatesReady ?? jwxtCandidateFiltersReady(snapshot);
-  const courseRows = uniquePlanCourses(planItems);
+  const courseRows = useMemo(() => uniquePlanCourses(planItems), [planItems]);
+  const courseRowsKey = courseRows.map((item) => item.courseCode).join("|");
   const [selectedCode, setSelectedCode] = useState(courseRows[0]?.courseCode ?? "");
   const [dropItem, setDropItem] = useState<PlannedItem | null>(null);
 
@@ -345,7 +386,7 @@ export function JwxtCourseBrowser({
 
   useEffect(() => {
     if (selectedCode) onSelectedCourseChange?.(selectedCode);
-  }, [selectedCode]);
+  }, [courseRowsKey, selectedCode]); // eslint-disable-line react-hooks/exhaustive-deps -- notify when the available course set changes
 
   const selectedCourse = courseRows.find((item) => item.courseCode === selectedCode);
   const joinOrigin = (offering: JwxtOffering): "planned" | "public" => (
@@ -413,6 +454,17 @@ export function JwxtCourseBrowser({
         <p className="text-sm text-muted" role="status">
           请先选择年级和专业，再浏览培养方案课和公共选修。已加入的课可先查看。
         </p>
+      ) : candidatesLoading ? (
+        <p className="text-sm text-muted" role="status">培养方案和公共选修目录加载中…</p>
+      ) : candidatesError ? (
+        <Alert role="alert" status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>目录加载失败</Alert.Title>
+            <Alert.Description>{candidatesError}</Alert.Description>
+            <Button className="mt-2" size="sm" variant="secondary" onPress={() => onRetryCandidates?.()}>重试</Button>
+          </Alert.Content>
+        </Alert>
       ) : (
         <Card>
           <Card.Header>
@@ -460,9 +512,11 @@ export function JwxtCourseBrowser({
             <Button
               size="sm"
               variant="primary"
+              isPending={savePending}
+              isDisabled={savePending}
               onPress={onSave}
             >
-              保存课表
+              {savePending ? "保存中…" : "保存课表"}
             </Button>
           </Card.Header>
           <Card.Content>
@@ -549,6 +603,9 @@ export function JwxtCourseBrowser({
               termId={termId}
               planItems={planItems}
               emptyHint={sectionEmptyHint}
+              loading={courseOfferingsLoading}
+              error={courseOfferingsError}
+              onRetry={() => onRetryCourseOfferings?.()}
               onJoin={(offering) => onJoin(offering, joinOrigin(offering))}
             />
           </Card.Content>

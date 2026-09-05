@@ -74,7 +74,7 @@ export function useReviewComments({
     setSubmitting(false);
     setError(null);
     inflight.current = false;
-  }, [review.id]); // eslint-disable-line react-hooks/exhaustive-deps -- seed is keyed by review.id
+  }, [live, review.id]); // eslint-disable-line react-hooks/exhaustive-deps -- seed is keyed by review.id
 
   const ensureLoaded = useCallback(() => {
     if (!live || loaded || inflight.current) return;

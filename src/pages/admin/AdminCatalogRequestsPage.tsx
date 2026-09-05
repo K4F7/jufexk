@@ -9,7 +9,7 @@ import {
   TextField,
   Input,
 } from "@heroui/react";
-import { useCallback, useEffect, useState, type Key } from "react";
+import { useCallback, useEffect, useRef, useState, type Key } from "react";
 import { DetailLoadingStatus } from "../../components/DetailFeedback";
 import { api } from "../../lib/api";
 import { categoryLabel } from "../../lib/labels";
@@ -49,19 +49,29 @@ function CatalogRequestsEditor() {
   const [message, setMessage] = useState("");
   const [specializations, setSpecializations] = useState<Record<number, string>>({});
   const [rejectNotes, setRejectNotes] = useState<Record<number, string>>({});
+  const loadRequest = useRef(0);
 
   const load = useCallback(async (next = status) => {
+    const request = ++loadRequest.current;
     const listed = await api<Paginated<CatalogRequest>>(
       `/api/admin/catalog-requests?status=${encodeURIComponent(next)}`,
     );
-    setData(listed);
+    if (request === loadRequest.current) setData(listed);
   }, [status]);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     load()
-      .catch((caught) => setError((caught as Error).message))
-      .finally(() => setLoading(false));
+      .catch((caught) => {
+        if (!cancelled) setError((caught as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
   const approve = async (row: CatalogRequest) => {
