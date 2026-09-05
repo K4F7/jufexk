@@ -24,6 +24,7 @@ import { RouterAriaLink } from "./RouterAriaLink";
 const EMPTY_NOTICE_KEY = "empty";
 const LOADING_NOTICE_KEY = "loading";
 const UNAVAILABLE_NOTICE_KEY = "unavailable";
+const ADMIN_LOADING_KEY = "admin-loading";
 
 /**
  * Low-emphasis login / account entry in the shell nav (issue #139 / #325 / #595 / #609).
@@ -176,6 +177,7 @@ export function AccountNavControl() {
         <Dropdown.Popover>
           <Dropdown.Menu
             aria-label="账号菜单"
+            disabledKeys={!adminReady ? [ADMIN_LOADING_KEY] : []}
             onAction={(key) => {
               if (key === "profile") navigate("/profile");
               if (key === "admin") navigate("/admin");
@@ -185,6 +187,14 @@ export function AccountNavControl() {
             <Dropdown.Item id="profile" textValue="主页">
               <Label>主页</Label>
             </Dropdown.Item>
+            {!adminReady &&
+            identity !== "admin" &&
+            identity !== "guest" &&
+            identity !== "user" ? (
+              <Dropdown.Item id={ADMIN_LOADING_KEY} textValue="正在检查账号权限…">
+                <Label>正在检查账号权限…</Label>
+              </Dropdown.Item>
+            ) : null}
             {identity === "admin" ||
             (identity !== "guest" &&
               identity !== "user" &&

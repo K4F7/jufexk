@@ -41,7 +41,7 @@ function BannerAlert({
         }
       })
       .catch(() => {
-        if (!cancelled) setSanitizedHtml("");
+        if (!cancelled) setSanitizedHtml("公告暂时无法显示，请稍后刷新页面。");
       });
     return () => {
       cancelled = true;

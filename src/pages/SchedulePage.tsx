@@ -104,13 +104,9 @@ async function fetchProgramPlanCourses(grade: string, major: string): Promise<Pr
 }
 
 async function fetchScheduleOfferings(courseId: number, termId: string): Promise<ScheduleOfferingRow[]> {
-  try {
-    const params = new URLSearchParams({ courseId: String(courseId), term: termId });
-    const rows = await api<ScheduleOfferingRow[]>(`/api/schedule-offerings?${params.toString()}`);
-    return Array.isArray(rows) ? rows : [];
-  } catch {
-    return [];
-  }
+  const params = new URLSearchParams({ courseId: String(courseId), term: termId });
+  const rows = await api<ScheduleOfferingRow[]>(`/api/schedule-offerings?${params.toString()}`);
+  return Array.isArray(rows) ? rows : [];
 }
 
 export function SchedulePage() {
@@ -136,12 +132,20 @@ export function SchedulePage() {
   const [notice, setNotice] = useState("");
   const [joinError, setJoinError] = useState("");
   const [catalogError, setCatalogError] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogReload, setCatalogReload] = useState(0);
+  const [savePending, setSavePending] = useState(false);
+  const [selectedOfferingsLoading, setSelectedOfferingsLoading] = useState(false);
+  const [selectedOfferingsError, setSelectedOfferingsError] = useState("");
   const enrichedCodes = useRef(new Set<string>());
+  const selectedRequest = useRef(0);
+  const selectionGeneration = useRef(0);
 
   const filtersReady = catalogFiltersReady(grade, major);
 
   useEffect(() => {
     if (!filtersReady) {
+      setCatalogLoading(false);
       enrichedCodes.current = new Set();
       setPlanned([]);
       setPublicElectives([]);
@@ -149,6 +153,10 @@ export function SchedulePage() {
       return;
     }
     let cancelled = false;
+    setCatalogLoading(true);
+    setCatalogError("");
+    setPlanned([]);
+    setPublicElectives([]);
     void Promise.all([
       fetchProgramPlanCourses(grade.id, major.id),
       fetchCatalogRelations({ category: "sports" }),
@@ -164,11 +172,14 @@ export function SchedulePage() {
       })
       .catch(() => {
         if (!cancelled) setCatalogError("无法读取培养方案或公共选修目录。");
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [filtersReady, grade.id, major.id, term.id]);
+  }, [catalogReload, filtersReady, grade.id, major.id, term.id]);
 
   const snapshot = useMemo(
     () =>
@@ -194,11 +205,15 @@ export function SchedulePage() {
   const selectedOfferings = offeringsByCode[selectedCode] ?? [];
 
   function handleFilters(patch: Partial<Pick<typeof snapshot, "term" | "grade" | "major">>) {
+    selectionGeneration.current += 1;
+    selectedRequest.current += 1;
+    enrichedCodes.current = new Set();
+    setOfferingsByCode({});
+    setSelectedOfferingsLoading(false);
+    setSelectedOfferingsError("");
     if (patch.term) {
       setTerm(patch.term);
       setPlan((current) => ({ ...current, activeTermId: patch.term?.id || current.activeTermId }));
-      enrichedCodes.current = new Set();
-      setOfferingsByCode({});
     }
     if (patch.grade) {
       setGrade(patch.grade);
@@ -208,6 +223,7 @@ export function SchedulePage() {
   }
 
   async function enrichCourse(courseCode: string) {
+    const generation = selectionGeneration.current;
     const cacheKey = `${term.id}:${courseCode}`;
     const seed = [...planned, ...publicElectives].find((item) => item.courseCode === courseCode);
     if (!seed?.catalogCourseId) return offeringsByCode[courseCode] ?? [];
@@ -215,6 +231,7 @@ export function SchedulePage() {
       return offeringsByCode[courseCode];
     }
     const rows = await fetchScheduleOfferings(seed.catalogCourseId, term.id);
+    if (generation !== selectionGeneration.current) return [];
     const next = offeringsFromScheduleRows(seed, rows);
     enrichedCodes.current.add(cacheKey);
     setOfferingsByCode((current) => ({ ...current, [courseCode]: next }));
@@ -223,8 +240,22 @@ export function SchedulePage() {
 
   async function handleSelectCourse(courseCode: string) {
     setSelectedCode(courseCode);
-    if (!courseCode) return;
-    await enrichCourse(courseCode);
+    const request = ++selectedRequest.current;
+    setSelectedOfferingsError("");
+    if (!courseCode) {
+      setSelectedOfferingsLoading(false);
+      return;
+    }
+    setSelectedOfferingsLoading(true);
+    try {
+      await enrichCourse(courseCode);
+    } catch {
+      if (request === selectedRequest.current) {
+        setSelectedOfferingsError("无法读取开课班，请检查网络后重试。");
+      }
+    } finally {
+      if (request === selectedRequest.current) setSelectedOfferingsLoading(false);
+    }
   }
 
   function handleStage(offering: JwxtOffering, origin: "planned" | "public") {
@@ -234,7 +265,13 @@ export function SchedulePage() {
   }
 
   async function handleJoin(offering: JwxtOffering, origin: "planned" | "public") {
-    const nextRows = await enrichCourse(offering.courseCode);
+    let nextRows: JwxtOffering[];
+    try {
+      nextRows = await enrichCourse(offering.courseCode);
+    } catch {
+      setJoinError("无法读取开课班，请检查网络后重试。");
+      return;
+    }
     const enriched =
       nextRows.find((item) => item.catalogTeacherId === offering.catalogTeacherId && item.courseCode === offering.courseCode)
       ?? nextRows.find((item) => item.teacherName === offering.teacherName && item.courseCode === offering.courseCode)
@@ -250,10 +287,13 @@ export function SchedulePage() {
   }
 
   function handleSave() {
+    if (savePending) return;
+    setSavePending(true);
     const committed = commitSave(plan);
     savePlan(committed);
     setPlan(committed);
     setNotice("课表已保存到本机。");
+    window.setTimeout(() => setSavePending(false), 250);
   }
 
   return (
@@ -269,12 +309,12 @@ export function SchedulePage() {
         <p className="mb-0 mt-1 text-sm text-muted">提前处理掉早八刺客</p>
       </header>
 
-      {catalogError ? (
+      {catalogLoading ? (
         <Alert className="mb-4" role="status">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>目录数据</Alert.Title>
-            <Alert.Description>{catalogError}</Alert.Description>
+            <Alert.Title>目录加载中</Alert.Title>
+            <Alert.Description>正在读取培养方案和公共选修目录，请稍候。</Alert.Description>
           </Alert.Content>
         </Alert>
       ) : null}
@@ -318,10 +358,18 @@ export function SchedulePage() {
             planItems={termItems}
             courseOfferings={selectedOfferings}
             candidatesReady={filtersReady}
+            candidatesLoading={catalogLoading}
+            candidatesError={catalogError}
+            courseOfferingsLoading={selectedOfferingsLoading}
+            courseOfferingsError={selectedOfferingsError}
             onFilters={handleFilters}
             onSelectedCourseChange={(code) => {
               void handleSelectCourse(code);
             }}
+            onRetryCourseOfferings={() => {
+              void handleSelectCourse(selectedCode);
+            }}
+            onRetryCandidates={() => setCatalogReload((current) => current + 1)}
             onStage={handleStage}
             onJoin={(offering, origin) => {
               void handleJoin(offering, origin);
@@ -335,6 +383,7 @@ export function SchedulePage() {
               if (item.status === 2) persistPlan(next);
             }}
             onSave={handleSave}
+            savePending={savePending}
           />
         </div>
 

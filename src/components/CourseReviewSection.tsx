@@ -458,6 +458,7 @@ export function CourseReviewSection({
                 className="sm:w-auto"
                 variant="secondary"
                 isPending={isLoadingMore}
+                isDisabled={isLoadingMore}
                 onPress={onLoadMore}
               >
                 {({ isPending }) => (
@@ -475,6 +476,9 @@ export function CourseReviewSection({
               <Alert.Content>
                 <Alert.Title>继续加载失败</Alert.Title>
                 <Alert.Description>{loadMoreError}</Alert.Description>
+                <Button className="mt-2" size="sm" variant="secondary" isDisabled={isLoadingMore} onPress={onLoadMore}>
+                  重试
+                </Button>
               </Alert.Content>
             </Alert>
           ) : null}

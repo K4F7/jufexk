@@ -1,5 +1,6 @@
 import { Typography } from "@heroui/react";
 import { lazy, Suspense } from "react";
+import { RouteChunkErrorBoundary } from "./RouteChunkErrorBoundary";
 
 const HtmlReviewNoteContent = lazy(() => import("./HtmlReviewNoteContent"));
 
@@ -17,9 +18,11 @@ export function ReviewNoteContent({
 }) {
   if (commentFormat === "html") {
     return (
-      <Suspense fallback={<PlainReviewNoteContent comment={comment} />}>
-        <HtmlReviewNoteContent comment={comment} />
-      </Suspense>
+      <RouteChunkErrorBoundary fallback={<PlainReviewNoteContent comment={comment} />}>
+        <Suspense fallback={<PlainReviewNoteContent comment={comment} />}>
+          <HtmlReviewNoteContent comment={comment} />
+        </Suspense>
+      </RouteChunkErrorBoundary>
     );
   }
   return <PlainReviewNoteContent comment={comment} />;
