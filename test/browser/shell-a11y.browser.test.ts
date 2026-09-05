@@ -66,7 +66,7 @@ test("skip link is the first tab stop and moves focus to main @mobile-smoke", as
   await expect(page.getByRole("main")).toHaveAttribute("id", "main-content");
 });
 
-test("shell icon controls and login form expose accessible names", async ({
+test("shell icon controls and login form expose accessible names @pr-smoke", async ({
   page,
 }) => {
   await page.goto("/courses");

@@ -54,7 +54,7 @@ test("course detail page error uses official Alert", async ({ page }) => {
   await expect(page.getByRole("status", { name: "加载中…", exact: true })).toHaveCount(0);
 });
 
-test("course detail first load uses a reserved-height skeleton", async ({ page }) => {
+test("course detail first load uses a reserved-height skeleton @pr-smoke", async ({ page }) => {
   await page.route("**/api/courses/8", () => new Promise(() => {}));
   await page.goto("/courses/8");
   await expect(page.getByRole("status", { name: "课程加载中…" })).toBeVisible();
@@ -330,4 +330,3 @@ test("PE public identity course page matches mapped detail without a numeric id"
   ).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "暂无评价" })).toBeVisible();
 });
-

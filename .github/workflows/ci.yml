@@ -79,7 +79,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright test --project=chromium --shard=${{ matrix.shard }}
+      - name: Run desktop browser coverage
+        run: |
+          if [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            pnpm exec playwright test --project=chromium --shard=${{ matrix.shard }}
+          else
+            pnpm exec playwright test --project=chromium --grep @pr-smoke --shard=${{ matrix.shard }}
+          fi
       - run: pnpm exec playwright test --project=mobile-chromium --grep @mobile-smoke --shard=${{ matrix.shard }}
 
   check:

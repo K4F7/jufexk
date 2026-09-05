@@ -34,7 +34,7 @@ async function searchQuery(page: Page) {
   return new URL(page.url()).searchParams.get("q");
 }
 
-test("shell course search submits to /courses?q= without suggestions", async ({
+test("shell course search submits to /courses?q= without suggestions @pr-smoke", async ({
   page,
 }) => {
   await mockCatalogApi(page);
